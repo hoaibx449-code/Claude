@@ -14,10 +14,27 @@ export function audioDuration(file: string): number {
   return parseFloat(out);
 }
 
-function need(name: string): string {
+export function need(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`Thiếu biến môi trường ${name}`);
   return v;
+}
+
+/**
+ * Join one audio clip per line with short pauses. Used for providers that return
+ * no timestamps: each line's start/end is then exact by construction.
+ */
+export function joinLineClips(clips: string[], outBase: string, gap = 0.25): VoiceResult {
+  const durs = clips.map(audioDuration);
+  const lines: Span[] = [];
+  let t = 0;
+  durs.forEach((d) => { lines.push({ start: t, end: t + d }); t += d + gap; });
+  const file = outBase + '.m4a';
+  const inputs = clips.flatMap((c) => ['-i', c]);
+  const parts = clips.map((_, i) => `[${i}:a]aresample=44100,aformat=channel_layouts=mono,apad=pad_dur=${gap}[p${i}]`).join(';');
+  const filter = `${parts};${clips.map((_, i) => `[p${i}]`).join('')}concat=n=${clips.length}:v=0:a=1[a]`;
+  execFileSync('ffmpeg', ['-v', 'error', '-y', ...inputs, '-filter_complex', filter, '-map', '[a]', '-c:a', 'aac', '-b:a', '160k', file]);
+  return { file, lines, duration: audioDuration(file) };
 }
 
 /** No network: silent track with estimated timing. For layout checks and tests. */
@@ -94,8 +111,9 @@ export function googleTTS(voiceName?: string, languageCode = 'vi-VN'): TTS {
   };
 }
 
-export function pickTTS(name: string | undefined, voice?: { voiceId?: string; languageCode?: string }): TTS {
+export async function pickTTS(name: string | undefined, voice?: { voiceId?: string; languageCode?: string }): Promise<TTS> {
   switch (name) {
+    case 'everai': return (await import('./everai.ts')).everAITTS({ voiceCode: voice?.voiceId });
     case 'elevenlabs': return elevenLabsTTS(voice?.voiceId);
     case 'google': return googleTTS(voice?.voiceId, voice?.languageCode);
     case 'mock': case undefined: return mockTTS;

@@ -1,6 +1,6 @@
 // Render a project to MP4 without a browser.
 //   node src/cli/render.ts examples/luong-11-trieu/project.json --out out/video.mp4
-// Options: --tts mock|elevenlabs|google   --images openai|gemini   --size 1080   --fps 30
+// Options: --tts mock|everai|elevenlabs|google   --images openai|gemini   --size 1080   --fps 30
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -61,7 +61,7 @@ async function main() {
   const images = await Promise.all(imagePaths.map((r) => Promise.all(r.map((p) => loadImage(p)))));
 
   // 2. voice
-  const tts = pickTTS(values.tts ?? project.voice?.provider, project.voice);
+  const tts = await pickTTS(values.tts ?? project.voice?.provider, project.voice);
   const voice = [];
   for (let i = 0; i < project.scenes.length; i++) voice.push(await tts.synth(project.scenes[i].lines, join(work, `scene${i}`)));
   const timeline = buildTimeline(project.scenes, voice);

@@ -18,7 +18,7 @@ Tuỳ chọn:
 
 | Tham số | Giá trị |
 |---|---|
-| `--tts` | `mock` · `elevenlabs` · `google` |
+| `--tts` | `mock` · `everai` · `elevenlabs` · `google` |
 | `--images` | `openai` · `gemini` (cho khung chỉ có `prompt`) |
 | `--size` | cạnh ngắn của video, mặc định `1080` |
 | `--fps` | mặc định `30` |
@@ -27,10 +27,13 @@ Tuỳ chọn:
 
 | Dịch vụ | Biến |
 |---|---|
+| EverAI | `EVERAI_API_KEY`, `EVERAI_API_URL` (địa chỉ "[POST] Text to speech" trong [tài liệu EverAI](https://help.everai.vn/api-docs/text-to-speech)), `EVERAI_VOICE_CODE`, tuỳ chọn `EVERAI_STATUS_URL` (địa chỉ "[GET] Get Request", `{id}` thay cho mã yêu cầu) |
 | ElevenLabs | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, tuỳ chọn `ELEVENLABS_MODEL` |
 | Google TTS | `GOOGLE_TTS_API_KEY`, tuỳ chọn `GOOGLE_TTS_VOICE` (mặc định `vi-VN-Neural2-A`) |
 | OpenAI ảnh | `OPENAI_API_KEY`, tuỳ chọn `OPENAI_IMAGE_MODEL` (mặc định `gpt-image-1`) |
 | Gemini ảnh | `GEMINI_API_KEY`, tuỳ chọn `GEMINI_IMAGE_MODEL` (mặc định `gemini-2.5-flash-image`) |
+
+EverAI không trả mốc thời gian từng từ, nên mỗi câu được đọc thành một đoạn riêng rồi ghép lại: thời điểm vẽ khớp đúng từng câu. Mã giọng đặt trong kịch bản: `"voice": { "provider": "everai", "voiceId": "<voice_code>" }`.
 
 Khoá chỉ đọc từ môi trường, không ghi vào log hay tệp. Ảnh AI được lưu đệm trong `.cache/` theo nội dung câu lệnh, dựng lại không tốn tiền lần hai.
 
