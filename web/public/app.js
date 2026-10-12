@@ -113,7 +113,7 @@ async function showHome() {
   const lim = me.limits, used = me.used || {};
   const f = {
     topic: h('textarea', { id: 'f-topic', rows: 4, maxlength: 3000, placeholder: 'Ví dụ: Vì sao lương mãi không tăng dù làm việc chăm chỉ?' }),
-    ai: h('select', { id: 'f-ai' }, options([['gemini', 'Gemini'], ['openai', 'OpenAI'], ...(location.hostname === 'localhost' ? [['mock', 'Mẫu có sẵn (thử nghiệm)']] : [])], 'gemini')),
+    ai: h('select', { id: 'f-ai' }, options([...(me.ai?.gemini ? [['gemini', 'Gemini']] : []), ...(me.ai?.openai ? [['openai', 'OpenAI']] : []), ...(location.hostname === 'localhost' ? [['mock', 'Mẫu có sẵn (thử nghiệm)']] : [])], me.ai?.gemini ? 'gemini' : 'openai')),
     seconds: h('select', { id: 'f-seconds' }, options([['30', '30 giây'], ['45', '45 giây'], ['60', '1 phút'], ['90', '1,5 phút'], ['150', '2,5 phút']], '45')),
     ratio: h('select', { id: 'f-ratio' }, options([['9:16', 'Dọc 9:16 (TikTok, Shorts, Reels)'], ['16:9', 'Ngang 16:9 (YouTube)']], '9:16')),
     style: h('select', { id: 'f-style' }, options(STYLE_KEYS.map((k) => [k, NV.STYLES[k].name]), 'notebook')),
@@ -172,7 +172,7 @@ async function showEditor(id) {
   const canvas = h('canvas', { 'aria-label': 'Xem trước video' });
   const playBtn = h('button', { type: 'button', class: 'small' }, 'Tạm dừng');
   const status = h('span', { class: 'muted' }, 'Đã lưu');
-  const imgProvider = h('select', {}, options([['gemini', 'Vẽ bằng Gemini'], ['openai', 'Vẽ bằng OpenAI']], 'gemini'));
+  const imgProvider = h('select', {}, options([...(me.ai?.gemini ? [['gemini', 'Vẽ bằng Gemini']] : []), ...(me.ai?.openai ? [['openai', 'Vẽ bằng OpenAI']] : [])], me.ai?.gemini ? 'gemini' : 'openai'));
 
   const save = debounce(async () => {
     status.textContent = 'Đang lưu…';

@@ -70,7 +70,7 @@ async function saveSpec(env: Env, user: User, id: string, spec: any) {
 async function userRoutes(req: Request, env: Env, user: User, path: string, method: string, devAllowed: boolean): Promise<Response> {
   if (path === '/api/me' && method === 'GET') {
     const used = await env.DB.prepare('SELECT kind, n FROM usage WHERE user_id = ? AND day = ?').bind(user.id, today()).all<any>();
-    return json({ user, limits: limits(env), used: Object.fromEntries(used.results.map((r) => [r.kind, r.n])) });
+    return json({ user, limits: limits(env), used: Object.fromEntries(used.results.map((r) => [r.kind, r.n])), ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY } });
   }
 
   if (path === '/api/projects' && method === 'GET') {
