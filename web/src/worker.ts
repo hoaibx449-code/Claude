@@ -249,7 +249,8 @@ function sampleScript(topic: string) {
     hashtags: ['#thoiquen', '#phattrienbanthan', '#taichinhcanhan'],
     scenes: [
       { lines: ['Bạn bận rộn cả ngày mà cuối năm vẫn đứng yên?', 'Điều thứ ba sẽ khiến bạn bất ngờ.'], panels: [{ prompt: 'a busy person running in circles' }] },
-      { lines: ['Mỗi ngày tốt hơn một phần trăm, sau một năm bạn giỏi gấp ba mươi bảy lần.'], diagram: { kind: 'number', number: '37 lần', caption: 'tốt hơn 1% mỗi ngày trong 1 năm' } },
+      { lines: ['Gửi mười triệu, lãi tám phần trăm, ba mươi năm sau thành hơn trăm triệu.'], diagram: { kind: 'bars', title: 'Sức mạnh lãi kép', start: '10tr', values: [21.6, 46.6, 100.6], labels: ['10 năm', '20 năm', '30 năm'], unit: 'tr' } },
+      { lines: ['Hết tiền thì vay, vay thì trả lãi, trả lãi lại hết tiền.'], diagram: { kind: 'flow', title: 'Vòng lặp nghèo', items: ['Hết tiền', 'Vay nóng', 'Trả lãi', 'Lại hết tiền'] } },
       { lines: ['Người làm theo cảm hứng và người làm theo thói quen khác nhau thế nào?'], diagram: { kind: 'compare', title: 'Hai kiểu người', left: 'Cảm hứng', right: 'Thói quen', leftNote: 'Làm vài hôm rồi bỏ', rightNote: 'Đều đặn dù không hứng' } },
       { lines: ['Bắt đầu bằng ba bước.'], diagram: { kind: 'steps', title: '3 bước nhỏ', items: ['Chọn một việc 15 phút', 'Gắn vào việc có sẵn', 'Đánh dấu mỗi ngày'] } },
       { lines: ['Lưu video này lại, tối nay làm bước một nhé.'], diagram: { kind: 'statement', text: 'Nhỏ nhưng đều thắng lớn nhưng bỏ dở' } },

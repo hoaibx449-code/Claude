@@ -6,7 +6,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProjectSpec } from '../engine/types.ts';
-import { renderProject, ROOT } from '../node/pipeline.ts';
+import { renderProject } from '../node/pipeline.ts';
 import { describe, fetchRetry } from '../node/net.ts';
 
 const API = (process.env.NV_API_URL || '').replace(/\/$/, '');
@@ -31,12 +31,11 @@ async function runJob(job: { id: string; spec: ProjectSpec }) {
     // map stored image references to local files
     for (const sc of spec.scenes) for (const p of sc.panels) {
       const ref = p.image || '';
-      if (ref.startsWith('doodle:') && /^[A-Za-z]+$/.test(ref.slice(7))) p.image = join(ROOT, 'assets/doodles', ref.slice(7) + 'Doodle.svg');
-      else if (ref.startsWith('r2:')) {
+      if (ref.startsWith('r2:')) {
         const file = join(dir, 'img', ref.split('/').pop()!);
         writeFileSync(file, Buffer.from(await (await call('/api/runner/asset?key=' + encodeURIComponent(ref.slice(3)))).arrayBuffer()));
         p.image = file;
-      } else throw new Error('Khung hình thiếu ảnh.');
+      } else throw new Error('Có khung hình chưa có tranh AI.');
     }
     let last = 0;
     const r = await renderProject({

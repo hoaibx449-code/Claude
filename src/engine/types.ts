@@ -3,7 +3,7 @@
 
 export type Ratio = '9:16' | '16:9';
 export type ToolKind = 'marker' | 'chalk' | 'fountain' | 'colormarker' | 'pencil' | 'technical' | 'brush';
-export type StyleKey = 'notebook' | 'whiteboard' | 'chalkboard' | 'kraft' | 'oly' | 'blueprint' | 'ricepaper';
+export type StyleKey = 'notebook' | 'whiteboard' | 'chalkboard' | 'kraft' | 'oly' | 'pencil' | 'blueprint' | 'ricepaper';
 
 export interface PanelSpec {
   /** Local image file (SVG/PNG/WebP). Used as is when present. */
@@ -15,12 +15,14 @@ export interface PanelSpec {
 }
 
 export interface DiagramSpec {
-  kind: 'bars' | 'compare' | 'steps' | 'number' | 'statement';
+  kind: 'bars' | 'compare' | 'steps' | 'flow' | 'number' | 'statement';
   /** Handwritten heading above the diagram. */
   title?: string;
   values?: number[]; labels?: string[]; unit?: string; // bars
+  start?: string; // bars: starting amount in a circle with an arrow, e.g. "10tr"
+  trend?: boolean; // bars: rising curve + circle on the largest value (default on)
   left?: string; right?: string; leftNote?: string; rightNote?: string; // compare (✗ left, ✓ right)
-  items?: string[]; // steps
+  items?: string[]; // steps, flow (cause → effect)
   number?: string; caption?: string; // number
   text?: string; // statement
 }

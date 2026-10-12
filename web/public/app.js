@@ -11,7 +11,7 @@ const VOICES = [
   ['vi_male_tridung_mn', 'Trí Dũng · nam Nam · sách nói'], ['vi_male_thanhtrung_mn', 'Thành Trung · nam Nam · podcast'],
   ['vi_male_tuankiet_mn', 'Tuấn Kiệt · nam Nam · tin tức'], ['vi_male_vanduc_mn', 'Văn Đức · nam Nam · tự sự'],
 ];
-const STYLE_KEYS = ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'blueprint', 'ricepaper'];
+const STYLE_KEYS = ['whiteboard', 'chalkboard', 'oly', 'kraft', 'pencil', 'blueprint', 'ricepaper', 'notebook'];
 const view = document.getElementById('view');
 let me = null;
 
@@ -53,7 +53,9 @@ function debounce(fn, ms) {
   d.flush = () => { if (t !== null) { clearTimeout(t); t = null; return fn(); } };
   return d;
 }
-const imageUrl = (ref) => ref?.startsWith('r2:') ? '/api/assets/' + ref.slice(3) : ref?.startsWith('doodle:') ? `/assets/doodles/${ref.slice(7)}Doodle.svg` : '';
+const imageUrl = (ref) => (ref?.startsWith('r2:') ? '/api/assets/' + ref.slice(3) : '');
+// an empty page stands in for a picture that has not been drawn yet
+const BLANK = '/blank.svg';
 const fmtDate = (ms) => new Date(ms).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
 const JOB_TEXT = { queued: 'Đang chờ', running: 'Đang dựng', done: 'Xong', failed: 'Lỗi' };
 
@@ -116,7 +118,7 @@ async function showHome() {
     ai: h('select', { id: 'f-ai' }, options([...(me.ai?.gemini ? [['gemini', 'Gemini']] : []), ...(me.ai?.openai ? [['openai', 'OpenAI']] : []), ...(location.hostname === 'localhost' ? [['mock', 'Mẫu có sẵn (thử nghiệm)']] : [])], me.ai?.gemini ? 'gemini' : 'openai')),
     seconds: h('select', { id: 'f-seconds' }, options([['30', '30 giây'], ['45', '45 giây'], ['60', '1 phút'], ['90', '1,5 phút'], ['150', '2,5 phút']], '45')),
     ratio: h('select', { id: 'f-ratio' }, options([['9:16', 'Dọc 9:16 (TikTok, Shorts, Reels)'], ['16:9', 'Ngang 16:9 (YouTube)']], '9:16')),
-    style: h('select', { id: 'f-style' }, options(STYLE_KEYS.map((k) => [k, NV.STYLES[k].name]), 'notebook')),
+    style: h('select', { id: 'f-style' }, options(STYLE_KEYS.map((k) => [k, NV.STYLES[k].name]), 'whiteboard')),
     voice: h('select', { id: 'f-voice' }, options(VOICES, VOICES[0][0])),
     channel: h('input', { id: 'f-channel', maxlength: 40, placeholder: 'Tên kênh (hiện góc trái)' }),
     episode: h('input', { id: 'f-episode', maxlength: 30, placeholder: 'Ví dụ: Tập 1' }),
@@ -198,7 +200,7 @@ async function showEditor(id) {
       h('label', {}, 'Số tập', h('input', { value: spec.episode || '', maxlength: 30, oninput: (e) => { spec.episode = e.target.value; changed(); } }))));
 
   const scenesBox = h('div', { class: 'scenes' });
-  const DIAGRAM_KINDS = [['statement', 'Câu chốt'], ['number', 'Con số nổi bật'], ['bars', 'Biểu đồ cột'], ['compare', 'So sánh ✗ / ✓'], ['steps', 'Các bước']];
+  const DIAGRAM_KINDS = [['bars', 'Biểu đồ cột (có mũi tên, đường cong)'], ['flow', 'Chuỗi nguyên nhân → kết quả'], ['compare', 'So sánh ✗ / ✓'], ['steps', 'Các bước'], ['number', 'Con số nổi bật'], ['statement', 'Câu chốt']];
   const field = (label, value, onInput, opts = {}) => h('label', {}, label, h(opts.area ? 'textarea' : 'input', { value: value ?? '', maxlength: opts.max || 80, rows: opts.area ? 3 : undefined, oninput: (e) => onInput(e.target.value) }));
   function diagramEditor(sc) {
     const d = sc.diagram, set = (k, v) => { d[k] = v; changed(); };
@@ -207,7 +209,8 @@ async function showEditor(id) {
     const fields = {
       statement: [field('Câu chốt (viết tay)', d.text, (v) => set('text', v), { max: 140, area: true })],
       number: [field('Con số', d.number, (v) => set('number', v), { max: 10 }), field('Chú thích', d.caption, (v) => set('caption', v))],
-      bars: [field('Các giá trị (cách nhau bởi dấu phẩy)', (d.values || []).join(', '), (v) => set('values', list(v).map(Number).filter((n) => isFinite(n)))),
+      flow: [field('Các ô (cách nhau bởi dấu phẩy, 2-4 ô)', (d.items || []).join(', '), (v) => set('items', list(v).slice(0, 4)))],
+      bars: [field('Số ban đầu (vd 10tr, có thể để trống)', d.start, (v) => set('start', v), { max: 10 }), field('Các giá trị (cách nhau bởi dấu phẩy)', (d.values || []).join(', '), (v) => set('values', list(v).map(Number).filter((n) => isFinite(n)))),
         field('Nhãn từng cột (cách nhau bởi dấu phẩy)', (d.labels || []).join(', '), (v) => set('labels', list(v))), field('Đơn vị', d.unit, (v) => set('unit', v), { max: 6 })],
       compare: [field('Bên trái (cách sai)', d.left, (v) => set('left', v), { max: 24 }), field('Ghi chú trái', d.leftNote, (v) => set('leftNote', v)),
         field('Bên phải (cách đúng)', d.right, (v) => set('right', v), { max: 24 }), field('Ghi chú phải', d.rightNote, (v) => set('rightNote', v))],
@@ -223,7 +226,7 @@ async function showEditor(id) {
     try {
       await save.flush();
       const r = await api(`/api/projects/${id}/image`, { method: 'POST', body: { scene: si, panel: pi, provider: imgProvider.value } });
-      p.image = r.image; const img = panelImgs.get(`${si}:${pi}`); if (img) img.src = imageUrl(p.image); refresh();
+      p.image = r.image; const img = panelImgs.get(`${si}:${pi}`); if (img) img.src = imageUrl(p.image) || BLANK; refresh();
       return true;
     } catch (e) { toast(e.message); return false; }
     finally { if (btn) { btn.disabled = false; btn.textContent = 'Vẽ lại bằng AI'; } }
@@ -258,11 +261,11 @@ async function showEditor(id) {
       sc.lines.map((line, li) => h('label', {}, `Câu ${li + 1}`, h('textarea', { class: 'line', rows: 2, maxlength: 160, value: line,
         oninput: (e) => { sc.lines[li] = e.target.value; changed(); } }))),
       sc.diagram ? diagramEditor(sc) : h('div', { class: 'panels' }, sc.panels.map((p, pi) => {
-        const img = h('img', { src: imageUrl(p.image) || '/assets/doodles/PlantDoodle.svg', alt: p.prompt || 'Hình minh hoạ' });
+        const img = h('img', { src: imageUrl(p.image) || BLANK, alt: p.prompt || 'Chưa có tranh' });
         panelImgs.set(`${si}:${pi}`, img);
         const btn = h('button', { type: 'button', class: 'small', onclick: () => drawPanel(si, pi, btn) }, p.image?.startsWith('r2:') ? 'Vẽ lại bằng AI' : 'Vẽ bằng AI');
         return h('div', { class: 'panel' }, img,
-          h('span', { class: 'tag' }, p.image?.startsWith('r2:') ? 'Tranh AI' : 'Hình mẫu tạm thời'),
+          h('span', { class: 'tag' }, p.image?.startsWith('r2:') ? 'Tranh AI' : 'Chưa có tranh — bấm Vẽ bằng AI'),
           h('label', {}, 'Mô tả hình (tiếng Anh cho AI vẽ)', h('textarea', { rows: 2, maxlength: 400, value: p.prompt,
             oninput: (e) => { p.prompt = e.target.value; save(); } })),
           btn);
@@ -331,7 +334,7 @@ async function showEditor(id) {
 
 async function buildPreview(spec, canvas, playBtn) {
   const [images, hand] = await Promise.all([
-    Promise.all(spec.scenes.map((sc) => Promise.all(sc.panels.map((p) => loadImg(imageUrl(p.image) || '/assets/doodles/PlantDoodle.svg'))))),
+    Promise.all(spec.scenes.map((sc) => Promise.all(sc.panels.map((p) => (imageUrl(p.image) ? loadImg(imageUrl(p.image)) : Promise.resolve(Object.assign(document.createElement('canvas'), { width: 4, height: 3 }))))))),
     getHand(), document.fonts.load('29px Pangolin').catch(() => {}),
   ]);
   const timeline = NV.buildTimeline(spec.scenes, spec.scenes.map((s) => NV.estimateVoice(s.lines)));

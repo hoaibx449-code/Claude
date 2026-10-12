@@ -14,17 +14,19 @@ export type VisualMode = 'mix' | 'images' | 'diagram';
 export interface ScriptRequest { topic: string; seconds: number; tone: string; ratio: string; visual: VisualMode }
 
 const DIAGRAM_SCHEMA =
-  '"diagram": một trong: {"kind":"bars","title":"≤6 chữ","values":[số],"labels":["≤12 ký tự"],"unit":"tr|%|..."} (2-5 cột, chỉ số liệu có thật hoặc ví dụ minh hoạ nói rõ là ví dụ) · ' +
+  '"diagram" là hình bàn tay vẽ từng nét, một trong: ' +
+  '{"kind":"bars","title":"≤6 chữ","start":"(tuỳ chọn) số ban đầu ≤6 ký tự, vd 10tr","values":[số],"labels":["≤12 ký tự"],"unit":"tr|%|..."} — 2-5 cột, tự vẽ mũi tên từ số ban đầu, đường cong xu hướng và khoanh cột lớn nhất; dùng cho tăng trưởng, so sánh số liệu · ' +
+  '{"kind":"flow","title":"...","items":["≤3 chữ","≤3 chữ","..."]} — 2-4 ô nối mũi tên, dùng cho nguyên nhân → hệ quả, vòng lặp · ' +
   '{"kind":"compare","title":"...","left":"≤3 chữ (cách sai)","right":"≤3 chữ (cách đúng)","leftNote":"≤10 chữ","rightNote":"≤10 chữ"} · ' +
   '{"kind":"steps","title":"...","items":["≤10 chữ", "..."]} (2-4 bước) · ' +
   '{"kind":"number","number":"≤6 ký tự, vd 90% hoặc 3 lần","caption":"≤10 chữ"} · ' +
-  '{"kind":"statement","text":"câu chốt ≤14 chữ"}';
+  '{"kind":"statement","text":"câu chốt ≤14 chữ"}. Chỉ dùng số liệu có thật hoặc ví dụ minh hoạ đã nói rõ là ví dụ';
 
 function systemPrompt(r: ScriptRequest) {
   const scenes = Math.max(4, Math.min(14, Math.round(r.seconds / 5.5)));
   const visual = {
     images: 'Mọi cảnh dùng "panels": thường 1 khung; 2 khung chỉ khi cần đối lập hai hình.',
-    diagram: 'Mọi cảnh dùng "diagram" (không dùng "panels").',
+    diagram: 'Mọi cảnh dùng "diagram" (không dùng "panels"). Đa dạng kiểu: ưu tiên bars/flow/compare/steps/number; statement chỉ cho câu chốt; không 2 cảnh liền nhau cùng kiểu.',
     mix: 'Cảnh có số liệu, so sánh, các bước hoặc câu chốt thì dùng "diagram"; cảnh kể tình huống, cảm xúc thì dùng "panels" (1 khung). Khoảng 40-60% cảnh là diagram.',
   }[r.visual];
   return [

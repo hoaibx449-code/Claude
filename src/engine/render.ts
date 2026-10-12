@@ -105,7 +105,8 @@ export function prepare(opts: {
   });
   const m: Model = { project, timeline, style, tool: project.tool ?? style.tool, W, H, dpr, background: bgc, panels, mask: new Map(), hand, env, units: [] };
   const measure = env.createCanvas(4, 4).getContext('2d');
-  const colors = { ink: style.ink, accent: style.episode, good: style.good };
+  const colors = { ink: style.ink, accent: style.episode, accent2: style.accent2, good: style.good, fills: style.fills };
+  const pen = { passes: style.passes, brush: style.brush, width: style.width };
   m.units = project.scenes.map((sc, si) => {
     const T = timeline.scenes[si];
     if (!sc.diagram) {
@@ -121,7 +122,7 @@ export function prepare(opts: {
     return els.map((e) => {
       const d = ((t1 - t0) * e.weight) / total, start = t, end = t + Math.max(0.12, d * 0.92);
       t += d;
-      return { start, end, draw: (c: Ctx, p: number, a: number) => drawElement(c, e, p, a), pen: (p: number) => elementPen(e, p) };
+      return { start, end, draw: (c: Ctx, p: number, a: number) => drawElement(c, e, p, a, pen), pen: (p: number) => elementPen(e, p) };
     });
   });
   return m;

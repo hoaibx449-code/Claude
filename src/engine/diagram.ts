@@ -1,13 +1,17 @@
-// Hand-drawn diagrams: titles, bar charts, comparisons, steps, big numbers and
-// statements, drawn stroke by stroke with the hand following the pen (no images needed).
+// Hand-drawn diagrams: titles, bar charts (with start value, arrow, trend curve and
+// highlighted maximum), comparisons, steps, cause→effect flows, big numbers and statements,
+// drawn stroke by stroke with the hand following the pen (no images needed).
 import type { Ctx, DiagramSpec } from './types.ts';
 
 export interface Box { x: number; y: number; w: number; h: number }
-interface Colors { ink: string; accent: string; good: string }
+export interface Colors { ink: string; accent: string; accent2: string; good: string; fills?: string[] }
+/** How the tool marks the paper: extra offset passes (chalk, pencil) and brush pressure. */
+export interface Pen { passes: [number, number, number, number][]; brush?: boolean; width: number }
 
 export type Element =
   | { kind: 'path'; pts: [number, number][]; cum: number[]; len: number; color: string; width: number; weight: number }
-  | { kind: 'text'; text: string; x: number; y: number; size: number; w: number; color: string; weight: number };
+  | { kind: 'text'; text: string; x: number; y: number; size: number; w: number; color: string; weight: number }
+  | { kind: 'fill'; pts: [number, number][]; color: string; anchor: [number, number]; weight: number };
 
 type P = [number, number];
 function line(a: P, b: P, step = 5): P[] {
@@ -60,6 +64,8 @@ export function buildDiagram(c: Ctx, d: DiagramSpec, box: Box, col: Colors): Ele
     const len = cum[cum.length - 1];
     els.push({ kind: 'path', pts: w, cum, len, color, width, weight: Math.max(0.25, len / 420) });
   };
+  // filled shape (kraft style colours bars after outlining them); the hand rests at `anchor`
+  const fill = (pts: P[], color: string | undefined) => { if (color) els.push({ kind: 'fill', pts, color, anchor: pts[pts.length - 1], weight: 0.3 }); };
   const text = (s: string, x: number, y: number, size: number, color = col.ink, align: 'left' | 'center' = 'left') => {
     c.font = `${size}px Pangolin`;
     const w = c.measureText(s).width;
@@ -84,14 +90,67 @@ export function buildDiagram(c: Ctx, d: DiagramSpec, box: Box, col: Colors): Ele
     case 'bars': {
       const vals = (d.values || []).slice(0, 5), labels = d.labels || [];
       if (!vals.length) break;
-      const x0 = box.x + 8, x1 = box.x + box.w - 8, yb = bottom - 34, yt = top + 34, max = Math.max(...vals, 1e-9);
+      let x0 = box.x + 8, yt = top + 40;
+      const x1 = box.x + box.w - 8, yb = bottom - 34;
+      // optional starting amount: a coin-like circle with an arrow into the chart (as in the demo)
+      if (d.start) {
+        const r = portrait ? 48 : 52;
+        if (portrait) {
+          const cx0 = box.x + r + 10, cy0 = top + r + 6;
+          path(ellipse(cx0, cy0, r, r)); fill(ellipse(cx0, cy0, r, r), col.fills?.[0]);
+          text(d.start, cx0, cy0 + 10, 28, col.ink, 'center');
+          path(arrow([cx0 + r + 16, cy0], [cx0 + r + 110, cy0]), col.accent2);
+          yt = cy0 + r + 50;
+        } else {
+          const cx0 = box.x + r + 6, cy0 = (yt + yb) / 2 - 30;
+          path(ellipse(cx0, cy0, r, r)); fill(ellipse(cx0, cy0, r, r), col.fills?.[0]);
+          text(d.start, cx0, cy0 + 10, 30, col.ink, 'center');
+          path(arrow([cx0 + r + 14, cy0], [cx0 + r + 104, cy0]), col.accent2);
+          x0 = cx0 + r + 130;
+        }
+      }
+      const max = Math.max(...vals, 1e-9);
       path(poly([[x0, yt - 10], [x0, yb], [x1, yb]]));
       const slot = (x1 - x0) / vals.length, bw = Math.min(90, slot * 0.6);
+      const tops: P[] = [];
+      let maxLabel: P = [0, 0];
       vals.forEach((v, i) => {
-        const bx = x0 + slot * (i + 0.5) - bw / 2, h = Math.max(6, ((yb - yt) * v) / max);
-        path(poly([[bx, yb], [bx, yb - h], [bx + bw, yb - h], [bx + bw, yb]]));
-        text(`${fmt(v)}${d.unit || ''}`, bx + bw / 2, yb - h - 12, portrait ? 30 : 24, v === max ? col.accent : col.ink, 'center');
-        if (labels[i]) text(labels[i].slice(0, 14), bx + bw / 2, yb + 30, portrait ? 24 : 20, col.ink, 'center');
+        const bx = x0 + slot * (i + 0.5) - bw / 2, h = Math.max(6, ((yb - yt - 30) * v) / max);
+        const rect: P[] = [[bx, yb], [bx, yb - h], [bx + bw, yb - h], [bx + bw, yb]];
+        path(poly(rect)); fill(rect, col.fills?.[(i + 1) % (col.fills?.length || 1)]);
+        const vs = portrait ? 28 : 24, isMax = v === max;
+        text(`${fmt(v)}${d.unit || ''}`, bx + bw / 2, yb - h - 12, vs, isMax && d.trend !== false ? col.accent : col.ink, 'center');
+        if (labels[i]) text(labels[i].slice(0, 14), bx + bw / 2, yb + 30, portrait ? 23 : 20, col.ink, 'center');
+        tops.push([bx + bw / 2, yb - h]);
+        if (isMax) maxLabel = [bx + bw / 2, yb - h - 20];
+      });
+      // rising trend curve and a circle around the largest value
+      if (d.trend !== false && vals.length > 1) {
+        const last = tops[tops.length - 1], pts: P[] = [];
+        for (let i = 0; i <= 40; i++) { const u = i / 40; pts.push([x0 + 8 + (last[0] - x0 - 8) * u, yb - 10 - (yb - 10 - (last[1] - 34)) * u ** 2.6]); }
+        path(pts, col.accent, 3.6);
+        path(ellipse(maxLabel[0], maxLabel[1] - 4, portrait ? 52 : 46, portrait ? 34 : 30), col.accent, 3.4);
+      }
+      break;
+    }
+    case 'flow': {
+      // cause → effect chain: circles with short words, joined by arrows
+      const items = (d.items || []).slice(0, 4);
+      if (!items.length) break;
+      const n = items.length, ts = portrait ? 29 : 24;
+      const vertical = portrait;
+      const r = vertical ? Math.min(58, (avail - (n - 1) * 46) / n / 2) : Math.min(70, (box.w - (n - 1) * 60) / n / 2);
+      items.forEach((it, i) => {
+        const cxi = vertical ? cx : box.x + r + 6 + i * ((box.w - 2 * r - 12) / Math.max(1, n - 1));
+        const cyi = vertical ? top + r + 6 + i * ((avail - 2 * r - 12) / Math.max(1, n - 1)) : top + avail / 2 - 10;
+        if (i) {
+          const prev = vertical ? [cxi, cyi - (avail - 2 * r - 12) / Math.max(1, n - 1)] : [cxi - (box.w - 2 * r - 12) / Math.max(1, n - 1), cyi];
+          path(arrow(vertical ? [cxi, prev[1] + r + 10] : [prev[0] + r + 10, cyi], vertical ? [cxi, cyi - r - 10] : [cxi - r - 10, cyi]), col.accent2);
+        }
+        const e = ellipse(cxi, cyi, vertical ? r * 2.4 : r, r);
+        path(e, i === n - 1 ? col.accent : col.ink); fill(e, col.fills?.[i % (col.fills?.length || 1)]);
+        const ls = wrap(c, it, ts, (vertical ? r * 4.4 : r * 1.8)).slice(0, 2);
+        ls.forEach((l, k) => text(l, cxi, cyi + 8 + (k - (ls.length - 1) / 2) * ts * 1.2, ts, col.ink, 'center'));
       });
       break;
     }
@@ -144,28 +203,49 @@ export function buildDiagram(c: Ctx, d: DiagramSpec, box: Box, col: Colors): Ele
 
 const fmt = (v: number) => (Math.round(v * 10) / 10).toLocaleString('vi-VN');
 
-export function drawElement(c: Ctx, e: Element, p: number, alpha: number) {
+export function drawElement(c: Ctx, e: Element, p: number, alpha: number, pen: Pen = { passes: [[0, 0, 1, 1]], width: 1 }) {
   if (p <= 0 || alpha <= 0) return;
-  c.save(); c.globalAlpha = alpha;
+  c.save();
+  if (e.kind === 'fill') {
+    c.globalAlpha = alpha * 0.85 * p; c.fillStyle = e.color; c.beginPath();
+    e.pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); c.fill();
+    c.restore(); return;
+  }
   if (e.kind === 'text') {
     c.beginPath(); c.rect(e.x - 4, e.y - e.size * 1.15, e.w * p + 6, e.size * 1.6); c.clip();
-    c.font = `${e.size}px Pangolin`; c.textAlign = 'left'; c.fillStyle = e.color; c.fillText(e.text, e.x, e.y);
-  } else {
-    const L = e.len * p;
-    c.strokeStyle = e.color; c.lineWidth = e.width; c.lineCap = 'round'; c.lineJoin = 'round';
-    c.beginPath(); c.moveTo(e.pts[0][0], e.pts[0][1]);
-    for (let i = 1; i < e.pts.length; i++) {
-      if (e.cum[i] <= L) { c.lineTo(e.pts[i][0], e.pts[i][1]); continue; }
-      const a = e.pts[i - 1], b = e.pts[i], u = (L - e.cum[i - 1]) / (e.cum[i] - e.cum[i - 1] || 1);
-      c.lineTo(a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u);
-      break;
+    c.font = `${e.size}px Pangolin`; c.textAlign = 'left'; c.fillStyle = e.color;
+    for (const [dx, dy, a] of pen.passes) { c.globalAlpha = alpha * a; c.fillText(e.text, e.x + dx * 0.6, e.y + dy * 0.6); }
+    c.restore(); return;
+  }
+  const L = e.len * p;
+  c.strokeStyle = e.color; c.lineCap = 'round'; c.lineJoin = 'round';
+  // index of the last whole segment and the partial tip
+  let n = 1;
+  while (n < e.pts.length - 1 && e.cum[n] < L) n++;
+  const a = e.pts[n - 1], b = e.pts[n], u = Math.max(0, Math.min(1, (L - e.cum[n - 1]) / (e.cum[n] - e.cum[n - 1] || 1)));
+  const tip: [number, number] = [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
+  for (const [dx, dy, al, wm] of pen.passes) {
+    c.globalAlpha = alpha * al;
+    if (pen.brush) {
+      // brush: thick in the middle of a stroke, thin at its ends
+      for (let i = 1; i <= n; i++) {
+        const t = e.cum[i] / (e.len || 1);
+        c.lineWidth = e.width * pen.width * wm * (0.45 + 1.1 * Math.sin(Math.PI * Math.min(1, t)) ** 0.7);
+        const q = i === n ? tip : e.pts[i];
+        c.beginPath(); c.moveTo(e.pts[i - 1][0] + dx, e.pts[i - 1][1] + dy); c.lineTo(q[0] + dx, q[1] + dy); c.stroke();
+      }
+    } else {
+      c.lineWidth = e.width * pen.width * wm;
+      c.beginPath(); c.moveTo(e.pts[0][0] + dx, e.pts[0][1] + dy);
+      for (let i = 1; i < n; i++) c.lineTo(e.pts[i][0] + dx, e.pts[i][1] + dy);
+      c.lineTo(tip[0] + dx, tip[1] + dy); c.stroke();
     }
-    c.stroke();
   }
   c.restore();
 }
 
 export function elementPen(e: Element, p: number): [number, number] {
+  if (e.kind === 'fill') return e.anchor;
   if (e.kind === 'text') return [e.x + e.w * p, e.y - e.size * 0.3 + Math.sin(p * e.w * 0.2) * e.size * 0.18];
   const L = e.len * p;
   let i = 1;
