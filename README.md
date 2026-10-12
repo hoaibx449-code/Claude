@@ -93,3 +93,22 @@ assets/       font Pangolin (OFL), hình Open Doodles (CC0), ảnh tay
 ```
 
 Đo trên máy chủ thử: video 9:16 1080×1920 dựng mất khoảng 0,6 giây cho mỗi giây video, trên ~1 vCPU.
+
+## Trang web (Cloudflare)
+
+`web/` là trang web: đăng nhập Google, AI viết kịch bản (Gemini hoặc OpenAI, chọn theo từng video), chỉnh từng câu, xem trước bàn tay vẽ, vẽ ảnh AI cho từng khung, xếp hàng dựng video và tải MP4 + phụ đề.
+
+- **Chạy thử trên máy:** `npm run web:dev` (tạo `web/.dev.vars` có `DEV_LOGIN=1` và `RUNNER_TOKEN=...`, rồi `cd web && npx wrangler d1 execute net-ve-studio --local --file schema.sql`). Nút "Đăng nhập thử" chỉ hiện trên localhost.
+- **Triển khai:** chạy workflow **Triển khai web** trên GitHub (tab Actions). Workflow tự tạo D1 + R2, áp schema, đưa trang lên và cài khoá bí mật.
+- **Máy dựng:** `NV_API_URL=https://... RUNNER_TOKEN=... npm run runner` trên máy có FFmpeg. Workflow **Máy dựng (thử nghiệm)** dựng hết hàng chờ một lần, chỉ dùng để thử.
+
+Secrets cần trong GitHub (Settings → Secrets and variables → Actions):
+
+| Secret | Dùng cho |
+|---|---|
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | Triển khai web |
+| `GOOGLE_CLIENT_ID` | Đăng nhập Google |
+| `RUNNER_TOKEN` | Chuỗi ngẫu nhiên ≥ 32 ký tự, dùng chung cho trang web và máy dựng |
+| `GEMINI_API_KEY`, `OPENAI_API_KEY` | AI viết kịch bản và vẽ ảnh |
+| `NV_API_URL` | Địa chỉ trang web, cho máy dựng thử nghiệm |
+| `EVERAI_API_KEY`, `EVERAI_VOICE_CODE` | Giọng đọc (máy dựng) |

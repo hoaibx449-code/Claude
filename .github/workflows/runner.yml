@@ -1,0 +1,36 @@
+name: Máy dựng (thử nghiệm)
+
+# Dựng mọi video đang chờ trong hàng của trang web rồi dừng. Chỉ dùng để thử nghiệm:
+# khi bán cho khách, chạy máy dựng trên máy chủ riêng (Cloud Run, VPS) vì điều khoản
+# GitHub Actions không cho dùng làm máy chủ cho dịch vụ.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: runner
+
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Cài FFmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - run: npm ci
+      - name: Dựng các video đang chờ
+        env:
+          NV_API_URL: ${{ secrets.NV_API_URL }}
+          RUNNER_TOKEN: ${{ secrets.RUNNER_TOKEN }}
+          EVERAI_API_KEY: ${{ secrets.EVERAI_API_KEY }}
+          EVERAI_VOICE_CODE: ${{ secrets.EVERAI_VOICE_CODE }}
+          GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+        run: node src/cli/runner.ts --drain

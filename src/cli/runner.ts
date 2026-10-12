@@ -1,6 +1,6 @@
 // Render machine: pulls queued jobs from the web app, renders them and uploads the MP4 + SRT.
 // Runs anywhere with Node + FFmpeg (your computer, Cloud Run, a VPS).
-//   NV_API_URL=https://your-site RUNNER_TOKEN=... node src/cli/runner.ts [--once]
+//   NV_API_URL=https://your-site RUNNER_TOKEN=... node src/cli/runner.ts [--once | --drain]
 // Voice/image keys (EVERAI_API_KEY, ...) are read from the environment as for the CLI.
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
@@ -11,6 +11,7 @@ import { renderProject, ROOT } from '../node/pipeline.ts';
 const API = (process.env.NV_API_URL || '').replace(/\/$/, '');
 const TOKEN = process.env.RUNNER_TOKEN || '';
 const once = process.argv.includes('--once');
+const drain = process.argv.includes('--drain'); // process every queued job, then exit
 if (!API || !TOKEN) { console.error('Cần NV_API_URL và RUNNER_TOKEN'); process.exit(1); }
 const auth = { authorization: `Bearer ${TOKEN}` };
 
@@ -58,8 +59,7 @@ for (;;) {
   let job = null;
   try { job = (await (await post('/api/runner/claim', { runner: hostname() })).json() as any).job; }
   catch (e: any) { console.error(e.message); }
-  if (job) await runJob(job);
-  else if (once) break;
+  if (job) { await runJob(job); if (once) break; }
+  else if (once || drain) break;
   else await sleep(10_000);
-  if (once && job) break;
 }

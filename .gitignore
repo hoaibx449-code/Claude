@@ -8,3 +8,5 @@ web/public/engine.js
 web/public/assets/
 web/.wrangler/
 web/.dev.vars
+web/wrangler.deploy.json
+web/.secrets.tmp.json
