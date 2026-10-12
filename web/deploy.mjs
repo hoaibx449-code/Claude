@@ -33,12 +33,29 @@ cfg.d1_databases[0].database_id = db.uuid;
 const cfgFile = join(web, 'wrangler.deploy.json');
 writeFileSync(cfgFile, JSON.stringify(cfg, null, 2));
 
-// 4. schema (idempotent), build, deploy
+// 4. free workers.dev address: register one if the account has none yet
+const cf = async (path, init = {}) => {
+  const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}${path}`, {
+    ...init, headers: { authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`, 'content-type': 'application/json' },
+  });
+  return { ok: res.ok, data: await res.json().catch(() => ({})) };
+};
+let sub = (await cf('/workers/subdomain')).data?.result?.subdomain;
+if (!sub) {
+  for (const name of [process.env.WORKERS_SUBDOMAIN, 'netve-' + Math.random().toString(36).slice(2, 8)].filter(Boolean)) {
+    const r = await cf('/workers/subdomain', { method: 'PUT', body: JSON.stringify({ subdomain: name }) });
+    if (r.ok) { sub = r.data.result.subdomain; console.log(`Đã đăng ký tên miền ${sub}.workers.dev`); break; }
+    console.log(`Không đăng ký được "${name}": ${JSON.stringify(r.data.errors || []).slice(0, 200)}`);
+  }
+}
+if (!sub) throw new Error('Chưa có tên miền workers.dev. Mở Cloudflare → Workers & Pages để tạo một tên miền, rồi chạy lại.');
+
+// 5. schema (idempotent), build, deploy
 wrangler(['d1', 'execute', NAME, '--remote', '--file', 'schema.sql', '-c', cfgFile, '-y']);
 execFileSync('node', [join(web, 'build.mjs')], { stdio: 'inherit' });
 console.log(wrangler(['deploy', '-c', cfgFile]));
 
-// 5. secrets (only the ones provided)
+// 6. secrets (only the ones provided)
 const secrets = Object.fromEntries(['GOOGLE_CLIENT_ID', 'RUNNER_TOKEN', 'OPENAI_API_KEY', 'GEMINI_API_KEY']
   .filter((k) => process.env[k]).map((k) => [k, process.env[k]]));
 if (secrets.RUNNER_TOKEN && secrets.RUNNER_TOKEN.length < 32) throw new Error('RUNNER_TOKEN cần ít nhất 32 ký tự.');
@@ -48,4 +65,4 @@ if (Object.keys(secrets).length) {
   try { wrangler(['secret', 'bulk', f, '-c', cfgFile]); } finally { rmSync(f, { force: true }); }
   console.log('Đã cài khoá bí mật: ' + Object.keys(secrets).join(', '));
 }
-console.log('Triển khai xong.');
+console.log(`\nTriển khai xong. Địa chỉ trang web: https://${NAME}.${sub}.workers.dev\n`);
