@@ -6,7 +6,7 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "render": "node src/cli/render.ts",
+    "render": "node --env-file-if-exists=.env src/cli/render.ts",
     "test": "node --test test/*.test.ts"
   },
   "dependencies": {

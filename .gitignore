@@ -3,3 +3,4 @@ out/
 .work/
 .cache/
 *.mp4
+.env

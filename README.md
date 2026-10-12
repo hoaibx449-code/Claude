@@ -25,6 +25,9 @@ Tuỳ chọn:
 
 ## Khoá API (biến môi trường)
 
+Cách nhanh nhất: `cp .env.example .env`, mở `.env` và điền khoá của dịch vụ bạn dùng. `npm run render` tự đọc tệp này. Tệp `.env` đã nằm trong `.gitignore`, không bị đưa lên GitHub.
+
+
 | Dịch vụ | Biến |
 |---|---|
 | EverAI | `EVERAI_API_KEY`, `EVERAI_VOICE_CODE` (vd. `vi_female_thuytrang_mb`, danh sách trong `src/node/everai-voices.ts`), tuỳ chọn `EVERAI_MODEL` (mặc định `everai-v1.6`), `EVERAI_API_URL` |
