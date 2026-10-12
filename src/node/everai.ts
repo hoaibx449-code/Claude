@@ -14,6 +14,7 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { joinLineClips, need, type TTS } from './tts.ts';
+import { describe, fetchRetry } from './net.ts';
 
 export const EVERAI_URL = 'https://www.everai.vn/api/v1/tts';
 export const EVERAI_MODELS = ['everai-v1.6', 'everai-v1.5', 'everai-v1.5-turbo', 'everai-v1'];
@@ -82,7 +83,10 @@ export function everAITTS(opts: EverAIOptions = {}): TTS {
 }
 
 async function requestOne(url: string, headers: Record<string, string>, body: object, pollMs: number, timeoutMs: number): Promise<Buffer> {
-  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+  // creating a request is not retried automatically: a lost answer could mean a paid duplicate
+  let res: Response;
+  try { res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) }); }
+  catch (e) { throw new Error(`Không gửi được yêu cầu giọng tới EverAI: ${describe(e)}`); }
   const j: any = await res.json().catch(() => ({}));
   if (res.status === 401 || res.status === 403) throw new Error(`Khoá EverAI không hợp lệ hoặc đã hết hạn (HTTP ${res.status})`);
   if (!res.ok || j.status !== 1) throw new Error(`EverAI từ chối: ${j.error_message || j.message || j.error_code || 'HTTP ' + res.status}`);
@@ -93,7 +97,7 @@ async function requestOne(url: string, headers: Record<string, string>, body: ob
   for (;;) {
     if (Date.now() - t0 > timeoutMs) throw new Error(`EverAI quá thời gian chờ (request ${id})`);
     await sleep(pollMs);
-    const r = await fetch(`${url}/${encodeURIComponent(id)}`, { headers });
+    const r = await fetchRetry(`${url}/${encodeURIComponent(id)}`, { headers }, 'Hỏi trạng thái EverAI');
     if (!r.ok) continue; // transient: keep polling until the timeout
     const s: any = await r.json().catch(() => ({}));
     const status = String(find(s.result ?? s, 'status') ?? '');
@@ -101,7 +105,7 @@ async function requestOne(url: string, headers: Record<string, string>, body: ob
     const link = find(s, 'audio_link');
     if (link) {
       // plain download: the API key is not sent to the audio host
-      const audio = await fetch(String(link));
+      const audio = await fetchRetry(String(link), {}, 'Tải giọng EverAI');
       if (!audio.ok) throw new Error(`Không tải được âm thanh EverAI (HTTP ${audio.status})`);
       return Buffer.from(await audio.arrayBuffer());
     }

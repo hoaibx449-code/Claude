@@ -7,6 +7,7 @@ import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProjectSpec } from '../engine/types.ts';
 import { renderProject, ROOT } from '../node/pipeline.ts';
+import { describe, fetchRetry } from '../node/net.ts';
 
 const API = (process.env.NV_API_URL || '').replace(/\/$/, '');
 const TOKEN = process.env.RUNNER_TOKEN || '';
@@ -16,7 +17,7 @@ if (!API || !TOKEN) { console.error('Cần NV_API_URL và RUNNER_TOKEN'); proces
 const auth = { authorization: `Bearer ${TOKEN}` };
 
 async function call(path: string, init: RequestInit = {}) {
-  const res = await fetch(API + path, { ...init, headers: { ...auth, ...(init.headers || {}) } });
+  const res = await fetchRetry(API + path, { ...init, headers: { ...auth, ...(init.headers || {}) } }, 'Kết nối trang web (' + path.split('?')[0] + ')');
   if (!res.ok) throw new Error(`${path}: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
   return res;
 }
@@ -47,8 +48,9 @@ async function runJob(job: { id: string; spec: ProjectSpec }) {
     await post(`/api/runner/jobs/${job.id}/done`, {});
     console.log(`Xong ${job.id}: ${r.duration.toFixed(1)}s video trong ${r.seconds.toFixed(1)}s`);
   } catch (e: any) {
-    console.error(`Lỗi ${job.id}:`, e.message);
-    await post(`/api/runner/jobs/${job.id}/fail`, { error: String(e.message || e).slice(0, 300) }).catch(() => {});
+    const why = describe(e);
+    console.error(`Lỗi ${job.id}:`, why);
+    await post(`/api/runner/jobs/${job.id}/fail`, { error: why.slice(0, 300) }).catch(() => {});
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
