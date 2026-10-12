@@ -1,0 +1,22 @@
+name: Kiểm tra khoá AI
+
+# Gọi thử mỗi dịch vụ AI một lần (rất nhỏ) và chỉ in trạng thái, không in khoá.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node tools/check-ai.mjs
