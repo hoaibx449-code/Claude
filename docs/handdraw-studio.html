@@ -1,0 +1,621 @@
+<title>Nét Vẽ Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Be+Vietnam+Pro:wght@400;500;700&family=Pangolin&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: sổ tay kỹ thuật — demo sống ở đầu trang, sau đó các chương tranh luận, kiến trúc, chi phí xếp dọc trong cột 1080px */
+:root{
+  --paper:#f5f7fc; --card:#ffffff; --ink:#18203a; --muted:#59617d; --line:#dde2ee;
+  --pen:#2643c4; --hl:#ffd23f; --hl-ink:#18203a; --bad:#c73b3b; --good:#17825a; --warn:#b26b00;
+  --display:"Bricolage Grotesque", "Be Vietnam Pro", system-ui, sans-serif;
+  --body:"Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --hand:"Pangolin", "Comic Sans MS", cursive;
+  --mono:"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#0f1322; --card:#171c2f; --ink:#e6e9f5; --muted:#9ba3bf; --line:#283049;
+  --pen:#8fa3ff; --hl:#ffd23f; --hl-ink:#18203a; --bad:#ff7b7b; --good:#4fd39b; --warn:#ffb547; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#0f1322; --card:#171c2f; --ink:#e6e9f5; --muted:#9ba3bf; --line:#283049;
+  --pen:#8fa3ff; --hl:#ffd23f; --hl-ink:#18203a; --bad:#ff7b7b; --good:#4fd39b; --warn:#ffb547; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.6}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:20px;padding-block:28px 80px;display:flex;flex-direction:column;gap:64px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;line-height:1.15;margin:0}
+h1{font-size:clamp(2rem,5vw,3.3rem);font-weight:800;letter-spacing:-.02em}
+h2{font-size:clamp(1.5rem,3.2vw,2.1rem);font-weight:800}
+h3{font-size:1.12rem;font-weight:600}
+p{margin:0;max-width:68ch}
+.eyebrow{font-family:var(--mono);font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.mark{background:linear-gradient(transparent 55%,var(--hl) 55%);color:inherit;padding:0 2px}
+section{display:flex;flex-direction:column;gap:20px}
+.lead{font-size:1.1rem;color:var(--muted)}
+code,.mono{font-family:var(--mono);font-size:.86em}
+
+/* hero demo */
+.hero{display:grid;grid-template-columns:1fr;gap:22px}
+.stage{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.canvas-box{display:flex;justify-content:center;background:repeating-conic-gradient(var(--line) 0 25%,transparent 0 50%) 0 0/16px 16px;border-radius:8px;padding:10px}
+#main{display:block;width:100%;max-width:100%;height:auto;border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,.18)}
+#main.portrait{width:auto;max-height:560px;max-width:100%}
+.sub{min-height:2.8em;text-align:center;font-family:var(--hand);font-size:1.25rem}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,select,input[type=number]{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer}
+button:hover{border-color:var(--pen)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--pen);outline-offset:2px}
+button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{font-size:.88rem;padding:5px 10px}
+input[type=range]{flex:1;min-width:120px;accent-color:var(--pen)}
+.time{font-family:var(--mono);font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* gallery */
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.style-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px;text-align:left;cursor:pointer;color:var(--ink)}
+.style-card canvas{width:100%;height:auto;border-radius:6px;display:block}
+.style-card .meta{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.style-card small{color:var(--muted);line-height:1.4}
+.tag{font-family:var(--mono);font-size:.68rem;padding:2px 7px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+.tag.mvp{color:var(--good)} .tag.later{color:var(--muted)}
+.extra{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.extra div{border:1px dashed var(--line);border-radius:10px;padding:10px 12px;font-size:.92rem}
+.extra b{display:block}
+
+/* debate */
+.debate{display:flex;flex-direction:column;gap:14px}
+.arg{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.arg>div{min-width:0;display:flex;flex-direction:column;gap:6px}
+.arg .lab{font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase}
+.arg .you .lab{color:var(--pen)} .arg .no .lab{color:var(--bad)} .arg .yes .lab{color:var(--good)}
+.arg .you p{font-family:var(--hand);font-size:1.15rem}
+.arg p{font-size:.95rem}
+
+/* tables */
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:.93rem}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:0}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* architecture */
+.flow{display:flex;flex-direction:column;gap:0}
+.diagram{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;overflow-x:auto}
+.diagram svg{display:block;min-width:760px;width:100%;height:auto}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.box ul{margin:0;padding-left:1.1em;display:flex;flex-direction:column;gap:6px;font-size:.95rem}
+pre{margin:0;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:12px;overflow-x:auto;font-family:var(--mono);font-size:.8rem;line-height:1.5}
+
+/* calculator */
+.calc{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:16px}
+.field{display:flex;flex-direction:column;gap:4px;font-size:.9rem}
+.field label{color:var(--muted)}
+.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.result{display:flex;flex-direction:column;gap:10px}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.kpi{border:1px solid var(--line);border-radius:10px;padding:10px}
+.kpi span{display:block;font-size:.75rem;color:var(--muted)}
+.kpi b{font-family:var(--display);font-size:1.35rem;font-variant-numeric:tabular-nums}
+.bars{display:flex;flex-direction:column;gap:7px}
+.bar{display:grid;grid-template-columns:150px 1fr 90px;gap:10px;align-items:center;font-size:.85rem}
+.bar i{display:block;height:12px;border-radius:3px;background:var(--pen);min-width:2px}
+.bar .v{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:.8rem}
+.note{font-size:.82rem;color:var(--muted)}
+.plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.plan{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:8px}
+.plan .price{font-family:var(--display);font-size:1.6rem;font-weight:800}
+.plan.hot{border:2px solid var(--pen)}
+.plan ul{margin:0;padding-left:1.1em;font-size:.92rem}
+.steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.step{border-top:3px solid var(--pen);padding-top:10px;display:flex;flex-direction:column;gap:6px;font-size:.92rem}
+.step b{font-family:var(--mono);font-size:.75rem;color:var(--muted)}
+@media (max-width:820px){
+  .arg,.two,.calc,.plans,.steps{grid-template-columns:1fr}
+  .kpis{grid-template-columns:1fr 1fr}
+  .bar{grid-template-columns:110px 1fr 76px}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <div style="display:flex;flex-direction:column;gap:12px">
+    <span class="eyebrow">Đề án sản phẩm · bản 1 · 10/2026</span>
+    <h1>Nét Vẽ Studio: <span class="mark">kiến thức của bạn</span>, vẽ tay thành video</h1>
+    <p class="lead">Nền tảng web tạo video bàn tay vẽ kèm thuyết minh tiếng Việt. Người dùng nhập chủ đề hoặc kịch bản, AI chia cảnh, chọn phong cách, xem trước tức thì trên trình duyệt, máy chủ xuất MP4 1080p. Demo dưới đây chạy đúng kiểu engine đề xuất: một kịch bản cảnh, đổi phong cách chỉ bằng một nút.</p>
+  </div>
+
+  <div class="stage">
+    <div class="canvas-box"><canvas id="main" width="960" height="540" aria-label="Demo bàn tay vẽ"></canvas></div>
+    <div class="sub" id="sub" aria-live="polite"></div>
+    <div class="controls">
+      <button id="play" class="on">Tạm dừng</button>
+      <button id="replay">Vẽ lại</button>
+      <input type="range" id="seek" min="0" max="1000" value="0" aria-label="Tua">
+      <span class="time" id="time">0.0s</span>
+    </div>
+    <div class="controls">
+      <div class="chips" id="styleChips" role="group" aria-label="Phong cách"></div>
+    </div>
+    <div class="controls">
+      <div class="chips" role="group" aria-label="Khung hình">
+        <button id="r169" class="on">16:9 YouTube</button>
+        <button id="r916">9:16 TikTok/Shorts</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="styles">
+  <span class="eyebrow">Phong cách</span>
+  <h2>7 phong cách chạy được ngay, thêm 5 ở giai đoạn sau</h2>
+  <p>Mỗi phong cách chỉ là một tệp theme: nền, màu mực, dụng cụ trên tay, độ rung nét, kiểu tô, font. Cùng một kịch bản cảnh nên thêm phong cách mới tốn vài ngày, không phải viết lại engine. Bấm thẻ để xem bản vẽ động ở trên.</p>
+  <div class="gallery" id="gallery"></div>
+  <h3>Giai đoạn sau (chưa có demo)</h3>
+  <div class="extra">
+    <div><b>Màu nước loang</b>Vẽ nét chì rồi màu loang vào. Hợp sách, chữa lành, du lịch.</div>
+    <div><b>Bảng kính (glass board)</b>Người thật đứng sau tấm kính viết. Cần quay người, hợp giảng viên.</div>
+    <div><b>Người que tài chính</b>Nhân vật que có tư thế, biểu cảm. Hợp Shorts tài chính, kỹ năng.</div>
+    <div><b>Truyện tranh</b>Khung, bóng thoại, hiệu ứng chữ. Hợp lịch sử, kể chuyện.</div>
+    <div><b>Infographic phẳng + tay</b>Biểu đồ, số liệu, icon phẳng được tay "đặt" vào. Hợp B2B, báo cáo.</div>
+  </div>
+</section>
+
+<section id="debate">
+  <span class="eyebrow">Phản biện</span>
+  <h2>Tranh luận từng đề xuất của bạn</h2>
+  <p>Mục tiêu là độ thương mại cao nhất, nên tôi đồng ý chỗ đúng và phản đối chỗ sẽ làm mất tiền hoặc mất khách.</p>
+  <div class="debate">
+    <div class="arg">
+      <div class="you"><span class="lab">Bạn đề xuất</span><p>Tối ưu chi phí, miễn phí càng tốt.</p></div>
+      <div class="no"><span class="lab">Phản biện</span><p>Web, DB, lưu trữ có thể miễn phí thật. Nhưng chi phí thật nằm ở giọng đọc và ảnh AI, không phải máy chủ (xem máy tính chi phí bên dưới). Gói free kiểu Oracle Always Free, Render, Railway có thể bị thu hồi, ngủ đông, không có cam kết: khách trả tiền mà video kẹt hàng đợi là mất khách.</p></div>
+      <div class="yes"><span class="lab">Chốt</span><p>Free ở tầng web/DB/lưu trữ (Cloudflare). Trả theo lượng dùng ở tầng render và AI (Cloud Run, TTS), có hạn mức free hàng tháng. Mọi chi phí biến đổi được tính vào giá credit, nên lãi không phụ thuộc vào việc hạ tầng có free hay không.</p></div>
+    </div>
+    <div class="arg">
+      <div class="you"><span class="lab">Bạn đề xuất</span><p>Dựng video không phụ thuộc trình duyệt.</p></div>
+      <div class="no"><span class="lab">Phản biện</span><p>Đúng cho bản xuất cuối: máy yếu, điện thoại, đóng tab đều không ảnh hưởng. Nhưng nếu cả bản xem trước cũng dựng ở máy chủ thì người dùng sửa 10 lần là trả 10 lần render, và mỗi lần chờ 30–60 giây. Đó là chi phí và trải nghiệm tệ nhất có thể.</p></div>
+      <div class="yes"><span class="lab">Chốt</span><p>Một engine TypeScript chạy hai nơi: trình duyệt dùng để xem trước (miễn phí, tức thì), máy chủ dùng Skia + FFmpeg để xuất MP4 (không cần Chromium). Cùng mã nên hình xem trước và video xuất ra giống nhau. Đóng tab vẫn nhận video qua thông báo.</p></div>
+    </div>
+    <div class="arg">
+      <div class="you"><span class="lab">Bạn đề xuất</span><p>Đăng nhập bằng Google.</p></div>
+      <div class="no"><span class="lab">Phản biện</span><p>Đúng: không lưu mật khẩu, ít rủi ro rò rỉ, chuyển đổi đăng ký cao. Lỗ hổng thương mại: một người tạo 20 Gmail là có 20 suất free. Nếu suất free dùng ảnh AI và giọng cao cấp thì bị vắt kiệt rất nhanh.</p></div>
+      <div class="yes"><span class="lab">Chốt</span><p>Google OAuth (OIDC, PKCE) là cách đăng nhập duy nhất ở MVP. Kèm Cloudflare Turnstile, giới hạn theo IP/thiết bị, và suất free chỉ dùng tài nguyên rẻ: thư viện hình SVG, giọng tự host, 720p, watermark.</p></div>
+    </div>
+    <div class="arg">
+      <div class="you"><span class="lab">Bạn đề xuất</span><p>Phải có đa dạng các phong cách video.</p></div>
+      <div class="no"><span class="lab">Phản biện</span><p>Khách trả tiền vì video ra đẹp và giữ chân người xem, không vì menu có 12 lựa chọn. 12 phong cách làm vội sẽ thua 4 phong cách làm kỹ, và nhân 12 lần chi phí kiểm thử.</p></div>
+      <div class="yes"><span class="lab">Chốt</span><p>Kiến trúc theme ngay từ đầu (đa dạng là rẻ), nhưng ra mắt 4: Bảng trắng, Bảng phấn, Vở ô ly, Giấy kraft. Sau đó thêm 1 phong cách mỗi 2 tuần theo số liệu dùng thật.</p></div>
+    </div>
+    <div class="arg">
+      <div class="you"><span class="lab">Bạn nhận định</span><p>Video AI đang rất phổ biến, nên dễ bán.</p></div>
+      <div class="no"><span class="lab">Phản biện</span><p>Phổ biến cũng nghĩa là bị siết. YouTube đổi chính sách "nội dung lặp lại" thành "nội dung không chân thực" từ 7/2025, nhắm vào video hàng loạt; TikTok gắn nhãn nội dung AI. Công cụ bán "1 click ra 100 video" sẽ làm khách bị tắt kiếm tiền, rồi họ rời bỏ.</p></div>
+      <div class="yes"><span class="lab">Chốt</span><p>Định vị là "biến kiến thức của bạn thành video": khách sửa kịch bản, dùng giọng của chính mình (thu âm hoặc nhân bản có đồng ý), mỗi video có dấu ấn riêng. Bán cho giáo viên, chuyên gia, chủ shop, kênh sách, không bán cho trang trại nội dung.</p></div>
+    </div>
+    <div class="arg">
+      <div class="you"><span class="lab">Tôi bổ sung</span><p>Đối thủ quốc tế đã có (VideoScribe, Doodly, các công cụ AI video).</p></div>
+      <div class="no"><span class="lab">Rủi ro</span><p>Cạnh tranh tính năng chung chung với họ là thua: họ có nhiều năm và thư viện lớn.</p></div>
+      <div class="yes"><span class="lab">Lợi thế nên chiếm</span><p>Tiếng Việt trước tiên: chữ viết tay có dấu vẽ từng nét, giọng đọc 3 miền, mẫu theo ngách Việt (vở ô ly, bài giảng SGK, review sách), thanh toán VietQR, giá theo VNĐ. Đây là chỗ đối thủ yếu nhất.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="engine">
+  <span class="eyebrow">Cách hoạt động</span>
+  <h2>Từ một câu chủ đề tới MP4</h2>
+  <div class="steps">
+    <div class="step"><b>1 · Kịch bản</b>LLM viết lời thoại theo khung giữ chân: mở bằng câu hỏi, 3 ý, chốt. Người dùng sửa trực tiếp.</div>
+    <div class="step"><b>2 · Chia cảnh</b>LLM trả về JSON theo schema cố định: mỗi cảnh có câu thoại, hình cần vẽ, chữ, vị trí. Engine không bao giờ chạy mã do AI sinh ra.</div>
+    <div class="step"><b>3 · Giọng + căn thời gian</b>TTS trả âm thanh kèm mốc thời gian từng từ. Nét vẽ được kéo giãn để khớp đúng lúc câu nói nhắc tới hình.</div>
+    <div class="step"><b>4 · Xem trước / Xuất</b>Trình duyệt phát ngay bản xem trước. Bấm Xuất: hàng đợi gửi job cho worker, Skia vẽ từng khung, FFmpeg ghép MP4 + phụ đề.</div>
+  </div>
+  <div class="two">
+    <div class="box">
+      <h3>Kịch bản cảnh mà AI trả về</h3>
+      <pre>{
+  "style": "whiteboard",
+  "ratio": "16:9",
+  "scenes": [{
+    "say": "Gửi 10 triệu, lãi 8% mỗi năm.",
+    "draw": [
+      { "text": "Sức mạnh lãi kép", "at": "top-left" },
+      { "icon": "coin", "label": "10tr", "at": "left" },
+      { "chart": "bar", "values": [21.6, 46.6, 100.6],
+        "labels": ["10 năm","20 năm","30 năm"] }
+    ],
+    "sync": { "coin": "10 triệu", "chart": "8%" }
+  }]
+}</pre>
+      <p class="note">Schema chặt giúp kiểm tra được đầu ra AI, chặn prompt injection, và cho phép sửa từng cảnh mà không gọi lại AI.</p>
+    </div>
+    <div class="box">
+      <h3>Lấy hình ở đâu để "vẽ từng nét"</h3>
+      <ul>
+        <li><b>Thư viện SVG</b> (Tabler, Lucide: giấy phép MIT/ISC, dùng thương mại được). Rẻ nhất, dùng cho gói free.</li>
+        <li><b>Ảnh AI kiểu line-art</b> → vector hoá bằng potrace → sắp thứ tự nét từ trên xuống, to trước nhỏ sau. Gói trả phí.</li>
+        <li><b>Chữ viết tay</b> dùng font một nét (single-line) có dấu tiếng Việt để bút đi đúng nét chữ, thay vì quét lộ chữ như demo.</li>
+        <li>Tránh nguồn CC BY-SA (ví dụ OpenMoji) cho mẫu bán: điều khoản chia sẻ lại gây rắc rối.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="infra">
+  <span class="eyebrow">Hạ tầng</span>
+  <h2>Kiến trúc: Cloudflare ở ngoài, render cô lập ở trong</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 980 360" role="img" aria-label="Sơ đồ kiến trúc">
+      <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="var(--muted)"/></marker></defs>
+      <g font-family="Be Vietnam Pro, sans-serif" font-size="13" fill="var(--ink)">
+        <rect x="10" y="140" width="120" height="70" rx="10" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="70" y="170" text-anchor="middle" font-weight="700">Trình duyệt</text>
+        <text x="70" y="190" text-anchor="middle" font-size="11" fill="var(--muted)">Engine xem trước</text>
+
+        <rect x="180" y="40" width="250" height="280" rx="12" fill="none" stroke="var(--pen)" stroke-dasharray="5 4"/>
+        <text x="195" y="62" font-size="11" fill="var(--pen)" font-family="JetBrains Mono, monospace">CLOUDFLARE (gói free)</text>
+        <rect x="200" y="78" width="210" height="46" rx="8" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="305" y="106" text-anchor="middle">WAF · Turnstile · Rate limit</text>
+        <rect x="200" y="138" width="210" height="46" rx="8" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="305" y="158" text-anchor="middle" font-weight="700">Workers API (Hono)</text>
+        <text x="305" y="175" text-anchor="middle" font-size="11" fill="var(--muted)">Google OAuth · credit · job</text>
+        <rect x="200" y="198" width="100" height="46" rx="8" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="250" y="226" text-anchor="middle">D1 (SQL)</text>
+        <rect x="310" y="198" width="100" height="46" rx="8" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="360" y="226" text-anchor="middle">Queues</text>
+        <rect x="200" y="258" width="210" height="46" rx="8" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="305" y="278" text-anchor="middle" font-weight="700">R2 (bucket riêng tư)</text>
+        <text x="305" y="295" text-anchor="middle" font-size="11" fill="var(--muted)">Không phí băng thông tải video</text>
+
+        <rect x="500" y="120" width="230" height="120" rx="12" fill="var(--paper)" stroke="var(--good)"/>
+        <text x="615" y="146" text-anchor="middle" font-weight="700">Render worker</text>
+        <text x="615" y="166" text-anchor="middle" font-size="11" fill="var(--muted)">Cloud Run Jobs · container</text>
+        <text x="615" y="186" text-anchor="middle" font-size="11" fill="var(--muted)">Node + Skia canvas + FFmpeg</text>
+        <text x="615" y="206" text-anchor="middle" font-size="11" fill="var(--muted)">non-root · timeout · không cổng vào</text>
+        <text x="615" y="226" text-anchor="middle" font-size="11" fill="var(--muted)">scale về 0 khi rảnh</text>
+
+        <rect x="800" y="60" width="170" height="60" rx="10" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="885" y="86" text-anchor="middle" font-weight="700">LLM</text>
+        <text x="885" y="104" text-anchor="middle" font-size="11" fill="var(--muted)">kịch bản → JSON cảnh</text>
+        <rect x="800" y="150" width="170" height="60" rx="10" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="885" y="176" text-anchor="middle" font-weight="700">TTS</text>
+        <text x="885" y="194" text-anchor="middle" font-size="11" fill="var(--muted)">Google TTS / Piper</text>
+        <rect x="800" y="240" width="170" height="60" rx="10" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="885" y="266" text-anchor="middle" font-weight="700">Ảnh AI (tuỳ chọn)</text>
+        <text x="885" y="284" text-anchor="middle" font-size="11" fill="var(--muted)">line-art → vector</text>
+      </g>
+      <g stroke="var(--muted)" stroke-width="1.6" fill="none" marker-end="url(#ar)">
+        <path d="M130 175 H198"/>
+        <path d="M305 124 V136"/>
+        <path d="M280 184 L260 196"/>
+        <path d="M330 184 L350 196"/>
+        <path d="M410 221 C460 221 460 190 498 190"/>
+        <path d="M615 240 C615 300 470 290 412 284"/>
+        <path d="M410 160 C600 100 700 90 798 90"/>
+        <path d="M730 170 H798"/>
+        <path d="M730 210 C760 230 770 260 798 268"/>
+        <path d="M200 285 C150 285 90 260 75 212"/>
+      </g>
+      <g font-family="JetBrains Mono, monospace" font-size="10" fill="var(--muted)">
+        <text x="440" y="208">kéo job</text>
+        <text x="470" y="300">MP4 → R2</text>
+        <text x="80" y="268">URL ký, 15 phút</text>
+      </g>
+    </svg>
+  </div>
+  <div class="tbl"><table>
+    <thead><tr><th>Lớp</th><th>Chọn</th><th>Vì sao, và tôi đã loại gì</th><th>Chi phí</th></tr></thead>
+    <tbody>
+      <tr><td>Frontend</td><td>Next.js/SvelteKit tĩnh trên Cloudflare Pages</td><td>CDN toàn cầu, HTTPS, chống DDoS sẵn.</td><td class="num">0đ</td></tr>
+      <tr><td>API + Auth</td><td>Workers (Hono) + Better Auth, Google OIDC</td><td>Không quản lý server. Cookie phiên HttpOnly, Secure, SameSite=Lax.</td><td class="num">0đ tới 100k req/ngày</td></tr>
+      <tr><td>CSDL</td><td>Cloudflare D1</td><td>SQL, sao lưu khôi phục theo thời điểm. Loại Supabase free vì dự án bị tạm dừng sau 7 ngày không hoạt động.</td><td class="num">0đ (5 GB)</td></tr>
+      <tr><td>Lưu video</td><td>R2 riêng tư + URL ký hết hạn</td><td>Không tính phí tải ra. Loại GCS/S3 vì video tốn băng thông là khoản phí lớn nhất khi có người xem.</td><td class="num">0đ tới 10 GB</td></tr>
+      <tr><td>Render</td><td>Cloud Run Jobs, container Node + @napi-rs/canvas + FFmpeg</td><td>Trả theo giây, scale về 0, có hạn mức free hàng tháng. Loại Remotion: cần Chromium, nặng hơn, và doanh nghiệp từ 4 người phải mua giấy phép.</td><td class="num">Free tier, sau đó ~0,04đ/khung</td></tr>
+      <tr><td>Giọng đọc</td><td>Piper (tự host, gói free) + Google Cloud TTS (gói trả phí)</td><td>Loại Edge TTS không chính thức: vi phạm điều khoản, có thể bị chặn bất cứ lúc nào, không dùng cho sản phẩm thương mại.</td><td class="num">Xem máy tính</td></tr>
+      <tr><td>Thanh toán</td><td>PayOS / SePay (VietQR) + Lemon Squeezy (thẻ quốc tế)</td><td>Webhook ký HMAC, cộng credit trong một giao dịch DB.</td><td class="num">% giao dịch</td></tr>
+    </tbody>
+  </table></div>
+  <div class="two">
+    <div class="box">
+      <h3>An toàn: những thứ bắt buộc từ ngày đầu</h3>
+      <ul>
+        <li>OAuth có <code>state</code> + PKCE, kiểm tra <code>aud</code>/<code>iss</code> của id_token; không tự viết luồng đăng nhập.</li>
+        <li>Trừ credit và tạo job trong cùng một giao dịch, kiểm tra ở server, không tin số liệu từ client.</li>
+        <li>Worker render không mở cổng vào; tự kéo job từ hàng đợi bằng token phạm vi hẹp. Container non-root, giới hạn thời lượng và RAM.</li>
+        <li>Không bao giờ ghép tham số FFmpeg từ dữ liệu người dùng; SVG tải lên phải qua sanitizer, ảnh được mã hoá lại.</li>
+        <li>Đầu ra LLM kiểm theo JSON schema; nội dung qua bộ lọc kiểm duyệt trước khi render.</li>
+        <li>Bí mật nằm trong Workers Secrets / Secret Manager; bật 2FA và khoá phần cứng cho tài khoản Cloudflare, Google Cloud, GitHub.</li>
+        <li>Tuân thủ Nghị định 13/2023 và Luật Bảo vệ dữ liệu cá nhân (hiệu lực 1/1/2026): chỉ lưu email, tên, ảnh đại diện; có trang xoá tài khoản.</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h3>Vì sao render không cần trình duyệt mà vẫn khớp bản xem trước</h3>
+      <ul>
+        <li>Engine chỉ dùng Canvas 2D API. Trên trình duyệt là canvas thật; trên server là Skia qua <code>@napi-rs/canvas</code>, cùng API.</li>
+        <li>Mọi chuyển động là hàm của thời gian <code>t</code>, có hạt giống ngẫu nhiên cố định, nên khung thứ N luôn giống nhau ở cả hai nơi.</li>
+        <li>Worker vẽ khung → đẩy thẳng vào FFmpeg qua stdin → MP4 H.264 + AAC + phụ đề SRT. Không ghi hàng nghìn ảnh ra đĩa.</li>
+        <li>Ước tính: video 1 phút 1080p30 = 1.800 khung, khoảng 40–60 vCPU-giây. Cần đo lại khi có engine thật.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="money">
+  <span class="eyebrow">Chi phí và giá bán</span>
+  <h2>Máy tính chi phí: tiền thật đi đâu</h2>
+  <p>Kéo các ô để thấy: render gần như không đáng kể; giọng cao cấp và ảnh AI mới là khoản lớn. Đó là lý do gói free không được dùng hai thứ này.</p>
+  <div class="calc">
+    <div class="box">
+      <div class="fields">
+        <div class="field"><label for="c-paid">Người dùng trả phí</label><input type="number" id="c-paid" value="200" min="0" step="10"></div>
+        <div class="field"><label for="c-free">Người dùng free</label><input type="number" id="c-free" value="3000" min="0" step="100"></div>
+        <div class="field"><label for="c-vid">Video / người trả phí / tháng</label><input type="number" id="c-vid" value="20" min="0"></div>
+        <div class="field"><label for="c-len">Độ dài TB (phút)</label><input type="number" id="c-len" value="1.5" min="0.25" step="0.25"></div>
+        <div class="field"><label for="c-img">Ảnh AI / video trả phí</label><input type="number" id="c-img" value="6" min="0"></div>
+        <div class="field"><label for="c-price">Giá TB / người / tháng (đ)</label><input type="number" id="c-price" value="149000" min="0" step="10000"></div>
+        <div class="field" style="grid-column:1/-1"><label for="c-voice">Giọng cho gói trả phí</label>
+          <select id="c-voice">
+            <option value="piper">Piper tự host (giọng khá)</option>
+            <option value="google" selected>Google Cloud TTS Neural (giọng tốt)</option>
+            <option value="premium">Dịch vụ giọng cao cấp/nhân bản giọng</option>
+          </select></div>
+      </div>
+      <p class="note">Người dùng free: 3 video/tháng × 1 phút, giọng Piper, chỉ hình SVG, 720p. Đơn giá là ước tính tại thời điểm viết, cần kiểm tra lại bảng giá nhà cung cấp trước khi triển khai. Tỷ giá 26.000đ/USD.</p>
+    </div>
+    <div class="box result">
+      <div class="kpis">
+        <div class="kpi"><span>Chi phí / tháng</span><b id="k-cost">–</b></div>
+        <div class="kpi"><span>Doanh thu / tháng</span><b id="k-rev">–</b></div>
+        <div class="kpi"><span>Biên lãi gộp</span><b id="k-margin">–</b></div>
+      </div>
+      <div class="bars" id="bars"></div>
+      <p class="note" id="k-unit"></p>
+    </div>
+  </div>
+
+  <h3>Bảng giá đề xuất</h3>
+  <div class="plans">
+    <div class="plan"><span class="eyebrow">Miễn phí</span><span class="price">0đ</span>
+      <ul><li>3 video/tháng, tối đa 1 phút</li><li>720p, có watermark</li><li>4 phong cách, hình SVG</li><li>Giọng tiêu chuẩn</li></ul>
+      <p class="note">Vai trò: phễu. Watermark là quảng cáo miễn phí trên TikTok.</p></div>
+    <div class="plan hot"><span class="eyebrow">Sáng tạo · bán chủ lực</span><span class="price">149.000đ</span>
+      <ul><li>30 video/tháng, tối đa 5 phút</li><li>1080p, không watermark</li><li>Tất cả phong cách, ảnh AI</li><li>Giọng Neural 3 miền, xuất 9:16 + 16:9</li></ul>
+      <p class="note">Năm: 1.290.000đ (giảm ~28%) để giữ khách lâu.</p></div>
+    <div class="plan"><span class="eyebrow">Pro / Giáo dục</span><span class="price">399.000đ</span>
+      <ul><li>100 video/tháng, tối đa 15 phút</li><li>Nhân bản giọng của chính bạn (có xác minh đồng ý)</li><li>Logo, bộ nhận diện riêng</li><li>Mua thêm credit lẻ</li></ul>
+      <p class="note">Gói trường học/trung tâm: bán theo số giáo viên.</p></div>
+  </div>
+</section>
+
+<section id="roadmap">
+  <span class="eyebrow">Lộ trình</span>
+  <h2>Ra mắt trong khoảng 10 tuần, mỗi giai đoạn có thước đo</h2>
+  <div class="steps">
+    <div class="step"><b>Tuần 1–3 · Engine</b>Engine vẽ + 4 phong cách + trình chỉnh cảnh. Đo: 1 phút video render dưới 60 giây.</div>
+    <div class="step"><b>Tuần 4–6 · AI + render</b>Kịch bản → JSON, TTS khớp nét, worker Cloud Run, đăng nhập Google, gói free. Đo: 100 người thử, tỷ lệ xuất video.</div>
+    <div class="step"><b>Tuần 7–10 · Bán</b>Thanh toán VietQR, gói trả phí, 9:16, mẫu theo ngách. Đo: tỷ lệ free → trả phí ≥ 3%.</div>
+    <div class="step"><b>Sau đó · Mở rộng</b>Nhân bản giọng, phong cách mới theo dữ liệu, API cho đối tác, gói trường học.</div>
+  </div>
+  <p>Ba việc cần bạn quyết trước khi viết mã: (1) ngách đầu tiên để làm mẫu và marketing (tôi đề xuất giáo viên/trung tâm và kênh review sách), (2) có chấp nhận ~15–30 USD/tháng chi phí AI ngay từ khi có khách trả tiền, (3) tên thương hiệu và tên miền.</p>
+</section>
+
+</div>
+
+<script>
+(() => {
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- seeded random ---------- */
+function rng(seed){let s=seed>>>0||1;return()=>{s^=s<<13;s^=s>>>17;s^=s<<5;return((s>>>0)%10000)/10000}}
+
+/* ---------- styles (theme = data) ---------- */
+const STYLES = {
+  whiteboard:{name:'Bảng trắng',use:'Giải thích, giáo dục, doanh nghiệp',mvp:true,ink:'#1d1d1f',accent:'#d62828',accent2:'#1d4ed8',w:4.5,noise:0.4,passes:[[0,0,1,1]],tool:'marker',toolColor:'#1d1d1f',font:'Pangolin',sleeve:'#3b4a6b',fill:false,
+    bg(c,W,H){c.fillStyle='#fbfbf8';c.fillRect(0,0,W,H);const g=c.createLinearGradient(0,0,W,H);g.addColorStop(0,'rgba(255,255,255,.7)');g.addColorStop(.5,'rgba(255,255,255,0)');c.fillStyle=g;c.fillRect(0,0,W,H)}},
+  chalk:{name:'Bảng phấn',use:'Bài giảng, toán, lịch sử',mvp:true,ink:'#f1f1e8',accent:'#f7d154',accent2:'#8fd3ff',w:4,noise:1.2,passes:[[0,0,.75,1],[1.2,.8,.35,.7],[-.8,1,.3,.6]],tool:'chalk',toolColor:'#f4f4ee',font:'Pangolin',sleeve:'#6b4f3a',fill:false,
+    bg(c,W,H){c.fillStyle='#24402f';c.fillRect(0,0,W,H);const r=rng(7);for(let i=0;i<W*H/90;i++){c.fillStyle=`rgba(255,255,255,${r()*.05})`;c.fillRect(r()*W,r()*H,2,2)}}},
+  oly:{name:'Vở ô ly',use:'Học sinh, ôn thi, phụ huynh',mvp:true,ink:'#3a2aa8',accent:'#d62828',accent2:'#1b7f4e',w:3,noise:.35,passes:[[0,0,1,1]],tool:'pen',toolColor:'#2e3fb3',font:'Pangolin',sleeve:'#e9e4d8',fill:false,
+    bg(c,W,H){c.fillStyle='#ffffff';c.fillRect(0,0,W,H);const s=W/48;c.lineWidth=1;for(let y=0;y<H;y+=s/4){c.strokeStyle=(Math.round(y/(s/4))%4===0)?'rgba(120,110,210,.5)':'rgba(120,110,210,.18)';c.beginPath();c.moveTo(0,y);c.lineTo(W,y);c.stroke()}for(let x=0;x<W;x+=s){c.strokeStyle='rgba(120,110,210,.35)';c.beginPath();c.moveTo(x,0);c.lineTo(x,H);c.stroke()}c.strokeStyle='rgba(214,40,40,.6)';c.lineWidth=2;c.beginPath();c.moveTo(s*1.5,0);c.lineTo(s*1.5,H);c.stroke()}},
+  kraft:{name:'Giấy kraft màu',use:'Bán hàng, marketing, review',mvp:true,ink:'#2b1d10',accent:'#b8321f',accent2:'#2b1d10',w:4,noise:.5,passes:[[0,0,1,1]],tool:'marker',toolColor:'#2b1d10',font:'Pangolin',sleeve:'#2f5d50',fill:true,fills:['#f4c430','#3f9b5f','#e2694a','#5aa0d8'],
+    bg(c,W,H){c.fillStyle='#c9a77c';c.fillRect(0,0,W,H);const r=rng(3);for(let i=0;i<500;i++){c.strokeStyle=`rgba(90,60,30,${r()*.12})`;c.lineWidth=1;const x=r()*W,y=r()*H;c.beginPath();c.moveTo(x,y);c.lineTo(x+r()*30-15,y+r()*6-3);c.stroke()}}},
+  pencil:{name:'Sổ phác chì',use:'Sách, kể chuyện, tâm lý',mvp:false,ink:'#3b3b3b',accent:'#7a7a7a',accent2:'#3b3b3b',w:2,noise:1,passes:[[0,0,.85,1],[.9,-.6,.45,.8]],tool:'pencil',toolColor:'#f2c230',font:'Pangolin',sleeve:'#8a8f98',fill:false,
+    bg(c,W,H){c.fillStyle='#fbf9f2';c.fillRect(0,0,W,H);const r=rng(11);for(let i=0;i<W*H/120;i++){c.fillStyle=`rgba(0,0,0,${r()*.025})`;c.fillRect(r()*W,r()*H,1.5,1.5)}}},
+  blueprint:{name:'Bản vẽ kỹ thuật',use:'Công nghệ, kỹ thuật, startup',mvp:false,ink:'#eaf3ff',accent:'#ffe28a',accent2:'#9fd1ff',w:2.2,noise:0,passes:[[0,0,1,1]],tool:'pen',toolColor:'#dfe8f5',font:'JetBrains Mono',sleeve:'#2b2f3a',fill:false,
+    bg(c,W,H){c.fillStyle='#1d4e8f';c.fillRect(0,0,W,H);const s=W/40;for(let x=0;x<W;x+=s){c.strokeStyle=Math.round(x/s)%5?'rgba(255,255,255,.08)':'rgba(255,255,255,.18)';c.lineWidth=1;c.beginPath();c.moveTo(x,0);c.lineTo(x,H);c.stroke()}for(let y=0;y<H;y+=s){c.strokeStyle=Math.round(y/s)%5?'rgba(255,255,255,.08)':'rgba(255,255,255,.18)';c.beginPath();c.moveTo(0,y);c.lineTo(W,y);c.stroke()}}},
+  ink:{name:'Mực tàu',use:'Triết lý, lịch sử, Phật học',mvp:false,ink:'#141414',accent:'#141414',accent2:'#141414',w:5,noise:.6,brush:true,passes:[[0,0,1,1]],tool:'brush',toolColor:'#7b5a2e',font:'Pangolin',sleeve:'#d9d2c0',fill:false,
+    bg(c,W,H){c.fillStyle='#f2ecdf';c.fillRect(0,0,W,H);const r=rng(5);for(let i=0;i<350;i++){c.strokeStyle=`rgba(120,100,60,${r()*.1})`;c.lineWidth=.8;const x=r()*W,y=r()*H;c.beginPath();c.moveTo(x,y);c.quadraticCurveTo(x+r()*20,y+r()*20,x+r()*40-20,y+r()*40-20);c.stroke()}},
+    finale(c,W,H,p){if(p<=0)return;const s=W/14;c.save();c.globalAlpha=Math.min(1,p);c.fillStyle='#b3261e';c.fillRect(W-s*1.4,H-s*1.5,s,s);c.fillStyle='#f2ecdf';c.font=`${s*.42}px Pangolin`;c.textAlign='center';c.fillText('NÉT',W-s*.9,H-s*1.05);c.fillText('VẼ',W-s*.9,H-s*.62);c.restore()}}
+};
+const ORDER=['whiteboard','chalk','oly','kraft','pencil','blueprint','ink'];
+
+/* ---------- geometry ---------- */
+function sampleLine(a,b,step=6){const d=Math.hypot(b[0]-a[0],b[1]-a[1]),n=Math.max(2,Math.ceil(d/step)),o=[];for(let i=0;i<=n;i++)o.push([a[0]+(b[0]-a[0])*i/n,a[1]+(b[1]-a[1])*i/n]);return o}
+function poly(pts,closed){const o=[];const P=closed?[...pts,pts[0]]:pts;for(let i=0;i<P.length-1;i++){const s=sampleLine(P[i],P[i+1]);if(i)s.shift();o.push(...s)}return o}
+function circle(cx,cy,r){const o=[],n=48;for(let i=0;i<=n+3;i++){const a=-Math.PI/2+i/n*Math.PI*2;o.push([cx+Math.cos(a)*r,cy+Math.sin(a)*r])}return o}
+function arrow(a,b){const ang=Math.atan2(b[1]-a[1],b[0]-a[0]),h=16;return[...sampleLine(a,b),...sampleLine(b,[b[0]-h*Math.cos(ang-.5),b[1]-h*Math.sin(ang-.5)]),...sampleLine([b[0]-h*Math.cos(ang-.5),b[1]-h*Math.sin(ang-.5)],b),...sampleLine(b,[b[0]-h*Math.cos(ang+.5),b[1]-h*Math.sin(ang+.5)])]}
+function curve(a,b){const o=[];for(let i=0;i<=40;i++){const u=i/40;o.push([a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*Math.pow(u,2.6)])}return o}
+
+/* ---------- scene (one script, two ratios) ---------- */
+function buildScene(W,H,c){
+  const P=H>W, S=P?W/540:W/960, items=[];
+  let t=0;
+  const add=(it,dur,gap=.15)=>{it.start=t;it.dur=dur;t+=dur+gap;items.push(it);return it};
+  const text=(str,x,y,size,role='ink',align='left')=>({type:'text',str,x,y,size:size*S,role,align});
+  const path=(pts,role='ink',fill=null)=>({type:'path',pts,role,fill});
+  // layout
+  const L=P?{tx:40,ty:110,ts:42,coin:[150,270],r:58,ar:[[150,350],[150,440]],x0:60,yb:840,x1:500,yt:490}
+           :{tx:60,ty:84,ts:46,coin:[150,270],r:58,ar:[[225,270],[335,270]],x0:385,yb:455,x1:910,yt:150};
+  const k=v=>v*S;
+  add(text('Sức mạnh lãi kép',k(L.tx),k(L.ty),L.ts),1.6);
+  c.font=`${L.ts*S}px Pangolin`;const tw=c.measureText('Sức mạnh lãi kép').width;
+  add(path(poly([[k(L.tx),k(L.ty+16)],[k(L.tx)+tw*.5,k(L.ty+20)],[k(L.tx)+tw,k(L.ty+14)]]),'accent'),.5);
+  add(path(circle(k(L.coin[0]),k(L.coin[1]),k(L.r)),'ink',0),1);
+  add(text('10tr',k(L.coin[0]),k(L.coin[1]+11),30,'ink','center'),.6);
+  add(path(arrow(L.ar[0].map(k),L.ar[1].map(k)),'accent2'),.6);
+  add(path(poly([[k(L.x0),k(L.yt)],[k(L.x0),k(L.yb)],[k(L.x1),k(L.yb)]])),1);
+  const vals=[21.6,46.6,100.6],lab=['10 năm','20 năm','30 năm'],cw=L.x1-L.x0,maxH=(L.yb-L.yt)*.82,tops=[];
+  vals.forEach((v,i)=>{const bx=L.x0+cw*(.1+i*.3),bw=cw*.17,h=maxH*v/100.6,cx=bx+bw/2;
+    tops.push([cx,L.yb-h]);
+    add(path(poly([[k(bx),k(L.yb)],[k(bx),k(L.yb-h)],[k(bx+bw),k(L.yb-h)],[k(bx+bw),k(L.yb)]]),'ink',i+1),.6,.05);
+    add(text(lab[i],k(cx),k(L.yb+30),20,'ink','center'),.35,.05);
+    add(text(String(v).replace('.',',')+'tr',k(cx),k(L.yb-h-12),22,i===2?'accent':'ink','center'),.35);
+  });
+  add(path(curve([k(L.x0+8),k(L.yb-10)],[k(tops[2][0]),k(tops[2][1]-40)]),'accent'),1.2);
+  add(path(circle(k(tops[2][0]),k(tops[2][1]-20),k(46)),'accent'),.7);
+  const end=t;
+  const subs=[[0,2.3,'Gửi 10 triệu, lãi suất 8% mỗi năm.'],[2.3,5.9,'Tiền lãi lại sinh ra lãi. Đó là lãi kép.'],[5.9,9.6,'Sau 10 năm có 21,6 triệu. Sau 20 năm: 46,6 triệu.'],[9.6,end+2,'Sau 30 năm: hơn 100 triệu, gấp 10 lần số vốn.']];
+  return {items,end,total:end+1.6,subs,S};
+}
+
+/* prepare per-style strokes (noise, passes) */
+function prepare(scene,st,c){
+  scene.items.forEach((it,idx)=>{
+    if(it.type==='text'){c.font=`${it.size}px ${st.font}`;it.w=c.measureText(it.str).width;it.x0=it.align==='center'?it.x-it.w/2:it.x;return}
+    const r=rng(idx*97+13);
+    it.passes=st.passes.map(([dx,dy,a,wm])=>({a,wm,pts:it.pts.map(p=>[p[0]+dx+(r()-.5)*2*st.noise,p[1]+dy+(r()-.5)*2*st.noise])}));
+    let L=0;it.cum=[0];for(let i=1;i<it.pts.length;i++){L+=Math.hypot(it.pts[i][0]-it.pts[i-1][0],it.pts[i][1]-it.pts[i-1][1]);it.cum.push(L)}it.len=L;
+  });
+}
+function idxAt(it,p){const target=it.len*p;let i=1;while(i<it.cum.length&&it.cum[i]<target)i++;return Math.min(i,it.pts.length-1)}
+function pointAt(it,p){
+  if(it.type==='text')return[it.x0+it.w*p,it.y-it.size*.3+Math.sin(p*it.w*.22)*it.size*.22];
+  const i=idxAt(it,p),a=it.pts[i-1],b=it.pts[i],seg=(it.cum[i]-it.cum[i-1])||1,u=Math.max(0,Math.min(1,(it.len*p-it.cum[i-1])/seg));
+  return[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u];
+}
+const col=(st,role)=>role==='accent'?st.accent:role==='accent2'?st.accent2:st.ink;
+const clamp=v=>Math.max(0,Math.min(1,v));
+
+/* ---------- render frame t (pure function of t: same on browser and server) ---------- */
+function render(c,W,H,scene,st,t,showHand=true){
+  c.save();st.bg(c,W,H);
+  const S=scene.S;
+  // fills under strokes
+  if(st.fill)scene.items.forEach(it=>{if(it.type!=='path'||it.fill==null)return;const a=clamp((t-it.start-it.dur)/.45);if(!a)return;
+    c.globalAlpha=a*.9;c.fillStyle=st.fills[it.fill%st.fills.length];c.beginPath();it.pts.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.closePath();c.fill();c.globalAlpha=1});
+  c.lineCap='round';c.lineJoin='round';
+  let hand=null;
+  for(const it of scene.items){
+    const p=clamp((t-it.start)/it.dur);if(!p)continue;
+    if(p<1)hand=pointAt(it,p);
+    const color=col(st,it.role);
+    if(it.type==='text'){
+      c.save();c.beginPath();c.rect(it.x0-4,it.y-it.size*1.1,it.w*p+4,it.size*1.5);c.clip();
+      c.font=`${it.size}px ${st.font}`;c.textAlign='left';c.fillStyle=color;
+      if(st.passes.length>1){st.passes.forEach(([dx,dy,a])=>{c.globalAlpha=a;c.fillText(it.str,it.x0+dx*.6,it.y+dy*.6)})}else c.fillText(it.str,it.x0,it.y);
+      c.restore();c.globalAlpha=1;continue;
+    }
+    const n=idxAt(it,p),tip=pointAt(it,p);
+    for(const ps of it.passes){
+      c.strokeStyle=color;c.globalAlpha=ps.a;
+      if(st.brush){for(let i=1;i<=n;i++){const u=it.cum[i]/it.len;c.lineWidth=st.w*S*ps.wm*(.45+1.1*Math.sin(Math.PI*Math.min(1,u))**.7);c.beginPath();c.moveTo(ps.pts[i-1][0],ps.pts[i-1][1]);c.lineTo(i===n?tip[0]:ps.pts[i][0],i===n?tip[1]:ps.pts[i][1]);c.stroke()}}
+      else{c.lineWidth=st.w*S*ps.wm;c.beginPath();c.moveTo(ps.pts[0][0],ps.pts[0][1]);for(let i=1;i<n;i++)c.lineTo(ps.pts[i][0],ps.pts[i][1]);c.lineTo(tip[0],tip[1]);c.stroke()}
+    }
+    c.globalAlpha=1;
+  }
+  if(st.finale)st.finale(c,W,H,(t-scene.end)/.6);
+  // hand between strokes
+  if(!hand){
+    const next=scene.items.find(it=>it.start>t),prev=[...scene.items].reverse().find(it=>it.start+it.dur<=t);
+    if(next&&prev){const a=pointAt(prev,1),b=pointAt(next,0),u=clamp((t-prev.start-prev.dur)/Math.max(.01,next.start-prev.start-prev.dur));hand=[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u]}
+    else if(next)hand=pointAt(next,0);
+    else if(prev){const a=pointAt(prev,1),u=clamp((t-scene.end)/.8);hand=[a[0]+(W*1.1-a[0])*u*u,a[1]+(H*1.2-a[1])*u*u]}
+  }
+  if(hand&&showHand)drawHand(c,hand[0],hand[1],st,S*(H>W?1.15:1));
+  c.restore();
+}
+
+function drawHand(c,x,y,st,s){
+  c.save();c.translate(x,y);c.scale(s,s);
+  const ang=0.75; // pen leans toward bottom-right
+  c.rotate(ang);
+  const len=st.tool==='chalk'?46:st.tool==='brush'?120:100;
+  // shadow
+  c.fillStyle='rgba(0,0,0,.16)';c.beginPath();c.ellipse(len*.75+14,22,46,30,0,0,7);c.fill();
+  // tool
+  if(st.tool==='pencil'){c.fillStyle='#f2c230';c.fillRect(14,-6,len,12);c.fillStyle='#e8b98a';c.beginPath();c.moveTo(0,0);c.lineTo(16,-6);c.lineTo(16,6);c.fill();c.fillStyle='#333';c.beginPath();c.moveTo(0,0);c.lineTo(5,-2);c.lineTo(5,2);c.fill();c.fillStyle='#e48aa0';c.fillRect(len+14,-6,14,12)}
+  else if(st.tool==='chalk'){c.fillStyle=st.toolColor;c.beginPath();c.roundRect(0,-6,len,12,4);c.fill()}
+  else if(st.tool==='brush'){c.fillStyle='#111';c.beginPath();c.moveTo(0,0);c.quadraticCurveTo(10,-7,24,-5);c.lineTo(24,5);c.quadraticCurveTo(10,7,0,0);c.fill();c.fillStyle=st.toolColor;c.fillRect(24,-4,len,8)}
+  else{const body=st.tool==='marker'?14:9;c.fillStyle='#555';c.beginPath();c.moveTo(0,0);c.lineTo(14,-body/2);c.lineTo(14,body/2);c.fill();c.fillStyle=st.toolColor==='#1d1d1f'?'#e9e9ec':st.toolColor;c.fillRect(14,-body/2,len,body);c.fillStyle=st.toolColor;c.fillRect(14,-body/2,22,body)}
+  // fist
+  c.translate(len*.62,8);
+  c.fillStyle='#f0c6a3';c.strokeStyle='#9a6a4a';c.lineWidth=1.6;
+  c.beginPath();c.ellipse(18,8,40,28,-.1,0,7);c.fill();c.stroke();
+  for(let i=0;i<3;i++){c.beginPath();c.ellipse(-8+i*14,-14+i*2,9,13,.2,0,7);c.fill();c.stroke()}
+  c.beginPath();c.ellipse(-16,4,14,9,-.6,0,7);c.fill();c.stroke(); // thumb
+  // sleeve
+  c.fillStyle=st.sleeve;c.strokeStyle='rgba(0,0,0,.25)';c.beginPath();c.moveTo(42,-14);c.lineTo(220,-30);c.lineTo(230,62);c.lineTo(46,34);c.closePath();c.fill();c.stroke();
+  c.restore();
+}
+
+/* ---------- main player ---------- */
+const cv=document.getElementById('main'),ctx=cv.getContext('2d');
+const sub=document.getElementById('sub'),seek=document.getElementById('seek'),timeEl=document.getElementById('time'),playBtn=document.getElementById('play');
+let styleKey='whiteboard',portrait=false,scene,t=0,playing=!reduce,last=0;
+function setup(){
+  const W=portrait?540:960,H=portrait?960:540,dpr=Math.min(2,devicePixelRatio||1);
+  cv.width=W*dpr;cv.height=H*dpr;cv.classList.toggle('portrait',portrait);ctx.setTransform(dpr,0,0,dpr,0,0);
+  scene=buildScene(W,H,ctx);prepare(scene,STYLES[styleKey],ctx);cv._W=W;cv._H=H;
+}
+function draw(){render(ctx,cv._W,cv._H,scene,STYLES[styleKey],t);const s=scene.subs.find(x=>t>=x[0]&&t<x[1]);sub.textContent=s?s[2]:'';seek.value=Math.round(t/scene.total*1000);timeEl.textContent=t.toFixed(1)+'s / '+scene.total.toFixed(1)+'s'}
+function loop(ts){if(playing){const dt=last?(ts-last)/1000:0;t+=dt;if(t>=scene.total){t=scene.total;playing=false;playBtn.textContent='Phát';playBtn.classList.remove('on')}}last=ts;draw();requestAnimationFrame(loop)}
+playBtn.onclick=()=>{if(!playing&&t>=scene.total)t=0;playing=!playing;playBtn.textContent=playing?'Tạm dừng':'Phát';playBtn.classList.toggle('on',playing)};
+document.getElementById('replay').onclick=()=>{t=0;playing=true;playBtn.textContent='Tạm dừng';playBtn.classList.add('on')};
+seek.oninput=()=>{t=seek.value/1000*scene.total;playing=false;playBtn.textContent='Phát';playBtn.classList.remove('on')};
+const chipsEl=document.getElementById('styleChips');
+function setStyle(k,restart=true){styleKey=k;[...chipsEl.children].forEach(b=>b.classList.toggle('on',b.dataset.k===k));setup();if(restart){t=0;playing=true;playBtn.textContent='Tạm dừng';playBtn.classList.add('on')}}
+ORDER.forEach(k=>{const b=document.createElement('button');b.textContent=STYLES[k].name;b.dataset.k=k;b.onclick=()=>setStyle(k);chipsEl.appendChild(b)});
+const r169=document.getElementById('r169'),r916=document.getElementById('r916');
+r169.onclick=()=>{portrait=false;r169.classList.add('on');r916.classList.remove('on');setStyle(styleKey)};
+r916.onclick=()=>{portrait=true;r916.classList.add('on');r169.classList.remove('on');setStyle(styleKey)};
+
+/* ---------- gallery thumbnails (final frame) ---------- */
+function gallery(){
+  const g=document.getElementById('gallery');g.innerHTML='';
+  ORDER.forEach(k=>{const st=STYLES[k];const card=document.createElement('button');card.className='style-card';card.type='button';
+    const c=document.createElement('canvas');c.width=480;c.height=270;const x=c.getContext('2d');x.scale(.5,.5);
+    const sc=buildScene(960,540,x);prepare(sc,st,x);render(x,960,540,sc,st,sc.total,false);
+    card.innerHTML=`<div class="meta"><b>${st.name}</b><span class="tag ${st.mvp?'mvp':'later'}">${st.mvp?'MVP':'Giai đoạn 2'}</span></div><small>${st.use}</small>`;
+    card.prepend(c);card.onclick=()=>{setStyle(k);document.querySelector('.hero').scrollIntoView({behavior:reduce?'auto':'smooth'})};g.appendChild(card)});
+}
+
+function start(){
+  setStyle('whiteboard',false);
+  // first still frame is complete; animation starts shortly after
+  t=scene.total;draw();
+  if(!reduce)setTimeout(()=>{t=0;playing=true},900); else{playing=false;playBtn.textContent='Phát';playBtn.classList.remove('on')}
+  gallery();requestAnimationFrame(loop);
+}
+const fontsReady=Promise.all([document.fonts.load('40px Pangolin'),document.fonts.load('20px "JetBrains Mono"')]).catch(()=>{});
+Promise.race([fontsReady,new Promise(r=>setTimeout(r,1500))]).then(start);
+
+/* ---------- cost calculator ---------- */
+const USD=26000;
+const U={render:0.0015,renderFreeMin:3000,charsPerMin:900,
+  voice:{piper:{perMin:0.0004,freeChars:0},google:{perM:16,freeChars:1e6},premium:{perMin:0.18,freeChars:0}},
+  img:0.004,llm:0.002,storagePerMin:0.0003,fixed:2};
+const $=id=>document.getElementById(id);
+const fmt=v=>v>=1e6?(v/1e6).toFixed(1).replace('.',',')+' tr':Math.round(v/1000)+'k';
+function calc(){
+  const paid=+$('c-paid').value||0,free=+$('c-free').value||0,vid=+$('c-vid').value||0,len=+$('c-len').value||0,imgs=+$('c-img').value||0,price=+$('c-price').value||0,voice=$('c-voice').value;
+  const paidMin=paid*vid*len,freeMin=free*3*1,totalMin=paidMin+freeMin;
+  const rows=[];
+  rows.push(['Render (Cloud Run)',Math.max(0,totalMin-U.renderFreeMin)*U.render]);
+  let tts=freeMin*U.voice.piper.perMin;
+  if(voice==='piper')tts+=paidMin*U.voice.piper.perMin;
+  else if(voice==='google')tts+=Math.max(0,paidMin*U.charsPerMin-U.voice.google.freeChars)/1e6*U.voice.google.perM;
+  else tts+=paidMin*U.voice.premium.perMin;
+  rows.push(['Giọng đọc (TTS)',tts]);
+  rows.push(['Ảnh AI',paid*vid*imgs*U.img]);
+  rows.push(['LLM kịch bản',(paid*vid+free*3)*U.llm]);
+  rows.push(['Lưu trữ R2',Math.max(0,totalMin*0.02-10)*0.015]);
+  rows.push(['Tên miền, email…',U.fixed]);
+  const cost=rows.reduce((a,r)=>a+r[1],0)*USD,rev=paid*price,margin=rev?((rev-cost)/rev*100):0;
+  $('k-cost').textContent=fmt(cost)+'đ';$('k-rev').textContent=fmt(rev)+'đ';
+  const m=$('k-margin');m.textContent=rev?margin.toFixed(0)+'%':'–';m.style.color=margin>=70?'var(--good)':margin>=40?'var(--warn)':'var(--bad)';
+  const max=Math.max(...rows.map(r=>r[1]),0.0001);
+  $('bars').innerHTML=rows.map(r=>`<div class="bar"><span>${r[0]}</span><i style="width:${(r[1]/max*100).toFixed(1)}%"></i><span class="v">${fmt(r[1]*USD)}đ</span></div>`).join('');
+  $('k-unit').textContent=`Tổng ${Math.round(totalMin).toLocaleString('vi-VN')} phút video/tháng. Chi phí trung bình ${Math.round(cost/Math.max(1,totalMin)).toLocaleString('vi-VN')}đ mỗi phút, mỗi người trả phí tốn ${paid?Math.round(cost/paid).toLocaleString('vi-VN'):0}đ/tháng (đã gánh cả người dùng free).`;
+}
+['c-paid','c-free','c-vid','c-len','c-img','c-price','c-voice'].forEach(id=>$(id).addEventListener('input',calc));
+calc();
+})();
+</script>
