@@ -14,10 +14,24 @@ export interface PanelSpec {
   line?: number;
 }
 
+export interface DiagramSpec {
+  kind: 'bars' | 'compare' | 'steps' | 'number' | 'statement';
+  /** Handwritten heading above the diagram. */
+  title?: string;
+  values?: number[]; labels?: string[]; unit?: string; // bars
+  left?: string; right?: string; leftNote?: string; rightNote?: string; // compare (✗ left, ✓ right)
+  items?: string[]; // steps
+  number?: string; caption?: string; // number
+  text?: string; // statement
+}
+
 export interface SceneSpec {
   /** Narration, one subtitle line each. */
   lines: string[];
+  /** Line-art images revealed by the pen. Empty when the scene is a diagram. */
   panels: PanelSpec[];
+  /** Drawn stroke by stroke instead of images. */
+  diagram?: DiagramSpec;
 }
 
 export interface ProjectSpec {

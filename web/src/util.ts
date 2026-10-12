@@ -8,6 +8,7 @@ export interface Env {
   GEMINI_API_KEY?: string;
   OPENAI_TEXT_MODEL: string;
   OPENAI_IMAGE_MODEL: string;
+  OPENAI_IMAGE_QUALITY?: string;
   GEMINI_TEXT_MODEL: string;
   GEMINI_IMAGE_MODEL: string;
   DAILY_SCRIPTS: string;

@@ -7,6 +7,7 @@ export interface Style {
   sub: string; // subtitles
   channel: string;
   episode: string;
+  good: string; // tick marks in diagrams
   bg(c: Ctx, W: number, H: number): void;
 }
 
@@ -30,15 +31,15 @@ function fibers(c: Ctx, W: number, H: number, n: number, rgb: string, maxA: numb
 
 export const STYLES: Record<StyleKey, Style> = {
   notebook: {
-    name: 'Giấy kem kể chuyện', tool: 'marker', ink: '#2a2a2a', sub: '#3a2f8c', channel: '#5d5873', episode: '#c0392b',
+    name: 'Giấy kem kể chuyện', tool: 'marker', ink: '#2a2a2a', sub: '#3a2f8c', channel: '#5d5873', episode: '#c0392b', good: '#1f7a4c',
     bg(c, W, H) { c.fillStyle = '#f3eee2'; c.fillRect(0, 0, W, H); },
   },
   whiteboard: {
-    name: 'Bảng trắng', tool: 'marker', ink: '#1d1d1f', sub: '#1d1d1f', channel: '#555', episode: '#d62828',
+    name: 'Bảng trắng', tool: 'marker', ink: '#1d1d1f', sub: '#1d1d1f', channel: '#555', episode: '#d62828', good: '#1f7a4c',
     bg(c, W, H) { c.fillStyle = '#fbfbf8'; c.fillRect(0, 0, W, H); },
   },
   chalkboard: {
-    name: 'Bảng phấn', tool: 'chalk', ink: '#f1f1e8', sub: '#f7d154', channel: '#cfd8cf', episode: '#f7d154',
+    name: 'Bảng phấn', tool: 'chalk', ink: '#f1f1e8', sub: '#f7d154', channel: '#cfd8cf', episode: '#f7d154', good: '#9be7a6',
     bg(c, W, H) {
       c.fillStyle = '#24402f'; c.fillRect(0, 0, W, H);
       const r = rng(7);
@@ -46,11 +47,11 @@ export const STYLES: Record<StyleKey, Style> = {
     },
   },
   kraft: {
-    name: 'Giấy kraft', tool: 'colormarker', ink: '#2b1d10', sub: '#2b1d10', channel: '#4a3520', episode: '#b8321f',
+    name: 'Giấy kraft', tool: 'colormarker', ink: '#2b1d10', sub: '#2b1d10', channel: '#4a3520', episode: '#b8321f', good: '#2f6b3a',
     bg(c, W, H) { c.fillStyle = '#c9a77c'; c.fillRect(0, 0, W, H); fibers(c, W, H, 600, '90,60,30', 0.12, 3); },
   },
   oly: {
-    name: 'Vở ô ly', tool: 'fountain', ink: '#3a2aa8', sub: '#3a2aa8', channel: '#6b64a8', episode: '#d62828',
+    name: 'Vở ô ly', tool: 'fountain', ink: '#3a2aa8', sub: '#3a2aa8', channel: '#6b64a8', episode: '#d62828', good: '#1b7f4e',
     bg(c, W, H) {
       c.fillStyle = '#ffffff'; c.fillRect(0, 0, W, H);
       const s = W / 27;
@@ -64,14 +65,14 @@ export const STYLES: Record<StyleKey, Style> = {
     },
   },
   blueprint: {
-    name: 'Bản vẽ kỹ thuật', tool: 'technical', ink: '#eaf3ff', sub: '#ffe28a', channel: '#bcd3f0', episode: '#ffe28a',
+    name: 'Bản vẽ kỹ thuật', tool: 'technical', ink: '#eaf3ff', sub: '#ffe28a', channel: '#bcd3f0', episode: '#ffe28a', good: '#a6f0b6',
     bg(c, W, H) {
       c.fillStyle = '#1d4e8f'; c.fillRect(0, 0, W, H);
       grid(c, W, H, W / 27, (i) => (i % 5 ? 'rgba(255,255,255,.08)' : 'rgba(255,255,255,.18)'));
     },
   },
   ricepaper: {
-    name: 'Giấy dó mực tàu', tool: 'brush', ink: '#141414', sub: '#141414', channel: '#5a5040', episode: '#b3261e',
+    name: 'Giấy dó mực tàu', tool: 'brush', ink: '#141414', sub: '#141414', channel: '#5a5040', episode: '#b3261e', good: '#2f5d3a',
     bg(c, W, H) { c.fillStyle = '#f2ecdf'; c.fillRect(0, 0, W, H); fibers(c, W, H, 400, '120,100,60', 0.1, 5); },
   },
 };

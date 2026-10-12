@@ -92,10 +92,10 @@ async function userRoutes(req: Request, env: Env, user: User, path: string, meth
     if (provider === 'mock') raw = sampleScript(topic);
     else {
       await useQuota(env, user.id, 'script', limits(env).script);
-      try { raw = await writeScript(env, provider, { topic, seconds, tone: String(b.tone || '').slice(0, 200), ratio: b.ratio }); }
+      try { raw = await writeScript(env, provider, { topic, seconds, tone: String(b.tone || '').slice(0, 200), ratio: b.ratio, visual: ['images', 'diagram'].includes(b.visual) ? b.visual : 'mix' }); }
       catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
     }
-    const spec = cleanSpec({ ...raw, ratio: b.ratio, style: b.style, tool: b.tool, channel: b.channel, episode: b.episode, voice: { provider: 'everai', voiceId: b.voiceId, speed: Number(b.speed) || 1 } }, user.id);
+    const spec = cleanSpec({ ...raw, visual: b.visual, ratio: b.ratio, style: b.style, tool: b.tool, channel: b.channel, episode: b.episode, voice: { provider: 'everai', voiceId: b.voiceId, speed: Number(b.speed) || 1 } }, user.id);
     const id = randomId(12), now = Date.now();
     await env.DB.prepare('INSERT INTO projects (id, user_id, title, spec, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(id, user.id, spec.title, JSON.stringify(spec), now, now).run();
@@ -232,10 +232,14 @@ async function runner(req: Request, env: Env, sub: string): Promise<Response> {
 function sampleScript(topic: string) {
   return {
     title: topic.slice(0, 60),
+    caption: 'Bạn đang ở bước nào trong 3 bước này? Bình luận một con số nhé.',
+    hashtags: ['#thoiquen', '#phattrienbanthan', '#taichinhcanhan'],
     scenes: [
-      { lines: ['Bạn có bao giờ tự hỏi vì sao mình bận mà vẫn chưa tiến?', 'Câu trả lời nằm ở thói quen nhỏ.'], panels: [{ prompt: 'a busy person running in circles' }, { prompt: 'a small habit growing like a plant' }] },
-      { lines: ['Mỗi ngày dành mười lăm phút cho việc quan trọng nhất.'], panels: [{ prompt: 'a person focused at a desk with a clock' }] },
-      { lines: ['Sau một năm, bạn sẽ thấy mình khác hẳn.', 'Bắt đầu từ hôm nay nhé.'], panels: [{ prompt: 'a person climbing stairs toward the sun' }, { prompt: 'a calm person meditating' }] },
+      { lines: ['Bạn bận rộn cả ngày mà cuối năm vẫn đứng yên?', 'Điều thứ ba sẽ khiến bạn bất ngờ.'], panels: [{ prompt: 'a busy person running in circles' }] },
+      { lines: ['Mỗi ngày tốt hơn một phần trăm, sau một năm bạn giỏi gấp ba mươi bảy lần.'], diagram: { kind: 'number', number: '37 lần', caption: 'tốt hơn 1% mỗi ngày trong 1 năm' } },
+      { lines: ['Người làm theo cảm hứng và người làm theo thói quen khác nhau thế nào?'], diagram: { kind: 'compare', title: 'Hai kiểu người', left: 'Cảm hứng', right: 'Thói quen', leftNote: 'Làm vài hôm rồi bỏ', rightNote: 'Đều đặn dù không hứng' } },
+      { lines: ['Bắt đầu bằng ba bước.'], diagram: { kind: 'steps', title: '3 bước nhỏ', items: ['Chọn một việc 15 phút', 'Gắn vào việc có sẵn', 'Đánh dấu mỗi ngày'] } },
+      { lines: ['Lưu video này lại, tối nay làm bước một nhé.'], diagram: { kind: 'statement', text: 'Nhỏ nhưng đều thắng lớn nhưng bỏ dở' } },
     ],
   };
 }

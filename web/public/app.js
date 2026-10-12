@@ -121,6 +121,7 @@ async function showHome() {
     channel: h('input', { id: 'f-channel', maxlength: 40, placeholder: 'Tên kênh (hiện góc trái)' }),
     episode: h('input', { id: 'f-episode', maxlength: 30, placeholder: 'Ví dụ: Tập 1' }),
     tone: h('input', { id: 'f-tone', maxlength: 200, placeholder: 'Ví dụ: gần gũi, hài hước nhẹ' }),
+    visual: h('select', { id: 'f-visual' }, options([['mix', 'Kết hợp tranh AI + sơ đồ vẽ tay'], ['images', 'Tranh AI cho mọi cảnh'], ['diagram', 'Sơ đồ vẽ tay (không tốn tiền vẽ ảnh)']], 'mix')),
   };
   const go = h('button', { type: 'submit' }, 'Viết kịch bản');
   const form = h('form', { class: 'card', onsubmit: async (e) => {
@@ -128,7 +129,8 @@ async function showHome() {
     try {
       const r = await api('/api/projects/generate', { method: 'POST', body: {
         topic: f.topic.value, provider: f.ai.value, seconds: Number(f.seconds.value), ratio: f.ratio.value, style: f.style.value,
-        voiceId: f.voice.value, channel: f.channel.value, episode: f.episode.value, tone: f.tone.value } });
+        voiceId: f.voice.value, channel: f.channel.value, episode: f.episode.value, tone: f.tone.value, visual: f.visual.value } });
+      try { sessionStorage.setItem('autodraw:' + r.id, '1'); } catch {}
       location.hash = '#/p/' + r.id;
     } catch (err) { toast(err.message); go.disabled = false; go.textContent = 'Viết kịch bản'; }
   } },
@@ -136,7 +138,7 @@ async function showHome() {
     h('label', { for: 'f-topic' }, 'Chủ đề hoặc kịch bản có sẵn', f.topic),
     h('div', { class: 'grid' },
       h('label', {}, 'AI viết kịch bản', f.ai), h('label', {}, 'Thời lượng', f.seconds), h('label', {}, 'Khung hình', f.ratio),
-      h('label', {}, 'Phong cách', f.style), h('label', {}, 'Giọng đọc', f.voice), h('label', {}, 'Giọng văn', f.tone),
+      h('label', {}, 'Kiểu hình', f.visual), h('label', {}, 'Phong cách', f.style), h('label', {}, 'Giọng đọc', f.voice), h('label', {}, 'Giọng văn', f.tone),
       h('label', {}, 'Tên kênh', f.channel), h('label', {}, 'Số tập', f.episode)),
     h('div', { class: 'row' }, go,
       h('span', { class: 'muted' }, `Hôm nay còn ${Math.max(0, lim.script - (used.script || 0))} lượt viết kịch bản, ${Math.max(0, lim.render - (used.render || 0))} lượt dựng video.`)));
@@ -196,34 +198,88 @@ async function showEditor(id) {
       h('label', {}, 'Số tập', h('input', { value: spec.episode || '', maxlength: 30, oninput: (e) => { spec.episode = e.target.value; changed(); } }))));
 
   const scenesBox = h('div', { class: 'scenes' });
+  const DIAGRAM_KINDS = [['statement', 'Câu chốt'], ['number', 'Con số nổi bật'], ['bars', 'Biểu đồ cột'], ['compare', 'So sánh ✗ / ✓'], ['steps', 'Các bước']];
+  const field = (label, value, onInput, opts = {}) => h('label', {}, label, h(opts.area ? 'textarea' : 'input', { value: value ?? '', maxlength: opts.max || 80, rows: opts.area ? 3 : undefined, oninput: (e) => onInput(e.target.value) }));
+  function diagramEditor(sc) {
+    const d = sc.diagram, set = (k, v) => { d[k] = v; changed(); };
+    const list = (v) => v.split(',').map((x) => x.trim()).filter(Boolean);
+    const kind = h('select', { onchange: (e) => { d.kind = e.target.value; drawScenes(); changed(); } }, options(DIAGRAM_KINDS, d.kind));
+    const fields = {
+      statement: [field('Câu chốt (viết tay)', d.text, (v) => set('text', v), { max: 140, area: true })],
+      number: [field('Con số', d.number, (v) => set('number', v), { max: 10 }), field('Chú thích', d.caption, (v) => set('caption', v))],
+      bars: [field('Các giá trị (cách nhau bởi dấu phẩy)', (d.values || []).join(', '), (v) => set('values', list(v).map(Number).filter((n) => isFinite(n)))),
+        field('Nhãn từng cột (cách nhau bởi dấu phẩy)', (d.labels || []).join(', '), (v) => set('labels', list(v))), field('Đơn vị', d.unit, (v) => set('unit', v), { max: 6 })],
+      compare: [field('Bên trái (cách sai)', d.left, (v) => set('left', v), { max: 24 }), field('Ghi chú trái', d.leftNote, (v) => set('leftNote', v)),
+        field('Bên phải (cách đúng)', d.right, (v) => set('right', v), { max: 24 }), field('Ghi chú phải', d.rightNote, (v) => set('rightNote', v))],
+      steps: [field('Các bước (mỗi dòng một bước)', (d.items || []).join('\n'), (v) => set('items', v.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 4)), { area: true, max: 300 })],
+    }[d.kind] || [];
+    return h('div', { class: 'panel' }, h('span', { class: 'tag' }, 'Sơ đồ vẽ tay (bàn tay vẽ từng nét)'),
+      h('div', { class: 'grid' }, h('label', {}, 'Kiểu sơ đồ', kind), field('Tiêu đề (không bắt buộc)', d.title, (v) => set('title', v), { max: 60 })), ...fields);
+  }
+  const panelImgs = new Map();
+  async function drawPanel(si, pi, btn) {
+    const p = spec.scenes[si].panels[pi];
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang vẽ…'; }
+    try {
+      await save.flush();
+      const r = await api(`/api/projects/${id}/image`, { method: 'POST', body: { scene: si, panel: pi, provider: imgProvider.value } });
+      p.image = r.image; const img = panelImgs.get(`${si}:${pi}`); if (img) img.src = imageUrl(p.image); refresh();
+      return true;
+    } catch (e) { toast(e.message); return false; }
+    finally { if (btn) { btn.disabled = false; btn.textContent = 'Vẽ lại bằng AI'; } }
+  }
+  const drawAllBtn = h('button', { type: 'button', class: 'ghost', onclick: () => drawAll() }, 'Vẽ tất cả bằng AI');
+  async function drawAll() {
+    const todo = [];
+    spec.scenes.forEach((sc, si) => sc.panels.forEach((p, pi) => { if (p.prompt && !p.image?.startsWith('r2:')) todo.push([si, pi]); }));
+    if (!todo.length) { toast('Mọi khung đã có tranh AI.'); return; }
+    drawAllBtn.disabled = true;
+    for (let i = 0; i < todo.length; i++) {
+      drawAllBtn.textContent = `Đang vẽ ${i + 1}/${todo.length}…`;
+      if (!(await drawPanel(...todo[i]))) break;
+    }
+    drawAllBtn.disabled = false; drawAllBtn.textContent = 'Vẽ tất cả bằng AI';
+    drawScenes();
+  }
   function drawScenes() {
+    panelImgs.clear();
     scenesBox.replaceChildren(...spec.scenes.map((sc, si) => h('div', { class: 'scene' },
       h('div', { class: 'row', style: 'justify-content:space-between' }, h('h3', {}, `Cảnh ${si + 1}`),
-        h('button', { type: 'button', class: 'ghost small', disabled: spec.scenes.length < 2, onclick: () => { spec.scenes.splice(si, 1); drawScenes(); changed(); } }, 'Xoá cảnh')),
+        h('div', { class: 'row' },
+          h('button', { type: 'button', class: 'ghost small', onclick: () => {
+            if (sc.diagram) { delete sc.diagram; sc.panels = [{ prompt: 'a simple illustration of: ' + (sc.lines[0] || ''), image: '' }]; }
+            else { sc.diagram = { kind: 'statement', text: sc.lines[sc.lines.length - 1] || '' }; sc.panels = []; }
+            drawScenes(); changed();
+          } }, sc.diagram ? 'Đổi sang tranh' : 'Đổi sang sơ đồ'),
+          h('button', { type: 'button', class: 'ghost small', disabled: spec.scenes.length < 2, onclick: () => { spec.scenes.splice(si, 1); drawScenes(); changed(); } }, 'Xoá cảnh'))),
       sc.lines.map((line, li) => h('label', {}, `Câu ${li + 1}`, h('textarea', { class: 'line', rows: 2, maxlength: 160, value: line,
         oninput: (e) => { sc.lines[li] = e.target.value; changed(); } }))),
-      h('div', { class: 'panels' }, sc.panels.map((p, pi) => {
-        const img = h('img', { src: imageUrl(p.image), alt: p.prompt || 'Hình minh hoạ' });
-        const btn = h('button', { type: 'button', class: 'small', onclick: async () => {
-          btn.disabled = true; btn.textContent = 'Đang vẽ…';
-          try {
-            await save.flush();
-            const r = await api(`/api/projects/${id}/image`, { method: 'POST', body: { scene: si, panel: pi, provider: imgProvider.value } });
-            p.image = r.image; img.src = imageUrl(p.image); refresh(); toast('Đã vẽ xong hình.');
-          } catch (e) { toast(e.message); }
-          btn.disabled = false; btn.textContent = 'Vẽ lại bằng AI';
-        } }, p.image?.startsWith('r2:') ? 'Vẽ lại bằng AI' : 'Vẽ bằng AI');
+      sc.diagram ? diagramEditor(sc) : h('div', { class: 'panels' }, sc.panels.map((p, pi) => {
+        const img = h('img', { src: imageUrl(p.image) || '/assets/doodles/PlantDoodle.svg', alt: p.prompt || 'Hình minh hoạ' });
+        panelImgs.set(`${si}:${pi}`, img);
+        const btn = h('button', { type: 'button', class: 'small', onclick: () => drawPanel(si, pi, btn) }, p.image?.startsWith('r2:') ? 'Vẽ lại bằng AI' : 'Vẽ bằng AI');
         return h('div', { class: 'panel' }, img,
-          h('span', { class: 'tag' }, p.image?.startsWith('r2:') ? 'Ảnh AI' : 'Hình mẫu tạm thời'),
+          h('span', { class: 'tag' }, p.image?.startsWith('r2:') ? 'Tranh AI' : 'Hình mẫu tạm thời'),
           h('label', {}, 'Mô tả hình (tiếng Anh cho AI vẽ)', h('textarea', { rows: 2, maxlength: 400, value: p.prompt,
             oninput: (e) => { p.prompt = e.target.value; save(); } })),
           btn);
       })))),
-      h('button', { type: 'button', class: 'ghost', onclick: () => {
-        spec.scenes.push({ lines: ['Câu thoại mới.'], panels: [{ prompt: 'a person thinking', image: '' }] }); drawScenes(); changed();
-      } }, '+ Thêm cảnh'));
+      h('div', { class: 'row' },
+        h('button', { type: 'button', class: 'ghost', onclick: () => {
+          spec.scenes.push({ lines: ['Câu thoại mới.'], panels: [], diagram: { kind: 'statement', text: 'Câu chốt' } }); drawScenes(); changed();
+        } }, '+ Thêm cảnh'),
+        drawAllBtn));
   }
   drawScenes();
+
+  const tags = () => [spec.caption, (spec.hashtags || []).join(' ')].filter(Boolean).join('\n\n');
+  const postCard = h('div', { class: 'card' }, h('h2', {}, 'Nội dung đăng bài'),
+    field('Caption', spec.caption, (v) => { spec.caption = v; save(); }, { area: true, max: 300 }),
+    field('Hashtag (cách nhau bởi dấu cách)', (spec.hashtags || []).join(' '), (v) => { spec.hashtags = v.split(/\s+/).filter(Boolean); save(); }, { max: 300 }),
+    h('button', { type: 'button', class: 'ghost small', onclick: async (e) => {
+      try { await navigator.clipboard.writeText(tags()); toast('Đã sao chép caption và hashtag.'); }
+      catch { toast('Trình duyệt chặn sao chép, hãy bôi đen rồi copy.'); }
+    } }, 'Sao chép caption + hashtag'));
 
   const jobsBox = h('div', { class: 'jobs' });
   const renderBtn = h('button', { type: 'button', onclick: async () => {
@@ -256,9 +312,12 @@ async function showEditor(id) {
     h('div', { class: 'card' }, h('h2', {}, 'Xuất video'), h('div', { class: 'row' }, renderBtn, imgProvider), jobsBox));
   playBtn.addEventListener('click', () => { if (!pv) return; pv.playing = !pv.playing; playBtn.textContent = pv.playing ? 'Tạm dừng' : 'Phát'; });
 
-  view.replaceChildren(h('a', { href: '#/' }, '← Tất cả video'), h('div', { class: 'editor' }, preview, h('div', { class: 'scenes' }, settings, scenesBox)));
+  view.replaceChildren(h('a', { href: '#/' }, '← Tất cả video'), h('div', { class: 'editor' }, preview, h('div', { class: 'scenes' }, settings, scenesBox, postCard)));
   await buildPreview(spec, canvas, playBtn);
   pollJobs();
+  let auto = false;
+  try { auto = sessionStorage.getItem('autodraw:' + id) === '1'; sessionStorage.removeItem('autodraw:' + id); } catch {}
+  if (auto && imgProvider.options.length) drawAll();
 }
 
 async function buildPreview(spec, canvas, playBtn) {

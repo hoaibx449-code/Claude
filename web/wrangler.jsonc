@@ -18,10 +18,11 @@
   ],
   "vars": {
     "DAILY_SCRIPTS": "20",
-    "DAILY_IMAGES": "30",
+    "DAILY_IMAGES": "60",
     "DAILY_RENDERS": "5",
     "OPENAI_TEXT_MODEL": "gpt-4o-mini",
     "OPENAI_IMAGE_MODEL": "gpt-image-1",
+    "OPENAI_IMAGE_QUALITY": "medium",
     "GEMINI_TEXT_MODEL": "gemini-2.5-flash",
     "GEMINI_IMAGE_MODEL": "gemini-2.5-flash-image"
   }

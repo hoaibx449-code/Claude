@@ -1,6 +1,7 @@
 import type { Ctx, Env, HandMeta, Img, ProjectSpec, Ratio, Timeline, ToolKind } from './types.ts';
 import { STYLES, type Style } from './styles.ts';
 import { drawTool } from './tools.ts';
+import { buildDiagram, drawElement, elementPen } from './diagram.ts';
 
 /** Logical canvas size; the output size is a multiple of it (dpr). */
 export function logicalSize(ratio: Ratio) {
@@ -75,6 +76,15 @@ export interface Model {
   mask: Map<string, any>;
   hand: HandAsset;
   env: Env;
+  /** What gets drawn in each scene, in order, with its time window. */
+  units: Unit[][];
+}
+
+export interface Unit { start: number; end: number; draw(c: Ctx, p: number, alpha: number): void; pen(p: number): [number, number] }
+
+/** Area a diagram may use (above the subtitles). */
+export function diagramBox(ratio: Ratio): Box {
+  return ratio === '9:16' ? { x: 40, y: 112, w: 460, h: 540 } : { x: 70, y: 72, w: 820, h: 350 };
 }
 
 export function prepare(opts: {
@@ -86,13 +96,35 @@ export function prepare(opts: {
   const bgc = env.createCanvas(W * dpr, H * dpr), b = bgc.getContext('2d');
   b.setTransform(dpr, 0, 0, dpr, 0, 0); style.bg(b, W, H);
   const panels = project.scenes.map((sc, si) => {
+    if (sc.diagram) return [];
     const boxes = panelBoxes(project.ratio, sc.panels.length);
     return sc.panels.map((_, k) => {
       const box = boxes[k];
       return { canvas: inkify(env, images[si][k], Math.round(box.w * dpr), Math.round(box.h * dpr), style.ink), box, zig: zigzag(box.w, box.h, si * 3 + k) };
     });
   });
-  return { project, timeline, style, tool: project.tool ?? style.tool, W, H, dpr, background: bgc, panels, mask: new Map(), hand, env };
+  const m: Model = { project, timeline, style, tool: project.tool ?? style.tool, W, H, dpr, background: bgc, panels, mask: new Map(), hand, env, units: [] };
+  const measure = env.createCanvas(4, 4).getContext('2d');
+  const colors = { ink: style.ink, accent: style.episode, good: style.good };
+  m.units = project.scenes.map((sc, si) => {
+    const T = timeline.scenes[si];
+    if (!sc.diagram) {
+      return sc.panels.map((_, k) => ({ start: T.panels[k].start, end: T.panels[k].end,
+        draw: (c: Ctx, p: number, a: number) => drawPanel(c, m, si, k, p, a), pen: (p: number) => penAt(m, si, k, p) }));
+    }
+    // diagram: spread its strokes over the time the scene is spoken
+    const els = buildDiagram(measure, sc.diagram, diagramBox(project.ratio), colors);
+    const t0 = T.lines[0].start + 0.05;
+    const t1 = Math.min(T.end - 0.35, Math.max(t0 + 1.2, T.lines[T.lines.length - 1].end - 0.1));
+    const total = els.reduce((a, e) => a + e.weight, 0) || 1;
+    let t = t0;
+    return els.map((e) => {
+      const d = ((t1 - t0) * e.weight) / total, start = t, end = t + Math.max(0.12, d * 0.92);
+      t += d;
+      return { start, end, draw: (c: Ctx, p: number, a: number) => drawElement(c, e, p, a), pen: (p: number) => elementPen(e, p) };
+    });
+  });
+  return m;
 }
 
 const clamp = (v: number) => Math.max(0, Math.min(1, v));
@@ -171,10 +203,11 @@ export function renderFrame(c: Ctx, m: Model, t: number) {
   // previous scene fades out while this one begins
   if (si > 0 && t - S.start < 0.4) {
     const a = 1 - (t - S.start) / 0.4;
-    m.panels[si - 1].forEach((_, k) => drawPanel(c, m, si - 1, k, 1, a));
+    m.units[si - 1].forEach((u) => u.draw(c, 1, a));
   }
-  const prog = S.panels.map((w) => clamp((t - w.start) / (w.end - w.start)));
-  prog.forEach((p, k) => drawPanel(c, m, si, k, p, 1));
+  const units = m.units[si];
+  const prog = units.map((u) => clamp((t - u.start) / (u.end - u.start)));
+  units.forEach((u, k) => u.draw(c, prog[k], 1));
 
   // subtitles: each line appears when it is spoken
   const size = portrait ? 29 : 26;
@@ -189,25 +222,27 @@ export function renderFrame(c: Ctx, m: Model, t: number) {
   // the hand rests just beside the last thing it drew, enters from bottom-right and leaves at the end
   const off: [number, number] = [W * 1.1, H * 1.05];
   const restAfter = (s: number): [number, number] => {
-    const [x, y] = penAt(m, s, m.panels[s].length - 1, 1);
+    const us = m.units[s];
+    if (!us.length) return off;
+    const [x, y] = us[us.length - 1].pen(1);
     return [x + 18, y + 26];
   };
-  let pos: [number, number], lift = 0;
+  let pos: [number, number] = off, lift = 0;
   const active = prog.findIndex((p) => p > 0 && p < 1);
-  if (active >= 0) pos = penAt(m, si, active, prog[active]);
-  else {
-    const next = S.panels.findIndex((w) => t < w.start);
+  if (active >= 0) pos = units[active].pen(prog[active]);
+  else if (units.length) {
+    const next = units.findIndex((u) => t < u.start);
     if (next === 0) {
       const from = si === 0 ? off : restAfter(si - 1);
-      const u = ease(clamp((t - S.start) / (S.panels[0].start - S.start)));
-      pos = lerp(from, penAt(m, si, 0, 0), u); lift = Math.sin(Math.PI * u);
+      const u = ease(clamp((t - S.start) / (units[0].start - S.start)));
+      pos = lerp(from, units[0].pen(0), u); lift = Math.sin(Math.PI * u);
     } else if (next > 0) {
-      const a = S.panels[next - 1], b = S.panels[next], u = clamp((t - a.end) / (b.start - a.end));
-      pos = lerp(penAt(m, si, next - 1, 1), penAt(m, si, next, 0), ease(u)); lift = Math.sin(Math.PI * u);
+      const a = units[next - 1], b = units[next], u = clamp((t - a.end) / (b.start - a.end || 1));
+      pos = lerp(a.pen(1), b.pen(0), ease(u)); lift = Math.sin(Math.PI * u) * (b.start - a.end > 0.3 ? 1 : 0.3);
     } else {
-      const last = S.panels.length - 1, u = ease(clamp((t - S.panels[last].end) / 0.45));
+      const last = units[units.length - 1], u = ease(clamp((t - last.end) / 0.45));
       const to = si === scenes.length - 1 ? off : restAfter(si);
-      pos = lerp(penAt(m, si, last, 1), to, u); lift = si === scenes.length - 1 ? u : Math.sin(Math.PI * u) * 0.6;
+      pos = lerp(last.pen(1), to, u); lift = si === scenes.length - 1 ? u : Math.sin(Math.PI * u) * 0.6;
     }
   }
   drawHand(c, m, pos[0], pos[1], lift, Math.sin(t * 2.1) * 0.025);

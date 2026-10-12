@@ -11,13 +11,17 @@ GlobalFonts.registerFromPath('assets/fonts/Pangolin-Regular.ttf', 'Pangolin');
 async function model(ratio: '9:16' | '16:9', style: ProjectSpec['style']) {
   const project: ProjectSpec = {
     title: 't', channel: 'Kênh', episode: 'Tập 1', ratio, style,
-    scenes: [{ lines: ['Xin chào các bạn.', 'Hôm nay học vẽ.'], panels: [{ image: 'x' }, { image: 'y' }] }],
+    scenes: [
+      { lines: ['Xin chào các bạn.', 'Hôm nay học vẽ.'], panels: [{ image: 'x' }, { image: 'y' }] },
+      { lines: ['Lãi kép sau ba mươi năm.'], panels: [], diagram: { kind: 'bars', title: 'Lãi kép', values: [21.6, 46.6, 100.6], labels: ['10 năm', '20 năm', '30 năm'], unit: 'tr' } },
+      { lines: ['Ba bước.'], panels: [], diagram: { kind: 'steps', items: ['Một', 'Hai', 'Ba'] } },
+    ],
   };
   const tl = buildTimeline(project.scenes, project.scenes.map((s) => estimateVoice(s.lines)));
   const img = await loadImage('assets/doodles/CoffeeDoodle.svg');
   const meta = JSON.parse(readFileSync('assets/hands/default/hand.json', 'utf8'));
   const hand = { img: await loadImage('assets/hands/default/hand.webp'), fingers: await loadImage('assets/hands/default/fingers.webp'), meta };
-  return prepare({ env: { createCanvas: (w, h) => createCanvas(w, h) as any }, project, timeline: tl, images: [[img, img]], hand, dpr: 0.5 });
+  return prepare({ env: { createCanvas: (w, h) => createCanvas(w, h) as any }, project, timeline: tl, images: [[img, img], [], []], hand, dpr: 0.5 });
 }
 
 test('a frame is a pure function of time', async () => {
@@ -37,4 +41,12 @@ test('every style renders in both ratios', async () => {
       renderFrame(c.getContext('2d'), m, m.timeline.duration - 0.5);
     }
   }
+});
+
+test('diagram strokes are drawn while their scene is spoken', async () => {
+  const m = await model('9:16', 'notebook');
+  const units = m.units[1], T = m.timeline.scenes[1];
+  assert.ok(units.length >= 8);
+  assert.ok(units[0].start >= T.lines[0].start && units[units.length - 1].end <= T.end);
+  for (let i = 1; i < units.length; i++) assert.ok(units[i].start >= units[i - 1].start);
 });
