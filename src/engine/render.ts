@@ -1,8 +1,9 @@
-import type { Ctx, Env, HandMeta, Img, ProjectSpec, Ratio, Timeline, ToolKind } from './types.ts';
+import type { Ctx, Env, HandMeta, Img, ProjectSpec, Ratio, SceneTiming, Timeline, ToolKind } from './types.ts';
 import { STYLES, type Style } from './styles.ts';
 import { drawTool } from './tools.ts';
 import { buildDiagram, drawElement, elementPen, type Element } from './diagram.ts';
 import { buildSketch, type IconSet } from './sketch.ts';
+import { wrapVi } from './textwrap.ts';
 
 /** Logical canvas size; the output size is a multiple of it (dpr). */
 export function logicalSize(ratio: Ratio) {
@@ -127,40 +128,85 @@ export function prepare(opts: {
     const els = sc.diagram.kind === 'sketch'
       ? buildSketch(measure, sc.diagram.items || [], stageBox(project.ratio, subs), colors, opts.icons || {}, project.ratio === '9:16')
       : buildDiagram(measure, sc.diagram, diagramBox(project.ratio, subs), colors);
-    const last = T.lines.length - 1;
-    const sceneEnd = Math.min(T.end - 0.35, Math.max(T.lines[0].start + 1.2, T.lines[last].end - 0.1));
-    // elements tied to a narration line are drawn while that line is spoken; the rest share the scene
-    const groups = new Map<number, Element[]>();
-    for (const e of els) {
-      const l = e.line != null && e.line >= 0 && e.line <= last ? e.line : -1;
-      if (!groups.has(l)) groups.set(l, []);
-      groups.get(l)!.push(e);
-    }
-    const windows: [number, Element[], number, number][] = [];
-    if (groups.has(-1) && groups.size === 1) windows.push([0, groups.get(-1)!, T.lines[0].start + 0.05, sceneEnd]);
-    else {
-      // untagged elements go first, at the start of the scene
-      if (groups.has(-1)) groups.set(0, [...groups.get(-1)!, ...(groups.get(0) || [])]);
-      for (let l = 0; l <= last; l++) {
-        if (!groups.has(l)) continue;
-        const nextTagged = [...groups.keys()].filter((k) => k > l).sort((a, b) => a - b)[0];
-        const end = nextTagged != null ? T.lines[nextTagged].start - 0.08 : sceneEnd;
-        windows.push([l, groups.get(l)!, T.lines[l].start + 0.05, Math.max(T.lines[l].start + 0.6, end)]);
-      }
-    }
-    const units: Unit[] = [];
-    for (const [, list, t0, t1] of windows) {
-      const total = list.reduce((a, e) => a + e.weight, 0) || 1;
-      let t = t0;
-      for (const e of list) {
-        const d = ((t1 - t0) * e.weight) / total, start = t, end = t + Math.max(0.1, d * 0.92);
-        t += d;
-        units.push({ start, end, draw: (c: Ctx, p: number, a: number, now: number) => drawElement(c, e, p, a, pen, now - end), pen: (p: number) => elementPen(e, p) });
-      }
-    }
-    return units;
+    return schedule(els, sc.lines, T, sc.diagram.kind === 'sketch', (e, start, end) => ({
+      start, end, draw: (c: Ctx, p: number, a: number, now: number) => drawElement(c, e, p, a, pen, now - end), pen: (p: number) => elementPen(e, p),
+    }));
   });
   return m;
+}
+
+// ---- timing: what is drawn when
+const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase();
+
+/** Where `cue` is said inside `line`, as a fraction of the line's duration (syllables before it, with pauses at punctuation). */
+export function cueFraction(line: string, cue: string): number | null {
+  const words = line.split(/\s+/).filter(Boolean), want = fold(cue).replace(/[^a-z0-9% ]/g, ' ').split(/\s+/).filter(Boolean);
+  if (!want.length) return null;
+  const plain = words.map((w) => fold(w).replace(/[^a-z0-9%]/g, ''));
+  const weight = words.map((w) => 1 + (/[,;:]$/.test(w) ? 1.5 : /[.!?…]$/.test(w) ? 2.5 : 0));
+  const total = weight.reduce((a, b) => a + b, 0);
+  for (let i = 0; i + want.length <= plain.length; i++) {
+    if (want.every((w, k) => plain[i + k] === w || (k === want.length - 1 && plain[i + k].startsWith(w)))) {
+      return weight.slice(0, i).reduce((a, b) => a + b, 0) / total;
+    }
+  }
+  return null;
+}
+
+/**
+ * Turn drawable elements into timed units. Sketch items tied to a line (and optionally to the
+ * exact words `cue`) start when those words are spoken; items between two such moments share
+ * the time in between, at a natural drawing speed (not slower than ~1.5x, so the hand never crawls).
+ */
+function schedule(els: Element[], lines: string[], T: SceneTiming, sketch: boolean, mk: (e: Element, start: number, end: number) => Unit): Unit[] {
+  const last = T.lines.length - 1;
+  const sceneStart = T.lines[0].start + 0.05;
+  const sceneEnd = Math.min(T.end - 0.35, Math.max(sceneStart + 1.2, T.lines[last].end - 0.1));
+  // group into items (an icon with its label is one gesture)
+  const items: { els: Element[]; target?: number }[] = [];
+  for (const e of els) {
+    const key = e.item;
+    const prev = items[items.length - 1];
+    if (key != null && prev && prev.els[0].item === key) prev.els.push(e);
+    else items.push({ els: [e] });
+  }
+  for (const it of items) {
+    const e = it.els[0];
+    let l = e.line != null && e.line >= 0 && e.line <= last ? e.line : -1, f: number | null = null;
+    if (e.cue) {
+      for (const k of l >= 0 ? [l] : lines.map((_, i) => i)) { const x = cueFraction(lines[k] || '', e.cue); if (x != null) { l = k; f = x; break; } }
+    }
+    if (l >= 0) it.target = T.lines[l].start + (f ?? 0) * (T.lines[l].end - T.lines[l].start) - (f ? 0.1 : -0.05);
+  }
+  if (!items.some((it) => it.target != null)) items[0] && (items[0].target = sceneStart);
+  // targets never go backwards in drawing order
+  let floor = sceneStart;
+  for (const it of items) if (it.target != null) { it.target = Math.max(floor, Math.min(it.target, sceneEnd - 0.3)); floor = it.target; }
+  const natural = (it: { els: Element[] }) => Math.max(0.3, it.els.reduce((a, e) => a + e.weight, 0) * 0.85);
+  const units: Unit[] = [];
+  let t = sceneStart;
+  for (let i = 0; i < items.length; ) {
+    // a run: item i (possibly targeted) up to the next targeted item
+    let j = i + 1;
+    while (j < items.length && items[j].target == null) j++;
+    const t0 = Math.max(t, items[i].target ?? t);
+    const t1 = j < items.length ? Math.max(t0 + 0.2, items[j].target! - 0.05) : sceneEnd;
+    const run = items.slice(i, j), need = run.reduce((a, it) => a + natural(it), 0);
+    const f = Math.min(sketch ? 1.5 : 50, (t1 - t0) / need); // fits before the next cue
+    let u = t0;
+    for (const it of run) {
+      const dur = natural(it) * f, w = it.els.reduce((a, e) => a + e.weight, 0) || 1;
+      let v = u;
+      for (const e of it.els) {
+        const d = (dur * e.weight) / w;
+        units.push(mk(e, v, v + Math.max(0.08, d * 0.92)));
+        v += d;
+      }
+      u += dur;
+    }
+    t = u; i = j;
+  }
+  return units;
 }
 
 const clamp = (v: number) => Math.max(0, Math.min(1, v));
@@ -192,17 +238,6 @@ function penAt(m: Model, si: number, k: number, p: number): [number, number] {
   return [P.box.x + x, P.box.y + y];
 }
 
-function wrapLines(c: Ctx, text: string, max: number): string[] {
-  const words = text.split(' '), out: string[] = [];
-  let cur = '';
-  for (const w of words) {
-    const next = cur ? cur + ' ' + w : w;
-    if (c.measureText(next).width > max && cur) { out.push(cur); cur = w; } else cur = next;
-  }
-  if (cur) out.push(cur);
-  return out;
-}
-
 export function drawHand(c: Ctx, m: Model, x: number, y: number, lift: number, rot: number) {
   const { img, fingers, meta } = m.hand;
   const k = (m.project.ratio === '9:16' ? 0.33 : 0.37) * (1 + lift * 0.05);
@@ -221,7 +256,7 @@ export function drawHand(c: Ctx, m: Model, x: number, y: number, lift: number, r
 }
 
 /** Draw the frame at time t (seconds). Pure function of t: browser and server match. */
-export function renderFrame(c: Ctx, m: Model, t: number) {
+export function renderFrame(c: Ctx, m: Model, t: number, opts: { hand?: boolean } = {}) {
   const { W, H, style, project, timeline } = m;
   c.setTransform(m.dpr, 0, 0, m.dpr, 0, 0);
   c.drawImage(m.background, 0, 0, W, H);
@@ -248,7 +283,7 @@ export function renderFrame(c: Ctx, m: Model, t: number) {
   // subtitles on the picture (optional: the board already shows the key words)
   if (project.subtitles) drawSubtitles(c, m, si, t);
 
-  drawHandAt(c, m, t, si, units, prog);
+  if (opts.hand !== false) drawHandAt(c, m, t, si, units, prog);
 }
 
 function drawSubtitles(c: Ctx, m: Model, si: number, t: number) {
@@ -258,7 +293,7 @@ function drawSubtitles(c: Ctx, m: Model, si: number, t: number) {
   let y = portrait ? 700 : 462;
   project.scenes[si].lines.forEach((line, i) => {
     if (t < S.lines[i].start - 0.1) return;
-    for (const l of wrapLines(c, line, W - 68)) { c.fillText(l, 34, y); y += size * 1.5; }
+    for (const l of wrapVi(c, line, size, W - 68)) { c.fillText(l, 34, y); y += size * 1.5; }
   });
 }
 

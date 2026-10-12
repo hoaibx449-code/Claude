@@ -2,11 +2,12 @@
 // Anything not on these lists is dropped, so stored specs are always renderable.
 import { HttpError } from './util.ts';
 import { composeScene } from './compose.ts';
+import { detectIntent, FORMATS, NICHES } from './intent.ts';
 
 export const STYLES = ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'pencil', 'blueprint', 'ricepaper'] as const;
 export const TOOLS = ['marker', 'chalk', 'fountain', 'colormarker', 'pencil', 'technical', 'brush'] as const;
 export const RATIOS = ['9:16', '16:9'] as const;
-export const VOICE_PROVIDERS = ['everai', 'google', 'elevenlabs', 'mock'] as const;
+export const VOICE_PROVIDERS = ['everai', 'google', 'elevenlabs', 'free', 'mock'] as const;
 export const DIAGRAM_KINDS = ['bars', 'compare', 'steps', 'flow', 'number', 'statement', 'stick', 'sketch'] as const;
 export const ACTIONS = ['idle', 'walk', 'run', 'wave', 'think', 'cheer', 'sad', 'point', 'shrug', 'jump'] as const;
 export const VISUAL_MODES = ['sketch', 'diagram', 'mix', 'images'] as const;
@@ -27,6 +28,7 @@ function cleanSketch(items: unknown, lines: number) {
     const o: any = { t: it.t };
     if (/^[A-Za-z0-9_-]{1,20}$/.test(String(it.id ?? ''))) o.id = String(it.id);
     if (Number.isInteger(it.line) && it.line >= 0 && it.line < lines) o.line = it.line;
+    if (str(it.cue, 40)) o.cue = str(it.cue, 40);
     if (COLORS.includes(it.color)) o.color = it.color;
     const at = () => { o.x = pct(it.x, 50); o.y = pct(it.y, 50); };
     switch (it.t) {
@@ -112,11 +114,17 @@ export function cleanSpec(input: any, userId: string) {
   const ownImage = new RegExp(`^r2:img/${userId}/[a-f0-9]{24}\\.(png|jpg|webp)$`);
   const visual = pick(input.visual, VISUAL_MODES, 'sketch');
   const ratio = pick(input.ratio, RATIOS, '9:16');
+  // what kind of video this is (detected from the words when not given)
+  const words = input.scenes.map((sc: any) => (Array.isArray(sc?.lines) ? sc.lines.join(' ') : '')).join(' ');
+  const guess = FORMATS.includes(input.format) && NICHES.includes(input.niche) ? null : detectIntent(words);
+  const format = FORMATS.includes(input.format) ? input.format : guess!.format;
+  const niche = NICHES.includes(input.niche) ? input.niche : guess!.niche;
+  const total = Math.min(20, input.scenes.length);
   const scenes = input.scenes.slice(0, 20).map((sc: any, si: number) => {
     const lines = (Array.isArray(sc?.lines) ? sc.lines : []).map((l: unknown) => str(l, 160)).filter(Boolean).slice(0, 3);
     let diagram = cleanDiagram(sc?.diagram, lines.length);
     // drawn-only videos: a scene that came back without a usable drawing gets one designed from its words
-    if (!diagram && (visual === 'diagram' || visual === 'sketch') && lines.length) diagram = { kind: 'sketch', items: cleanSketch(composeScene(lines, ratio === '9:16', si), lines.length) };
+    if (!diagram && (visual === 'diagram' || visual === 'sketch') && lines.length) diagram = { kind: 'sketch', items: cleanSketch(composeScene(lines, ratio === '9:16', si, { format, index: si, total }), lines.length) };
     if (diagram) return { lines, panels: [], diagram };
     const panels = (Array.isArray(sc?.panels) ? sc.panels : []).slice(0, 2).map((p: any, k: number) => {
       const prompt = str(p?.prompt, 400);
@@ -133,7 +141,7 @@ export function cleanSpec(input: any, userId: string) {
     caption: str(input.caption, 300),
     hashtags: (Array.isArray(input.hashtags) ? input.hashtags : []).map((h: unknown) => str(h, 30).replace(/\s+/g, ''))
       .map((h: string) => (h.startsWith('#') ? h : '#' + h)).filter((h: string) => /^#[\p{L}\p{N}_]{2,29}$/u.test(h)).slice(0, 10),
-    visual,
+    visual, format, niche,
     channel: str(input.channel, 40),
     episode: str(input.episode, 30),
     ratio,

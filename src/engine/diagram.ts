@@ -2,6 +2,7 @@
 // highlighted maximum), comparisons, steps, cause→effect flows, big numbers and statements,
 // drawn stroke by stroke with the hand following the pen (no images needed).
 import type { Ctx, DiagramSpec } from './types.ts';
+import { wrapVi } from './textwrap.ts';
 import { ACTIONS, actorAt, drawLines, lengthOf, pointAlong, type Action, type Actor } from './stick.ts';
 
 export interface Box { x: number; y: number; w: number; h: number }
@@ -9,7 +10,8 @@ export interface Colors { ink: string; accent: string; accent2: string; good: st
 /** How the tool marks the paper: extra offset passes (chalk, pencil) and brush pressure. */
 export interface Pen { passes: [number, number, number, number][]; brush?: boolean; width: number }
 
-export type Element = { line?: number } & (
+/** line: narration line it is drawn with; item: sketch item it belongs to; cue: words of the line that trigger it */
+export type Element = { line?: number; item?: number; cue?: string } & (
   | { kind: 'path'; pts: [number, number][]; cum: number[]; len: number; color: string; width: number; weight: number }
   | { kind: 'text'; text: string; x: number; y: number; size: number; w: number; color: string; weight: number }
   | { kind: 'fill'; pts: [number, number][]; color: string; anchor: [number, number]; weight: number }
@@ -50,14 +52,7 @@ export function wobble(pts: P[], seed: number): P[] {
 }
 
 export function wrap(c: Ctx, text: string, size: number, max: number): string[] {
-  c.font = `${size}px Pangolin`;
-  const out: string[] = []; let cur = '';
-  for (const w of text.split(/\s+/).filter(Boolean)) {
-    const next = cur ? cur + ' ' + w : w;
-    if (c.measureText(next).width > max && cur) { out.push(cur); cur = w; } else cur = next;
-  }
-  if (cur) out.push(cur);
-  return out;
+  return wrapVi(c, text, size, max);
 }
 
 export function buildDiagram(c: Ctx, d: DiagramSpec, box: Box, col: Colors): Element[] {

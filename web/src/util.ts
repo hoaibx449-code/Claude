@@ -7,6 +7,9 @@ export interface Env {
   OPENAI_API_KEY?: string;
   GEMINI_API_KEY?: string;
   OPENAI_TEXT_MODEL: string;
+  /** comma-separated models tried when the main one fails */
+  OPENAI_TEXT_FALLBACK?: string;
+  GEMINI_TEXT_FALLBACK?: string;
   OPENAI_IMAGE_MODEL: string;
   OPENAI_IMAGE_QUALITY?: string;
   GEMINI_TEXT_MODEL: string;
@@ -26,7 +29,9 @@ export interface Env {
 /** Error whose message is safe to show to the user. */
 export class HttpError extends Error {
   status: number;
-  constructor(status: number, message: string) { super(message); this.status = status; }
+  /** extra fields for the page (e.g. which plan unlocks the blocked option) */
+  extra?: Record<string, unknown>;
+  constructor(status: number, message: string, extra?: Record<string, unknown>) { super(message); this.status = status; this.extra = extra; }
 }
 
 export function json(data: unknown, status = 200, headers: HeadersInit = {}) {
@@ -67,7 +72,7 @@ export async function body<T = any>(req: Request, maxBytes = 200_000): Promise<T
 export const today = () => new Date().toISOString().slice(0, 10);
 
 /** Count one use of `kind` today; refuse when the daily limit is reached. */
-export async function useQuota(env: Env, userId: string, kind: 'script' | 'image' | 'render', limit: number) {
+export async function useQuota(env: Env, userId: string, kind: 'script' | 'image' | 'render' | 'events' | 'zalo', limit: number) {
   const day = today();
   const row = await env.DB.prepare(
     `INSERT INTO usage (user_id, day, kind, n) VALUES (?, ?, ?, 1)
@@ -75,7 +80,7 @@ export async function useQuota(env: Env, userId: string, kind: 'script' | 'image
      RETURNING n`,
   ).bind(userId, day, kind, limit).first<{ n: number }>();
   if (!row) {
-    const names = { script: 'viết kịch bản', image: 'vẽ ảnh AI', render: 'dựng video' };
+    const names = { script: 'viết kịch bản', image: 'vẽ ảnh AI', render: 'dựng video', events: 'ghi nhận', zalo: 'nhắn Zalo' };
     throw new HttpError(429, `Bạn đã dùng hết lượt ${names[kind]} hôm nay (${limit} lượt). Thử lại vào ngày mai.`);
   }
 }

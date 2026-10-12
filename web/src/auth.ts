@@ -1,7 +1,7 @@
 // Google sign-in: the browser gets an ID token from Google Identity Services and
 // posts it here. We verify its RS256 signature against Google's public keys,
 // then issue our own session cookie. Only a hash of the session token is stored.
-import { cookie, Env, HttpError, randomId, sha256 } from './util.ts';
+import { cookie, type Env, HttpError, randomId, sha256 } from './util.ts';
 
 const SESSION_DAYS = 7;
 const ISSUERS = ['accounts.google.com', 'https://accounts.google.com'];

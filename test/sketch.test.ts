@@ -48,3 +48,11 @@ test('own script: split into scenes and illustrated without AI', () => {
   // every icon the free designer uses exists
   for (const s of ['Vì sao tôi buồn?', 'Chạy deadline nên mệt', 'Tiết kiệm 30% lương']) for (const it of composeScene([s], true, 0) as any[]) if (it.t === 'icon') assert.ok(icons[it.name], it.name);
 });
+
+test('cue words set when an item is drawn', async () => {
+  const { cueFraction } = await import('../src/engine/render.ts');
+  assert.equal(cueFraction('Gửi mười triệu, lãi tám phần trăm', 'gửi'), 0);
+  const f = cueFraction('Gửi mười triệu, lãi tám phần trăm', 'lai tam')!;
+  assert.ok(f > 0.4 && f < 0.6, String(f));
+  assert.equal(cueFraction('Một câu', 'không có'), null);
+});

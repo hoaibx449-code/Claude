@@ -1,39 +1,88 @@
 // Nét Vẽ Studio API (Cloudflare Worker). Static pages are served from ./public.
-import { consumeNonce, currentUser, endSession, newNonce, startSession, User, verifyGoogleToken } from './auth.ts';
+import { consumeNonce, currentUser, endSession, newNonce, startSession, type User, verifyGoogleToken } from './auth.ts';
 import { drawImage, ImageProvider, TextProvider, writeScript } from './ai.ts';
 import { startRunner } from './gcp.ts';
 import { cleanSpec, STYLES } from './spec.ts';
 import { composeScene, splitScript } from './compose.ts';
-import { clearCache, Config, effectiveEnv, isAdmin, publicConfig, runnerSecrets, save as saveSettings, secretStatus } from './settings.ts';
-import { body, Env, HttpError, json, randomId, refundQuota, sha256, timingSafeEqual, today, useQuota } from './util.ts';
+import { detectIntent, FORMATS, FORMAT_NAMES, NICHES, NICHE_NAMES, NICHE_STYLE } from './intent.ts';
+import { aiCost, clientIp, imageCost, logEvent, routeName, summarize, voiceCost, type LogEntry } from './log.ts';
+import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, vis } from './settings.ts';
+import { adminRoutes } from './admin.ts';
+import { checkShare, notifyJob, rememberOrigin, zaloUser, zaloWebhook } from './zalo.ts';
+import { checkAllowed, checkSource, expireOrders, limitsFor, planOf, planRoutes, sepayWebhook } from './plans.ts';
+import { body, type Env, HttpError, json, randomId, refundQuota, sha256, timingSafeEqual, today, useQuota } from './util.ts';
 
 const MAX_ACTIVE_JOBS = 2;
 const STALE_JOB_MS = 45 * 60_000;
 
+/** Per-request context: who is calling, and a logger that never slows the response down. */
+export interface Rc {
+  userId: string | null; visitor: string | null; ip: string; ua: string | null; channel: LogEntry['channel'];
+  /** set by handlers whose plain request log would be noise (polling) */
+  quiet: boolean;
+  log(type: string, extra?: Partial<LogEntry>): void;
+  /** finish work after the response (ctx.waitUntil) */
+  wait(p: Promise<unknown>): void;
+}
+
+// requests polled every few seconds: not worth a log row each
+const QUIET = /^GET \/api\/(projects\/:id\/jobs|assets\/|me$|auth\/config)|^(PUT|POST) \/api\/runner\/jobs\/:id\/progress|^POST \/api\/events$/;
+
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const t0 = Date.now(), url = new URL(req.url), api = url.pathname.startsWith('/api/');
+    // links sent by Zalo point back here (the render machine calls the same public address)
+    if (api) rememberOrigin(url.origin);
+    const rc: Rc = {
+      userId: null, visitor: (req.headers.get('x-visitor') || '').replace(/[^a-z0-9]/gi, '').slice(0, 32) || null,
+      ip: clientIp(req), ua: req.headers.get('user-agent'), quiet: false,
+      channel: url.pathname.startsWith('/api/runner/') ? 'runner' : url.pathname === '/api/zalo/webhook' ? 'zalo' : 'web',
+      log(type, extra = {}) { ctx.waitUntil(logEvent(env, { type, userId: rc.userId, visitor: rc.visitor, channel: rc.channel, ip: rc.ip, ua: rc.ua, ...extra })); },
+      wait(p) { ctx.waitUntil(p.catch((e) => console.error(e))); },
+    };
+    let res: Response, error = '';
     try {
-      return await route(req, env, ctx);
+      res = await route(req, env, ctx, rc);
     } catch (e) {
-      if (e instanceof HttpError) return json({ error: e.message }, e.status);
-      console.error(e);
-      return json({ error: 'Máy chủ gặp lỗi, thử lại sau ít phút.' }, 500);
+      if (e instanceof HttpError) { res = json({ error: e.message, ...(e.extra || {}) }, e.status); error = e.message; }
+      else { console.error(e); error = String((e as Error)?.stack || e).slice(0, 500); res = json({ error: 'Máy chủ gặp lỗi, thử lại sau ít phút.' }, 500); }
     }
+    const name = `${req.method} ${routeName(url.pathname)}`;
+    if (api && !rc.quiet && (!QUIET.test(name) || res.status >= 400)) {
+      rc.log(res.status >= 500 ? 'error' : 'api', { path: name, ok: res.status < 400, ms: Date.now() - t0, data: error ? { status: res.status, error } : { status: res.status } });
+    }
+    return res;
   },
   // Safety net: if videos wait in the queue (e.g. a start request was lost), start the render machine.
   async scheduled(_e: ScheduledController, env: Env, ctx: ExecutionContext) {
+    // keep the activity log to the configured number of days
+    const { config } = await load(env);
+    ctx.waitUntil(env.DB.prepare('DELETE FROM events WHERE ts < ?').bind(Date.now() - config.logDays * 86_400_000).run().then(() => {}, (e) => console.error(e)));
+    const xenv = await effectiveEnv(env);
+    ctx.waitUntil(Promise.all([
+      expireOrders(xenv),
+      env.DB.prepare('DELETE FROM zalo_seen WHERE ts < ?').bind(Date.now() - 2 * 86_400_000).run(),
+      env.DB.prepare('DELETE FROM zalo_codes WHERE expires_at < ?').bind(Date.now()).run(),
+      env.DB.prepare('DELETE FROM usage WHERE day < ?').bind(new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10)).run(),
+    ]).then(() => {}, (e) => console.error(e)));
     const waiting = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'queued' AND created_at < ?").bind(Date.now() - 90_000).first<any>();
     if (waiting?.n) ctx.waitUntil(startRunner(env).catch((e) => console.error(e)));
   },
 };
 
-type XEnv = Env & { config: Config };
+export type XEnv = Env & { config: Config };
 
-async function route(req: Request, rawEnv: Env, ctx: ExecutionContext): Promise<Response> {
+async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): Promise<Response> {
   const url = new URL(req.url), path = url.pathname, method = req.method;
   if (!path.startsWith('/api/')) return rawEnv.ASSETS.fetch(req);
   const env = await effectiveEnv(rawEnv);
-  if (path.startsWith('/api/runner/')) return runner(req, env, path.slice('/api/runner/'.length));
+  if (path.startsWith('/api/runner/')) return runner(req, env, path.slice('/api/runner/'.length), rc);
+
+  // called by other services (verified inside), and the no-login share link for finished videos
+  if (path === '/api/zalo/webhook' && method === 'POST') return zaloWebhook(req, env, rc);
+  if (path === '/api/sepay/webhook' && method === 'POST') return sepayWebhook(req, env, rc);
+  const sh = path.match(/^\/api\/share\/([a-f0-9]{24})$/);
+  if (sh && method === 'GET') return shareVideo(env, rc, sh[1], url);
 
   // Browser requests that change data must come from our own page (CSRF guard on top of SameSite cookies).
   if (method !== 'GET') {
@@ -52,30 +101,40 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext): Promise<
     await consumeNonce(env, String(b.nonce || ''));
     const u = await verifyGoogleToken(String(b.credential || ''), env.GOOGLE_CLIENT_ID, String(b.nonce));
     if (await blocked(env, u.id)) throw new HttpError(403, BLOCKED);
-    return json({ user: u }, 200, { 'set-cookie': await startSession(env, u) });
+    const cookie = await startSession(env, u);
+    rc.userId = u.id; rc.log('auth.login', { data: { method: 'google', email: u.email } });
+    return json({ user: u }, 200, { 'set-cookie': cookie });
   }
   if (path === '/api/auth/dev' && method === 'POST') {
     if (!devAllowed) throw new HttpError(404, 'Không tìm thấy.');
     const email = String((await body(req)).email || 'dev@localhost').toLowerCase().slice(0, 100);
     const u = { id: 'dev-' + (await sha256(email)).slice(0, 16), email, name: 'Người thử', picture: null };
-    return json({ user: u }, 200, { 'set-cookie': await startSession(env, u) });
+    const cookie = await startSession(env, u);
+    rc.userId = u.id; rc.log('auth.login', { data: { method: 'dev', email } });
+    return json({ user: u }, 200, { 'set-cookie': cookie });
   }
-  if (path === '/api/auth/logout' && method === 'POST') return json({ ok: true }, 200, { 'set-cookie': await endSession(env, req) });
+  if (path === '/api/auth/logout' && method === 'POST') {
+    const u = await currentUser(env, req);
+    if (u) { rc.userId = u.id; rc.log('auth.logout'); }
+    return json({ ok: true }, 200, { 'set-cookie': await endSession(env, req) });
+  }
 
   const user = await currentUser(env, req);
+  if (user) rc.userId = user.id;
+  // what people do in the page (guests included): views, clicks, errors
+  if (path === '/api/events' && method === 'POST') return clientEvents(req, env, rc);
   if (!user) throw new HttpError(401, 'Bạn cần đăng nhập.');
   if (await blocked(env, user.id)) throw new HttpError(403, BLOCKED);
   if (path.startsWith('/api/admin/')) {
     if (!(await isAdmin(env, env.config, user))) throw new HttpError(403, 'Chỉ quản trị viên mới vào được trang này.');
-    return adminRoutes(req, env, rawEnv, path.slice('/api/admin/'.length), method);
+    return adminRoutes(req, env, rawEnv, path.slice('/api/admin/'.length), method, rc, user);
   }
-  return userRoutes(req, env, ctx, user, path, method, devAllowed);
+  return userRoutes(req, env, ctx, user, path, method, devAllowed, rc);
 }
 
 const BLOCKED = 'Tài khoản này đã bị khoá. Liên hệ quản trị viên.';
 const blocked = async (env: Env, id: string) => !!(await env.DB.prepare('SELECT 1 AS b FROM blocked_users WHERE user_id = ?').bind(id).first());
 
-const limits = (env: Env) => ({ script: Number(env.DAILY_SCRIPTS), image: Number(env.DAILY_IMAGES), render: Number(env.DAILY_RENDERS) });
 
 async function getProject(env: Env, user: User, id: string) {
   const p = await env.DB.prepare('SELECT * FROM projects WHERE id = ? AND user_id = ?').bind(id, user.id).first<any>();
@@ -87,11 +146,43 @@ async function saveSpec(env: Env, user: User, id: string, spec: any) {
     .bind(JSON.stringify(spec), spec.title, Date.now(), id, user.id).run();
 }
 
-async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: User, path: string, method: string, devAllowed: boolean): Promise<Response> {
+async function clientEvents(req: Request, env: XEnv, rc: Rc) {
+  const b = await body<any>(req, 30_000);
+  const list = (Array.isArray(b.events) ? b.events : []).slice(0, 30);
+  // a browser may send at most 2000 events a day
+  const who = rc.userId || (rc.visitor ? 'v:' + rc.visitor : null);
+  if (!who || !list.length) return json({ ok: true });
+  // per browser and per network: a page cannot flood the log by changing its visitor id
+  try { await useQuota(env, who, 'events', 2000); await useQuota(env, 'ip:' + rc.ip, 'events', 6000); } catch { return json({ ok: true, dropped: true }); }
+  const stmts = list.filter((e: any) => /^ui\.[a-z_.]{2,40}$/.test(String(e?.type))).map((e: any) => env.DB.prepare(
+    `INSERT INTO events (ts, user_id, visitor, channel, type, path, ok, ms, project_id, data, ip, ua) VALUES (?, ?, ?, 'web', ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(Math.min(Date.now(), Number(e.ts) || Date.now()), rc.userId, rc.visitor, e.type, String(e.path || '').slice(0, 120) || null, e.type === 'ui.error' ? 0 : 1,
+    Number.isFinite(e.ms) ? Math.round(e.ms) : null, /^[a-f0-9]{24}$/.test(e.project || '') ? e.project : null,
+    JSON.stringify(summarize(e.data ?? null)).slice(0, 2000), rc.ip, rc.ua?.slice(0, 160) || null));
+  if (stmts.length) await env.DB.batch(stmts);
+  return json({ ok: true });
+}
+
+async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: User, path: string, method: string, devAllowed: boolean, rc: Rc): Promise<Response> {
   if (path === '/api/me' && method === 'GET') {
     const used = await env.DB.prepare('SELECT kind, n FROM usage WHERE user_id = ? AND day = ?').bind(user.id, today()).all<any>();
-    return json({ user, limits: limits(env), used: Object.fromEntries(used.results.map((r) => [r.kind, r.n])), ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY },
+    const { plan, expires } = await planOf(env, user.id);
+    const zalo = env.config.zalo.enabled ? await env.DB.prepare('SELECT notify FROM zalo_links WHERE user_id = ?').bind(user.id).first<any>() : null;
+    return json({ user, limits: plan.limits, plan: { id: plan.id, name: plan.name, expires, maxSeconds: plan.maxSeconds }, zaloLinked: !!zalo, used: Object.fromEntries(used.results.map((r) => [r.kind, r.n])), ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY },
       ui: publicConfig(env.config), admin: await isAdmin(env, env.config, user) });
+  }
+
+  if (path.startsWith('/api/zalo/')) return zaloUser(req, env, rc, user, path.slice('/api/zalo/'.length), method);
+  if (path === '/api/plans' || path.startsWith('/api/orders')) {
+    if (vis(env.config, 'feature:plans') !== 'on') throw new HttpError(403, 'Gói cước đang tắt.');
+    return planRoutes(req, env, rc, user, path, method);
+  }
+  const tp = path.match(/^\/api\/templates\/([a-z0-9-]{2,30})$/);
+  if (tp && method === 'GET') {
+    const t = env.config.templates.find((x) => x.id === tp[1]);
+    if (!t || vis(env.config, 'feature:templates') === 'hidden') throw new HttpError(404, 'Không tìm thấy mẫu.');
+    rc.log('template.open', { data: { id: t.id } });
+    return json({ template: t });
   }
 
   if (path === '/api/projects' && method === 'GET') {
@@ -103,46 +194,16 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
     return json({ projects: r.results });
   }
 
+  // live "what kind of video is this" while the user types (free, rules only)
+  if (path === '/api/intent' && method === 'POST') {
+    rc.quiet = true;
+    const it = detectIntent(String((await body<any>(req, 25_000)).text || '').slice(0, 20000));
+    return json({ format: it.format, niche: it.niche, formatName: FORMAT_NAMES[it.format], nicheName: NICHE_NAMES[it.niche], style: NICHE_STYLE[it.niche], hook: it.hook, cta: it.cta });
+  }
+
   if (path === '/api/projects/generate' && method === 'POST') {
     const b = await body<any>(req, 40_000);
-    const D = env.config.defaults;
-    const source = ['topic', 'mine-ai', 'mine-free'].includes(b.source) ? b.source : D.source;
-    if (!env.config.enabledSources.includes(source)) throw new HttpError(403, 'Cách tạo video này đang tắt.');
-    const text = String(b.topic || '').trim().slice(0, source === 'topic' ? 3000 : 20000);
-    if (text.length < 5) throw new HttpError(400, source === 'topic' ? 'Nhập chủ đề (ít nhất vài chữ).' : 'Dán kịch bản của bạn vào ô (ít nhất một câu).');
-    const visual = ['sketch', 'images', 'diagram', 'mix'].includes(b.visual) ? b.visual : D.visual;
-    const ratio = b.ratio === '16:9' || b.ratio === '9:16' ? b.ratio : D.ratio;
-    let raw: any;
-    if (source !== 'topic') {
-      // the user's own words, split into scenes; pictures are designed by rules (free) or by the AI
-      const scenes = splitScript(text);
-      if (!scenes.length) throw new HttpError(400, 'Không tách được câu nào từ kịch bản.');
-      raw = { title: scenes[0][0].replace(/[.!?…]+$/, '').slice(0, 70), scenes: scenes.map((lines) => ({ lines })) };
-      if (source === 'mine-ai') {
-        const provider = b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (D.textAI as TextProvider);
-        await useQuota(env, user.id, 'script', limits(env).script);
-        try {
-          const out = await writeScript(env, provider, { topic: '', seconds: 0, tone: '', ratio, visual: 'sketch', extra: env.config.promptExtra, scenes });
-          raw = { ...out, title: out.title || raw.title, scenes: scenes.map((lines, i) => ({ lines, diagram: out.scenes?.[i]?.diagram })) };
-        } catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
-      }
-    } else {
-      const provider: TextProvider | 'mock' = b.provider === 'mock' && devAllowed ? 'mock' : b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (D.textAI as TextProvider);
-      const seconds = Math.max(15, Math.min(180, Number(b.seconds) || D.seconds));
-      if (provider === 'mock') raw = sampleScript(text);
-      else {
-        await useQuota(env, user.id, 'script', limits(env).script);
-        try { raw = await writeScript(env, provider, { topic: text, seconds, tone: String(b.tone || '').slice(0, 200), ratio, visual, extra: env.config.promptExtra }); }
-        catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
-      }
-    }
-    const spec = cleanSpec({ ...raw, visual, ratio, subtitles: typeof b.subtitles === 'boolean' ? b.subtitles : D.subtitles,
-      style: env.config.enabledStyles.includes(b.style) ? b.style : D.style, tool: b.tool, channel: b.channel ?? D.channel, episode: b.episode,
-      voice: voiceFor(env.config, b.voiceId, Number(b.speed) || 1) }, user.id);
-    const id = randomId(12), now = Date.now();
-    await env.DB.prepare('INSERT INTO projects (id, user_id, title, spec, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(id, user.id, spec.title, JSON.stringify(spec), now, now).run();
-    return json({ id, spec });
+    return json(await createProject(env, rc, user, b, devAllowed));
   }
 
   const m = path.match(/^\/api\/projects\/([a-f0-9]{24})(\/[a-z]+)?$/);
@@ -155,6 +216,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       if (input?.voice) input.voice = voiceFor(env.config, input.voice.voiceId, input.voice.speed);
       const spec = cleanSpec(input, user.id);
       await saveSpec(env, user, id, spec);
+      rc.log('project.save', { projectId: id, data: { scenes: spec.scenes.length, style: spec.style, ratio: spec.ratio, subtitles: spec.subtitles } });
       return json({ id, spec });
     }
     if (!sub && method === 'DELETE') {
@@ -162,16 +224,29 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       for (const j of jobs.results) await env.BUCKET.delete([`video/${user.id}/${j.id}.mp4`, `video/${user.id}/${j.id}.srt`]);
       await env.DB.prepare('DELETE FROM jobs WHERE project_id = ?').bind(id).run();
       await env.DB.prepare('DELETE FROM projects WHERE id = ? AND user_id = ?').bind(id, user.id).run();
+      rc.log('project.delete', { projectId: id, data: { title: p.title } });
       return json({ ok: true });
+    }
+    if (sub === '/duplicate' && method === 'POST') {
+      if (vis(env.config, 'feature:duplicate') !== 'on') throw new HttpError(403, 'Tính năng nhân bản đang tắt.');
+      const b = await body<any>(req, 500);
+      const spec = { ...p.spec };
+      if (b.ratio === '9:16' || b.ratio === '16:9') spec.ratio = b.ratio;
+      spec.title = (p.spec.title + (spec.ratio !== p.spec.ratio ? (spec.ratio === '16:9' ? ' (ngang)' : ' (dọc)') : ' (bản sao)')).slice(0, 100);
+      const clean = cleanSpec(spec, user.id), nid = randomId(12), now = Date.now();
+      await env.DB.prepare('INSERT INTO projects (id, user_id, title, spec, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').bind(nid, user.id, clean.title, JSON.stringify(clean), now, now).run();
+      rc.log('project.duplicate', { projectId: nid, data: { from: id, ratio: clean.ratio } });
+      return json({ id: nid });
     }
     if (sub === '/compose' && method === 'POST') {
       const si = Number((await body<any>(req, 1_000)).scene);
       const sc = p.spec.scenes[si];
       if (!sc) throw new HttpError(400, 'Không tìm thấy cảnh.');
-      sc.diagram = { kind: 'sketch', items: composeScene(sc.lines, p.spec.ratio === '9:16', si + Date.now() % 7) };
+      sc.diagram = { kind: 'sketch', items: composeScene(sc.lines, p.spec.ratio === '9:16', si + Date.now() % 7, { format: p.spec.format, index: si, total: p.spec.scenes.length }) };
       sc.panels = [];
       const spec = cleanSpec(p.spec, user.id);
       await saveSpec(env, user, id, spec);
+      rc.log('project.compose', { projectId: id, data: { scene: si } });
       return json({ spec });
     }
     if (sub === '/image' && method === 'POST') {
@@ -179,33 +254,25 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       const sc = p.spec.scenes[Number(b.scene)], panel = sc?.panels[Number(b.panel)];
       if (!panel) throw new HttpError(400, 'Không tìm thấy khung hình.');
       if (!panel.prompt) throw new HttpError(400, 'Khung hình chưa có mô tả để vẽ.');
-      const provider: ImageProvider = b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (env.config.defaults.imageAI as ImageProvider);
+      if (vis(env.config, 'feature:imageAI') !== 'on') throw new HttpError(403, 'Tranh AI đang tắt. Hãy dùng bảng vẽ tự do.');
+      const provider: ImageProvider = (b.provider === 'openai' || b.provider === 'gemini') && vis(env.config, 'ai:' + b.provider) === 'on' ? b.provider : (env.config.defaults.imageAI as ImageProvider);
       const base = `img/${user.id}/${(await sha256(provider + '\n' + panel.prompt)).slice(0, 24)}`;
       let key = (await env.BUCKET.head(base + '.webp')) ? base + '.webp' : (await env.BUCKET.head(base + '.png')) ? base + '.png' : '';
       if (!key) {
-        await useQuota(env, user.id, 'image', limits(env).image);
+        await useQuota(env, user.id, 'image', (await limitsFor(env, user.id)).image);
         try {
+          const t0 = Date.now();
           const img = await drawImage(env, provider, panel.prompt);
           key = `${base}.${img.ext}`;
           await env.BUCKET.put(key, img.bytes, { httpMetadata: { contentType: img.type } });
-        } catch (e) { await refundQuota(env, user.id, 'image'); throw e; }
+          rc.log('ai.image', { projectId: id, ms: Date.now() - t0, cost: imageCost(env.config, provider), data: { provider, bytes: img.bytes.length, prompt: panel.prompt } });
+        } catch (e: any) { await refundQuota(env, user.id, 'image'); rc.log('ai.image', { projectId: id, ok: false, data: { provider, error: e.message } }); throw e; }
       }
       panel.image = 'r2:' + key;
       await saveSpec(env, user, id, p.spec);
       return json({ image: panel.image, spec: p.spec });
     }
-    if (sub === '/render' && method === 'POST') {
-      const missing = p.spec.scenes.reduce((n: number, sc: any) => n + sc.panels.filter((x: any) => !String(x.image).startsWith('r2:')).length, 0);
-      if (missing) throw new HttpError(409, `Còn ${missing} khung chưa có tranh AI. Bấm "Vẽ tất cả bằng AI" hoặc đổi cảnh đó sang sơ đồ.`);
-      const active = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE user_id = ? AND status IN ('queued','running')").bind(user.id).first<any>();
-      if (active.n >= MAX_ACTIVE_JOBS) throw new HttpError(429, 'Bạn đang có video chờ dựng. Đợi xong rồi dựng tiếp nhé.');
-      await useQuota(env, user.id, 'render', limits(env).render);
-      const jobId = randomId(12);
-      await env.DB.prepare("INSERT INTO jobs (id, project_id, user_id, status, spec, created_at) VALUES (?, ?, ?, 'queued', ?, ?)")
-        .bind(jobId, id, user.id, JSON.stringify(p.spec), Date.now()).run();
-      ctx.waitUntil(startRunner(env).catch((e) => console.error('startRunner', e)));
-      return json({ job: { id: jobId, status: 'queued', progress: 0 } });
-    }
+    if (sub === '/render' && method === 'POST') return json({ job: await queueRender(env, rc, user, id, p.spec) });
     if (sub === '/jobs' && method === 'GET') {
       const r = await env.DB.prepare('SELECT id, status, progress, error, created_at, finished_at FROM jobs WHERE project_id = ? ORDER BY created_at DESC LIMIT 10').bind(id).all();
       const queued = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'queued'").first<any>();
@@ -220,6 +287,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
     const ext = f[2] === 'video' ? 'mp4' : 'srt';
     const obj = await env.BUCKET.get(`video/${user.id}/${f[1]}.${ext}`);
     if (!obj) throw new HttpError(404, 'Không tìm thấy tệp.');
+    rc.log('video.download', { data: { job: f[1], kind: f[2] } });
     return new Response(obj.body, { headers: {
       'content-type': ext === 'mp4' ? 'video/mp4' : 'text/plain; charset=utf-8',
       'content-disposition': `attachment; filename="net-ve-${f[1].slice(0, 8)}.${ext}"`,
@@ -240,7 +308,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
 }
 
 // ---- render machines: pull a job, fetch assets, upload the result. Auth: Bearer RUNNER_TOKEN.
-async function runner(req: Request, env: Env, sub: string): Promise<Response> {
+async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Promise<Response> {
   const auth = req.headers.get('authorization') || '';
   if (!env.RUNNER_TOKEN || env.RUNNER_TOKEN.length < 32 || !timingSafeEqual(auth, `Bearer ${env.RUNNER_TOKEN}`)) throw new HttpError(401, 'Không có quyền.');
   const now = Date.now();
@@ -253,9 +321,12 @@ async function runner(req: Request, env: Env, sub: string): Promise<Response> {
     const job = await env.DB.prepare(
       `UPDATE jobs SET status = 'running', started_at = ?, runner = ?, progress = 0
        WHERE id = (SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at LIMIT 1) AND status = 'queued'
-       RETURNING id, spec`,
+       RETURNING id, spec, user_id, project_id, created_at`,
     ).bind(now, name).first<any>();
-    return json(job ? { job: { id: job.id, spec: JSON.parse(job.spec) } } : { job: null });
+    if (!job) { rc.quiet = true; return json({ job: null }); }
+    rc.userId = job.user_id;
+    rc.log('render.start', { projectId: job.project_id, data: { job: job.id, runner: name, waitedSec: Math.round((now - job.created_at) / 1000) } });
+    return json({ job: { id: job.id, spec: JSON.parse(job.spec) } });
   }
   if (sub === 'asset' && req.method === 'GET') {
     const key = new URL(req.url).searchParams.get('key') || '';
@@ -266,8 +337,9 @@ async function runner(req: Request, env: Env, sub: string): Promise<Response> {
   }
   const m = sub.match(/^jobs\/([a-f0-9]{24})\/(progress|video|srt|done|fail)$/);
   if (!m) throw new HttpError(404, 'Không tìm thấy.');
-  const job = await env.DB.prepare("SELECT id, user_id FROM jobs WHERE id = ? AND status = 'running'").bind(m[1]).first<any>();
+  const job = await env.DB.prepare("SELECT id, user_id, project_id, created_at, spec FROM jobs WHERE id = ? AND status = 'running'").bind(m[1]).first<any>();
   if (!job) throw new HttpError(409, 'Việc này không còn ở trạng thái đang dựng.');
+  rc.userId = job.user_id;
   if (m[2] === 'progress') {
     const pct = Math.max(0, Math.min(99, Math.round(Number((await body(req, 1_000)).progress) || 0)));
     await env.DB.prepare('UPDATE jobs SET progress = ?, started_at = ? WHERE id = ?').bind(pct, now, job.id).run();
@@ -281,58 +353,126 @@ async function runner(req: Request, env: Env, sub: string): Promise<Response> {
   if (m[2] === 'done') {
     if (!(await env.BUCKET.head(`video/${job.user_id}/${job.id}.mp4`))) throw new HttpError(400, 'Chưa tải video lên.');
     await env.DB.prepare("UPDATE jobs SET status = 'done', progress = 100, finished_at = ? WHERE id = ?").bind(now, job.id).run();
+    // the runner reports how long the render took and how much was read aloud
+    const r = await body<any>(req, 5_000).catch(() => ({}));
+    const spec = JSON.parse(job.spec), provider = String(r.voice || spec.voice?.provider || '');
+    const chars = Number(r.chars) || spec.scenes.reduce((n: number, sc: any) => n + sc.lines.join(' ').length, 0);
+    rc.log('render.done', { projectId: job.project_id, ms: (Number(r.seconds) || 0) * 1000, cost: r.cachedVoice ? 0 : voiceCost(env.config, provider, chars),
+      data: { job: job.id, videoSec: r.duration, renderSec: r.seconds, totalSec: Math.round((now - job.created_at) / 1000), voice: provider, chars, cachedVoice: !!r.cachedVoice } });
+    await afterJob(env, rc, job, true, '', Number(r.duration) || 0);
     return json({ ok: true });
   }
   if (m[2] === 'fail') {
     const error = String((await body(req, 5_000)).error || 'Dựng video thất bại.').slice(0, 300);
     await env.DB.prepare("UPDATE jobs SET status = 'failed', error = ?, finished_at = ? WHERE id = ?").bind(error, now, job.id).run();
     await refundQuota(env, job.user_id, 'render');
+    rc.log('render.fail', { ok: false, projectId: job.project_id, data: { job: job.id, error } });
+    await afterJob(env, rc, job, false, error);
     return json({ ok: true });
   }
   throw new HttpError(405, 'Không hỗ trợ.');
 }
 
+/** Finished video through a signed link (sent by Zalo): plays in the browser, no login. */
+async function shareVideo(env: XEnv, rc: Rc, jobId: string, url: URL) {
+  if (!(await checkShare(env, jobId, Number(url.searchParams.get('e')), url.searchParams.get('s') || ''))) throw new HttpError(403, 'Link đã hết hạn. Gõ TT trong Zalo để lấy link mới.');
+  const job = await env.DB.prepare("SELECT user_id, project_id FROM jobs WHERE id = ? AND status = 'done'").bind(jobId).first<any>();
+  if (!job) throw new HttpError(404, 'Video không còn.');
+  const obj = await env.BUCKET.get(`video/${job.user_id}/${jobId}.mp4`);
+  if (!obj) throw new HttpError(404, 'Video không còn.');
+  rc.userId = job.user_id; rc.channel = 'zalo';
+  rc.log('video.download', { projectId: job.project_id, data: { job: jobId, kind: 'share' } });
+  return new Response(obj.body, { headers: { 'content-type': 'video/mp4', 'content-disposition': `inline; filename="video-${jobId.slice(0, 8)}.mp4"`, 'cache-control': 'private, max-age=3600' } });
+}
+
+/** After a render: tell the user where they asked to be told (Zalo). */
+async function afterJob(env: XEnv, rc: Rc, job: any, ok: boolean, error = '', seconds = 0) {
+  try { await notifyJob(env, rc, job, ok, error, seconds); } catch (e: any) { rc.log('zalo.notify', { ok: false, data: { error: e.message } }); }
+}
+
 /** Voice picked in the editor: its provider comes from the admin's voice list. */
 function voiceFor(config: Config, voiceId: unknown, speed: unknown) {
-  const v = config.voices.find((x) => x.code === voiceId) || config.voices.find((x) => x.code === config.defaults.voice) || config.voices[0];
+  const usable = config.voices.filter((x) => (config.visibility['voice:' + x.code] || 'on') === 'on');
+  const v = usable.find((x) => x.code === voiceId) || usable.find((x) => x.code === config.defaults.voice) || usable[0] || config.voices[0];
   return { provider: v.provider, voiceId: v.code, speed: Number(speed) || 1 };
 }
 
-// ---- admin page API
-async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: string, method: string): Promise<Response> {
-  if (sub === 'settings' && method === 'GET') return json({ config: env.config, secrets: await secretStatus(rawEnv) });
-  if (sub === 'settings' && method === 'PUT') {
-    const b = await body<any>(req, 100_000);
-    const config = await saveSettings(rawEnv, b.config, b.secrets || {});
-    clearCache();
-    return json({ config, secrets: await secretStatus(rawEnv) });
-  }
-  if (sub === 'users' && method === 'GET') {
-    const r = await env.DB.prepare(
-      `SELECT u.id, u.email, u.name, u.created_at,
-         (SELECT COUNT(*) FROM projects p WHERE p.user_id = u.id) AS projects,
-         (SELECT COUNT(*) FROM jobs j WHERE j.user_id = u.id AND j.status = 'done') AS videos,
-         (SELECT COALESCE(SUM(n), 0) FROM usage g WHERE g.user_id = u.id AND g.day = ?) AS today,
-         EXISTS (SELECT 1 FROM blocked_users b WHERE b.user_id = u.id) AS blocked
-       FROM users u ORDER BY u.created_at DESC LIMIT 500`,
-    ).bind(today()).all();
-    const jobs = await env.DB.prepare("SELECT status, COUNT(*) AS n FROM jobs WHERE created_at > ? GROUP BY status").bind(Date.now() - 7 * 86_400_000).all<any>();
-    return json({ users: r.results, jobs7d: Object.fromEntries(jobs.results.map((j) => [j.status, j.n])) });
-  }
-  const b = sub.match(/^users\/([A-Za-z0-9_-]{1,80})\/block$/);
-  if (b && method === 'POST') {
-    const on = !!(await body<any>(req, 1_000)).blocked;
-    if (on) {
-      if (await isAdmin(env, env.config, { id: b[1], email: (await env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(b[1]).first<any>())?.email || '', name: null, picture: null }))
-        throw new HttpError(400, 'Không thể khoá tài khoản quản trị.');
-      await env.DB.batch([
-        env.DB.prepare('INSERT OR IGNORE INTO blocked_users (user_id, blocked_at) VALUES (?, ?)').bind(b[1], Date.now()),
-        env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(b[1]),
-      ]);
-    } else await env.DB.prepare('DELETE FROM blocked_users WHERE user_id = ?').bind(b[1]).run();
-    return json({ ok: true });
-  }
-  throw new HttpError(404, 'Không tìm thấy.');
+/** New project from a topic or the user's own script (web and Zalo share this). */
+export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAllowed = false) {
+    const D = env.config.defaults;
+    const source = ['topic', 'mine-ai', 'mine-free'].includes(b.source) ? b.source : D.source;
+    if (!env.config.enabledSources.includes(source)) throw new HttpError(403, vis(env.config, 'source:' + source) === 'dev' ? 'Cách tạo này đang phát triển, sắp ra mắt.' : 'Cách tạo video này đang tắt.');
+    await checkSource(env, user, source);
+    const text = String(b.topic || '').trim().slice(0, source === 'topic' ? 3000 : 20000);
+    if (text.length < 5) throw new HttpError(400, source === 'topic' ? 'Nhập chủ đề (ít nhất vài chữ).' : 'Dán kịch bản của bạn vào ô (ít nhất một câu).');
+    // options the admin hid or marked "in development" are never used, whatever the page sent
+    const on = (k: string) => vis(env.config, k) === 'on';
+    const visual = ['sketch', 'images', 'diagram', 'mix'].includes(b.visual) && on('visual:' + b.visual) ? b.visual : D.visual;
+    const ratio = (b.ratio === '16:9' || b.ratio === '9:16') && on('ratio:' + b.ratio) ? b.ratio : D.ratio;
+    if ((b.provider === 'openai' || b.provider === 'gemini') && !on('ai:' + b.provider)) b.provider = undefined;
+    // what kind of video the words ask for (the user may override it)
+    const intent = detectIntent(text);
+    const format = FORMATS.includes(b.format) ? b.format : intent.format;
+    const niche = NICHES.includes(b.niche) ? b.niche : intent.niche;
+    let raw: any, note = '', usage: any = null;
+    if (source !== 'topic') {
+      // the user's own words, split into scenes; pictures are designed by rules (free) or by the AI
+      const scenes = splitScript(text);
+      if (!scenes.length) throw new HttpError(400, 'Không tách được câu nào từ kịch bản.');
+      raw = { title: scenes[0][0].replace(/[.!?…]+$/, '').slice(0, 70), scenes: scenes.map((lines) => ({ lines })) };
+      if (source === 'mine-ai') {
+        const provider = b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (D.textAI as TextProvider);
+        await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
+        try {
+          const out = await writeScript(env, provider, { topic: '', seconds: 0, tone: '', ratio, visual: 'sketch', extra: env.config.promptExtra, scenes, format, niche });
+          usage = out._usage;
+          // the narration always stays the user's own words
+          raw = { ...out, title: out.title || raw.title, scenes: scenes.map((lines, i) => ({ lines, diagram: out.scenes?.[i]?.diagram })) };
+        } catch (e: any) {
+          await refundQuota(env, user.id, 'script');
+          note = 'AI đang bận nên hình được tự thiết kế (miễn phí). Bạn vẫn sửa được từng cảnh.';
+          rc.log('ai.fallback', { ok: false, data: { source, error: String(e.message).slice(0, 200) } });
+        }
+      }
+    } else {
+      const provider: TextProvider | 'mock' = b.provider === 'mock' && devAllowed ? 'mock' : b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (D.textAI as TextProvider);
+      const seconds = Math.max(15, Math.min(180, (await planOf(env, user.id)).plan.maxSeconds, Number(b.seconds) || D.seconds));
+      if (provider === 'mock') raw = sampleScript(text);
+      else {
+        await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
+        try {
+          raw = await writeScript(env, provider, { topic: text, seconds, tone: String(b.tone || '').slice(0, 200), ratio, visual, extra: env.config.promptExtra, format, niche });
+          usage = raw._usage;
+        } catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
+      }
+    }
+    const autoStyle = NICHE_STYLE[niche as keyof typeof NICHE_STYLE];
+    const style = env.config.enabledStyles.includes(b.style) ? b.style : b.style === 'auto' && env.config.enabledStyles.includes(autoStyle) ? autoStyle : D.style;
+    const spec = cleanSpec({ ...raw, format, niche, visual, ratio, subtitles: typeof b.subtitles === 'boolean' ? b.subtitles : D.subtitles,
+      style, tool: b.tool, channel: b.channel ?? D.channel, episode: b.episode,
+      voice: voiceFor(env.config, b.voiceId, Number(b.speed) || 1) }, user.id);
+    if (usage) rc.log('ai.script', { cost: aiCost(env.config, usage), data: { source, format, niche, ...usage } });
+    const id = randomId(12), now = Date.now();
+    await env.DB.prepare('INSERT INTO projects (id, user_id, title, spec, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(id, user.id, spec.title, JSON.stringify(spec), now, now).run();
+    rc.log('project.create', { projectId: id, data: { source, format, niche, style: spec.style, ratio, visual, scenes: spec.scenes.length, chars: text.length, via: rc.channel, note: note || undefined } });
+  return { id, spec, note };
+}
+
+/** Put a project in the render queue and wake the render machine. */
+export async function queueRender(env: XEnv, rc: Rc, user: User, id: string, spec: any) {
+  const missing = spec.scenes.reduce((n: number, sc: any) => n + sc.panels.filter((x: any) => !String(x.image).startsWith('r2:')).length, 0);
+  if (missing) throw new HttpError(409, `Còn ${missing} khung chưa có tranh AI. Bấm "Vẽ tất cả bằng AI" hoặc đổi cảnh đó sang bảng vẽ.`);
+  await checkAllowed(env, user, spec);
+  const active = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE user_id = ? AND status IN ('queued','running')").bind(user.id).first<any>();
+  if (active.n >= MAX_ACTIVE_JOBS) throw new HttpError(429, 'Bạn đang có video chờ dựng. Đợi xong rồi dựng tiếp nhé.');
+  await useQuota(env, user.id, 'render', (await limitsFor(env, user.id)).render);
+  const jobId = randomId(12);
+  await env.DB.prepare("INSERT INTO jobs (id, project_id, user_id, status, spec, created_at) VALUES (?, ?, ?, 'queued', ?, ?)")
+    .bind(jobId, id, user.id, JSON.stringify({ ...spec, _via: rc.channel }), Date.now()).run();
+  rc.wait(startRunner(env).catch((e) => { rc.log('render.trigger', { ok: false, data: { error: String(e.message || e) } }); }));
+  rc.log('render.queue', { projectId: id, data: { job: jobId, scenes: spec.scenes.length, chars: spec.scenes.reduce((n: number, sc: any) => n + sc.lines.join(' ').length, 0), voice: spec.voice, style: spec.style, via: rc.channel } });
+  return { id: jobId, status: 'queued', progress: 0 };
 }
 
 /** Offline script for local development (DEV_LOGIN only): no AI key needed. */

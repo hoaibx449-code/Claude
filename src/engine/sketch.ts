@@ -173,6 +173,13 @@ export function buildSketch(c: Ctx, items: SketchItem[], stage: Box, col: Colors
     return [cx + dx * s, cy + dy * s];
   };
   items.forEach((it: any, idx) => {
+    const before = els.length;
+    drawItem(it, idx);
+    for (let k = before; k < els.length; k++) { els[k].item = idx; els[k].line = it.line; if (it.cue) els[k].cue = String(it.cue); }
+  });
+  return els;
+
+  function drawItem(it: any, idx: number) {
     const done = order.find((o) => o.idx === idx);
     if (done) { els.push(...done.built.els); return; }
     const line = it.line;
@@ -211,8 +218,7 @@ export function buildSketch(c: Ctx, items: SketchItem[], stage: Box, col: Colors
         break;
       }
     }
-  });
-  return els;
+  }
 }
 
 const shift = (b: BBox, dx: number, dy: number): BBox => ({ x0: b.x0 + dx, y0: b.y0 + dy, x1: b.x1 + dx, y1: b.y1 + dy });

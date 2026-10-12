@@ -44,7 +44,7 @@ async function runJob(job: { id: string; spec: ProjectSpec }) {
     });
     await call(`/api/runner/jobs/${job.id}/video`, { method: 'PUT', headers: { 'content-type': 'video/mp4' }, body: readFileSync(r.out) });
     await call(`/api/runner/jobs/${job.id}/srt`, { method: 'PUT', headers: { 'content-type': 'text/plain' }, body: readFileSync(r.srt) });
-    await post(`/api/runner/jobs/${job.id}/done`, {});
+    await post(`/api/runner/jobs/${job.id}/done`, { seconds: Math.round(r.seconds), duration: Math.round(r.duration), voice: r.voice, chars: spec.scenes.reduce((n, sc) => n + sc.lines.join(' ').length, 0) });
     console.log(`Xong ${job.id}: ${r.duration.toFixed(1)}s video trong ${r.seconds.toFixed(1)}s`);
   } catch (e: any) {
     const why = describe(e);

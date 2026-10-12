@@ -34,7 +34,7 @@ jobs:
       - name: Bật dịch vụ Google
         run: |
           gcloud config set project "$GCP_PROJECT"
-          gcloud services enable run.googleapis.com artifactregistry.googleapis.com iam.googleapis.com
+          gcloud services enable run.googleapis.com artifactregistry.googleapis.com iam.googleapis.com texttospeech.googleapis.com
       - name: Build và đẩy container
         run: |
           gcloud artifacts repositories describe "$REPO" --location "$REGION" >/dev/null 2>&1 \

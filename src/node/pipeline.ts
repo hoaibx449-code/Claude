@@ -8,7 +8,7 @@ import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas';
 import { buildTimeline } from '../engine/timeline.ts';
 import { logicalSize, prepare, renderFrame } from '../engine/render.ts';
 import type { HandMeta, ProjectSpec, Timeline } from '../engine/types.ts';
-import { pickTTS } from './tts.ts';
+import { pickTTS, withFallback } from './tts.ts';
 import { cachedImage, pickImages } from './images.ts';
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -62,7 +62,9 @@ export async function renderProject(o: RenderOptions) {
   const images = await Promise.all(imagePaths.map((r) => Promise.all(r.map((p) => loadImage(p)))));
 
   // 2. voice
-  const tts = await pickTTS(o.tts ?? project.voice?.provider, project.voice);
+  const name = o.tts ?? project.voice?.provider;
+  // a paid voice that fails (no key, quota, outage) is replaced by the free voice instead of failing the video
+  const tts = name && name !== 'mock' && name !== 'free' ? withFallback(await pickTTS(name, project.voice).catch(() => pickTTS('free', project.voice)), project.voice?.voiceId) : await pickTTS(name, project.voice);
   const voice = [];
   for (let i = 0; i < project.scenes.length; i++) voice.push(await tts.synth(project.scenes[i].lines, join(work, `scene${i}`)));
   const timeline = buildTimeline(project.scenes, voice);

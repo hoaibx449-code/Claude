@@ -22,19 +22,18 @@ export interface DiagramSpec {
   start?: string; // bars: starting amount in a circle with an arrow, e.g. "10tr"
   trend?: boolean; // bars: rising curve + circle on the largest value (default on)
   left?: string; right?: string; leftNote?: string; rightNote?: string; // compare (✗ left, ✓ right)
-  items?: string[]; // steps, flow (cause → effect)
+  /** steps, flow (cause → effect): strings · sketch: a free composition (SketchItem[]) designed for this scene */
+  items?: any[];
   number?: string; caption?: string; // number
   text?: string; // statement
   /** stick: 1-2 animated stick figures, a speech bubble for the first one, caption under the ground. */
   actors?: { action: string; label?: string }[];
   bubble?: string;
-  /** sketch: a free composition (text, icons, people, charts, arrows...) designed for this scene. */
-  items?: SketchItem[];
 }
 
 export type InkColor = 'ink' | 'accent' | 'accent2' | 'good';
 /** Positions are percentages of the drawing area; x,y is the item's centre. `line` = narration line it is drawn with. */
-export type SketchItem = { id?: string; line?: number } & (
+export type SketchItem = { id?: string; line?: number; /** words of the line: drawn when they are spoken */ cue?: string } & (
   | { t: 'text'; text: string; x: number; y: number; size?: 's' | 'm' | 'l' | 'xl' | 'xxl'; color?: InkColor; w?: number; align?: 'center' | 'left' }
   | { t: 'icon'; name: string; x: number; y: number; w?: number; color?: InkColor; label?: string }
   | { t: 'person'; action?: string; x: number; y: number; h?: number; facing?: 1 | -1; label?: string; bubble?: string }

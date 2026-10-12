@@ -80,16 +80,26 @@ export function elevenLabsTTS(voiceId?: string): TTS {
 }
 
 /** Google Cloud TTS: SSML marks before each line give their start times. */
-export function googleTTS(voiceName?: string, languageCode = 'vi-VN'): TTS {
+/** Access token of the machine's own Google service account (Cloud Run), or null elsewhere. */
+async function gcpToken(): Promise<{ token: string; project: string } | null> {
+  try {
+    const md = (p: string) => fetch('http://metadata.google.internal/computeMetadata/v1/' + p, { headers: { 'metadata-flavor': 'Google' }, signal: AbortSignal.timeout(1500) });
+    const [t, pr] = await Promise.all([md('instance/service-accounts/default/token'), md('project/project-id')]);
+    if (!t.ok || !pr.ok) return null;
+    return { token: ((await t.json()) as any).access_token, project: await pr.text() };
+  } catch { return null; }
+}
+
+export function googleTTS(voiceName?: string, languageCode = 'vi-VN', auth?: { token: string; project: string }): TTS {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return {
     name: 'google',
     async synth(lines, outBase) {
-      const key = need('GOOGLE_TTS_API_KEY');
+      const key = auth ? '' : need('GOOGLE_TTS_API_KEY');
       const ssml = '<speak>' + lines.map((l, i) => `<mark name="l${i}"/>${esc(l)}<break time="250ms"/>`).join('') + '</speak>';
-      const res = await fetch(`https://texttospeech.googleapis.com/v1beta1/text:synthesize?key=${encodeURIComponent(key)}`, {
+      const res = await fetch('https://texttospeech.googleapis.com/v1beta1/text:synthesize' + (auth ? '' : `?key=${encodeURIComponent(key)}`), {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...(auth ? { authorization: `Bearer ${auth.token}`, 'x-goog-user-project': auth.project } : {}) },
         body: JSON.stringify({
           input: { ssml },
           voice: { languageCode, name: voiceName || process.env.GOOGLE_TTS_VOICE || 'vi-VN-Neural2-A' },
@@ -111,8 +121,56 @@ export function googleTTS(voiceName?: string, languageCode = 'vi-VN'): TTS {
   };
 }
 
+/** espeak-ng: offline, always available, robotic. One clip per line so timing is exact. */
+export const espeakTTS: TTS = {
+  name: 'espeak',
+  async synth(lines, outBase) {
+    const clips = lines.map((l, i) => {
+      const f = `${outBase}-e${i}.wav`;
+      execFileSync('espeak-ng', ['-v', 'vi', '-s', '150', '-w', f, l]);
+      return f;
+    });
+    return joinLineClips(clips, outBase);
+  },
+};
+
+/**
+ * Free voice (no API key): Google Neural2 through the render machine's own Google account
+ * (the free monthly allowance covers ordinary use), else espeak-ng offline.
+ */
+export function freeTTS(voiceId?: string): TTS {
+  return {
+    name: 'free',
+    async synth(lines, outBase) {
+      const auth = await gcpToken();
+      if (auth) {
+        const voice = voiceId === 'free-male' ? 'vi-VN-Neural2-D' : /^vi-VN-/.test(voiceId || '') ? voiceId : 'vi-VN-Neural2-A';
+        try { return await googleTTS(voice, 'vi-VN', auth).synth(lines, outBase); } catch (e) { console.error('Giọng Google miễn phí lỗi, dùng giọng máy:', (e as Error).message); }
+      }
+      return espeakTTS.synth(lines, outBase);
+    },
+  };
+}
+
+/** Try the chosen voice; if its key is missing or the service fails, read with the free voice instead. */
+export function withFallback(primary: TTS, voiceId?: string): TTS {
+  return {
+    name: primary.name,
+    async synth(lines, outBase) {
+      try { return await primary.synth(lines, outBase); }
+      catch (e) {
+        console.error(`Giọng ${primary.name} lỗi (${(e as Error).message}), chuyển sang giọng miễn phí.`);
+        const r = await freeTTS(voiceId).synth(lines, outBase + '-free');
+        (this as TTS).name = primary.name + '→free';
+        return r;
+      }
+    },
+  };
+}
+
 export async function pickTTS(name: string | undefined, voice?: { voiceId?: string; languageCode?: string; model?: string; speed?: number; pitch?: number; volume?: number }): Promise<TTS> {
   switch (name) {
+    case 'free': return freeTTS(voice?.voiceId);
     case 'everai': return (await import('./everai.ts')).everAITTS({ voiceCode: voice?.voiceId, model: voice?.model, speed: voice?.speed, pitch: voice?.pitch, volume: voice?.volume });
     case 'elevenlabs': return elevenLabsTTS(voice?.voiceId);
     case 'google': return googleTTS(voice?.voiceId, voice?.languageCode);

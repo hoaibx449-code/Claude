@@ -10,6 +10,7 @@ Video bàn tay vẽ kèm thuyết minh tiếng Việt. Bản này là **bộ d�
 npm install
 npm run render -- examples/luong-11-trieu/project.json --out out/video.mp4
 npm test
+npm run typecheck   # kiểm tra kiểu phần web
 ```
 
 Cần Node ≥ 22.18 (chạy TypeScript trực tiếp) và `ffmpeg`. Mặc định dùng giọng thử (`mock`, âm thanh câm, thời gian ước tính) để kiểm tra bố cục mà không cần khoá API.
@@ -105,6 +106,14 @@ assets/       font Pangolin (OFL), hình Open Doodles (CC0), ảnh tay
 - **Triển khai:** chạy workflow **Triển khai web** trên GitHub (tab Actions). Workflow tự tạo D1 + R2, áp schema, đưa trang lên và cài khoá bí mật.
 - **Máy dựng (chạy thật):** workflow **Triển khai máy dựng** đưa `runner.Dockerfile` lên Google Cloud Run Jobs (asia-southeast1) và cài cho trang web một khoá chỉ có quyền bật job đó. Khi có video được xếp hàng, trang web bật job; job dựng hết hàng chờ rồi tắt. Cron 10 phút/lần là lưới an toàn. Cần secret `GCP_SA_KEY` (khoá service account có quyền Owner trên dự án Google Cloud, đã bật thanh toán).
 - **Máy dựng (thử):** `NV_API_URL=https://... RUNNER_TOKEN=... npm run runner` trên máy có FFmpeg, hoặc workflow **Máy dựng (thử nghiệm)**.
+
+**Không cần AI vẫn chạy:** kịch bản mẫu, chế độ "kịch bản của tôi + tự minh hoạ" (luật trong `web/src/compose.ts`, nhận diện dạng video/ngách trong `web/src/intent.ts`), giọng đọc miễn phí (Google Neural2 qua tài khoản Google Cloud của máy dựng, dự phòng espeak-ng). Giọng trả phí lỗi thì tự chuyển sang giọng miễn phí; AI lỗi thì thử model dự phòng, rồi nhà cung cấp còn lại, cuối cùng tự minh hoạ miễn phí.
+
+**Zalo** (`web/src/zalo.ts`, Zalo Bot Platform): người dùng gửi `KB` + kịch bản hoặc `TAO` + chủ đề cho bot và nhận link video (ký số, hạn 7 ngày). Liên kết tài khoản bằng mã `KETNOI`; người chưa có tài khoản web được tạo tài khoản Zalo tự động (tuỳ chọn). Webhook xác thực bằng header `X-Bot-Api-Secret-Token`.
+
+**Gói cước & thanh toán** (`web/src/plans.ts`): giới hạn theo ngày, phong cách/giọng/cách tạo theo gói, mã VietQR, SePay báo tiền về `/api/sepay/webhook` (API key) để kích hoạt tự động.
+
+**Nhật ký** (`web/src/log.ts`, bảng `events`): mọi yêu cầu, từng bước video, chi phí AI/giọng (VND), lỗi, thao tác trong trang (xem, bấm, rời trang, lỗi trình duyệt). Trang quản trị có tổng quan, phễu, lọc, dòng thời gian từng người, xuất CSV.
 
 **Trang quản trị** (`#/admin`, liên kết "Quản trị" trên thanh đầu trang): nhập/xoá khoá API (Gemini, OpenAI, EverAI, Google TTS, ElevenLabs — mã hoá AES-GCM trong D1, không bao giờ hiện lại, ưu tiên hơn khoá trên máy chủ), đổi tên trang và mọi tên hiển thị (phong cách, dụng cụ, kiểu sơ đồ, động tác người que, chữ trên giao diện), bật/tắt phong cách, giá trị mặc định, danh sách giọng đọc, model AI, giới hạn mỗi ngày, lời dặn thêm cho AI, danh sách quản trị viên, khoá/mở khoá người dùng. Chưa khai báo quản trị viên thì tài khoản Google đăng nhập đầu tiên là quản trị viên.
 

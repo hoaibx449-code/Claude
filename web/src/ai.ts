@@ -1,7 +1,8 @@
 // Script writing (OpenAI or Gemini, chosen per request) and line-art images.
 // Model output is treated as data: it goes through cleanSpec() before use.
 import { Buffer } from 'node:buffer';
-import { Env, HttpError } from './util.ts';
+import { type Env, HttpError } from './util.ts';
+import { FORMAT_BRIEF, FORMAT_NAMES, NICHE_NAMES } from './intent.ts';
 
 export type TextProvider = 'openai' | 'gemini';
 export type ImageProvider = 'openai' | 'gemini';
@@ -16,6 +17,8 @@ export interface ScriptRequest {
   /** admin's extra instructions */ extra?: string;
   /** the user's own script, already split into scenes: the AI only designs the pictures */
   scenes?: string[][];
+  /** detected kind of video and topic area (see intent.ts) */
+  format?: string; niche?: string;
 }
 
 const ICON_VOCAB = 'user, users, user-check, user-x, user-heart, user-star, friends, man, woman, baby-carriage, old, mood-happy, mood-sad, mood-cry, mood-angry, mood-confuzed, mood-sick, mood-nervous, mood-smile-beam, heart, heart-broken, heart-handshake, hearts, brain, bulb, bulb-off, message, message-circle, messages, speakerphone, microphone, thumb-up, thumb-down, hand-stop, hand-click, pointer, eye, eye-off, ear, search, zoom-question, question-mark, exclamation-mark, alert-triangle, alert-circle, info-circle, check, x, circle-check, circle-x, ban, lock, lock-open, key, shield, shield-check, fingerprint, home, building, building-skyscraper, building-bank, building-store, building-hospital, building-factory, school, briefcase, tent, cash, coin, coins, currency-dollar, pig-money, wallet, credit-card, receipt, receipt-tax, report-money, moneybag, basket, shopping-cart, shopping-bag, gift, tag, discount, percentage, calculator, chart-bar, chart-line, chart-pie, chart-arrows-vertical, trending-up, trending-down, arrow-up-right, arrow-down-right, scale, scale-outline, clock, alarm, hourglass, calendar, calendar-event, calendar-time, stopwatch, history, hourglass-high, device-mobile, device-laptop, device-desktop, device-tv, device-gamepad-2, wifi, world, cloud, database, server, robot, cpu, code, mail, phone, camera, photo, video, movie, music, headphones, car, bus, bike, plane, rocket, ship, truck, map, map-pin, route, road-sign, compass, globe, sun, moon, cloud-rain, snowflake, bolt, flame, droplet, leaf, plant, tree, seedling, mountain, beach, coffee, cup, tools-kitchen-2, pizza, apple, salad, bottle, beer, cake, candy, egg, fish, meat, milk, bed, zzz, run, walk, swimming, yoga, barbell, stretching, heartbeat, activity, pill, vaccine, stethoscope, first-aid-kit, virus, book, book-2, books, notebook, pencil, writing, certificate, award, trophy, medal, crown, star, stars, flag, target, target-arrow, puzzle, chess, chess-knight, dice-5, ladder, stairs-up, stairs-down, battery, battery-1, battery-4, plug, lamp, bell, bell-ringing, hammer, tool, tools, settings, adjustments, box, package, link, anchor, magnet, umbrella, paperclip, sparkles, confetti, balloon, mask, mood-crazy-happy, ghost, skull, bomb, fire-extinguisher, arrows-split, arrows-join, refresh, repeat, infinity, recycle, arrow-loop-right, arrows-exchange';
@@ -25,7 +28,7 @@ function sketchSchema(ratio: string) {
   return [
     'BẢNG VẼ TỰ DO: mỗi cảnh là MỘT BỐ CỤC VẼ TAY RIÊNG, nghĩ ra cho đúng ý câu thoại của cảnh đó, như một người vừa nói vừa phác ý lên bảng: chữ viết tay (từ khoá, con số), hình minh hoạ nét đơn (icon), người que chuyển động, mũi tên nối ý, khoanh tròn/gạch chân điểm nhấn, dấu ✗/✓, biểu đồ nhỏ. Video KHÔNG có phụ đề nên chữ trên bảng phải nêu được ý chính (ngắn).',
     'Mỗi cảnh 3-8 vật; mỗi cảnh một kiểu bố cục khác (ví dụ: tiêu đề + 3 icon nối mũi tên; người que + bong bóng thoại + icon; con số khổng lồ khoanh tròn; hai cột ✗/✓; chuỗi nguyên nhân → kết quả; biểu đồ có mũi tên và chú thích; ẩn dụ hình ảnh). Dùng ẩn dụ: tiền bay = icon cash + mũi tên đi ra; áp lực = người que sad + icon clock...',
-    '"diagram":{"kind":"sketch","items":[...]} — items theo THỨ TỰ VẼ, mỗi item có thể có "line": chỉ số câu thoại (0 hoặc 1) để được vẽ đúng lúc câu đó được đọc:',
+    '"diagram":{"kind":"sketch","items":[...]} — items theo THỨ TỰ VẼ. KHỚP NHỊP: mỗi item nên có "line" (chỉ số câu thoại 0 hoặc 1) và "cue" (2-4 chữ CHÉP ĐÚNG từ câu thoại đó): vật được vẽ đúng lúc giọng đọc nói tới cụm từ ấy. Thứ tự vật theo thứ tự ý trong lời đọc:',
     '{"t":"text","id":"a","text":"≤6 chữ","x":50,"y":8,"size":"s|m|l|xl|xxl","color":"ink|accent|accent2|good"} (xxl cho con số lớn; accent = đỏ nhấn, accent2 = xanh) · ' +
     '{"t":"icon","id":"b","name":"tên icon","x":30,"y":40,"w":10-45 (% bề ngang),"label":"≤4 chữ (tuỳ chọn)"} · ' +
     '{"t":"person","id":"c","action":"idle|walk|run|wave|think|cheer|sad|point|shrug|jump","x":..,"y":..,"h":20-45 (% chiều cao),"facing":1|-1,"label":"≤2 chữ","bubble":"≤8 chữ (tuỳ chọn)"} (người que chuyển động thật) · ' +
@@ -34,8 +37,8 @@ function sketchSchema(ratio: string) {
     `x,y là TÂM của vật, tính theo % vùng vẽ (0-100). Vùng vẽ ${portrait ? 'DỌC (cao ≈ 1,7 lần rộng): xếp các vật theo chiều dọc, tiêu đề y≈6, nội dung y 20-90, mỗi hàng tối đa 2-3 vật' : 'NGANG (rộng ≈ 2 lần cao): xếp theo chiều ngang, tiêu đề y≈8, nội dung trải từ x 10 tới 90'}. Không để các vật chồng lên nhau; chừa khoảng trống giữa chúng.`,
     'Tên icon (tiếng Anh, chữ thường, nối gạch) chọn trong: ' + ICON_VOCAB + '. Có thể dùng tên icon Tabler khác nếu chắc chắn tồn tại.',
     portrait
-      ? 'Ví dụ cảnh "Gửi 10 triệu, lãi 8%. 30 năm sau thành hơn 100 triệu.": {"kind":"sketch","items":[{"t":"text","id":"t","text":"Sức mạnh lãi kép","x":50,"y":6,"size":"l"},{"t":"underline","on":"t"},{"t":"icon","id":"p","name":"pig-money","x":24,"y":24,"w":26,"label":"10tr · 8%/năm","line":0},{"t":"icon","id":"h","name":"hourglass","x":76,"y":24,"w":18,"label":"30 năm","line":0},{"t":"arrow","from":"p","to":"h","line":0},{"t":"chart","kind":"bars","values":[21.6,46.6,100.6],"labels":["10 năm","20 năm","30 năm"],"unit":"tr","x":50,"y":66,"w":92,"h":42,"line":1}]}'
-      : 'Ví dụ cảnh "Gửi 10 triệu, lãi 8%. 30 năm sau thành hơn 100 triệu.": {"kind":"sketch","items":[{"t":"text","id":"t","text":"Sức mạnh lãi kép","x":50,"y":8,"size":"l"},{"t":"underline","on":"t"},{"t":"icon","id":"p","name":"pig-money","x":14,"y":45,"w":13,"label":"10tr · 8%/năm","line":0},{"t":"arrow","from":"p","to":"c","line":1},{"t":"chart","id":"c","kind":"bars","values":[21.6,46.6,100.6],"labels":["10 năm","20 năm","30 năm"],"unit":"tr","x":62,"y":58,"w":66,"h":72,"line":1}]}',
+      ? 'Ví dụ cảnh "Gửi 10 triệu, lãi 8%. 30 năm sau thành hơn 100 triệu.": {"kind":"sketch","items":[{"t":"text","id":"t","text":"Sức mạnh lãi kép","x":50,"y":6,"size":"l"},{"t":"underline","on":"t"},{"t":"icon","id":"p","name":"pig-money","x":24,"y":24,"w":26,"label":"10tr · 8%/năm","line":0,"cue":"Gửi 10 triệu"},{"t":"icon","id":"h","name":"hourglass","x":76,"y":24,"w":18,"label":"30 năm","line":1,"cue":"30 năm sau"},{"t":"arrow","from":"p","to":"h","line":0},{"t":"chart","kind":"bars","values":[21.6,46.6,100.6],"labels":["10 năm","20 năm","30 năm"],"unit":"tr","x":50,"y":66,"w":92,"h":42,"line":1,"cue":"hơn 100 triệu"}]}'
+      : 'Ví dụ cảnh "Gửi 10 triệu, lãi 8%. 30 năm sau thành hơn 100 triệu.": {"kind":"sketch","items":[{"t":"text","id":"t","text":"Sức mạnh lãi kép","x":50,"y":8,"size":"l"},{"t":"underline","on":"t"},{"t":"icon","id":"p","name":"pig-money","x":14,"y":45,"w":13,"label":"10tr · 8%/năm","line":0,"cue":"Gửi 10 triệu"},{"t":"arrow","from":"p","to":"c","line":1},{"t":"chart","id":"c","kind":"bars","values":[21.6,46.6,100.6],"labels":["10 năm","20 năm","30 năm"],"unit":"tr","x":62,"y":58,"w":66,"h":72,"line":1,"cue":"30 năm sau"}]}',
   ].join('\n');
 }
 
@@ -69,6 +72,8 @@ function systemPrompt(r: ScriptRequest) {
     '5. KÊU GỌI KHÉO (chỉ cảnh cuối, 1 câu, gắn với lợi ích của người xem): lưu lại ("lưu lại để lần sau…"), chia sẻ ("gửi cho người bạn đang…") hoặc bình luận bằng một câu hỏi dễ trả lời một chữ. Không xin like trực tiếp, không "nhớ đăng ký kênh".',
     'Số viết bằng chữ trong lời đọc khi đọc tự nhiên hơn. Không bịa số liệu, nghiên cứu, trích dẫn; nếu dùng con số minh hoạ thì nói rõ là ví dụ. Không đưa lời khuyên đầu tư, y tế, pháp lý cụ thể.',
     r.tone ? `Giọng văn: ${r.tone}.` : '',
+    r.format ? 'DẠNG VIDEO (đã nhận diện, giữ đúng): ' + (FORMAT_NAMES as any)[r.format] + ' — ' + (FORMAT_BRIEF as any)[r.format] : '',
+    r.niche && r.niche !== 'general' ? 'Ngách: ' + (NICHE_NAMES as any)[r.niche] + '. Dùng ví dụ, từ ngữ, ẩn dụ đúng ngách này.' : '',
     'HÌNH: ' + visual,
     r.extra ? 'YÊU CẦU THÊM CỦA CHỦ TRANG: ' + r.extra : '',
     '"panels": [{"prompt":"TIẾNG ANH, 1 hình minh hoạ đơn giản: chủ thể, hành động, đồ vật ẩn dụ; không chữ trong hình"}].',
@@ -84,6 +89,7 @@ function illustratePrompt(r: ScriptRequest) {
     'Bạn là hoạ sĩ minh hoạ video "bàn tay vẽ" tiếng Việt. Người dùng đã có kịch bản, chia sẵn thành cảnh. GIỮ NGUYÊN lời thoại, KHÔNG viết lại; chỉ thiết kế hình cho từng cảnh, đúng thứ tự, đúng số cảnh.',
     DIAGRAM_SCHEMA + '. Chữ trong hình là tiếng Việt, rất ngắn, khớp ý câu thoại của cảnh.',
     sketchSchema(r.ratio),
+    r.format ? 'DẠNG VIDEO: ' + (FORMAT_NAMES as any)[r.format] + ' — ' + (FORMAT_BRIEF as any)[r.format] : '',
     r.extra ? 'YÊU CẦU THÊM CỦA CHỦ TRANG: ' + r.extra : '',
     `Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption đăng bài ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#..."],"scenes":[{"diagram":{"kind":"sketch","items":[...]}}, ... đúng ${r.scenes!.length} cảnh]}`,
   ].filter(Boolean).join('\n');
@@ -94,32 +100,81 @@ function parseJson(text: string) {
   try { return JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)); } catch { return null; }
 }
 
-export async function writeScript(env: Env, provider: TextProvider, r: ScriptRequest) {
-  const sys = systemPrompt(r);
-  const user = r.scenes ? 'KỊCH BẢN:\n' + r.scenes.map((l, i) => `Cảnh ${i + 1}: ` + l.map((x, k) => `[câu ${k}] ${x}`).join(' ')).join('\n') : 'CHỦ ĐỀ: ' + r.topic;
-  let text = '';
+export interface AiUsage { provider: TextProvider; model: string; tokensIn: number; tokensOut: number; tries: number }
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const list = (v?: string) => (v || '').split(',').map((x) => x.trim()).filter(Boolean);
+
+/** One chat call; throws an error carrying `status` so callers can decide to retry or switch model. */
+async function callText(env: Env, provider: TextProvider, model: string, sys: string, user: string) {
   if (provider === 'openai') {
-    if (!env.OPENAI_API_KEY) throw new HttpError(503, 'Chủ trang chưa cấu hình khoá OpenAI.');
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: env.OPENAI_TEXT_MODEL, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: sys }, { role: 'user', content: user }] }),
+      body: JSON.stringify({ model, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: sys }, { role: 'user', content: user }] }),
     });
-    if (!res.ok) throw new HttpError(502, `OpenAI chưa viết được kịch bản (HTTP ${res.status}). Thử lại hoặc đổi sang Gemini.`);
-    text = ((await res.json()) as any).choices?.[0]?.message?.content || '';
-  } else {
-    if (!env.GEMINI_API_KEY) throw new HttpError(503, 'Chủ trang chưa cấu hình khoá Gemini.');
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_TEXT_MODEL}:generateContent`, {
-      method: 'POST',
-      headers: { 'x-goog-api-key': env.GEMINI_API_KEY, 'content-type': 'application/json' },
-      body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text: user }] }], generationConfig: { responseMimeType: 'application/json' } }),
-    });
-    if (!res.ok) throw new HttpError(502, `Gemini chưa viết được kịch bản (HTTP ${res.status}). Thử lại hoặc đổi sang OpenAI.`);
-    text = (((await res.json()) as any).candidates?.[0]?.content?.parts || []).map((p: any) => p.text || '').join('');
+    if (!res.ok) throw Object.assign(new Error(`OpenAI ${model}: HTTP ${res.status}`), { status: res.status });
+    const j: any = await res.json();
+    return { text: j.choices?.[0]?.message?.content || '', tokensIn: j.usage?.prompt_tokens || 0, tokensOut: j.usage?.completion_tokens || 0 };
   }
-  const out = parseJson(text);
-  if (!out || !Array.isArray(out.scenes)) throw new HttpError(502, 'AI trả về chưa đúng định dạng, bấm tạo lại giúp mình.');
-  return out;
+  const flash = /flash/.test(model);
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: 'POST',
+    headers: { 'x-goog-api-key': env.GEMINI_API_KEY!, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text: user }] }],
+      // no hidden "thinking" on flash models: faster and cheaper, the brief is explicit enough
+      generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 8192, ...(flash && /2\.5/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {}) },
+    }),
+  });
+  if (!res.ok) throw Object.assign(new Error(`Gemini ${model}: HTTP ${res.status}`), { status: res.status });
+  const j: any = await res.json();
+  return { text: (j.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || '').join(''), tokensIn: j.usageMetadata?.promptTokenCount || 0, tokensOut: j.usageMetadata?.candidatesTokenCount || 0 };
+}
+
+/**
+ * Write (or illustrate) a script. Tries the chosen provider's model, retries once on overload,
+ * moves to the fallback models, then to the other provider when it has a key, and repairs
+ * malformed JSON once. Returns the parsed script and what it cost.
+ */
+export async function writeScript(env: Env, provider: TextProvider, r: ScriptRequest): Promise<any> {
+  const sys = systemPrompt(r);
+  const user = r.scenes ? 'KỊCH BẢN:\n' + r.scenes.map((l, i) => `Cảnh ${i + 1}: ` + l.map((x, k) => `[câu ${k}] ${x}`).join(' ')).join('\n') : 'CHỦ ĐỀ: ' + r.topic;
+  const has = (p: TextProvider) => !!(p === 'openai' ? env.OPENAI_API_KEY : env.GEMINI_API_KEY);
+  const plan: [TextProvider, string][] = [];
+  for (const p of [provider, provider === 'openai' ? 'gemini' : 'openai'] as TextProvider[]) {
+    if (!has(p)) continue;
+    const models = p === 'openai' ? [env.OPENAI_TEXT_MODEL, ...list(env.OPENAI_TEXT_FALLBACK)] : [env.GEMINI_TEXT_MODEL, ...list(env.GEMINI_TEXT_FALLBACK)];
+    for (const m of [...new Set(models.filter(Boolean))]) plan.push([p, m]);
+  }
+  if (!plan.length) throw new HttpError(503, 'Chưa có khoá AI nào. Hãy dùng "Kịch bản của tôi + tự minh hoạ" (miễn phí) hoặc nhờ quản trị nhập khoá.');
+  const usage: AiUsage = { provider, model: '', tokensIn: 0, tokensOut: 0, tries: 0 };
+  let lastErr = '';
+  for (const [p, model] of plan) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      usage.tries++;
+      try {
+        const res = await callText(env, p, model, sys, user);
+        Object.assign(usage, { provider: p, model }); usage.tokensIn += res.tokensIn; usage.tokensOut += res.tokensOut;
+        let out = parseJson(res.text);
+        if (!out || !Array.isArray(out.scenes)) {
+          // one repair round: send the broken answer back
+          const fix = await callText(env, p, model, 'Sửa đoạn sau thành JSON hợp lệ đúng cấu trúc yêu cầu ban đầu. Giữ nguyên nội dung. Chỉ trả JSON.', res.text.slice(0, 30000));
+          usage.tokensIn += fix.tokensIn; usage.tokensOut += fix.tokensOut;
+          out = parseJson(fix.text);
+        }
+        if (out && Array.isArray(out.scenes) && out.scenes.length) return { ...out, _usage: usage };
+        lastErr = 'AI trả về chưa đúng định dạng';
+        break; // try the next model
+      } catch (e: any) {
+        lastErr = e.message;
+        if (e.status === 401 || e.status === 403) break; // bad key: this provider is out
+        if (e.status === 429 || e.status >= 500) { await sleep(700 * (attempt + 1)); continue; }
+        break;
+      }
+    }
+  }
+  throw new HttpError(502, `AI chưa viết được kịch bản (${lastErr}). Thử lại sau ít phút, hoặc dùng chế độ miễn phí.`);
 }
 
 export interface DrawnImage { bytes: Uint8Array; type: 'image/webp' | 'image/png'; ext: 'webp' | 'png' }
