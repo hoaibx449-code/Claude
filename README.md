@@ -1,0 +1,85 @@
+# Nét Vẽ Studio
+
+Video bàn tay vẽ kèm thuyết minh tiếng Việt. Bản này là **bộ dựng video chạy trên máy chủ**: không cần trình duyệt, đầu vào là kịch bản cảnh (JSON), đầu ra là MP4 + phụ đề SRT.
+
+Đề án sản phẩm và demo: [`docs/handdraw-studio.html`](docs/handdraw-studio.html).
+
+## Chạy thử
+
+```bash
+npm install
+npm run render -- examples/luong-11-trieu/project.json --out out/video.mp4
+npm test
+```
+
+Cần Node ≥ 22.18 (chạy TypeScript trực tiếp) và `ffmpeg`. Mặc định dùng giọng thử (`mock`, âm thanh câm, thời gian ước tính) để kiểm tra bố cục mà không cần khoá API.
+
+Tuỳ chọn:
+
+| Tham số | Giá trị |
+|---|---|
+| `--tts` | `mock` · `elevenlabs` · `google` |
+| `--images` | `openai` · `gemini` (cho khung chỉ có `prompt`) |
+| `--size` | cạnh ngắn của video, mặc định `1080` |
+| `--fps` | mặc định `30` |
+
+## Khoá API (biến môi trường)
+
+| Dịch vụ | Biến |
+|---|---|
+| ElevenLabs | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, tuỳ chọn `ELEVENLABS_MODEL` |
+| Google TTS | `GOOGLE_TTS_API_KEY`, tuỳ chọn `GOOGLE_TTS_VOICE` (mặc định `vi-VN-Neural2-A`) |
+| OpenAI ảnh | `OPENAI_API_KEY`, tuỳ chọn `OPENAI_IMAGE_MODEL` (mặc định `gpt-image-1`) |
+| Gemini ảnh | `GEMINI_API_KEY`, tuỳ chọn `GEMINI_IMAGE_MODEL` (mặc định `gemini-2.5-flash-image`) |
+
+Khoá chỉ đọc từ môi trường, không ghi vào log hay tệp. Ảnh AI được lưu đệm trong `.cache/` theo nội dung câu lệnh, dựng lại không tốn tiền lần hai.
+
+## Kịch bản cảnh
+
+```json
+{
+  "channel": "Nét Vẽ", "episode": "Tập 12",
+  "ratio": "9:16", "style": "notebook",
+  "voice": { "provider": "google" },
+  "images": { "provider": "gemini" },
+  "scenes": [
+    { "lines": ["Làm việc quần quật cả năm.", "Lương vẫn 11 triệu."],
+      "panels": [ { "prompt": "an office worker overwhelmed by paperwork" },
+                  { "image": "my-drawing.png" } ] }
+  ]
+}
+```
+
+- Mỗi `lines[i]` là một câu thoại và một dòng phụ đề. Khung thứ i được vẽ khi câu thứ i bắt đầu được đọc (đổi bằng `"line": n`).
+- `image` dùng ảnh có sẵn. Nếu chỉ có `prompt`, ảnh được tạo bằng AI với một câu lệnh phong cách line-art cố định (`src/node/images.ts`).
+- `style`: `notebook` · `whiteboard` · `chalkboard` · `kraft` · `oly` · `blueprint` · `ricepaper`. Mỗi phong cách có màu mực và dụng cụ vẽ riêng. Đổi dụng cụ bằng `"tool"`: `marker` · `chalk` · `fountain` · `colormarker` · `pencil` · `technical` · `brush`.
+
+## Thay ảnh bàn tay
+
+Ảnh tay cầm bút, nền trong suốt. Đo 3 thông số trên ảnh gốc rồi chạy:
+
+```bash
+python3 tools/hand_prep.py hand.png assets/hands/ten-tay \
+  --tip 175,158 --end 686,488 --fingers 288,356 --cut 860
+```
+
+- `--tip`: đầu bút · `--end`: đuôi bút · `--fingers`: khoảng x nơi ngón tay đè lên bút · `--cut`: cắt ngang cẳng tay tại y này.
+- Công cụ xoá bút cũ, tách lớp ngón tay, cắt cẳng tay. Dụng cụ vẽ của từng phong cách được chèn giữa hai lớp.
+- Dùng trong kịch bản: `"hand": "../../assets/hands/ten-tay"`. Thư mục `assets/hands/default` là tay mặc định.
+- Cần quyền dùng thương mại cho ảnh tay.
+
+## Cấu trúc
+
+```
+src/engine/   dùng chung trình duyệt + máy chủ (chỉ Canvas 2D API)
+  render.ts   vẽ một khung hình theo thời gian t: nền, hình lộ theo vệt bút, phụ đề, bàn tay
+  timeline.ts khớp thời điểm vẽ với lời đọc
+  tools.ts    7 dụng cụ vẽ
+  styles.ts   7 phong cách
+src/node/     nhà cung cấp giọng đọc và ảnh AI
+src/cli/      lệnh dựng MP4 (Skia vẽ khung → FFmpeg)
+tools/        xử lý ảnh tay
+assets/       font Pangolin (OFL), hình Open Doodles (CC0), ảnh tay
+```
+
+Đo trên máy chủ thử: video 9:16 1080×1920 dựng mất khoảng 0,6 giây cho mỗi giây video, trên ~1 vCPU.

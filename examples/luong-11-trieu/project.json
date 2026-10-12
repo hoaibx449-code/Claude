@@ -1,0 +1,30 @@
+{
+  "title": "Vì sao lương không tăng",
+  "channel": "Nét Vẽ",
+  "episode": "Tập 12",
+  "ratio": "9:16",
+  "style": "notebook",
+  "voice": { "provider": "mock" },
+  "scenes": [
+    { "lines": ["Làm việc quần quật cả năm.", "Lương vẫn 11 triệu."],
+      "panels": [
+        { "image": "../../assets/doodles/ClumsyDoodle.svg", "prompt": "an office worker overwhelmed by flying paperwork" },
+        { "image": "../../assets/doodles/CoffeeDoodle.svg", "prompt": "a tired worker drinking a huge cup of coffee" } ] },
+    { "lines": ["Tối về nằm lướt điện thoại.", "Cuối tuần thì ngủ bù."],
+      "panels": [
+        { "image": "../../assets/doodles/LayingDoodle.svg", "prompt": "a young person lying on the floor scrolling a phone at night" },
+        { "image": "../../assets/doodles/ChillingDoodle.svg", "prompt": "a person lounging lazily on a weekend" } ] },
+    { "lines": ["Đồng nghiệp bỏ ra 1 giờ mỗi tối", "để học thêm một kỹ năng."],
+      "panels": [
+        { "image": "../../assets/doodles/SittingReadingDoodle.svg", "prompt": "a colleague studying a book at a desk in the evening" },
+        { "image": "../../assets/doodles/ReadingSideDoodle.svg", "prompt": "a person taking notes while learning a new skill" } ] },
+    { "lines": ["Năm sau họ nhận việc mới.", "Lương tăng 25%."],
+      "panels": [
+        { "image": "../../assets/doodles/UnboxingDoodle.svg", "prompt": "a person opening a box on the first day of a new job" },
+        { "image": "../../assets/doodles/SprintingDoodle.svg", "prompt": "a person sprinting ahead confidently" } ] },
+    { "lines": ["Thời gian rảnh chính là học phí.", "Bạn đang trả cho điều gì?"],
+      "panels": [
+        { "image": "../../assets/doodles/MeditatingDoodle.svg", "prompt": "a calm person meditating, thinking about life choices" },
+        { "image": "../../assets/doodles/PlantDoodle.svg", "prompt": "a person holding a growing plant" } ] }
+  ]
+}

@@ -1,0 +1,51 @@
+import type { SceneSpec, SceneTiming, Span, Timeline } from './types.ts';
+
+export const SCENE_GAP = 0.35; // pause between scenes
+export const LEAD_IN = 0.3; // hand moves in before the first line
+
+/**
+ * Lay scenes end to end. `voice[i]` holds line spans relative to the start of
+ * scene i's audio, plus that audio's duration.
+ */
+export function buildTimeline(scenes: SceneSpec[], voice: { lines: Span[]; duration: number }[]): Timeline {
+  const out: SceneTiming[] = [];
+  let t = 0;
+  scenes.forEach((sc, i) => {
+    const v = voice[i];
+    const audioStart = t + LEAD_IN;
+    const lines = v.lines.map((l) => ({ start: audioStart + l.start, end: audioStart + l.end }));
+    const end = audioStart + v.duration + SCENE_GAP;
+    const panels = sc.panels.map((p, k) => {
+      const li = Math.min(p.line ?? k, lines.length - 1);
+      const line = lines[li];
+      const start = line.start + 0.05;
+      // draw while the line is spoken, never shorter than 1.2s nor longer than 2.4s
+      const dur = Math.max(1.2, Math.min(2.4, (line.end - line.start) * 0.85));
+      return { start, end: Math.min(start + dur, end - 0.15) };
+    });
+    // panels tied to the same line are drawn one after the other
+    for (let k = 1; k < panels.length; k++) {
+      if (panels[k].start < panels[k - 1].end + 0.25) {
+        const len = panels[k].end - panels[k].start;
+        panels[k].start = panels[k - 1].end + 0.25;
+        panels[k].end = panels[k].start + len;
+      }
+    }
+    const sceneEnd = Math.max(end, ...panels.map((p) => p.end + 0.4));
+    out.push({ start: t, end: sceneEnd, lines, panels });
+    t = sceneEnd;
+  });
+  return { scenes: out, duration: t + 0.6 };
+}
+
+/** Rough narration timing when no TTS timestamps exist (≈14 chars/s for Vietnamese). */
+export function estimateVoice(lines: string[], charsPerSec = 14): { lines: Span[]; duration: number } {
+  let t = 0;
+  const spans = lines.map((l) => {
+    const d = Math.max(1.4, l.length / charsPerSec);
+    const s = { start: t, end: t + d };
+    t += d + 0.25;
+    return s;
+  });
+  return { lines: spans, duration: t };
+}
