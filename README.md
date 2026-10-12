@@ -100,7 +100,8 @@ assets/       font Pangolin (OFL), hình Open Doodles (CC0), ảnh tay
 
 - **Chạy thử trên máy:** `npm run web:dev` (tạo `web/.dev.vars` có `DEV_LOGIN=1` và `RUNNER_TOKEN=...`, rồi `cd web && npx wrangler d1 execute net-ve-studio --local --file schema.sql`). Nút "Đăng nhập thử" chỉ hiện trên localhost.
 - **Triển khai:** chạy workflow **Triển khai web** trên GitHub (tab Actions). Workflow tự tạo D1 + R2, áp schema, đưa trang lên và cài khoá bí mật.
-- **Máy dựng:** `NV_API_URL=https://... RUNNER_TOKEN=... npm run runner` trên máy có FFmpeg. Workflow **Máy dựng (thử nghiệm)** dựng hết hàng chờ một lần, chỉ dùng để thử.
+- **Máy dựng (chạy thật):** workflow **Triển khai máy dựng** đưa `runner.Dockerfile` lên Google Cloud Run Jobs (asia-southeast1) và cài cho trang web một khoá chỉ có quyền bật job đó. Khi có video được xếp hàng, trang web bật job; job dựng hết hàng chờ rồi tắt. Cron 10 phút/lần là lưới an toàn. Cần secret `GCP_SA_KEY` (khoá service account có quyền Owner trên dự án Google Cloud, đã bật thanh toán).
+- **Máy dựng (thử):** `NV_API_URL=https://... RUNNER_TOKEN=... npm run runner` trên máy có FFmpeg, hoặc workflow **Máy dựng (thử nghiệm)**.
 
 Secrets cần trong GitHub (Settings → Secrets and variables → Actions):
 

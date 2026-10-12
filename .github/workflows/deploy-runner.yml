@@ -1,0 +1,93 @@
+name: Triển khai máy dựng
+
+# Đưa máy dựng lên Google Cloud Run Jobs và nối nó với trang web.
+# Cần secrets: GCP_SA_KEY, NV_API_URL, RUNNER_TOKEN, EVERAI_API_KEY, EVERAI_VOICE_CODE,
+# CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID. Chạy lại bao nhiêu lần cũng được.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: deploy-runner
+
+env:
+  REGION: asia-southeast1
+  REPO: net-ve
+  JOB: net-ve-runner
+  TRIGGER_SA: nv-trigger
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Bật dịch vụ Google
+        run: |
+          gcloud config set project "$GCP_PROJECT"
+          gcloud services enable run.googleapis.com artifactregistry.googleapis.com iam.googleapis.com
+      - name: Build và đẩy container
+        run: |
+          gcloud artifacts repositories describe "$REPO" --location "$REGION" >/dev/null 2>&1 \
+            || gcloud artifacts repositories create "$REPO" --repository-format=docker --location "$REGION"
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" -q
+          IMAGE="$REGION-docker.pkg.dev/$GCP_PROJECT/$REPO/runner:$GITHUB_SHA"
+          docker build -f runner.Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - name: Tạo / cập nhật máy dựng
+        env:
+          NV_API_URL: ${{ secrets.NV_API_URL }}
+          RUNNER_TOKEN: ${{ secrets.RUNNER_TOKEN }}
+          EVERAI_API_KEY: ${{ secrets.EVERAI_API_KEY }}
+          EVERAI_VOICE_CODE: ${{ secrets.EVERAI_VOICE_CODE }}
+          GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+        run: |
+          test -n "$NV_API_URL" || { echo "Thiếu secret NV_API_URL"; exit 1; }
+          umask 077
+          node -e '
+            const keys = ["NV_API_URL","RUNNER_TOKEN","EVERAI_API_KEY","EVERAI_VOICE_CODE","GOOGLE_TTS_API_KEY","ELEVENLABS_API_KEY","ELEVENLABS_VOICE_ID"];
+            const out = Object.fromEntries(keys.filter((k) => process.env[k]).map((k) => [k, process.env[k]]));
+            require("fs").writeFileSync("runner-env.json", JSON.stringify(out));'
+          gcloud run jobs deploy "$JOB" --image "$IMAGE" --region "$REGION" \
+            --tasks 1 --max-retries 0 --task-timeout 3600 --cpu 2 --memory 2Gi \
+            --env-vars-file runner-env.json
+          rm -f runner-env.json
+      - name: Tạo khoá chỉ được bật máy dựng
+        run: |
+          SA="$TRIGGER_SA@$GCP_PROJECT.iam.gserviceaccount.com"
+          gcloud iam service-accounts describe "$SA" >/dev/null 2>&1 \
+            || gcloud iam service-accounts create "$TRIGGER_SA" --display-name "Net Ve: start render job"
+          gcloud run jobs add-iam-policy-binding "$JOB" --region "$REGION" --member "serviceAccount:$SA" --role roles/run.invoker >/dev/null
+          # rotate: remove old keys, create a fresh one
+          for k in $(gcloud iam service-accounts keys list --iam-account "$SA" --managed-by user --format 'value(name)'); do
+            gcloud iam service-accounts keys delete "$k" --iam-account "$SA" -q
+          done
+          umask 077
+          gcloud iam service-accounts keys create trigger-key.json --iam-account "$SA"
+      - run: npm ci
+      - name: Nối máy dựng với trang web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          umask 077
+          node -e '
+            const fs = require("fs");
+            fs.writeFileSync("web/.gcp-secrets.json", JSON.stringify({
+              GCP_TRIGGER_KEY: fs.readFileSync("trigger-key.json", "utf8"),
+              GCP_PROJECT: process.env.GCP_PROJECT, GCP_REGION: process.env.REGION, GCP_JOB: process.env.JOB }));'
+          rm -f trigger-key.json
+          cd web && npx wrangler secret bulk .gcp-secrets.json --name net-ve-studio; rm -f .gcp-secrets.json
+          echo "Xong: video sẽ tự dựng ngay khi bấm Dựng video."

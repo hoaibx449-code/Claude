@@ -56,7 +56,7 @@ execFileSync('node', [join(web, 'build.mjs')], { stdio: 'inherit' });
 console.log(wrangler(['deploy', '-c', cfgFile]));
 
 // 6. secrets (only the ones provided)
-const secrets = Object.fromEntries(['GOOGLE_CLIENT_ID', 'RUNNER_TOKEN', 'OPENAI_API_KEY', 'GEMINI_API_KEY']
+const secrets = Object.fromEntries(['GOOGLE_CLIENT_ID', 'RUNNER_TOKEN', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GCP_TRIGGER_KEY', 'GCP_PROJECT', 'GCP_REGION', 'GCP_JOB']
   .filter((k) => process.env[k]).map((k) => [k, process.env[k]]));
 if (secrets.RUNNER_TOKEN && secrets.RUNNER_TOKEN.length < 32) throw new Error('RUNNER_TOKEN cần ít nhất 32 ký tự.');
 if (Object.keys(secrets).length) {

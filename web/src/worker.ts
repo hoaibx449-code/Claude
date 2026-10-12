@@ -1,6 +1,7 @@
 // Nét Vẽ Studio API (Cloudflare Worker). Static pages are served from ./public.
 import { consumeNonce, currentUser, endSession, newNonce, startSession, User, verifyGoogleToken } from './auth.ts';
 import { drawImage, ImageProvider, TextProvider, writeScript } from './ai.ts';
+import { startRunner } from './gcp.ts';
 import { cleanSpec, STYLES } from './spec.ts';
 import { body, Env, HttpError, json, randomId, refundQuota, sha256, timingSafeEqual, today, useQuota } from './util.ts';
 
@@ -8,18 +9,23 @@ const MAX_ACTIVE_JOBS = 2;
 const STALE_JOB_MS = 45 * 60_000;
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
-      return await route(req, env);
+      return await route(req, env, ctx);
     } catch (e) {
       if (e instanceof HttpError) return json({ error: e.message }, e.status);
       console.error(e);
       return json({ error: 'Máy chủ gặp lỗi, thử lại sau ít phút.' }, 500);
     }
   },
+  // Safety net: if videos wait in the queue (e.g. a start request was lost), start the render machine.
+  async scheduled(_e: ScheduledController, env: Env, ctx: ExecutionContext) {
+    const waiting = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'queued' AND created_at < ?").bind(Date.now() - 90_000).first<any>();
+    if (waiting?.n) ctx.waitUntil(startRunner(env).catch((e) => console.error(e)));
+  },
 };
 
-async function route(req: Request, env: Env): Promise<Response> {
+async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(req.url), path = url.pathname, method = req.method;
   if (!path.startsWith('/api/')) return env.ASSETS.fetch(req);
   if (path.startsWith('/api/runner/')) return runner(req, env, path.slice('/api/runner/'.length));
@@ -52,7 +58,7 @@ async function route(req: Request, env: Env): Promise<Response> {
 
   const user = await currentUser(env, req);
   if (!user) throw new HttpError(401, 'Bạn cần đăng nhập.');
-  return userRoutes(req, env, user, path, method, devAllowed);
+  return userRoutes(req, env, ctx, user, path, method, devAllowed);
 }
 
 const limits = (env: Env) => ({ script: Number(env.DAILY_SCRIPTS), image: Number(env.DAILY_IMAGES), render: Number(env.DAILY_RENDERS) });
@@ -67,7 +73,7 @@ async function saveSpec(env: Env, user: User, id: string, spec: any) {
     .bind(JSON.stringify(spec), spec.title, Date.now(), id, user.id).run();
 }
 
-async function userRoutes(req: Request, env: Env, user: User, path: string, method: string, devAllowed: boolean): Promise<Response> {
+async function userRoutes(req: Request, env: Env, ctx: ExecutionContext, user: User, path: string, method: string, devAllowed: boolean): Promise<Response> {
   if (path === '/api/me' && method === 'GET') {
     const used = await env.DB.prepare('SELECT kind, n FROM usage WHERE user_id = ? AND day = ?').bind(user.id, today()).all<any>();
     return json({ user, limits: limits(env), used: Object.fromEntries(used.results.map((r) => [r.kind, r.n])), ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY } });
@@ -142,6 +148,7 @@ async function userRoutes(req: Request, env: Env, user: User, path: string, meth
       const jobId = randomId(12);
       await env.DB.prepare("INSERT INTO jobs (id, project_id, user_id, status, spec, created_at) VALUES (?, ?, ?, 'queued', ?, ?)")
         .bind(jobId, id, user.id, JSON.stringify(p.spec), Date.now()).run();
+      ctx.waitUntil(startRunner(env).catch((e) => console.error('startRunner', e)));
       return json({ job: { id: jobId, status: 'queued', progress: 0 } });
     }
     if (sub === '/jobs' && method === 'GET') {

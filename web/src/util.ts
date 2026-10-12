@@ -14,13 +14,19 @@ export interface Env {
   DAILY_SCRIPTS: string;
   DAILY_IMAGES: string;
   DAILY_RENDERS: string;
+  /** Cloud Run Job that renders videos (see web/src/gcp.ts). */
+  GCP_TRIGGER_KEY?: string;
+  GCP_PROJECT?: string;
+  GCP_REGION?: string;
+  GCP_JOB?: string;
   /** Local development only: enables /api/auth/dev on localhost. */
   DEV_LOGIN?: string;
 }
 
 /** Error whose message is safe to show to the user. */
 export class HttpError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  status: number;
+  constructor(status: number, message: string) { super(message); this.status = status; }
 }
 
 export function json(data: unknown, status = 200, headers: HeadersInit = {}) {

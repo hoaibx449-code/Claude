@@ -1,0 +1,9 @@
+node_modules
+web
+docs
+test
+.git
+.github
+out
+*.mp4
+.env
