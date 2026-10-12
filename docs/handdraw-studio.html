@@ -143,6 +143,9 @@ pre{margin:0;background:var(--paper);border:1px solid var(--line);border-radius:
         <button id="r169" class="on">16:9 YouTube</button>
         <button id="r916">9:16 TikTok/Shorts</button>
       </div>
+      <div class="chips" id="skinChips" role="group" aria-label="Màu da bàn tay">
+        <button data-s="light" class="on">Da sáng</button><button data-s="medium">Da trung bình</button><button data-s="deep">Da ngăm</button>
+      </div>
     </div>
   </div>
 </header>
@@ -152,6 +155,28 @@ pre{margin:0;background:var(--paper);border:1px solid var(--line);border-radius:
   <h2>7 phong cách chạy được ngay, thêm 5 ở giai đoạn sau</h2>
   <p>Mỗi phong cách chỉ là một tệp theme: nền, màu mực, dụng cụ trên tay, độ rung nét, kiểu tô, font. Cùng một kịch bản cảnh nên thêm phong cách mới tốn vài ngày, không phải viết lại engine. Bấm thẻ để xem bản vẽ động ở trên.</p>
   <div class="gallery" id="gallery"></div>
+  <div class="two">
+    <div class="box">
+      <h3>Bàn tay: demo dùng tay vẽ, sản phẩm thật dùng tay chụp</h3>
+      <ul>
+        <li>Demo dùng tay vẽ vector có đổ bóng và chuyển màu da, để trang chạy được mà không cần tải ảnh.</li>
+        <li>Sản phẩm thật nên dùng <b>ảnh chụp tay thật đã tách nền</b>. Đây là cách các phần mềm vẽ tay trên bảng trắng chuyên nghiệp vẫn làm, và trông thật hơn hẳn mọi tay vẽ.</li>
+        <li>Chi phí gần 0: chụp tay trên nền trơn, mỗi tay 4 khung (bút chạm, bút nhấc, nghiêng trái, nghiêng phải), tách nền bằng rembg (mã nguồn mở), lưu WebP trong suốt. Có giấy đồng ý của người mẫu tay thì bản quyền là của bạn.</li>
+        <li>Bộ đầu tiên: 3 màu da × tay nam/nữ × 4 dụng cụ (bút dạ, phấn, bút chì, bút mực).</li>
+        <li>Không dùng tay do AI sinh: hay lỗi số ngón và không giữ được giống nhau giữa các khung hình.</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h3>Phần làm tay "sống" là chuyển động</h3>
+      <ul>
+        <li>Đầu bút luôn neo đúng điểm đang vẽ.</li>
+        <li>Giữa hai nét, tay nhấc lên: to thêm 5%, bóng đổ xa ra, di chuyển nhanh dần rồi chậm dần.</li>
+        <li>Tay nghiêng nhẹ theo hướng vẽ và có rung rất nhỏ, như người thật.</li>
+        <li>Tất cả là hàm của thời gian, nên server dựng ra giống hệt bản xem trước. Ghép ảnh tay trên server chỉ là một lệnh vẽ ảnh.</li>
+        <li>Cho người dùng chọn: tay thật, tay vẽ, hoặc không tay. Tay ảnh thật không hợp phong cách Mực tàu hay Bản vẽ kỹ thuật, nên mỗi phong cách có tay mặc định riêng.</li>
+      </ul>
+    </div>
+  </div>
   <h3>Giai đoạn sau (chưa có demo)</h3>
   <div class="extra">
     <div><b>Màu nước loang</b>Vẽ nét chì rồi màu loang vào. Hợp sách, chữa lành, du lịch.</div>
@@ -484,6 +509,17 @@ function pointAt(it,p){
 const col=(st,role)=>role==='accent'?st.accent:role==='accent2'?st.accent2:st.ink;
 const clamp=v=>Math.max(0,Math.min(1,v));
 
+/* hand position: on the active stroke, lifted (lift=1) while travelling between strokes */
+function handAt(scene,t,W,H){
+  const act=scene.items.find(it=>t>=it.start&&t<it.start+it.dur);
+  if(act)return[...pointAt(act,(t-act.start)/act.dur),0];
+  const next=scene.items.find(it=>it.start>t),prev=[...scene.items].reverse().find(it=>it.start+it.dur<=t);
+  if(next&&prev){const a=pointAt(prev,1),b=pointAt(next,0),g=Math.max(.01,next.start-prev.start-prev.dur),u=clamp((t-prev.start-prev.dur)/g),e=u*u*(3-2*u);return[a[0]+(b[0]-a[0])*e,a[1]+(b[1]-a[1])*e,Math.sin(Math.PI*u)]}
+  if(next)return[...pointAt(next,0),0];
+  const a=pointAt(prev,1),u=clamp((t-scene.end)/.8);return[a[0]+(W*1.1-a[0])*u*u,a[1]+(H*1.2-a[1])*u*u,u];
+}
+let handSkin='light';
+
 /* ---------- render frame t (pure function of t: same on browser and server) ---------- */
 function render(c,W,H,scene,st,t,showHand=true){
   c.save();st.bg(c,W,H);
@@ -492,10 +528,8 @@ function render(c,W,H,scene,st,t,showHand=true){
   if(st.fill)scene.items.forEach(it=>{if(it.type!=='path'||it.fill==null)return;const a=clamp((t-it.start-it.dur)/.45);if(!a)return;
     c.globalAlpha=a*.9;c.fillStyle=st.fills[it.fill%st.fills.length];c.beginPath();it.pts.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.closePath();c.fill();c.globalAlpha=1});
   c.lineCap='round';c.lineJoin='round';
-  let hand=null;
   for(const it of scene.items){
     const p=clamp((t-it.start)/it.dur);if(!p)continue;
-    if(p<1)hand=pointAt(it,p);
     const color=col(st,it.role);
     if(it.type==='text'){
       c.save();c.beginPath();c.rect(it.x0-4,it.y-it.size*1.1,it.w*p+4,it.size*1.5);c.clip();
@@ -512,38 +546,69 @@ function render(c,W,H,scene,st,t,showHand=true){
     c.globalAlpha=1;
   }
   if(st.finale)st.finale(c,W,H,(t-scene.end)/.6);
-  // hand between strokes
-  if(!hand){
-    const next=scene.items.find(it=>it.start>t),prev=[...scene.items].reverse().find(it=>it.start+it.dur<=t);
-    if(next&&prev){const a=pointAt(prev,1),b=pointAt(next,0),u=clamp((t-prev.start-prev.dur)/Math.max(.01,next.start-prev.start-prev.dur));hand=[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u]}
-    else if(next)hand=pointAt(next,0);
-    else if(prev){const a=pointAt(prev,1),u=clamp((t-scene.end)/.8);hand=[a[0]+(W*1.1-a[0])*u*u,a[1]+(H*1.2-a[1])*u*u]}
-  }
-  if(hand&&showHand)drawHand(c,hand[0],hand[1],st,S*(H>W?1.15:1));
+  if(showHand){const [hx,hy,lift]=handAt(scene,t,W,H),[px]=handAt(scene,t-.08,W,H);
+    const rot=Math.max(-.09,Math.min(.09,(hx-px)*.004))+Math.sin(t*2.3)*.02;
+    drawHand(c,hx,hy,st,S*(H>W?.78:.82),{skin:handSkin,lift,rot})}
   c.restore();
 }
 
-function drawHand(c,x,y,st,s){
-  c.save();c.translate(x,y);c.scale(s,s);
-  const ang=0.75; // pen leans toward bottom-right
-  c.rotate(ang);
-  const len=st.tool==='chalk'?46:st.tool==='brush'?120:100;
+const SKINS={light:{hi:'#fbe3cf',base:'#efc3a1',lo:'#cf9672',line:'rgba(130,75,45,.4)',nail:'#f6dccf'},
+ medium:{hi:'#e6b48d',base:'#c68b61',lo:'#9c6440',line:'rgba(80,40,20,.42)',nail:'#ecc6b0'},
+ deep:{hi:'#a7735a',base:'#7c4c33',lo:'#55311f',line:'rgba(30,15,8,.5)',nail:'#caa292'}};
+function skinG(c,y0,y1,sk){const g=c.createLinearGradient(0,y0,0,y1);g.addColorStop(0,sk.hi);g.addColorStop(.5,sk.base);g.addColorStop(1,sk.lo);return g}
+function drawTool(c,st){
+  const len=st.tool==='chalk'?62:st.tool==='brush'?175:165;
+  if(st.tool==='pencil'){c.fillStyle='#f2c230';c.fillRect(15,-5,len,10);c.fillStyle='rgba(0,0,0,.13)';c.fillRect(15,1.5,len,3.5);c.fillStyle='#e8c39a';c.beginPath();c.moveTo(0,0);c.lineTo(16,-5);c.lineTo(16,5);c.fill();c.fillStyle='#333';c.beginPath();c.moveTo(0,0);c.lineTo(5,-1.7);c.lineTo(5,1.7);c.fill();c.fillStyle='#c9c9c9';c.fillRect(len+15,-5,8,10);c.fillStyle='#e48aa0';c.fillRect(len+23,-5,10,10)}
+  else if(st.tool==='chalk'){c.fillStyle=st.toolColor;c.beginPath();c.roundRect(0,-6,len,12,3);c.fill();c.fillStyle='rgba(0,0,0,.1)';c.fillRect(2,2,len-4,4)}
+  else if(st.tool==='brush'){c.fillStyle='#111';c.beginPath();c.moveTo(0,0);c.quadraticCurveTo(10,-6,26,-5);c.lineTo(26,5);c.quadraticCurveTo(10,6,0,0);c.fill();c.fillStyle=st.toolColor;c.fillRect(26,-4,len,8);c.fillStyle='rgba(255,255,255,.22)';c.fillRect(26,-4,len,2)}
+  else{const b=st.tool==='marker'?14:9;c.fillStyle='#3a3a3a';c.beginPath();c.moveTo(0,0);c.lineTo(12,-b/2+2);c.lineTo(12,b/2-2);c.fill();
+    const g=c.createLinearGradient(0,-b/2,0,b/2);
+    if(st.tool==='marker'){g.addColorStop(0,'#ffffff');g.addColorStop(1,'#b9bac2')}else{g.addColorStop(0,st.toolColor);g.addColorStop(1,'#1c2459')}
+    c.fillStyle=g;c.beginPath();c.roundRect(12,-b/2,len,b,3);c.fill();
+    if(st.tool==='marker'){c.fillStyle=st.toolColor;c.fillRect(12,-b/2,20,b);c.fillRect(len-10,-b/2,22,b)}}
+}
+// hand frame: origin at grip point, x along forearm
+function silhouette(c){c.beginPath();c.moveTo(-4,-6);c.bezierCurveTo(30,-40,120,-58,200,-56);c.lineTo(440,-70);c.lineTo(450,86);c.lineTo(205,56);c.bezierCurveTo(140,60,60,46,4,18);c.closePath()}
+function drawHand(c,x,y,st,s,o={}){
+  const sk=SKINS[o.skin||'light'],lift=o.lift||0,ln=sk.line,k=s*(1+lift*.05);
+  c.save();c.translate(x,y);c.scale(k,k);c.rotate(.5+(o.rot||0));
+  // pen frame -> hand frame
+  const toHand=()=>{c.translate(24,0);c.rotate(.4)};
   // shadow
-  c.fillStyle='rgba(0,0,0,.16)';c.beginPath();c.ellipse(len*.75+14,22,46,30,0,0,7);c.fill();
-  // tool
-  if(st.tool==='pencil'){c.fillStyle='#f2c230';c.fillRect(14,-6,len,12);c.fillStyle='#e8b98a';c.beginPath();c.moveTo(0,0);c.lineTo(16,-6);c.lineTo(16,6);c.fill();c.fillStyle='#333';c.beginPath();c.moveTo(0,0);c.lineTo(5,-2);c.lineTo(5,2);c.fill();c.fillStyle='#e48aa0';c.fillRect(len+14,-6,14,12)}
-  else if(st.tool==='chalk'){c.fillStyle=st.toolColor;c.beginPath();c.roundRect(0,-6,len,12,4);c.fill()}
-  else if(st.tool==='brush'){c.fillStyle='#111';c.beginPath();c.moveTo(0,0);c.quadraticCurveTo(10,-7,24,-5);c.lineTo(24,5);c.quadraticCurveTo(10,7,0,0);c.fill();c.fillStyle=st.toolColor;c.fillRect(24,-4,len,8)}
-  else{const body=st.tool==='marker'?14:9;c.fillStyle='#555';c.beginPath();c.moveTo(0,0);c.lineTo(14,-body/2);c.lineTo(14,body/2);c.fill();c.fillStyle=st.toolColor==='#1d1d1f'?'#e9e9ec':st.toolColor;c.fillRect(14,-body/2,len,body);c.fillStyle=st.toolColor;c.fillRect(14,-body/2,22,body)}
-  // fist
-  c.translate(len*.62,8);
-  c.fillStyle='#f0c6a3';c.strokeStyle='#9a6a4a';c.lineWidth=1.6;
-  c.beginPath();c.ellipse(18,8,40,28,-.1,0,7);c.fill();c.stroke();
-  for(let i=0;i<3;i++){c.beginPath();c.ellipse(-8+i*14,-14+i*2,9,13,.2,0,7);c.fill();c.stroke()}
-  c.beginPath();c.ellipse(-16,4,14,9,-.6,0,7);c.fill();c.stroke(); // thumb
-  // sleeve
-  c.fillStyle=st.sleeve;c.strokeStyle='rgba(0,0,0,.25)';c.beginPath();c.moveTo(42,-14);c.lineTo(220,-30);c.lineTo(230,62);c.lineTo(46,34);c.closePath();c.fill();c.stroke();
+  c.save();toHand();c.translate(8+lift*14,14+lift*16);c.fillStyle='rgba(0,0,0,.16)';c.shadowColor='rgba(0,0,0,.3)';c.shadowBlur=16;silhouette(c);c.fill();c.restore();
+  c.save();toHand();c.lineWidth=1.2;c.strokeStyle=ln;
+  // curled fingers behind
+  [[52,-30,22,12,-.3],[80,-40,21,12,-.2],[106,-46,18,11,-.1]].forEach(([a,b,w,h,r])=>{c.save();c.translate(a,b);c.rotate(r);c.beginPath();c.ellipse(0,0,w,h,0,0,7);c.fillStyle=skinG(c,-h,h,sk);c.fill();c.stroke();c.restore()});
+  // back of hand
+  c.beginPath();c.moveTo(40,-26);c.bezierCurveTo(70,-46,120,-56,165,-50);c.bezierCurveTo(185,-46,200,-44,210,-42);c.lineTo(214,40);
+  c.bezierCurveTo(180,44,140,48,100,40);c.bezierCurveTo(70,34,40,14,40,-26);c.closePath();
+  c.fillStyle=skinG(c,-56,46,sk);c.fill();c.stroke();
+  c.fillStyle='rgba(255,255,255,.2)';[[68,-34],[94,-44],[120,-48]].forEach(([a,b])=>{c.beginPath();c.ellipse(a,b,8,4,-.25,0,7);c.fill()});
+  c.strokeStyle='rgba(0,0,0,.07)';c.lineWidth=2;[[80,-20,150,-26],[86,-6,155,-8]].forEach(([a,b,d,e])=>{c.beginPath();c.moveTo(a,b);c.quadraticCurveTo((a+d)/2,b-6,d,e);c.stroke()}); // tendons
   c.restore();
+  // pen on top of hand web
+  drawTool(c,st);
+  c.save();toHand();c.lineWidth=1.2;c.strokeStyle=ln;
+  // index finger arched over pen
+  c.beginPath();c.moveTo(-3,-3);c.bezierCurveTo(-2,-14,12,-20,26,-22);c.bezierCurveTo(46,-26,62,-30,86,-40);
+  c.lineTo(92,-14);c.bezierCurveTo(70,-8,52,-4,36,-3);c.bezierCurveTo(20,-1,6,6,-3,-3);c.closePath();
+  c.fillStyle=skinG(c,-40,4,sk);c.fill();c.beginPath();c.moveTo(86,-40);c.bezierCurveTo(62,-30,46,-26,26,-22);c.bezierCurveTo(12,-20,-2,-14,-3,-3);c.bezierCurveTo(6,6,20,-1,36,-3);c.bezierCurveTo(52,-4,70,-8,92,-14);c.stroke();
+  c.strokeStyle='rgba(0,0,0,.13)';[[28,-21,30,-3],[56,-28,60,-6]].forEach(([a,b,d,e])=>{c.beginPath();c.moveTo(a,b);c.quadraticCurveTo(a+5,(b+e)/2,d,e);c.stroke()});
+  c.beginPath();c.ellipse(5,-10,6.5,4,-.35,0,7);c.fillStyle=sk.nail;c.fill();c.strokeStyle=ln;c.stroke();
+  // thumb
+  c.beginPath();c.moveTo(6,8);c.bezierCurveTo(10,1,26,0,40,6);c.bezierCurveTo(62,14,86,22,112,24);
+  c.lineTo(106,50);c.bezierCurveTo(80,46,58,38,40,28);c.bezierCurveTo(22,20,4,18,6,8);c.closePath();
+  c.fillStyle=skinG(c,0,50,sk);c.fill();c.beginPath();c.moveTo(112,24);c.bezierCurveTo(86,22,62,14,40,6);c.bezierCurveTo(26,0,10,1,6,8);c.bezierCurveTo(4,18,22,20,40,28);c.bezierCurveTo(58,38,80,46,106,50);c.stroke();
+  c.strokeStyle='rgba(0,0,0,.12)';c.beginPath();c.moveTo(44,8);c.quadraticCurveTo(40,18,44,28);c.stroke();
+  c.beginPath();c.ellipse(14,8,6.5,4.2,.15,0,7);c.fillStyle=sk.nail;c.fill();c.strokeStyle=ln;c.stroke();
+  // wrist
+  c.beginPath();c.moveTo(196,-44);c.lineTo(232,-46);c.lineTo(236,44);c.lineTo(208,42);c.closePath();c.fillStyle=skinG(c,-46,44,sk);c.fill();
+  // sleeve
+  const sl=st.sleeve,g=c.createLinearGradient(0,-60,0,80);g.addColorStop(0,'rgba(255,255,255,.16)');g.addColorStop(.45,'rgba(255,255,255,0)');g.addColorStop(1,'rgba(0,0,0,.28)');
+  c.beginPath();c.moveTo(228,-56);c.bezierCurveTo(300,-62,380,-66,460,-70);c.lineTo(470,90);c.bezierCurveTo(390,80,310,66,232,58);c.closePath();c.fillStyle=sl;c.fill();c.fillStyle=g;c.fill();
+  c.beginPath();c.moveTo(226,-56);c.lineTo(252,-58);c.lineTo(256,60);c.lineTo(230,58);c.closePath();c.fillStyle=sl;c.fill();c.fillStyle='rgba(0,0,0,.16)';c.fill();
+  c.strokeStyle='rgba(0,0,0,.18)';c.lineWidth=1.5;c.beginPath();c.moveTo(310,-60);c.quadraticCurveTo(336,0,326,70);c.stroke();
+  c.restore();c.restore();
 }
 
 /* ---------- main player ---------- */
@@ -567,6 +632,8 @@ const r169=document.getElementById('r169'),r916=document.getElementById('r916');
 r169.onclick=()=>{portrait=false;r169.classList.add('on');r916.classList.remove('on');setStyle(styleKey)};
 r916.onclick=()=>{portrait=true;r916.classList.add('on');r169.classList.remove('on');setStyle(styleKey)};
 
+document.querySelectorAll('#skinChips button').forEach(b=>b.onclick=()=>{handSkin=b.dataset.s;document.querySelectorAll('#skinChips button').forEach(x=>x.classList.toggle('on',x===b))});
+
 /* ---------- gallery thumbnails (final frame) ---------- */
 function gallery(){
   const g=document.getElementById('gallery');g.innerHTML='';
@@ -581,7 +648,7 @@ function start(){
   setStyle('whiteboard',false);
   // first still frame is complete; animation starts shortly after
   t=scene.total;draw();
-  if(!reduce)setTimeout(()=>{t=0;playing=true},900); else{playing=false;playBtn.textContent='Phát';playBtn.classList.remove('on')}
+  if(!reduce)setTimeout(()=>{t=0;playing=true;playBtn.textContent='Tạm dừng';playBtn.classList.add('on')},900); else{playing=false;playBtn.textContent='Phát';playBtn.classList.remove('on')}
   gallery();requestAnimationFrame(loop);
 }
 const fontsReady=Promise.all([document.fonts.load('40px Pangolin'),document.fonts.load('20px "JetBrains Mono"')]).catch(()=>{});
