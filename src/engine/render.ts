@@ -137,7 +137,7 @@ export function prepare(opts: {
     if (mode === 'kinetic') {
       const keys = (sc.diagram?.items || []).filter((it: any) => it.t === 'text').map((it: any) => String(it.text));
       if (sc.diagram?.title) keys.push(sc.diagram.title);
-      const box = project.ratio === '9:16' ? { x: 34, y: 150, w: 472, h: 660 } : { x: 70, y: 80, w: 820, h: 390 };
+      const box = project.ratio === '9:16' ? { x: 50, y: 170, w: 440, h: 620 } : { x: 90, y: 80, w: 780, h: 390 };
       const ic = (sc.diagram?.items || []).find((it: any) => it.t === 'icon'), name = ic ? resolveIcon(ic.name, m.icons) : null;
       const deco = name ? m.icons[name].split('|').flatMap((d) => flatten(d)) : undefined;
       return [buildKinetic(measure, sc, T, box, colors, keys, deco)];

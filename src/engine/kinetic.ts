@@ -25,7 +25,8 @@ export function phrases(line: string, max = 7): string[][] {
 /** `deco`: line art of the scene's main icon (24×24 units), drawn huge and faint behind the words. */
 export function buildKinetic(c: Ctx, sc: SceneSpec, T: SceneTiming, box: Box, col: Colors, keys: string[], deco?: [number, number][][]) {
   const F = col.font || 'Pangolin', portrait = box.h > box.w;
-  const keySet = new Set(keys.flatMap((k) => k.split(/\s+/)).map(fold).filter((k) => k.length > 1));
+  // words the board would have written: short labels only (a whole sentence is not a key word)
+  const keySet = new Set(keys.filter((k) => k.split(/\s+/).length <= 3).flatMap((k) => k.split(/\s+/)).map(fold).filter((k) => k.length > 2));
   const out: Phrase[] = [];
   sc.lines.forEach((line, li) => {
     const span = T.lines[li]; if (!span) return;
@@ -39,8 +40,11 @@ export function buildKinetic(c: Ctx, sc: SceneSpec, T: SceneTiming, box: Box, co
     for (const ph of phrases(line, portrait ? 6 : 8)) {
       const idx = ph.map(() => k++);
       // key words: numbers, words written on the board, else the longest one
-      let key = ph.map((w) => /\d/.test(w) || keySet.has(fold(w)));
-      if (!key.some(Boolean)) { let best = -1, bl = 3; ph.forEach((w, i) => { if (fold(w).length > bl) { bl = fold(w).length; best = i; } }); if (best >= 0) key = key.map((_, i) => i === best); }
+      // at most two per phrase, numbers first: emphasis only works when most words are plain
+      const rank = ph.map((w, i) => ({ i, score: (/\d/.test(w) ? 100 : 0) + (keySet.has(fold(w)) ? 10 + fold(w).length : 0) }))
+        .filter((x) => x.score > 0).sort((a, b) => b.score - a.score).slice(0, 2).map((x) => x.i);
+      if (!rank.length) { let best = -1, bl = 3; ph.forEach((w, i) => { if (fold(w).length > bl) { bl = fold(w).length; best = i; } }); if (best >= 0) rank.push(best); }
+      const key = ph.map((_, i) => rank.includes(i));
       // layout: shrink until the phrase fits in at most 4 rows
       let size = portrait ? 66 : 60, rows: { i: number; w: number }[][] = [];
       for (; size >= 30; size -= 4) {

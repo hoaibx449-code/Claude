@@ -24,10 +24,14 @@ const { DEFAULT_TEMPLATES } = await import('./src/templates.ts');
 const { splitScript } = await import('./src/compose.ts');
 const { cleanSpec } = await import('./src/spec.ts');
 const picks = [['lai-kep', 'sunset'], ['chia-luong', 'neon'], ['ke-chuyen', 'comic'], ['ngu-ngon', 'pastel'], ['thoi-quen', 'darkboard'], ['hoc-nhanh', 'chalkboard'], ['gioi-thieu-sp', 'whiteboard'], ['khach-hang', 'kraft']];
-const demos = picks.map(([id, style]) => {
+// the four genres: same free composer, other ways of bringing the board to life
+const genres = [['lai-kep', 'sunset', 'hand'], ['chia-luong', 'cosmos', 'motion'], ['hoc-nhanh', 'manim', 'math'], ['thoi-quen', 'bold', 'kinetic']];
+const make = ([id, style, mode], intro) => {
   const t = DEFAULT_TEMPLATES.find((x) => x.id === id);
-  const spec = cleanSpec({ title: t.title, visual: 'sketch', ratio: '9:16', style, channel: 'Nét Vẽ', scenes: splitScript(t.text).map((lines) => ({ lines })) }, 'demo');
-  return { id, title: t.title, style, spec };
-});
+  const spec = cleanSpec({ title: t.title, visual: 'sketch', ratio: '9:16', style, mode, channel: 'Nét Vẽ', scenes: splitScript(t.text).map((lines) => ({ lines })).slice(0, 4),
+    intro: intro ? { title: t.title, badge: 'MIỄN PHÍ', icon: 'sparkles' } : null }, 'demo');
+  return { id, title: t.title, style, mode: mode || 'hand', spec };
+};
+const demos = [...picks.map((p, i) => make(p, i === 0)), ...genres.slice(1).map((g) => make(g))];
 writeFileSync(join(pub, 'demos.json'), JSON.stringify(demos));
 console.log('web/public built');

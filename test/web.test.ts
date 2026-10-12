@@ -64,3 +64,24 @@ test('logs never keep secrets or images', () => {
   assert.ok(!s.includes('sk-123') && !s.includes('AAAA'));
   assert.ok(s.includes('[3 cảnh]'));
 });
+
+test('new styles and genres reach installs saved before they existed; length cap is clamped', () => {
+  const base = defaultConfig({} as any);
+  const c = cleanConfig({ enabledStyles: ['sunset', 'neon'], visibility: { 'style:neon': 'hidden' }, limits: { maxSeconds: 99999 }, defaults: { mode: 'kinetic' } }, base);
+  for (const k of ['cosmos', 'manim', 'bold', 'whiteboard']) assert.ok(c.enabledStyles.includes(k), k);
+  assert.ok(!c.enabledStyles.includes('neon'));
+  assert.equal(c.limits.maxSeconds, 1800);
+  assert.equal(c.defaults.mode, 'kinetic');
+  assert.equal(publicConfig(c).limits.maxSeconds, 1800);
+});
+
+test('a project keeps only its owner\'s pictures, valid QR links and its genre', () => {
+  const mine = 'r2:up/u1/' + 'a'.repeat(24) + '.jpg', theirs = 'r2:up/u2/' + 'b'.repeat(24) + '.jpg';
+  const spec: any = cleanSpec({ visual: 'sketch', ratio: '9:16', mode: 'motion', media: { nv: mine, x: theirs }, character: 'nv', intro: { title: 'Tiêu đề', icon: 'rocket' },
+    scenes: [{ lines: ['Mua ngay.'], diagram: { kind: 'sketch', items: [{ t: 'image', src: 'nv', x: 50, y: 50 }, { t: 'image', src: 'x', x: 50, y: 50 }, { t: 'qr', text: 'https://shope.ee/a', x: 50, y: 80 }, { t: 'qr', text: 'javascript:alert(1)', x: 50, y: 80 }, { t: 'chart', kind: 'plot', fn: 'exp', x: 50, y: 50 }] } }] }, 'u1');
+  assert.deepEqual(spec.media, { nv: mine });
+  assert.equal(spec.character, 'nv');
+  assert.equal(spec.mode, 'motion');
+  assert.equal(spec.intro.title, 'Tiêu đề');
+  assert.deepEqual(spec.scenes[0].diagram.items.map((i: any) => i.t), ['image', 'qr', 'chart']);
+});

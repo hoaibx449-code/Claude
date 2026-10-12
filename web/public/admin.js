@@ -5,7 +5,7 @@
 
 const ADMIN_TABS = [
   ['tong-quan', 'Tổng quan'], ['nhat-ky', 'Nhật ký'], ['nguoi-dung', 'Người dùng'], ['don-hang', 'Đơn hàng'], ['goi', 'Gói cước'],
-  ['zalo', 'Zalo'], ['hien-thi', 'Hiển thị'], ['noi-dung', 'Nội dung'], ['cai-dat', 'Cài đặt'],
+  ['cong-dong', 'Cộng đồng'], ['zalo', 'Zalo'], ['hien-thi', 'Hiển thị'], ['noi-dung', 'Nội dung'], ['cai-dat', 'Cài đặt'],
 ];
 const SECRET_INFO = {
   GEMINI_API_KEY: ['Gemini (Google AI Studio)', 'Viết kịch bản + vẽ ảnh. aistudio.google.com → Get API key.'],
@@ -23,7 +23,8 @@ const EVENT_NAMES = {
   'render.trigger': 'Bật máy dựng', 'video.download': 'Tải video', 'template.open': 'Mở kịch bản mẫu', 'zalo.message': 'Tin Zalo đến', 'zalo.notify': 'Gửi Zalo',
   'zalo.link': 'Kết nối Zalo', 'zalo.unlink': 'Bỏ kết nối Zalo', 'zalo.create': 'Zalo tạo video lỗi', 'order.create': 'Tạo đơn', 'order.paid': 'Đơn đã trả',
   'order.cancel': 'Huỷ đơn', 'sepay.webhook': 'SePay báo tiền', 'ui.view': 'Xem trang', 'ui.click': 'Bấm', 'ui.leave': 'Rời trang', 'ui.error': 'Lỗi trình duyệt',
-  'ui.choose': 'Chọn cách tạo', 'ui.template': 'Chọn mẫu', 'admin.settings': 'Admin lưu cài đặt', 'admin.block': 'Admin khoá/mở', 'admin.grant': 'Admin cấp gói', 'admin.export': 'Admin xuất CSV',
+  'ui.choose': 'Chọn cách tạo', 'ui.mode': 'Chọn kiểu video', 'ui.platform': 'Xem như nền tảng', 'video.play': 'Xem video trên web', 'media.upload': 'Tải ảnh lên',
+  'community.share': 'Chia sẻ cộng đồng', 'community.like': 'Thả tim', 'admin.community': 'Admin duyệt cộng đồng', 'auth.redirect': 'Mở đăng nhập Google', 'ui.pay_open': 'Mở thanh toán', 'ui.pay_done': 'Thanh toán xong', 'ui.template': 'Chọn mẫu', 'admin.settings': 'Admin lưu cài đặt', 'admin.block': 'Admin khoá/mở', 'admin.grant': 'Admin cấp gói', 'admin.export': 'Admin xuất CSV',
 };
 const evName = (t) => EVENT_NAMES[t] || t;
 const VIS_NAMES = { on: 'Hiện', dev: 'Đang phát triển', hidden: 'Ẩn' };
@@ -34,7 +35,7 @@ async function showAdmin() {
   const nav = h('nav', { class: 'tabs' }, ADMIN_TABS.map(([k, name]) => h('a', { href: '#/admin/' + k, class: k === tab ? 'on' : null }, name)));
   const body = h('div', { class: 'scenes' }, h('p', { class: 'muted' }, 'Đang tải…'));
   show(h('a', { href: '#/' }, T('allVideos')), h('h1', {}, T('admin')), nav, body);
-  const pages = { 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings };
+  const pages = { 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings };
   await (pages[tab] || adminOverview)(body, tab);
 }
 
@@ -219,11 +220,18 @@ function settingsTab(c, secrets, secretInput) {
       h('label', {}, 'Phong cách', select(Object.entries(c.labels.styles), c.defaults.style, (v) => { c.defaults.style = v; })),
       h('label', {}, 'Kiểu hình', select(Object.entries(c.labels.visual), c.defaults.visual, (v) => { c.defaults.visual = v; })),
       h('label', {}, 'Khung hình', select([['9:16', 'Dọc 9:16'], ['16:9', 'Ngang 16:9']], c.defaults.ratio, (v) => { c.defaults.ratio = v; })),
-      h('label', {}, 'Thời lượng (giây)', input(c.defaults.seconds, (v) => { c.defaults.seconds = v; }, { type: 'number', min: 15, max: 180 })),
+      h('label', {}, 'Kiểu video', select(Object.entries(c.labels.modes), c.defaults.mode, (v) => { c.defaults.mode = v; })),
+      h('label', {}, 'Thời lượng mặc định (giây)', input(c.defaults.seconds, (v) => { c.defaults.seconds = v; }, { type: 'number', min: 15, max: 1800 })),
       h('label', {}, 'Giọng đọc', select(c.voices.map((v) => [v.code, v.label]), c.defaults.voice, (v) => { c.defaults.voice = v; })),
       h('label', {}, 'Tên kênh', input(c.defaults.channel, (v) => { c.defaults.channel = v; }, { maxlength: 40 })),
       h('label', {}, 'Giọng văn', input(c.defaults.tone, (v) => { c.defaults.tone = v; }, { maxlength: 200 })),
-      check(c.defaults.subtitles, (v) => { c.defaults.subtitles = v; }, 'Phụ đề trên hình'))),
+      check(c.defaults.subtitles, (v) => { c.defaults.subtitles = v; }, 'Phụ đề trên hình'),
+      check(c.defaults.intro, (v) => { c.defaults.intro = v; }, 'Mở đầu bằng ảnh bìa (thumbnail)'))),
+    card('Giới hạn chung', 'Video dài nhất mà hệ thống cho làm (gói cước có thể cho ít hơn). Ước tính theo số chữ của kịch bản.', h('div', { class: 'grid' },
+      h('label', {}, 'Độ dài tối đa (phút)', select([[60, '1 phút'], [120, '2 phút'], [180, '3 phút'], [300, '5 phút'], [420, '7 phút'], [600, '10 phút'], [900, '15 phút'], [1200, '20 phút'], [1800, '30 phút']].map(([v, l]) => [String(v), l]), String(c.limits.maxSeconds), (v) => { c.limits.maxSeconds = Number(v); })))),
+    card('Đăng nhập Google', null,
+      h('label', {}, 'Cách mở Google', select([['auto', 'Tự động (khuyên dùng): chuyển trang khi là app cài trên màn hình chính hoặc trình duyệt trong Zalo/Facebook'], ['redirect', 'Luôn chuyển trang (ổn định nhất)'], ['popup', 'Luôn cửa sổ bật lên']], c.auth.google, (v) => { c.auth.google = v; })),
+      h('p', { class: 'muted' }, 'Để kiểu chuyển trang hoạt động, vào Google Cloud Console → APIs & Services → Credentials → OAuth client (Web) → Authorized redirect URIs, thêm đúng địa chỉ: ', h('code', {}, location.origin + '/api/auth/google/callback'))),
     card('Danh sách giọng đọc', 'Mỗi dòng: nhà cung cấp | mã giọng | tên hiển thị. Nhà cung cấp: everai, google, elevenlabs, free (miễn phí, không cần khoá). Giọng trả phí lỗi sẽ tự chuyển sang giọng miễn phí.',
       area(voiceText(), (v) => { c.voices = v.split('\n').map((l) => l.split('|').map((x) => x.trim())).filter((p) => p.length >= 2 && p[1]).map(([provider, code, label]) => ({ provider, code, label: label || code })); }, 10)),
     card('Model AI', 'Model dự phòng được thử lần lượt khi model chính lỗi hoặc quá tải; hết model thì chuyển sang nhà cung cấp còn lại.', h('div', { class: 'grid' },
@@ -274,11 +282,12 @@ function plansTab(c, secrets, secretInput) {
     card('Thanh toán chuyển khoản', 'Người dùng quét mã VietQR; nội dung chuyển khoản là mã đơn. Cài SePay (sepay.vn) gọi webhook bên dưới để đơn tự kích hoạt.',
       h('div', { class: 'grid' },
         check(c.payment.enabled, (v) => { c.payment.enabled = v; }, 'Mở thanh toán'),
-        h('label', {}, 'Mã BIN ngân hàng', input(c.payment.bank, (v) => { c.payment.bank = v; }, { placeholder: '970436 = Vietcombank' })),
+        h('label', {}, 'Giữ mã QR (phút, đếm ngược)', input(c.payment.holdMinutes, (v) => { c.payment.holdMinutes = v; }, { type: 'number', min: 3, max: 120 })),
         h('label', {}, 'Số tài khoản', input(c.payment.account, (v) => { c.payment.account = v; })),
         h('label', {}, 'Tên chủ tài khoản', input(c.payment.accountName, (v) => { c.payment.accountName = v; })),
         h('label', {}, 'Tiền tố mã đơn', input(c.payment.prefix, (v) => { c.payment.prefix = v.toUpperCase(); }, { maxlength: 4 })),
         h('label', {}, 'Đơn hết hạn sau (ngày)', input(c.payment.expiryDays, (v) => { c.payment.expiryDays = v; }, { type: 'number', min: 1 }))),
+      bankPicker(c.payment),
       h('label', {}, 'Ghi chú hiện dưới mã QR', input(c.payment.note, (v) => { c.payment.note = v; }, { maxlength: 300 })),
       h('p', { class: 'muted' }, 'Webhook SePay: ', h('code', {}, location.origin + '/api/sepay/webhook'), ' · Kiểu xác thực: API Key.')),
     keysCard(secrets, secretInput, ['SEPAY_API_KEY']),
@@ -286,6 +295,36 @@ function plansTab(c, secrets, secretInput) {
       h('button', { type: 'button', class: 'ghost small', onclick: (e) => { c.plans.push({ id: 'goi' + (c.plans.length + 1), name: 'Gói mới', price: 99000, days: 30, visible: true, highlight: false, desc: '', features: [], limits: { script: 10, image: 20, render: 5 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 180 }); e.target.closest('.card').after(planCard(c.plans[c.plans.length - 1], c.plans.length - 1)); } }, '+ Thêm gói')),
     ...c.plans.map(planCard),
   ];
+}
+
+/** Pick the receiving bank by name and logo (the BIN behind it goes into the QR code). */
+function bankPicker(pay) {
+  const cur = h('div', { class: 'bankrow' });
+  const paintCur = () => { const b = bankOf(pay.bank); cur.replaceChildren(bankLogo(b, 40), h('div', {}, h('b', {}, b.name), h('small', { class: 'muted' }, 'Mã BIN ' + b.bin))); };
+  const q = h('input', { type: 'search', placeholder: 'Tìm ngân hàng…', oninput: () => paint() });
+  const grid = h('div', { class: 'banks' });
+  const paint = () => {
+    const k = q.value.trim().toLowerCase();
+    grid.replaceChildren(...BANKS.filter((b) => !k || (b.name + ' ' + b.code).toLowerCase().includes(k)).map((b) => h('button', { type: 'button', class: 'bankopt' + (b.bin === pay.bank ? ' on' : ''), onclick: () => { pay.bank = b.bin; paintCur(); paint(); } }, bankLogo(b, 28), b.name)));
+  };
+  paintCur(); paint();
+  return h('div', { class: 'photo' }, h('span', { class: 'plabel' }, 'Ngân hàng nhận tiền'), cur, q, grid);
+}
+
+// ---------------------------------------------------------------- community moderation
+async function adminCommunity(body) {
+  const { videos } = await api('/api/admin/community');
+  const act = (v, a) => h('button', { type: 'button', class: 'ghost small' + (a === 'delete' ? ' danger' : ''), onclick: async () => {
+    if (a === 'delete' && !confirm('Gỡ video này khỏi cộng đồng?')) return;
+    try { await api(`/api/admin/community/${v.job_id}/${a}`, { method: 'POST' }); toast('Đã cập nhật.'); adminCommunity(body); } catch (e) { fail(e); }
+  } }, { hide: 'Ẩn', show: 'Hiện lại', delete: 'Gỡ' }[a]);
+  body.replaceChildren(card('Video cộng đồng', `${videos.length} video người dùng đã chia sẻ. Ẩn video vi phạm; người dùng không thấy video bị ẩn. Bật/tắt cả mục ở tab Hiển thị → Tính năng → Cộng đồng.`,
+    videos.length ? table(['Lúc', 'Tiêu đề', 'Người đăng', 'Kiểu', '♥', 'Lượt xem', 'Trạng thái', ''], videos.map((v) => h('tr', {},
+      h('td', {}, fmtDate(v.created_at)), h('td', {}, h('a', { href: `/api/admin/community/video?job=${v.job_id}`, target: '_blank' }, v.title)), h('td', {}, v.email || v.author || ''),
+      h('td', {}, (ui.labels.modes?.[v.mode] || v.mode || '') + ' · ' + (ui.labels.styles?.[v.style] || v.style || '')), h('td', {}, num(v.likes)), h('td', {}, num(v.views)),
+      h('td', { class: v.hidden ? 'bad' : 'ok' }, v.hidden ? 'Đang ẩn' : 'Đang hiện'),
+      h('td', {}, h('div', { class: 'row' }, act(v, v.hidden ? 'show' : 'hide'), act(v, 'delete'))))))
+      : h('p', { class: 'muted' }, 'Chưa có video nào.')));
 }
 
 function zaloTab(c, secrets, secretInput, zcheck) {
@@ -322,10 +361,12 @@ function zaloTab(c, secrets, secretInput, zcheck) {
 function visTab(c) {
   const row = (key, label) => h('div', { class: 'vis' }, h('span', {}, label), select(Object.entries(VIS_NAMES), c.visibility[key] || 'on', (v) => { if (v === 'on') delete c.visibility[key]; else c.visibility[key] = v; }));
   const group = (title, entries) => h('details', { open: true }, h('summary', {}, title), ...entries.map(([k, label]) => row(k, label)));
-  const FEATURES = { zalo: 'Tạo video qua Zalo', imageAI: 'Tranh AI cho cảnh', duplicate: 'Nhân bản video', cover: 'Tải ảnh bìa', templates: 'Kịch bản mẫu', subtitles: 'Bật phụ đề trên hình', speed: 'Chỉnh tốc độ đọc', srt: 'Tải phụ đề SRT', plans: 'Gói cước & nâng cấp', music: 'Nhạc nền' };
+  const FEATURES = { zalo: 'Tạo video qua Zalo', imageAI: 'Tranh AI cho cảnh', duplicate: 'Nhân bản video', cover: 'Tải ảnh bìa', templates: 'Kịch bản mẫu', subtitles: 'Bật phụ đề trên hình', speed: 'Chỉnh tốc độ đọc', srt: 'Tải phụ đề SRT', plans: 'Gói cước & nâng cấp', music: 'Nhạc nền',
+    intro: 'Mở đầu là ảnh bìa (thumbnail)', character: 'Nhân vật tham chiếu (ảnh thật)', affiliate: 'Tiếp thị liên kết (ảnh SP + QR)', community: 'Cộng đồng', platform: 'Xem như TikTok / Reels / Shorts / YouTube' };
   return [
     card('Hiển thị tuỳ chọn', '"Đang phát triển" = người dùng thấy nhưng không chọn được (có nhãn đang phát triển). "Ẩn" = không thấy. Áp dụng cả trên web và Zalo.',
       group('Tính năng', Object.entries(FEATURES).map(([k, v]) => ['feature:' + k, v])),
+      group('Kiểu video', Object.entries(c.labels.modes).map(([k, v]) => ['mode:' + k, v])),
       group('Cách tạo video', Object.entries(c.labels.sources).map(([k, v]) => ['source:' + k, v])),
       group('Phong cách', Object.entries(c.labels.styles).map(([k, v]) => ['style:' + k, v])),
       group('Kiểu hình', Object.entries(c.labels.visual).map(([k, v]) => ['visual:' + k, v])),
@@ -338,7 +379,7 @@ function visTab(c) {
 }
 
 function contentTab(c) {
-  const LABEL_GROUPS = [['styles', 'Phong cách vẽ'], ['tools', 'Dụng cụ vẽ'], ['kinds', 'Kiểu sơ đồ'], ['visual', 'Kiểu hình'], ['actions', 'Động tác người que'], ['ai', 'Nhà cung cấp AI'], ['sources', 'Cách tạo video']];
+  const LABEL_GROUPS = [['modes', 'Kiểu video'], ['styles', 'Phong cách vẽ'], ['tools', 'Dụng cụ vẽ'], ['kinds', 'Kiểu sơ đồ'], ['visual', 'Kiểu hình'], ['actions', 'Động tác người que'], ['ai', 'Nhà cung cấp AI'], ['sources', 'Cách tạo video']];
   const tplList = h('div', { class: 'scenes' });
   const drawTpls = () => tplList.replaceChildren(...c.templates.map((t, i) => h('div', { class: 'scene' },
     h('div', { class: 'grid' }, h('label', {}, 'Tên mẫu', input(t.title, (v) => { t.title = v; })), h('label', {}, 'Mã', input(t.id, (v) => { t.id = v; })),

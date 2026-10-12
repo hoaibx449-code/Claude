@@ -410,7 +410,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
     }
     if (sub === '/render' && method === 'POST') return json({ job: await queueRender(env, rc, user, id, p.spec) });
     if (sub === '/jobs' && method === 'GET') {
-      const r = await env.DB.prepare('SELECT id, status, progress, error, created_at, finished_at FROM jobs WHERE project_id = ? ORDER BY created_at DESC LIMIT 10').bind(id).all();
+      const r = await env.DB.prepare('SELECT id, status, progress, error, created_at, finished_at, (SELECT 1 FROM community c WHERE c.job_id = jobs.id) AS shared FROM jobs WHERE project_id = ? ORDER BY created_at DESC LIMIT 10').bind(id).all();
       const queued = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'queued'").first<any>();
       return json({ jobs: r.results, queueLength: queued.n });
     }
