@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nét Vẽ Studio</title>
+<meta name="description" content="Tạo video bàn tay vẽ kèm thuyết minh tiếng Việt.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;700;800&display=swap">
+<link rel="stylesheet" href="/app.css">
+<script src="/engine.js" defer></script>
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#/">Nét Vẽ <span>Studio</span></a>
+  <div class="who" id="who" hidden>
+    <span id="whoEmail"></span>
+    <button class="ghost" id="logout" type="button">Đăng xuất</button>
+  </div>
+</header>
+
+<main id="view" class="wrap" aria-live="polite">
+  <p class="muted">Đang tải…</p>
+</main>
+
+<div class="toast" id="toast" role="status" hidden></div>
+</body>
+</html>

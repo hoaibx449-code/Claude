@@ -4,3 +4,7 @@ out/
 .cache/
 *.mp4
 .env
+web/public/engine.js
+web/public/assets/
+web/.wrangler/
+web/.dev.vars

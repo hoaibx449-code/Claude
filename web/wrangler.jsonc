@@ -1,0 +1,28 @@
+{
+  // Cloudflare Worker: web app + API. Secrets (never in this file):
+  //   GOOGLE_CLIENT_ID, RUNNER_TOKEN, OPENAI_API_KEY, GEMINI_API_KEY
+  // Set them with: npx wrangler secret put NAME
+  "name": "net-ve-studio",
+  "main": "src/worker.ts",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "net-ve-studio", "database_id": "00000000-0000-0000-0000-000000000000" }
+  ],
+  "r2_buckets": [
+    { "binding": "BUCKET", "bucket_name": "net-ve-studio" }
+  ],
+  "vars": {
+    "DAILY_SCRIPTS": "20",
+    "DAILY_IMAGES": "30",
+    "DAILY_RENDERS": "5",
+    "OPENAI_TEXT_MODEL": "gpt-4o-mini",
+    "OPENAI_IMAGE_MODEL": "gpt-image-1",
+    "GEMINI_TEXT_MODEL": "gemini-2.5-flash",
+    "GEMINI_IMAGE_MODEL": "gemini-2.5-flash-image"
+  }
+}

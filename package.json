@@ -7,9 +7,17 @@
   },
   "scripts": {
     "render": "node --env-file-if-exists=.env src/cli/render.ts",
-    "test": "node --test test/*.test.ts"
+    "test": "node --test test/*.test.ts",
+    "runner": "node --env-file-if-exists=.env src/cli/runner.ts",
+    "web:build": "node web/build.mjs",
+    "web:dev": "node web/build.mjs && cd web && wrangler dev",
+    "web:deploy": "node web/build.mjs && cd web && wrangler deploy"
   },
   "dependencies": {
     "@napi-rs/canvas": "0.1.80"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.10",
+    "wrangler": "^4.40.0"
   }
 }
