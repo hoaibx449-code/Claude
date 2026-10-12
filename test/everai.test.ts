@@ -42,14 +42,21 @@ test('EverAI: polls each line and joins clips with exact line timing', async () 
   const port = (srv.address() as any).port;
   process.env.EVERAI_API_KEY = 'test-key';
   process.env.EVERAI_API_URL = `http://127.0.0.1:${port}/tts`;
+  const cacheDir = join(dir, 'cache');
   try {
-    const v = await everAITTS({ voiceCode: 'vi-north-female', pollMs: 10 }).synth(['Câu một.', 'Câu hai dài hơn.'], join(dir, 'scene0'));
+    const tts = everAITTS({ voiceCode: 'vi_female_thuytrang_mb', pollMs: 10, cacheDir });
+    const v = await tts.synth(['Câu một.', 'Câu hai dài hơn.'], join(dir, 'scene0'));
     assert.equal(seen.length, 2);
-    assert.equal(seen[0].voice_code, 'vi-north-female');
+    assert.equal(seen[0].voice_code, 'vi_female_thuytrang_mb');
+    assert.equal(seen[0].model_id, 'everai-v1.6');
+    assert.equal(seen[0].response_type, 'indirect');
     assert.equal(seen[1].input_text, 'Câu hai dài hơn.');
     assert.ok(Math.abs(v.lines[0].end - v.lines[0].start - 1) < 0.1);
     assert.ok(Math.abs(v.lines[1].end - v.lines[1].start - 2) < 0.1);
     assert.ok(v.lines[1].start >= v.lines[0].end);
     assert.ok(Math.abs(v.duration - 3.5) < 0.2);
+    // re-render: same sentences come from the cache, no new paid request
+    await tts.synth(['Câu một.', 'Câu hai dài hơn.'], join(dir, 'scene0b'));
+    assert.equal(seen.length, 2);
   } finally { srv.close(); }
 });

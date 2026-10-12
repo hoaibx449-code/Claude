@@ -111,9 +111,9 @@ export function googleTTS(voiceName?: string, languageCode = 'vi-VN'): TTS {
   };
 }
 
-export async function pickTTS(name: string | undefined, voice?: { voiceId?: string; languageCode?: string }): Promise<TTS> {
+export async function pickTTS(name: string | undefined, voice?: { voiceId?: string; languageCode?: string; model?: string; speed?: number; pitch?: number; volume?: number }): Promise<TTS> {
   switch (name) {
-    case 'everai': return (await import('./everai.ts')).everAITTS({ voiceCode: voice?.voiceId });
+    case 'everai': return (await import('./everai.ts')).everAITTS({ voiceCode: voice?.voiceId, model: voice?.model, speed: voice?.speed, pitch: voice?.pitch, volume: voice?.volume });
     case 'elevenlabs': return elevenLabsTTS(voice?.voiceId);
     case 'google': return googleTTS(voice?.voiceId, voice?.languageCode);
     case 'mock': case undefined: return mockTTS;

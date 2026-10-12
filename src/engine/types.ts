@@ -30,7 +30,7 @@ export interface ProjectSpec {
   tool?: ToolKind;
   /** Hand asset folder (hand.webp, fingers.webp, hand.json). */
   hand?: string;
-  voice?: { provider?: string; voiceId?: string; languageCode?: string };
+  voice?: { provider?: string; voiceId?: string; languageCode?: string; model?: string; speed?: number; pitch?: number; volume?: number };
   images?: { provider?: string };
   scenes: SceneSpec[];
 }
