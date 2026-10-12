@@ -4,7 +4,8 @@ import { HttpError } from './util.ts';
 import { composeScene } from './compose.ts';
 import { detectIntent, FORMATS, NICHES } from './intent.ts';
 
-export const STYLES = ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'pencil', 'blueprint', 'ricepaper'] as const;
+export const STYLES = ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'pencil', 'blueprint', 'ricepaper', 'neon', 'pastel', 'newspaper', 'comic', 'darkboard', 'sunset'] as const;
+export const TRANSITIONS = ['auto', 'fade', 'slide', 'wipe', 'zoom'] as const;
 export const TOOLS = ['marker', 'chalk', 'fountain', 'colormarker', 'pencil', 'technical', 'brush'] as const;
 export const RATIOS = ['9:16', '16:9'] as const;
 export const VOICE_PROVIDERS = ['everai', 'google', 'elevenlabs', 'free', 'mock'] as const;
@@ -146,6 +147,7 @@ export function cleanSpec(input: any, userId: string) {
     episode: str(input.episode, 30),
     ratio,
     subtitles: input.subtitles === true,
+    transition: pick(input.transition, TRANSITIONS, 'auto'),
     style: pick(input.style, STYLES, 'notebook'),
     tool: input.tool ? pick(input.tool, TOOLS, 'marker') : undefined,
     voice: {

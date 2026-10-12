@@ -226,7 +226,12 @@ async function guestUser(env: XEnv, chatId: string, name: string): Promise<User>
     env.DB.prepare('INSERT OR IGNORE INTO users (id, email, name, picture, created_at) VALUES (?, ?, ?, NULL, ?)').bind(id, `zalo:${chatId}`, name.slice(0, 60) || 'Người dùng Zalo', now),
     env.DB.prepare("INSERT OR IGNORE INTO zalo_links (user_id, chat_id, name, linked_at, notify, prefs) VALUES (?, ?, ?, ?, 1, '{}')").bind(id, chatId, name.slice(0, 60), now),
   ]);
-  if (!existed) await notifyOwner(env, 'signup', `Người dùng mới qua Zalo: ${name || chatId}`);
+  if (!existed) {
+    // the chat is the sign-up: tell them the terms and record that they continued
+    await env.DB.prepare('INSERT OR IGNORE INTO consents (user_id, version, accepted_at, ip, ua) VALUES (?, ?, ?, NULL, ?)').bind(id, env.config.legal.version, now, 'zalo').run();
+    await send(env, chatId, `Chào ${name || 'bạn'}! Khi tiếp tục dùng bot, bạn đồng ý Điều khoản (${origin(env)}/#/dieu-khoan) và Chính sách bảo mật (${origin(env)}/#/bao-mat). Gõ HUYKETNOI bất cứ lúc nào để ngừng.`);
+    await notifyOwner(env, 'signup', `Người dùng mới qua Zalo: ${name || chatId}`);
+  }
   return { id, email: `zalo:${chatId}`, name, picture: null };
 }
 

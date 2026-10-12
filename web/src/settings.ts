@@ -4,6 +4,7 @@
 import { type Env, HttpError } from './util.ts';
 import type { User } from './auth.ts';
 import { DEFAULT_TEMPLATES, type Template } from './templates.ts';
+import { DEFAULT_PRIVACY, DEFAULT_REFUND, DEFAULT_TERMS, LEGAL_VERSION, type LegalConfig } from './legal.ts';
 
 export const SECRET_NAMES = ['OPENAI_API_KEY', 'GEMINI_API_KEY', 'EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'ELEVENLABS_API_KEY', 'ZALO_BOT_TOKEN', 'SEPAY_API_KEY'] as const;
 export type SecretName = (typeof SECRET_NAMES)[number];
@@ -12,7 +13,7 @@ const RUNNER_SECRETS: SecretName[] = ['EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'E
 /** Visibility of an option ("style:kraft", "feature:zalo"); anything not set is on. */
 export const vis = (c: Config, key: string): Vis => c.visibility[key] || 'on';
 
-export const STYLE_KEYS = ['whiteboard', 'chalkboard', 'oly', 'kraft', 'pencil', 'blueprint', 'ricepaper', 'notebook'] as const;
+export const STYLE_KEYS = ['sunset', 'whiteboard', 'chalkboard', 'neon', 'darkboard', 'comic', 'pastel', 'oly', 'kraft', 'pencil', 'newspaper', 'blueprint', 'ricepaper', 'notebook'] as const;
 export const TOOL_KEYS = ['marker', 'chalk', 'fountain', 'colormarker', 'pencil', 'technical', 'brush'] as const;
 export const KIND_KEYS = ['sketch', 'bars', 'flow', 'compare', 'steps', 'number', 'statement', 'stick'] as const;
 export const VISUAL_KEYS = ['sketch', 'diagram', 'mix', 'images'] as const;
@@ -51,6 +52,8 @@ export interface Config {
   notice: string;
   /** Ready-made scripts users can start from (no AI needed). */
   templates: Template[];
+  /** Terms, privacy and refund pages; raising `version` asks everyone to accept again. */
+  legal: LegalConfig;
 }
 export type Vis = 'on' | 'dev' | 'hidden';
 export interface ZaloConfig {
@@ -98,7 +101,7 @@ export function defaultConfig(env: Env): Config {
   return {
     brand: { name: 'Nét Vẽ', accent: 'Studio', tagline: 'Tạo video bàn tay vẽ kèm thuyết minh tiếng Việt.' },
     labels: {
-      styles: { whiteboard: 'Bảng trắng', chalkboard: 'Bảng phấn', oly: 'Vở ô ly', kraft: 'Giấy kraft', pencil: 'Sổ phác chì', blueprint: 'Bản vẽ kỹ thuật', ricepaper: 'Giấy dó mực tàu', notebook: 'Giấy kem kể chuyện' },
+      styles: { sunset: 'Hoàng hôn tím cam', neon: 'Neon đêm', darkboard: 'Bảng đen hiện đại', comic: 'Truyện tranh', pastel: 'Pastel dễ thương', newspaper: 'Báo giấy cổ điển', whiteboard: 'Bảng trắng', chalkboard: 'Bảng phấn', oly: 'Vở ô ly', kraft: 'Giấy kraft', pencil: 'Sổ phác chì', blueprint: 'Bản vẽ kỹ thuật', ricepaper: 'Giấy dó mực tàu', notebook: 'Giấy kem kể chuyện' },
       tools: { marker: 'Bút dạ bảng', chalk: 'Phấn', fountain: 'Bút máy', colormarker: 'Bút dạ màu', pencil: 'Bút chì', technical: 'Bút kỹ thuật', brush: 'Bút lông' },
       kinds: { sketch: 'Bảng vẽ tự do (chữ + hình + mũi tên)', bars: 'Biểu đồ cột (mũi tên, đường cong)', flow: 'Chuỗi nguyên nhân → kết quả', compare: 'So sánh ✗ / ✓', steps: 'Các bước', number: 'Con số nổi bật', statement: 'Câu chốt', stick: 'Người que chuyển động' },
       visual: { sketch: 'Bảng vẽ tự do: chữ + hình + sơ đồ (như demo)', diagram: 'Sơ đồ theo mẫu', mix: 'Kết hợp sơ đồ + tranh AI', images: 'Tranh AI cho mọi cảnh' },
@@ -109,7 +112,7 @@ export function defaultConfig(env: Env): Config {
     texts: { ...DEFAULT_TEXTS },
     enabledStyles: [...STYLE_KEYS],
     enabledSources: [...SOURCE_KEYS],
-    defaults: { source: 'topic', subtitles: false, textAI: 'gemini', imageAI: 'gemini', style: 'whiteboard', visual: 'sketch', ratio: '9:16', seconds: 45, voice: 'vi_female_thuytrang_mb', channel: '', tone: '' },
+    defaults: { source: 'topic', subtitles: false, textAI: 'gemini', imageAI: 'gemini', style: 'sunset', visual: 'sketch', ratio: '9:16', seconds: 45, voice: 'vi_female_thuytrang_mb', channel: '', tone: '' },
     voices: [
       ['vi_female_thuytrang_mb', 'Thùy Trang · nữ Bắc · nói chuyện'], ['vi_male_minhtriet_mb', 'Minh Triết · nam Bắc · sách nói'],
       ['vi_male_leduc_mb', 'Lê Đức · nam Bắc · kể chuyện'], ['vi_female_kimphuong_mb', 'Kim Phượng · nữ Bắc · kể chuyện'],
@@ -159,6 +162,7 @@ export function defaultConfig(env: Env): Config {
     payment: { enabled: false, bank: '970436', account: '', accountName: '', prefix: 'NV', expiryDays: 7, note: 'Chuyển khoản đúng nội dung để được kích hoạt tự động trong 1-2 phút.' },
     notice: '',
     templates: DEFAULT_TEMPLATES,
+    legal: { company: 'Nét Vẽ Studio', email: 'hotro@example.com', address: 'Việt Nam', taxId: '', version: LEGAL_VERSION, terms: DEFAULT_TERMS, privacy: DEFAULT_PRIVACY, refund: DEFAULT_REFUND },
   };
 }
 
@@ -272,6 +276,11 @@ export function cleanConfig(input: any, base: Config): Config {
     templates: (Array.isArray(i.templates) ? i.templates : base.templates).slice(0, 40).map((t: any, k: number) => ({
       id: /^[a-z0-9-]{2,30}$/.test(t?.id) ? t.id : 'mau-' + (k + 1), title: str(t?.title, 60, '') || 'Mẫu ' + (k + 1), niche: str(t?.niche, 20, 'general'), text: typeof t?.text === 'string' ? t.text.replace(/\r/g, '').slice(0, 6000) : '',
     })).filter((t: Template) => t.text.trim().length > 20),
+    legal: (() => {
+      const l = i.legal || {}, b = base.legal, doc = (v: unknown, d: string) => (typeof v === 'string' && v.trim().length > 50 ? v.replace(/\r/g, '').slice(0, 30000) : d);
+      return { company: str(l.company, 120, b.company) || b.company, email: str(l.email, 120, b.email) || b.email, address: str(l.address, 200, b.address), taxId: str(l.taxId, 30, ''),
+        version: /^[\w.-]{1,20}$/.test(l.version || '') ? l.version : b.version, terms: doc(l.terms, b.terms), privacy: doc(l.privacy, b.privacy), refund: doc(l.refund, b.refund) };
+    })(),
     admins: (Array.isArray(i.admins) ? i.admins : base.admins).map((e: unknown) => str(e, 100, '').toLowerCase()).filter((e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)).slice(0, 20),
   };
 }
@@ -375,6 +384,7 @@ export function publicConfig(config: Config) {
     voices: config.voices.filter((v) => config.visibility['voice:' + v.code] !== 'hidden'), visibility: config.visibility, notice: config.notice,
     plans: config.plans.filter((p) => p.visible).map((p) => ({ id: p.id, name: p.name, price: p.price, days: p.days, highlight: p.highlight, desc: p.desc, features: p.features, limits: p.limits })),
     templates: config.visibility['feature:templates'] === 'hidden' ? [] : config.templates.map((t) => ({ id: t.id, title: t.title, niche: t.niche })),
+    legal: { version: config.legal.version, company: config.legal.company, email: config.legal.email },
     zalo: { enabled: config.zalo.enabled && config.visibility['feature:zalo'] !== 'hidden', botLink: config.zalo.botLink, dev: config.visibility['feature:zalo'] === 'dev' },
     payment: { enabled: config.payment.enabled },
   };

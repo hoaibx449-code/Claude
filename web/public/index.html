@@ -2,11 +2,22 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- app-like on phones: fits the notch, no pinch or double-tap zoom -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Nét Vẽ Studio</title>
-<meta name="description" content="Tạo video bàn tay vẽ kèm thuyết minh tiếng Việt.">
+<meta name="description" content="Biến kịch bản thành video bàn tay vẽ có giọng đọc tiếng Việt trong một phút. Miễn phí dùng thử.">
+<meta name="theme-color" content="#7c3aed">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Nét Vẽ">
+<meta property="og:title" content="Nét Vẽ Studio — video bàn tay vẽ từ kịch bản">
+<meta property="og:description" content="Dán kịch bản, chọn phong cách, nhận video MP4 có giọng đọc. Dùng thử miễn phí.">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="/app.css">
 <script src="/engine.js" defer></script>
 <script src="/app.js" defer></script>
@@ -14,17 +25,32 @@
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="#/">Nét Vẽ <span>Studio</span></a>
-  <div class="who" id="who" hidden>
+  <a class="brand" href="#/"><span class="logo" aria-hidden="true">✎</span><span id="brandName">Nét Vẽ</span> <span class="accent" id="brandAccent">Studio</span></a>
+  <nav class="nav" id="nav" aria-label="Điều hướng chính">
+    <a href="#/" data-route="home">Trang chủ</a>
+    <a href="#/mau" data-route="mau">Phong cách</a>
+    <a href="#/goi" data-route="goi">Bảng giá</a>
+    <a href="#/video" data-route="video">Video của tôi</a>
+  </nav>
+  <div class="who">
     <a id="adminLink" href="#/admin" hidden>Quản trị</a>
     <span id="whoEmail"></span>
-    <button class="ghost" id="logout" type="button">Đăng xuất</button>
+    <a id="account" class="avatar" href="#/tai-khoan" hidden aria-label="Tài khoản"></a>
+    <button class="small" id="loginBtn" type="button" hidden>Đăng nhập</button>
+    <button class="ghost small" id="logout" type="button" hidden>Đăng xuất</button>
   </div>
 </header>
 
 <main id="view" class="wrap" aria-live="polite">
   <p class="muted">Đang tải…</p>
 </main>
+
+<nav class="tabbar" id="tabbar" aria-label="Thanh điều hướng">
+  <a href="#/" data-route="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>Trang chủ</a>
+  <a href="#/mau" data-route="mau"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2a10 10 0 1 0 0 20c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.3A4.7 4.7 0 0 0 22 10.6C22 5.8 17.5 2 12 2z"/></svg>Phong cách</a>
+  <a href="#/tao" data-route="tao" class="make"><span class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>Tạo video</a>
+  <a href="#/video" data-route="video"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9l5 3-5 3z"/></svg>Video</a>
+</nav>
 
 <div class="toast" id="toast" role="status" hidden></div>
 </body>

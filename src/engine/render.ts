@@ -135,6 +135,14 @@ export function prepare(opts: {
   return m;
 }
 
+export const TRANSITIONS = ['fade', 'slide', 'wipe', 'zoom'] as const;
+/** Transition into scene si: the project's choice, or a varied but fixed sequence ("auto"). */
+function transitionOf(p: ProjectSpec, si: number) {
+  const t = p.transition || 'auto';
+  if (t !== 'auto') return t;
+  return (['fade', 'slide', 'wipe', 'fade', 'zoom'] as const)[si % 5];
+}
+
 // ---- timing: what is drawn when
 const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase();
 
@@ -271,14 +279,26 @@ export function renderFrame(c: Ctx, m: Model, t: number, opts: { hand?: boolean 
   if (si < 0) si = scenes.length - 1;
   const S = scenes[si];
 
-  // previous scene fades out while this one begins
-  if (si > 0 && t - S.start < 0.4) {
-    const a = 1 - (t - S.start) / 0.4;
-    m.units[si - 1].forEach((u) => u.draw(c, 1, a, t));
-  }
+  // change of scene: the previous board leaves (fade · slide · wipe · zoom)
   const units = m.units[si];
   const prog = units.map((u) => clamp((t - u.start) / (u.end - u.start)));
-  units.forEach((u, k) => u.draw(c, prog[k], 1, t));
+  const TR = 0.5, kind = transitionOf(project, si), u = si > 0 ? clamp((t - S.start) / TR) : 1, e = ease(u);
+  if (si > 0 && u < 1) {
+    const prev = m.units[si - 1];
+    c.save();
+    if (kind === 'slide') { c.translate(-W * e, 0); prev.forEach((x) => x.draw(c, 1, 1, t)); }
+    else if (kind === 'zoom') { c.translate(W / 2, H / 2); c.scale(1 + 0.25 * e, 1 + 0.25 * e); c.translate(-W / 2, -H / 2); prev.forEach((x) => x.draw(c, 1, 1 - e, t)); }
+    else if (kind === 'wipe') {
+      prev.forEach((x) => x.draw(c, 1, 1, t));
+      // an eraser sweeps the old drawing away from left to right
+      c.beginPath(); c.rect(0, 0, W * e, H); c.clip(); c.drawImage(m.background, 0, 0, W, H);
+    } else prev.forEach((x) => x.draw(c, 1, 1 - e, t));
+    c.restore();
+  }
+  c.save();
+  if (si > 0 && u < 1 && kind === 'slide') c.translate(W * (1 - e), 0);
+  units.forEach((x, k) => x.draw(c, prog[k], 1, t));
+  c.restore();
 
   // subtitles on the picture (optional: the board already shows the key words)
   if (project.subtitles) drawSubtitles(c, m, si, t);

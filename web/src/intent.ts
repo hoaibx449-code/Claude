@@ -36,9 +36,11 @@ const NICHE_WORDS: Record<Exclude<Niche, 'general'>, RegExp> = {
 
 /** Style that suits each niche (used when the user picks "auto"). */
 export const NICHE_STYLE: Record<Niche, string> = {
-  finance: 'whiteboard', business: 'kraft', health: 'notebook', self: 'pencil', education: 'chalkboard', tech: 'blueprint', history: 'ricepaper',
-  family: 'oly', love: 'pencil', food: 'kraft', travel: 'notebook', law: 'whiteboard', realestate: 'blueprint', spiritual: 'ricepaper', general: 'whiteboard',
+  finance: 'whiteboard', business: 'sunset', health: 'pastel', self: 'darkboard', education: 'chalkboard', tech: 'neon', history: 'newspaper',
+  family: 'pastel', love: 'pencil', food: 'kraft', travel: 'comic', law: 'newspaper', realestate: 'blueprint', spiritual: 'ricepaper', general: 'sunset',
 };
+/** Some kinds of video have a look of their own, whatever the topic. */
+export const FORMAT_STYLE: Partial<Record<Format, string>> = { story: 'comic', motivation: 'darkboard', news: 'newspaper', sales: 'sunset' };
 
 const count = (text: string, re: RegExp) => (text.match(re) || []).length;
 

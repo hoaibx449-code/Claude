@@ -34,7 +34,7 @@ test('a frame is a pure function of time', async () => {
 });
 
 test('every style renders in both ratios', async () => {
-  for (const style of ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'pencil', 'blueprint', 'ricepaper'] as const) {
+  for (const style of ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'pencil', 'blueprint', 'ricepaper', 'neon', 'pastel', 'newspaper', 'comic', 'darkboard', 'sunset'] as const) {
     for (const ratio of ['9:16', '16:9'] as const) {
       const m = await model(ratio, style);
       const c = createCanvas(m.W * 0.5, m.H * 0.5);

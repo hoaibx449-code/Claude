@@ -4,7 +4,8 @@ import { drawImage, ImageProvider, TextProvider, writeScript } from './ai.ts';
 import { startRunner } from './gcp.ts';
 import { cleanSpec, STYLES } from './spec.ts';
 import { composeScene, splitScript } from './compose.ts';
-import { detectIntent, FORMATS, FORMAT_NAMES, NICHES, NICHE_NAMES, NICHE_STYLE } from './intent.ts';
+import { detectIntent, FORMATS, FORMAT_NAMES, FORMAT_STYLE, NICHES, NICHE_NAMES, NICHE_STYLE } from './intent.ts';
+import { fillLegal } from './legal.ts';
 import { aiCost, clientIp, imageCost, logEvent, routeName, summarize, voiceCost, type LogEntry } from './log.ts';
 import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, vis } from './settings.ts';
 import { adminRoutes } from './admin.ts';
@@ -93,24 +94,29 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
 
   // ---- sign-in
   if (path === '/api/auth/config' && method === 'GET') {
-    return json({ clientId: env.GOOGLE_CLIENT_ID || null, nonce: env.GOOGLE_CLIENT_ID ? await newNonce(env) : null, dev: devAllowed, ui: publicConfig(env.config) });
+    return json({ clientId: env.GOOGLE_CLIENT_ID || null, nonce: env.GOOGLE_CLIENT_ID ? await newNonce(env) : null, dev: devAllowed, ui: publicConfig(env.config), ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY } });
   }
   if (path === '/api/auth/google' && method === 'POST') {
     if (!env.GOOGLE_CLIENT_ID) throw new HttpError(503, 'Chủ trang chưa cấu hình đăng nhập Google.');
-    const b = await body<{ credential?: string; nonce?: string }>(req, 20_000);
+    const b = await body<{ credential?: string; nonce?: string; consent?: boolean }>(req, 20_000);
+    if (b.consent !== true) throw new HttpError(400, 'Bạn cần đồng ý Điều khoản và Chính sách bảo mật để đăng nhập.');
     await consumeNonce(env, String(b.nonce || ''));
     const u = await verifyGoogleToken(String(b.credential || ''), env.GOOGLE_CLIENT_ID, String(b.nonce));
     if (await blocked(env, u.id)) throw new HttpError(403, BLOCKED);
     const cookie = await startSession(env, u);
-    rc.userId = u.id; rc.log('auth.login', { data: { method: 'google', email: u.email } });
+    rc.userId = u.id; await recordConsent(env, rc, u.id);
+    rc.log('auth.login', { data: { method: 'google', email: u.email } });
     return json({ user: u }, 200, { 'set-cookie': cookie });
   }
   if (path === '/api/auth/dev' && method === 'POST') {
     if (!devAllowed) throw new HttpError(404, 'Không tìm thấy.');
-    const email = String((await body(req)).email || 'dev@localhost').toLowerCase().slice(0, 100);
+    const db = await body<any>(req);
+    if (db.consent !== true) throw new HttpError(400, 'Bạn cần đồng ý Điều khoản và Chính sách bảo mật để đăng nhập.');
+    const email = String(db.email || 'dev@localhost').toLowerCase().slice(0, 100);
     const u = { id: 'dev-' + (await sha256(email)).slice(0, 16), email, name: 'Người thử', picture: null };
     const cookie = await startSession(env, u);
-    rc.userId = u.id; rc.log('auth.login', { data: { method: 'dev', email } });
+    rc.userId = u.id; await recordConsent(env, rc, u.id);
+    rc.log('auth.login', { data: { method: 'dev', email } });
     return json({ user: u }, 200, { 'set-cookie': cookie });
   }
   if (path === '/api/auth/logout' && method === 'POST') {
@@ -118,6 +124,22 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
     if (u) { rc.userId = u.id; rc.log('auth.logout'); }
     return json({ ok: true }, 200, { 'set-cookie': await endSession(env, req) });
   }
+
+  // public: legal pages, and a free preview so people can try before signing in
+  if (path === '/api/legal' && method === 'GET') {
+    const l = env.config.legal, brand = env.config.brand.name + (env.config.brand.accent ? ' ' + env.config.brand.accent : '');
+    return json({ version: l.version, company: l.company, email: l.email, address: l.address, taxId: l.taxId,
+      terms: fillLegal(l.terms, l, brand), privacy: fillLegal(l.privacy, l, brand), refund: fillLegal(l.refund, l, brand) });
+  }
+  if (path === '/api/try' && method === 'POST') return tryPreview(req, env, rc);
+  const tp = path.match(/^\/api\/templates\/([a-z0-9-]{2,30})$/);
+  if (tp && method === 'GET') {
+    const t = env.config.templates.find((x) => x.id === tp[1]);
+    if (!t || vis(env.config, 'feature:templates') === 'hidden') throw new HttpError(404, 'Không tìm thấy mẫu.');
+    rc.log('template.open', { data: { id: t.id } });
+    return json({ template: t });
+  }
+
 
   const user = await currentUser(env, req);
   if (user) rc.userId = user.id;
@@ -146,6 +168,68 @@ async function saveSpec(env: Env, user: User, id: string, spec: any) {
     .bind(JSON.stringify(spec), spec.title, Date.now(), id, user.id).run();
 }
 
+async function recordConsent(env: Env & { config: Config }, rc: Rc, userId: string) {
+  await env.DB.prepare('INSERT OR IGNORE INTO consents (user_id, version, accepted_at, ip, ua) VALUES (?, ?, ?, ?, ?)')
+    .bind(userId, env.config.legal.version, Date.now(), rc.ip, rc.ua?.slice(0, 160) || null).run();
+  rc.log('consent', { data: { version: env.config.legal.version } });
+}
+
+/** Free preview for anyone (no account): the user's script designed by rules, not saved. */
+async function tryPreview(req: Request, env: XEnv, rc: Rc) {
+  const b = await body<any>(req, 25_000);
+  const text = String(b.text || '').trim().slice(0, 6000);
+  if (text.length < 10) throw new HttpError(400, 'Nhập vài câu kịch bản để xem thử.');
+  await useQuota(env, 'ip:' + rc.ip, 'try', 60);
+  const scenes = splitScript(text).slice(0, 12);
+  if (!scenes.length) throw new HttpError(400, 'Không tách được câu nào.');
+  const it = detectIntent(text);
+  const format = FORMATS.includes(b.format) ? b.format : it.format;
+  const style = env.config.enabledStyles.includes(b.style) ? b.style : FORMAT_STYLE[format as keyof typeof FORMAT_STYLE] || NICHE_STYLE[it.niche];
+  const spec = cleanSpec({ title: scenes[0][0].replace(/[.!?…]+$/, '').slice(0, 70), scenes: scenes.map((lines) => ({ lines })), visual: 'sketch', format, niche: it.niche,
+    ratio: b.ratio === '16:9' ? '16:9' : '9:16', style: env.config.enabledStyles.includes(style) ? style : env.config.defaults.style, channel: env.config.brand.name }, 'guest');
+  rc.log('try.preview', { data: { format, niche: it.niche, style: spec.style, scenes: spec.scenes.length, chars: text.length } });
+  return json({ spec, formatName: FORMAT_NAMES[format as keyof typeof FORMAT_NAMES], nicheName: NICHE_NAMES[it.niche] });
+}
+
+/** Everything we hold about the user, as one JSON file (right to a copy of one's data). */
+async function exportAccount(env: XEnv, rc: Rc, user: User) {
+  const q = (sql: string) => env.DB.prepare(sql).bind(user.id).all<any>().then((r) => r.results);
+  const [profile, projects, jobs, orders, plans, consents, zalo, events] = await Promise.all([
+    env.DB.prepare('SELECT id, email, name, picture, created_at FROM users WHERE id = ?').bind(user.id).first(),
+    q('SELECT id, title, spec, created_at, updated_at FROM projects WHERE user_id = ?'), q('SELECT id, project_id, status, error, created_at, finished_at FROM jobs WHERE user_id = ?'),
+    q('SELECT code, plan, amount, status, created_at, paid_at FROM orders WHERE user_id = ?'), q('SELECT plan, expires_at FROM user_plans WHERE user_id = ?'),
+    q('SELECT version, accepted_at FROM consents WHERE user_id = ?'), q('SELECT name, linked_at, notify FROM zalo_links WHERE user_id = ?'),
+    q('SELECT ts, channel, type, path, data FROM events WHERE user_id = ? ORDER BY id DESC LIMIT 5000'),
+  ]);
+  rc.log('account.export');
+  return new Response(JSON.stringify({ exportedAt: new Date().toISOString(), profile, projects: projects.map((p: any) => ({ ...p, spec: JSON.parse(p.spec) })), jobs, orders, plans, consents, zalo, events }, null, 2), {
+    headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="du-lieu-cua-toi.json"`, 'cache-control': 'no-store' },
+  });
+}
+
+/** Delete the account and its content. Payment records stay (accounting law) but lose the link to the person. */
+async function deleteAccount(env: XEnv, rc: Rc, user: User) {
+  const jobs = (await env.DB.prepare('SELECT id FROM jobs WHERE user_id = ?').bind(user.id).all<any>()).results;
+  const keys = jobs.flatMap((j) => [`video/${user.id}/${j.id}.mp4`, `video/${user.id}/${j.id}.srt`]);
+  for (let i = 0; i < keys.length; i += 500) await env.BUCKET.delete(keys.slice(i, i + 500));
+  let cursor: string | undefined;
+  do {
+    const l = await env.BUCKET.list({ prefix: `img/${user.id}/`, cursor });
+    if (l.objects.length) await env.BUCKET.delete(l.objects.map((o) => o.key));
+    cursor = l.truncated ? l.cursor : undefined;
+  } while (cursor);
+  const anon = 'deleted-' + (await sha256(user.id)).slice(0, 12);
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM jobs WHERE user_id = ?').bind(user.id), env.DB.prepare('DELETE FROM projects WHERE user_id = ?').bind(user.id),
+    env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(user.id), env.DB.prepare('DELETE FROM zalo_links WHERE user_id = ?').bind(user.id),
+    env.DB.prepare('DELETE FROM usage WHERE user_id = ?').bind(user.id), env.DB.prepare('DELETE FROM user_plans WHERE user_id = ?').bind(user.id),
+    env.DB.prepare('DELETE FROM consents WHERE user_id = ?').bind(user.id), env.DB.prepare('UPDATE orders SET user_id = ? WHERE user_id = ?').bind(anon, user.id),
+    env.DB.prepare('UPDATE events SET user_id = NULL, ip = NULL, ua = NULL WHERE user_id = ?').bind(user.id),
+    env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id),
+  ]);
+  rc.userId = null; rc.log('account.delete', { data: { videos: jobs.length } });
+}
+
 async function clientEvents(req: Request, env: XEnv, rc: Rc) {
   const b = await body<any>(req, 30_000);
   const list = (Array.isArray(b.events) ? b.events : []).slice(0, 30);
@@ -168,23 +252,24 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
     const used = await env.DB.prepare('SELECT kind, n FROM usage WHERE user_id = ? AND day = ?').bind(user.id, today()).all<any>();
     const { plan, expires } = await planOf(env, user.id);
     const zalo = env.config.zalo.enabled ? await env.DB.prepare('SELECT notify FROM zalo_links WHERE user_id = ?').bind(user.id).first<any>() : null;
-    return json({ user, limits: plan.limits, plan: { id: plan.id, name: plan.name, expires, maxSeconds: plan.maxSeconds }, zaloLinked: !!zalo, used: Object.fromEntries(used.results.map((r) => [r.kind, r.n])), ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY },
+    const consent = await env.DB.prepare('SELECT 1 FROM consents WHERE user_id = ? AND version = ?').bind(user.id, env.config.legal.version).first();
+    return json({ user, needConsent: !consent, limits: plan.limits, plan: { id: plan.id, name: plan.name, expires, maxSeconds: plan.maxSeconds }, zaloLinked: !!zalo, used: Object.fromEntries(used.results.map((r) => [r.kind, r.n])), ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY },
       ui: publicConfig(env.config), admin: await isAdmin(env, env.config, user) });
   }
 
+  if (path === '/api/account/export' && method === 'GET') return exportAccount(env, rc, user);
+  if (path === '/api/account/delete' && method === 'POST') {
+    if ((await body<any>(req, 200)).confirm !== 'XOA') throw new HttpError(400, 'Gõ XOA để xác nhận.');
+    if (await isAdmin(env, env.config, user)) throw new HttpError(400, 'Tài khoản quản trị không tự xoá được. Thêm quản trị viên khác trước.');
+    await deleteAccount(env, rc, user);
+    return json({ ok: true }, 200, { 'set-cookie': await endSession(env, req) });
+  }
+  if (path === '/api/consent' && method === 'POST') { await recordConsent(env, rc, user.id); return json({ ok: true }); }
   if (path.startsWith('/api/zalo/')) return zaloUser(req, env, rc, user, path.slice('/api/zalo/'.length), method);
   if (path === '/api/plans' || path.startsWith('/api/orders')) {
     if (vis(env.config, 'feature:plans') !== 'on') throw new HttpError(403, 'Gói cước đang tắt.');
     return planRoutes(req, env, rc, user, path, method);
   }
-  const tp = path.match(/^\/api\/templates\/([a-z0-9-]{2,30})$/);
-  if (tp && method === 'GET') {
-    const t = env.config.templates.find((x) => x.id === tp[1]);
-    if (!t || vis(env.config, 'feature:templates') === 'hidden') throw new HttpError(404, 'Không tìm thấy mẫu.');
-    rc.log('template.open', { data: { id: t.id } });
-    return json({ template: t });
-  }
-
   if (path === '/api/projects' && method === 'GET') {
     const r = await env.DB.prepare(
       `SELECT p.id, p.title, p.updated_at,
@@ -198,7 +283,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
   if (path === '/api/intent' && method === 'POST') {
     rc.quiet = true;
     const it = detectIntent(String((await body<any>(req, 25_000)).text || '').slice(0, 20000));
-    return json({ format: it.format, niche: it.niche, formatName: FORMAT_NAMES[it.format], nicheName: NICHE_NAMES[it.niche], style: NICHE_STYLE[it.niche], hook: it.hook, cta: it.cta });
+    return json({ format: it.format, niche: it.niche, formatName: FORMAT_NAMES[it.format], nicheName: NICHE_NAMES[it.niche], style: FORMAT_STYLE[it.format] || NICHE_STYLE[it.niche], hook: it.hook, cta: it.cta });
   }
 
   if (path === '/api/projects/generate' && method === 'POST') {
@@ -446,7 +531,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
         } catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
       }
     }
-    const autoStyle = NICHE_STYLE[niche as keyof typeof NICHE_STYLE];
+    const autoStyle = FORMAT_STYLE[format as keyof typeof FORMAT_STYLE] || NICHE_STYLE[niche as keyof typeof NICHE_STYLE];
     const style = env.config.enabledStyles.includes(b.style) ? b.style : b.style === 'auto' && env.config.enabledStyles.includes(autoStyle) ? autoStyle : D.style;
     const spec = cleanSpec({ ...raw, format, niche, visual, ratio, subtitles: typeof b.subtitles === 'boolean' ? b.subtitles : D.subtitles,
       style, tool: b.tool, channel: b.channel ?? D.channel, episode: b.episode,

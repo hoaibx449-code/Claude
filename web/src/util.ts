@@ -72,7 +72,7 @@ export async function body<T = any>(req: Request, maxBytes = 200_000): Promise<T
 export const today = () => new Date().toISOString().slice(0, 10);
 
 /** Count one use of `kind` today; refuse when the daily limit is reached. */
-export async function useQuota(env: Env, userId: string, kind: 'script' | 'image' | 'render' | 'events' | 'zalo', limit: number) {
+export async function useQuota(env: Env, userId: string, kind: 'script' | 'image' | 'render' | 'events' | 'zalo' | 'try', limit: number) {
   const day = today();
   const row = await env.DB.prepare(
     `INSERT INTO usage (user_id, day, kind, n) VALUES (?, ?, ?, 1)
@@ -80,7 +80,7 @@ export async function useQuota(env: Env, userId: string, kind: 'script' | 'image
      RETURNING n`,
   ).bind(userId, day, kind, limit).first<{ n: number }>();
   if (!row) {
-    const names = { script: 'viết kịch bản', image: 'vẽ ảnh AI', render: 'dựng video', events: 'ghi nhận', zalo: 'nhắn Zalo' };
+    const names = { script: 'viết kịch bản', image: 'vẽ ảnh AI', render: 'dựng video', events: 'ghi nhận', zalo: 'nhắn Zalo', try: 'xem thử' };
     throw new HttpError(429, `Bạn đã dùng hết lượt ${names[kind]} hôm nay (${limit} lượt). Thử lại vào ngày mai.`);
   }
 }

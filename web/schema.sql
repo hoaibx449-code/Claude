@@ -113,3 +113,11 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 CREATE INDEX IF NOT EXISTS orders_user ON orders(user_id, created_at);
 CREATE INDEX IF NOT EXISTS orders_status ON orders(status, created_at);
+CREATE TABLE IF NOT EXISTS consents (
+  user_id TEXT NOT NULL,
+  version TEXT NOT NULL,           -- version of the terms + privacy policy accepted
+  accepted_at INTEGER NOT NULL,
+  ip TEXT,                         -- coarsened
+  ua TEXT,
+  PRIMARY KEY (user_id, version)
+);

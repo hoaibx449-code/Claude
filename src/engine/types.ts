@@ -3,7 +3,7 @@
 
 export type Ratio = '9:16' | '16:9';
 export type ToolKind = 'marker' | 'chalk' | 'fountain' | 'colormarker' | 'pencil' | 'technical' | 'brush';
-export type StyleKey = 'notebook' | 'whiteboard' | 'chalkboard' | 'kraft' | 'oly' | 'pencil' | 'blueprint' | 'ricepaper';
+export type StyleKey = 'notebook' | 'whiteboard' | 'chalkboard' | 'kraft' | 'oly' | 'pencil' | 'blueprint' | 'ricepaper' | 'neon' | 'pastel' | 'newspaper' | 'comic' | 'darkboard' | 'sunset';
 
 export interface PanelSpec {
   /** Local image file (SVG/PNG/WebP). Used as is when present. */
@@ -65,6 +65,8 @@ export interface ProjectSpec {
   images?: { provider?: string };
   /** Narration also written at the bottom of the picture (off by default: the board shows the key words). */
   subtitles?: boolean;
+  /** How one board gives way to the next; auto = varied. */
+  transition?: 'auto' | 'fade' | 'slide' | 'wipe' | 'zoom';
   scenes: SceneSpec[];
 }
 
