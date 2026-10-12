@@ -121,7 +121,7 @@ async function showHome() {
     channel: h('input', { id: 'f-channel', maxlength: 40, placeholder: 'Tên kênh (hiện góc trái)' }),
     episode: h('input', { id: 'f-episode', maxlength: 30, placeholder: 'Ví dụ: Tập 1' }),
     tone: h('input', { id: 'f-tone', maxlength: 200, placeholder: 'Ví dụ: gần gũi, hài hước nhẹ' }),
-    visual: h('select', { id: 'f-visual' }, options([['mix', 'Kết hợp tranh AI + sơ đồ vẽ tay'], ['images', 'Tranh AI cho mọi cảnh'], ['diagram', 'Sơ đồ vẽ tay (không tốn tiền vẽ ảnh)']], 'mix')),
+    visual: h('select', { id: 'f-visual' }, options([['diagram', 'Sơ đồ vẽ tay — giống demo (không tốn tiền ảnh)'], ['mix', 'Kết hợp sơ đồ + tranh AI'], ['images', 'Tranh AI cho mọi cảnh']], 'diagram')),
   };
   const go = h('button', { type: 'submit' }, 'Viết kịch bản');
   const form = h('form', { class: 'card', onsubmit: async (e) => {
@@ -228,18 +228,21 @@ async function showEditor(id) {
     } catch (e) { toast(e.message); return false; }
     finally { if (btn) { btn.disabled = false; btn.textContent = 'Vẽ lại bằng AI'; } }
   }
-  const drawAllBtn = h('button', { type: 'button', class: 'ghost', onclick: () => drawAll() }, 'Vẽ tất cả bằng AI');
+  const drawAllBtn = h('button', { type: 'button', class: 'ghost', onclick: async () => { if (await drawAll()) toast('Mọi khung đã có tranh AI.'); } }, 'Vẽ tất cả bằng AI');
   async function drawAll() {
     const todo = [];
     spec.scenes.forEach((sc, si) => sc.panels.forEach((p, pi) => { if (p.prompt && !p.image?.startsWith('r2:')) todo.push([si, pi]); }));
-    if (!todo.length) { toast('Mọi khung đã có tranh AI.'); return; }
+    if (!todo.length) return true;
+    if (!imgProvider.options.length) { toast('Chủ trang chưa cấu hình AI vẽ ảnh. Hãy đổi các cảnh đó sang sơ đồ.'); return false; }
     drawAllBtn.disabled = true;
+    let ok = true;
     for (let i = 0; i < todo.length; i++) {
       drawAllBtn.textContent = `Đang vẽ ${i + 1}/${todo.length}…`;
-      if (!(await drawPanel(...todo[i]))) break;
+      if (!(await drawPanel(...todo[i]))) { ok = false; break; }
     }
     drawAllBtn.disabled = false; drawAllBtn.textContent = 'Vẽ tất cả bằng AI';
     drawScenes();
+    return ok;
   }
   function drawScenes() {
     panelImgs.clear();
@@ -284,7 +287,13 @@ async function showEditor(id) {
   const jobsBox = h('div', { class: 'jobs' });
   const renderBtn = h('button', { type: 'button', onclick: async () => {
     renderBtn.disabled = true;
-    try { await api(`/api/projects/${id}`, { method: 'PUT', body: { spec } }); await api(`/api/projects/${id}/render`, { method: 'POST' }); toast('Đã xếp video vào hàng chờ dựng.'); pollJobs(); }
+    try {
+      await save.flush();
+      // never let placeholder art reach the video: draw what is missing first
+      if (!(await drawAll())) { renderBtn.disabled = false; return; }
+      await api(`/api/projects/${id}`, { method: 'PUT', body: { spec } });
+      await api(`/api/projects/${id}/render`, { method: 'POST' }); toast('Đã xếp video vào hàng chờ dựng.'); pollJobs();
+    }
     catch (e) { toast(e.message); }
     renderBtn.disabled = false;
   } }, 'Dựng video');

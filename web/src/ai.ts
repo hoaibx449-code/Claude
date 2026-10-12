@@ -1,5 +1,6 @@
 // Script writing (OpenAI or Gemini, chosen per request) and line-art images.
 // Model output is treated as data: it goes through cleanSpec() before use.
+import { Buffer } from 'node:buffer';
 import { Env, HttpError } from './util.ts';
 
 export type TextProvider = 'openai' | 'gemini';
@@ -76,20 +77,24 @@ export async function writeScript(env: Env, provider: TextProvider, r: ScriptReq
   return out;
 }
 
-export async function drawImage(env: Env, provider: ImageProvider, prompt: string): Promise<Uint8Array> {
+export interface DrawnImage { bytes: Uint8Array; type: 'image/webp' | 'image/png'; ext: 'webp' | 'png' }
+
+// Images arrive as base64 inside JSON. Ask for compressed WebP and decode with the native
+// Buffer: decoding a multi-MB PNG in plain JS exceeds the Workers CPU limit.
+export async function drawImage(env: Env, provider: ImageProvider, prompt: string): Promise<DrawnImage> {
   const full = LINE_ART_STYLE + prompt;
-  const decode = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const reason = async (res: Response) => ((await res.text()).match(/"message":\s*"([^"]{0,200})/)?.[1] || `HTTP ${res.status}`);
   if (provider === 'openai') {
     if (!env.OPENAI_API_KEY) throw new HttpError(503, 'Chủ trang chưa cấu hình khoá OpenAI.');
     const res = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: env.OPENAI_IMAGE_MODEL, prompt: full, size: '1536x1024', quality: env.OPENAI_IMAGE_QUALITY || 'medium', n: 1 }),
+      body: JSON.stringify({ model: env.OPENAI_IMAGE_MODEL, prompt: full, size: '1536x1024', quality: env.OPENAI_IMAGE_QUALITY || 'medium', output_format: 'webp', output_compression: 85, n: 1 }),
     });
-    if (!res.ok) throw new HttpError(502, `OpenAI chưa vẽ được ảnh (HTTP ${res.status}).`);
+    if (!res.ok) throw new HttpError(502, `OpenAI chưa vẽ được ảnh: ${await reason(res)}`);
     const b64 = ((await res.json()) as any).data?.[0]?.b64_json;
     if (!b64) throw new HttpError(502, 'OpenAI không trả về ảnh.');
-    return decode(b64);
+    return { bytes: new Uint8Array(Buffer.from(b64, 'base64')), type: 'image/webp', ext: 'webp' };
   }
   if (!env.GEMINI_API_KEY) throw new HttpError(503, 'Chủ trang chưa cấu hình khoá Gemini.');
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_IMAGE_MODEL}:generateContent`, {
@@ -97,8 +102,8 @@ export async function drawImage(env: Env, provider: ImageProvider, prompt: strin
     headers: { 'x-goog-api-key': env.GEMINI_API_KEY, 'content-type': 'application/json' },
     body: JSON.stringify({ contents: [{ parts: [{ text: full }] }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '4:3' } } }),
   });
-  if (!res.ok) throw new HttpError(502, `Gemini chưa vẽ được ảnh (HTTP ${res.status}).`);
+  if (!res.ok) throw new HttpError(502, `Gemini chưa vẽ được ảnh: ${await reason(res)}`);
   const part = (((await res.json()) as any).candidates?.[0]?.content?.parts || []).find((p: any) => p.inlineData?.data);
   if (!part) throw new HttpError(502, 'Gemini không trả về ảnh (mô tả có thể bị bộ lọc an toàn chặn).');
-  return decode(part.inlineData.data);
+  return { bytes: new Uint8Array(Buffer.from(part.inlineData.data, 'base64')), type: 'image/png', ext: 'png' };
 }

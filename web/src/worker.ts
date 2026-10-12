@@ -131,17 +131,23 @@ async function userRoutes(req: Request, env: Env, ctx: ExecutionContext, user: U
       if (!panel) throw new HttpError(400, 'Không tìm thấy khung hình.');
       if (!panel.prompt) throw new HttpError(400, 'Khung hình chưa có mô tả để vẽ.');
       const provider: ImageProvider = b.provider === 'openai' ? 'openai' : 'gemini';
-      const key = `img/${user.id}/${(await sha256(provider + '\n' + panel.prompt)).slice(0, 24)}.png`;
-      if (!(await env.BUCKET.head(key))) {
+      const base = `img/${user.id}/${(await sha256(provider + '\n' + panel.prompt)).slice(0, 24)}`;
+      let key = (await env.BUCKET.head(base + '.webp')) ? base + '.webp' : (await env.BUCKET.head(base + '.png')) ? base + '.png' : '';
+      if (!key) {
         await useQuota(env, user.id, 'image', limits(env).image);
-        try { await env.BUCKET.put(key, await drawImage(env, provider, panel.prompt), { httpMetadata: { contentType: 'image/png' } }); }
-        catch (e) { await refundQuota(env, user.id, 'image'); throw e; }
+        try {
+          const img = await drawImage(env, provider, panel.prompt);
+          key = `${base}.${img.ext}`;
+          await env.BUCKET.put(key, img.bytes, { httpMetadata: { contentType: img.type } });
+        } catch (e) { await refundQuota(env, user.id, 'image'); throw e; }
       }
       panel.image = 'r2:' + key;
       await saveSpec(env, user, id, p.spec);
       return json({ image: panel.image, spec: p.spec });
     }
     if (sub === '/render' && method === 'POST') {
+      const missing = p.spec.scenes.reduce((n: number, sc: any) => n + sc.panels.filter((x: any) => !String(x.image).startsWith('r2:')).length, 0);
+      if (missing) throw new HttpError(409, `Còn ${missing} khung chưa có tranh AI. Bấm "Vẽ tất cả bằng AI" hoặc đổi cảnh đó sang sơ đồ.`);
       const active = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE user_id = ? AND status IN ('queued','running')").bind(user.id).first<any>();
       if (active.n >= MAX_ACTIVE_JOBS) throw new HttpError(429, 'Bạn đang có video chờ dựng. Đợi xong rồi dựng tiếp nhé.');
       await useQuota(env, user.id, 'render', limits(env).render);
