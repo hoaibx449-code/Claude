@@ -1,0 +1,74 @@
+name: Dựng video
+
+# Bấm "Run workflow" ở tab Actions. Khoá API lấy từ Settings → Secrets and variables → Actions,
+# không bao giờ nằm trong file của repo.
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: 'Đường dẫn kịch bản (project.json)'
+        default: 'examples/luong-11-trieu/project.json'
+        required: true
+      voice:
+        description: 'Giọng đọc'
+        type: choice
+        options: [everai, google, elevenlabs, mock]
+        default: everai
+      voice_code:
+        description: 'Mã giọng EverAI (để trống = dùng secret EVERAI_VOICE_CODE)'
+        required: false
+        default: ''
+      images:
+        description: 'Tạo ảnh AI cho khung chỉ có mô tả'
+        type: choice
+        options: [none, openai, gemini]
+        default: none
+      size:
+        description: 'Chất lượng'
+        type: choice
+        options: ['1080', '720']
+        default: '1080'
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Cài FFmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - run: npm ci
+      - name: Dựng video
+        env:
+          PROJECT: ${{ inputs.project }}
+          VOICE: ${{ inputs.voice }}
+          IMAGES: ${{ inputs.images }}
+          SIZE: ${{ inputs.size }}
+          EVERAI_API_KEY: ${{ secrets.EVERAI_API_KEY }}
+          EVERAI_VOICE_CODE: ${{ inputs.voice_code || secrets.EVERAI_VOICE_CODE }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+        run: |
+          case "$PROJECT" in
+            *..*|/*) echo "Đường dẫn kịch bản không hợp lệ"; exit 1 ;;
+          esac
+          test -f "$PROJECT" || { echo "Không tìm thấy $PROJECT"; exit 1; }
+          node src/cli/render.ts "$PROJECT" --out out/video.mp4 --tts "$VOICE" --images "$IMAGES" --size "$SIZE"
+      - name: Lưu video để tải về
+        uses: actions/upload-artifact@v4
+        with:
+          name: video
+          path: |
+            out/video.mp4
+            out/video.srt
+          retention-days: 7
