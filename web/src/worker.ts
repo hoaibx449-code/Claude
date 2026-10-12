@@ -3,6 +3,7 @@ import { consumeNonce, currentUser, endSession, newNonce, startSession, User, ve
 import { drawImage, ImageProvider, TextProvider, writeScript } from './ai.ts';
 import { startRunner } from './gcp.ts';
 import { cleanSpec, STYLES } from './spec.ts';
+import { composeScene, splitScript } from './compose.ts';
 import { clearCache, Config, effectiveEnv, isAdmin, publicConfig, runnerSecrets, save as saveSettings, secretStatus } from './settings.ts';
 import { body, Env, HttpError, json, randomId, refundQuota, sha256, timingSafeEqual, today, useQuota } from './util.ts';
 
@@ -103,20 +104,41 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
   }
 
   if (path === '/api/projects/generate' && method === 'POST') {
-    const b = await body<any>(req, 10_000);
-    const topic = String(b.topic || '').trim().slice(0, 3000);
-    if (topic.length < 5) throw new HttpError(400, 'Nhập chủ đề hoặc nội dung (ít nhất vài chữ).');
-    const provider: TextProvider | 'mock' = b.provider === 'mock' && devAllowed ? 'mock' : b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (env.config.defaults.textAI as TextProvider);
-    const seconds = Math.max(15, Math.min(180, Number(b.seconds) || 45));
-    let raw: any;
-    if (provider === 'mock') raw = sampleScript(topic);
-    else {
-      await useQuota(env, user.id, 'script', limits(env).script);
-      try { raw = await writeScript(env, provider, { topic, seconds, tone: String(b.tone || '').slice(0, 200), ratio: b.ratio, visual: ['images', 'diagram', 'mix'].includes(b.visual) ? b.visual : env.config.defaults.visual as any, extra: env.config.promptExtra }); }
-      catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
-    }
+    const b = await body<any>(req, 40_000);
     const D = env.config.defaults;
-    const spec = cleanSpec({ ...raw, visual: b.visual || D.visual, ratio: b.ratio || D.ratio, style: env.config.enabledStyles.includes(b.style) ? b.style : D.style, tool: b.tool, channel: b.channel ?? D.channel, episode: b.episode, voice: voiceFor(env.config, b.voiceId, Number(b.speed) || 1) }, user.id);
+    const source = ['topic', 'mine-ai', 'mine-free'].includes(b.source) ? b.source : D.source;
+    if (!env.config.enabledSources.includes(source)) throw new HttpError(403, 'Cách tạo video này đang tắt.');
+    const text = String(b.topic || '').trim().slice(0, source === 'topic' ? 3000 : 20000);
+    if (text.length < 5) throw new HttpError(400, source === 'topic' ? 'Nhập chủ đề (ít nhất vài chữ).' : 'Dán kịch bản của bạn vào ô (ít nhất một câu).');
+    const visual = ['sketch', 'images', 'diagram', 'mix'].includes(b.visual) ? b.visual : D.visual;
+    const ratio = b.ratio === '16:9' || b.ratio === '9:16' ? b.ratio : D.ratio;
+    let raw: any;
+    if (source !== 'topic') {
+      // the user's own words, split into scenes; pictures are designed by rules (free) or by the AI
+      const scenes = splitScript(text);
+      if (!scenes.length) throw new HttpError(400, 'Không tách được câu nào từ kịch bản.');
+      raw = { title: scenes[0][0].replace(/[.!?…]+$/, '').slice(0, 70), scenes: scenes.map((lines) => ({ lines })) };
+      if (source === 'mine-ai') {
+        const provider = b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (D.textAI as TextProvider);
+        await useQuota(env, user.id, 'script', limits(env).script);
+        try {
+          const out = await writeScript(env, provider, { topic: '', seconds: 0, tone: '', ratio, visual: 'sketch', extra: env.config.promptExtra, scenes });
+          raw = { ...out, title: out.title || raw.title, scenes: scenes.map((lines, i) => ({ lines, diagram: out.scenes?.[i]?.diagram })) };
+        } catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
+      }
+    } else {
+      const provider: TextProvider | 'mock' = b.provider === 'mock' && devAllowed ? 'mock' : b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (D.textAI as TextProvider);
+      const seconds = Math.max(15, Math.min(180, Number(b.seconds) || D.seconds));
+      if (provider === 'mock') raw = sampleScript(text);
+      else {
+        await useQuota(env, user.id, 'script', limits(env).script);
+        try { raw = await writeScript(env, provider, { topic: text, seconds, tone: String(b.tone || '').slice(0, 200), ratio, visual, extra: env.config.promptExtra }); }
+        catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
+      }
+    }
+    const spec = cleanSpec({ ...raw, visual, ratio, subtitles: typeof b.subtitles === 'boolean' ? b.subtitles : D.subtitles,
+      style: env.config.enabledStyles.includes(b.style) ? b.style : D.style, tool: b.tool, channel: b.channel ?? D.channel, episode: b.episode,
+      voice: voiceFor(env.config, b.voiceId, Number(b.speed) || 1) }, user.id);
     const id = randomId(12), now = Date.now();
     await env.DB.prepare('INSERT INTO projects (id, user_id, title, spec, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(id, user.id, spec.title, JSON.stringify(spec), now, now).run();
@@ -141,6 +163,16 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       await env.DB.prepare('DELETE FROM jobs WHERE project_id = ?').bind(id).run();
       await env.DB.prepare('DELETE FROM projects WHERE id = ? AND user_id = ?').bind(id, user.id).run();
       return json({ ok: true });
+    }
+    if (sub === '/compose' && method === 'POST') {
+      const si = Number((await body<any>(req, 1_000)).scene);
+      const sc = p.spec.scenes[si];
+      if (!sc) throw new HttpError(400, 'Không tìm thấy cảnh.');
+      sc.diagram = { kind: 'sketch', items: composeScene(sc.lines, p.spec.ratio === '9:16', si + Date.now() % 7) };
+      sc.panels = [];
+      const spec = cleanSpec(p.spec, user.id);
+      await saveSpec(env, user, id, spec);
+      return json({ spec });
     }
     if (sub === '/image' && method === 'POST') {
       const b = await body<any>(req, 2_000);

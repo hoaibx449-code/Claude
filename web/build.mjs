@@ -12,5 +12,5 @@ await build({
   outfile: join(pub, 'engine.js'),
 });
 mkdirSync(join(pub, 'assets'), { recursive: true });
-for (const dir of ['fonts', 'hands/default']) cpSync(join(root, 'assets', dir), join(pub, 'assets', dir), { recursive: true });
+for (const dir of ['fonts', 'hands/default', 'icons']) cpSync(join(root, 'assets', dir), join(pub, 'assets', dir), { recursive: true });
 console.log('web/public built');

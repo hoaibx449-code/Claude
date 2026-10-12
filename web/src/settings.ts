@@ -11,8 +11,9 @@ const RUNNER_SECRETS: SecretName[] = ['EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'E
 
 export const STYLE_KEYS = ['whiteboard', 'chalkboard', 'oly', 'kraft', 'pencil', 'blueprint', 'ricepaper', 'notebook'] as const;
 export const TOOL_KEYS = ['marker', 'chalk', 'fountain', 'colormarker', 'pencil', 'technical', 'brush'] as const;
-export const KIND_KEYS = ['bars', 'flow', 'compare', 'steps', 'number', 'statement', 'stick'] as const;
-export const VISUAL_KEYS = ['diagram', 'mix', 'images'] as const;
+export const KIND_KEYS = ['sketch', 'bars', 'flow', 'compare', 'steps', 'number', 'statement', 'stick'] as const;
+export const VISUAL_KEYS = ['sketch', 'diagram', 'mix', 'images'] as const;
+export const SOURCE_KEYS = ['topic', 'mine-ai', 'mine-free'] as const;
 export const ACTION_KEYS = ['idle', 'walk', 'run', 'wave', 'think', 'cheer', 'sad', 'point', 'shrug', 'jump'] as const;
 export const AI_KEYS = ['openai', 'gemini'] as const;
 
@@ -22,11 +23,13 @@ export interface Config {
   brand: { name: string; accent: string; tagline: string };
   labels: {
     styles: Record<string, string>; tools: Record<string, string>; kinds: Record<string, string>;
-    visual: Record<string, string>; actions: Record<string, string>; ai: Record<string, string>;
+    visual: Record<string, string>; actions: Record<string, string>; ai: Record<string, string>; sources: Record<string, string>;
   };
+  /** Ways to start a video the users may pick (AI from a topic, own script + AI pictures, own script free). */
+  enabledSources: string[];
   texts: Record<string, string>;
   enabledStyles: string[];
-  defaults: { textAI: string; imageAI: string; style: string; visual: string; ratio: string; seconds: number; voice: string; channel: string; tone: string };
+  defaults: { source: string; textAI: string; imageAI: string; style: string; visual: string; ratio: string; seconds: number; voice: string; channel: string; tone: string; subtitles: boolean };
   voices: Voice[];
   models: { openaiText: string; openaiImage: string; openaiImageQuality: string; geminiText: string; geminiImage: string };
   limits: { script: number; image: number; render: number };
@@ -40,8 +43,9 @@ export const DEFAULT_TEXTS: Record<string, string> = {
   loginText: 'AI viết kịch bản, bạn chỉnh từng câu, xem trước bàn tay vẽ ngay trên trang, rồi nhận video MP4 có giọng đọc và phụ đề.',
   homeTitle: 'Xưởng video của bạn',
   newVideo: 'Tạo video mới',
-  topic: 'Chủ đề hoặc kịch bản có sẵn',
-  topicHint: 'Ví dụ: Vì sao lương mãi không tăng dù làm việc chăm chỉ?',
+  source: 'Cách tạo', topic: 'Chủ đề', topicHint: 'Ví dụ: Vì sao lương mãi không tăng dù làm việc chăm chỉ?',
+  script: 'Kịch bản của bạn', scriptHint: 'Dán kịch bản vào đây. Mỗi đoạn (cách nhau một dòng trống) được chia thành cảnh, mỗi cảnh 1-2 câu.',
+  subsOnPicture: 'Phụ đề trên hình',
   textAI: 'AI viết kịch bản', duration: 'Thời lượng', ratio: 'Khung hình', visual: 'Kiểu hình', style: 'Phong cách',
   voice: 'Giọng đọc', tone: 'Giọng văn', toneHint: 'Ví dụ: gần gũi, hài hước nhẹ', channel: 'Tên kênh', episode: 'Số tập', episodeHint: 'Ví dụ: Tập 1',
   write: 'Viết kịch bản', writing: 'AI đang viết…',
@@ -56,14 +60,16 @@ export function defaultConfig(env: Env): Config {
     labels: {
       styles: { whiteboard: 'Bảng trắng', chalkboard: 'Bảng phấn', oly: 'Vở ô ly', kraft: 'Giấy kraft', pencil: 'Sổ phác chì', blueprint: 'Bản vẽ kỹ thuật', ricepaper: 'Giấy dó mực tàu', notebook: 'Giấy kem kể chuyện' },
       tools: { marker: 'Bút dạ bảng', chalk: 'Phấn', fountain: 'Bút máy', colormarker: 'Bút dạ màu', pencil: 'Bút chì', technical: 'Bút kỹ thuật', brush: 'Bút lông' },
-      kinds: { bars: 'Biểu đồ cột (mũi tên, đường cong)', flow: 'Chuỗi nguyên nhân → kết quả', compare: 'So sánh ✗ / ✓', steps: 'Các bước', number: 'Con số nổi bật', statement: 'Câu chốt', stick: 'Người que chuyển động' },
-      visual: { diagram: 'Sơ đồ vẽ tay (không tốn tiền ảnh)', mix: 'Kết hợp sơ đồ + tranh AI', images: 'Tranh AI cho mọi cảnh' },
+      kinds: { sketch: 'Bảng vẽ tự do (chữ + hình + mũi tên)', bars: 'Biểu đồ cột (mũi tên, đường cong)', flow: 'Chuỗi nguyên nhân → kết quả', compare: 'So sánh ✗ / ✓', steps: 'Các bước', number: 'Con số nổi bật', statement: 'Câu chốt', stick: 'Người que chuyển động' },
+      visual: { sketch: 'Bảng vẽ tự do: chữ + hình + sơ đồ (như demo)', diagram: 'Sơ đồ theo mẫu', mix: 'Kết hợp sơ đồ + tranh AI', images: 'Tranh AI cho mọi cảnh' },
+      sources: { topic: 'AI viết từ chủ đề', 'mine-ai': 'Kịch bản của tôi + AI minh hoạ', 'mine-free': 'Kịch bản của tôi + tự minh hoạ (miễn phí)' },
       actions: { idle: 'Đứng', walk: 'Đi bộ', run: 'Chạy', wave: 'Vẫy tay', think: 'Suy nghĩ', cheer: 'Ăn mừng', sad: 'Buồn', point: 'Chỉ tay', shrug: 'Nhún vai', jump: 'Nhảy' },
       ai: { openai: 'OpenAI', gemini: 'Gemini' },
     },
     texts: { ...DEFAULT_TEXTS },
     enabledStyles: [...STYLE_KEYS],
-    defaults: { textAI: 'gemini', imageAI: 'gemini', style: 'whiteboard', visual: 'diagram', ratio: '9:16', seconds: 45, voice: 'vi_female_thuytrang_mb', channel: '', tone: '' },
+    enabledSources: [...SOURCE_KEYS],
+    defaults: { source: 'topic', subtitles: false, textAI: 'gemini', imageAI: 'gemini', style: 'whiteboard', visual: 'sketch', ratio: '9:16', seconds: 45, voice: 'vi_female_thuytrang_mb', channel: '', tone: '' },
     voices: [
       ['vi_female_thuytrang_mb', 'Thùy Trang · nữ Bắc · nói chuyện'], ['vi_male_minhtriet_mb', 'Minh Triết · nam Bắc · sách nói'],
       ['vi_male_leduc_mb', 'Lê Đức · nam Bắc · kể chuyện'], ['vi_female_kimphuong_mb', 'Kim Phượng · nữ Bắc · kể chuyện'],
@@ -111,10 +117,13 @@ export function cleanConfig(input: any, base: Config): Config {
       styles: labels(L.styles, STYLE_KEYS, base.labels.styles), tools: labels(L.tools, TOOL_KEYS, base.labels.tools),
       kinds: labels(L.kinds, KIND_KEYS, base.labels.kinds), visual: labels(L.visual, VISUAL_KEYS, base.labels.visual, 80),
       actions: labels(L.actions, ACTION_KEYS, base.labels.actions), ai: labels(L.ai, AI_KEYS, base.labels.ai),
+      sources: labels(L.sources, SOURCE_KEYS, base.labels.sources, 80),
     },
+    enabledSources: (() => { const v = Array.isArray(i.enabledSources) ? SOURCE_KEYS.filter((k) => i.enabledSources.includes(k)) : base.enabledSources; return v.length ? v : ['mine-free']; })(),
     texts: labels(i.texts, Object.keys(DEFAULT_TEXTS), base.texts, 240),
     enabledStyles: en,
     defaults: {
+      source: pick(d.source, SOURCE_KEYS, base.defaults.source), subtitles: typeof d.subtitles === 'boolean' ? d.subtitles : base.defaults.subtitles,
       textAI: pick(d.textAI, AI_KEYS, base.defaults.textAI), imageAI: pick(d.imageAI, AI_KEYS, base.defaults.imageAI),
       style: pick(d.style, en, en.includes(base.defaults.style) ? base.defaults.style : en[0]), visual: pick(d.visual, VISUAL_KEYS, base.defaults.visual),
       ratio: pick(d.ratio, ['9:16', '16:9'], base.defaults.ratio), seconds: int(d.seconds, 15, 180, base.defaults.seconds),
@@ -225,5 +234,5 @@ export async function isAdmin(env: Env, config: Config, user: User) {
 
 /** What every visitor's browser needs to draw the interface. */
 export function publicConfig(config: Config) {
-  return { brand: config.brand, labels: config.labels, texts: config.texts, enabledStyles: config.enabledStyles, defaults: config.defaults, voices: config.voices };
+  return { brand: config.brand, labels: config.labels, texts: config.texts, enabledStyles: config.enabledStyles, enabledSources: config.enabledSources, defaults: config.defaults, voices: config.voices };
 }

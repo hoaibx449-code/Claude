@@ -43,8 +43,9 @@ export function pose(action: Action, t: number): Pose {
       return { ...base, head: [3 + S(t * 1.5) * 2, 2], lean: 0.04, front: [0.55, 2.75], back: [-0.35, 0.9 + breathe] };
     case 'cheer': {
       const j = Math.max(0, S(t * 5.5));
-      return { ...base, lift: j * 22, front: [2.75 + 0.2 * S(t * 11), 2.9], back: [-2.75 - 0.2 * S(t * 11), -2.9],
-        legF: [0.25 * j, -0.2 * j], legB: [-0.25 * j, 0.2 * j] };
+      // arms up in a V, little hops
+      return { ...base, lift: j * 18, front: [2.3 + 0.15 * S(t * 11), 2.55], back: [-2.3 - 0.15 * S(t * 11), -2.55],
+        legF: [0.18 + 0.2 * j, 0.18 - 0.25 * j], legB: [-0.18 - 0.2 * j, -0.18 + 0.25 * j] };
     }
     case 'sad':
       return { ...base, lean: 0.22, head: [5, 7 + S(t * 1.2) * 1.5], front: [0.06 + breathe, 0.05], back: [-0.06, -0.05] };

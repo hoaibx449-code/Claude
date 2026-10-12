@@ -94,3 +94,7 @@ table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 th { color: var(--muted); font-weight: 600; }
 .savebar { position: sticky; bottom: 12px; display: flex; justify-content: flex-end; }
+.sketch { display: flex; flex-direction: column; gap: 8px; }
+.skrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; border-top: 1px dashed var(--line); padding-top: 8px; }
+.skrow > label { flex: 1 1 160px; }
+.skrow > .tag { flex: 0 0 64px; align-self: center; }

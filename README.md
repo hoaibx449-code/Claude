@@ -62,6 +62,8 @@ Khoá chỉ đọc từ môi trường, không ghi vào log hay tệp. Ảnh AI 
 
 - Mỗi `lines[i]` là một câu thoại và một dòng phụ đề. Khung thứ i được vẽ khi câu thứ i bắt đầu được đọc (đổi bằng `"line": n`).
 - `image` dùng ảnh có sẵn. Nếu chỉ có `prompt`, ảnh được tạo bằng AI với một câu lệnh phong cách line-art cố định (`src/node/images.ts`).
+- Bảng vẽ tự do `{"kind":"sketch","items":[...]}` (mặc định): mỗi cảnh một bố cục riêng gồm chữ viết tay, hình nét đơn (4.500+ icon Tabler, MIT, `assets/icons`), người que, biểu đồ, mũi tên/khoanh tròn/✗/✓ nối theo `id`; toạ độ % vùng vẽ, `line` = câu thoại mà vật được vẽ cùng. Bộ dựng tự giữ vật trong khung và đẩy các vật chồng nhau ra. Phụ đề trên hình tắt mặc định (`"subtitles": true` để bật); tệp SRT vẫn được xuất.
+- Ba cách tạo: AI viết từ chủ đề · kịch bản của tôi + AI minh hoạ · kịch bản của tôi + tự minh hoạ theo luật (`web/src/compose.ts`, không gọi AI, miễn phí).
 - Sơ đồ `{"kind":"stick","actors":[{"action":"walk","label":"Bạn"}],"bubble":"...","caption":"..."}`: 1-2 người que được bàn tay vẽ rồi chuyển động thật (`idle` `walk` `run` `wave` `think` `cheer` `sad` `point` `shrug` `jump`).
 - `style`: `notebook` · `whiteboard` · `chalkboard` · `kraft` · `oly` · `blueprint` · `ricepaper`. Mỗi phong cách có màu mực và dụng cụ vẽ riêng. Đổi dụng cụ bằng `"tool"`: `marker` · `chalk` · `fountain` · `colormarker` · `pencil` · `technical` · `brush`.
 

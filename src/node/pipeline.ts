@@ -77,7 +77,8 @@ export async function renderProject(o: RenderOptions) {
   const dpr = (o.size ?? 1080) / Math.min(W, H);
   const PW = Math.round(W * dpr), PH = Math.round(H * dpr);
   const env = { createCanvas: (w: number, h: number) => createCanvas(w, h) as any };
-  const model = prepare({ env, project, timeline, images, hand, dpr });
+  const icons = JSON.parse(readFileSync(join(ROOT, 'assets/icons/tabler.json'), 'utf8'));
+  const model = prepare({ env, project, timeline, images, hand, dpr, icons });
   const canvas = createCanvas(PW, PH), ctx = canvas.getContext('2d');
 
   const audioArgs: string[] = [], delays: string[] = [];

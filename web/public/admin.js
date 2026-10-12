@@ -11,7 +11,7 @@ const SECRET_INFO = {
   ELEVENLABS_API_KEY: ['ElevenLabs', 'Giọng đọc ElevenLabs (máy dựng).'],
 };
 const LABEL_GROUPS = [
-  ['styles', 'Phong cách vẽ'], ['tools', 'Dụng cụ vẽ'], ['kinds', 'Kiểu sơ đồ'], ['visual', 'Kiểu hình'], ['actions', 'Động tác người que'], ['ai', 'Nhà cung cấp AI'],
+  ['styles', 'Phong cách vẽ'], ['tools', 'Dụng cụ vẽ'], ['kinds', 'Kiểu sơ đồ'], ['visual', 'Kiểu hình'], ['actions', 'Động tác người que'], ['ai', 'Nhà cung cấp AI'], ['sources', 'Cách tạo video'],
 ];
 const TEXT_NAMES = {
   loginTitle: 'Tiêu đề trang đăng nhập', loginText: 'Mô tả trang đăng nhập', homeTitle: 'Tiêu đề trang chủ', newVideo: 'Khung tạo video',
@@ -19,7 +19,7 @@ const TEXT_NAMES = {
   style: 'Nhãn phong cách', voice: 'Nhãn giọng đọc', tone: 'Nhãn giọng văn', toneHint: 'Gợi ý giọng văn', channel: 'Nhãn tên kênh', episode: 'Nhãn số tập',
   episodeHint: 'Gợi ý số tập', write: 'Nút viết kịch bản', writing: 'Chữ khi AI đang viết', myVideos: 'Tiêu đề danh sách video', noVideos: 'Khi chưa có video',
   allVideos: 'Liên kết quay lại', render: 'Nút dựng video', drawAll: 'Nút vẽ tất cả', post: 'Khung nội dung đăng bài', export: 'Khung xuất video',
-  download: 'Liên kết tải video', subtitles: 'Liên kết tải phụ đề', logout: 'Nút đăng xuất', admin: 'Liên kết quản trị',
+  download: 'Liên kết tải video', subtitles: 'Liên kết tải phụ đề', logout: 'Nút đăng xuất', source: 'Nhãn cách tạo', script: 'Ô kịch bản của bạn', scriptHint: 'Gợi ý ô kịch bản', subsOnPicture: 'Ô bật phụ đề trên hình', admin: 'Liên kết quản trị',
 };
 
 async function showAdmin() {
@@ -50,6 +50,7 @@ async function showAdmin() {
 
   const voiceText = () => c.voices.map((v) => `${v.provider} | ${v.code} | ${v.label}`).join('\n');
   const defaults = card('Mặc định khi tạo video', 'Người dùng vẫn đổi được từng video.', h('div', { class: 'grid' },
+    h('label', {}, 'Cách tạo', select(Object.entries(c.labels.sources), c.defaults.source, (v) => { c.defaults.source = v; })),
     h('label', {}, 'AI viết kịch bản', select(Object.entries(c.labels.ai), c.defaults.textAI, (v) => { c.defaults.textAI = v; })),
     h('label', {}, 'AI vẽ ảnh', select(Object.entries(c.labels.ai), c.defaults.imageAI, (v) => { c.defaults.imageAI = v; })),
     h('label', {}, 'Phong cách', select(Object.entries(c.labels.styles), c.defaults.style, (v) => { c.defaults.style = v; })),
@@ -58,7 +59,14 @@ async function showAdmin() {
     h('label', {}, 'Thời lượng (giây)', input(c.defaults.seconds, (v) => { c.defaults.seconds = Number(v); }, { type: 'number', min: 15, max: 180 })),
     h('label', {}, 'Giọng đọc', select(c.voices.map((v) => [v.code, v.label]), c.defaults.voice, (v) => { c.defaults.voice = v; })),
     h('label', {}, 'Tên kênh', input(c.defaults.channel, (v) => { c.defaults.channel = v; }, { maxlength: 40 })),
-    h('label', {}, 'Giọng văn', input(c.defaults.tone, (v) => { c.defaults.tone = v; }, { maxlength: 200 }))));
+    h('label', {}, 'Giọng văn', input(c.defaults.tone, (v) => { c.defaults.tone = v; }, { maxlength: 200 })),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: c.defaults.subtitles, onchange: (e) => { c.defaults.subtitles = e.target.checked; } }), 'Phụ đề trên hình')));
+
+  const sources = card('Cách tạo video được dùng', '"Kịch bản của tôi + tự minh hoạ" không gọi AI nên không tốn tiền. Tắt các cách dùng AI nếu muốn tiết kiệm tối đa.', h('div', { class: 'grid' },
+    Object.keys(c.labels.sources).map((k) => h('label', { class: 'check' },
+      h('input', { type: 'checkbox', checked: c.enabledSources.includes(k), onchange: (e) => {
+        c.enabledSources = e.target.checked ? [...new Set([...c.enabledSources, k])] : c.enabledSources.filter((x) => x !== k);
+      } }), c.labels.sources[k]))));
 
   const styles = card('Phong cách được dùng', 'Bỏ chọn để ẩn phong cách khỏi danh sách của người dùng.', h('div', { class: 'grid' },
     Object.keys(c.labels.styles).map((k) => h('label', { class: 'check' },
@@ -121,7 +129,7 @@ async function showAdmin() {
 
   view.replaceChildren(h('a', { href: '#/' }, T('allVideos')),
     h('div', { class: 'row', style: 'justify-content:space-between' }, h('h1', {}, T('admin')), saveBtn),
-    keys, brand, defaults, styles, names, voices, models, admins, users,
+    keys, brand, sources, defaults, styles, names, voices, models, admins, users,
     h('div', { class: 'savebar' }, saveBtn.cloneNode(true)));
   // the bottom button mirrors the top one
   view.querySelector('.savebar button').addEventListener('click', () => saveBtn.click());

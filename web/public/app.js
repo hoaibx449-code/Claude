@@ -127,7 +127,9 @@ async function showHome() {
   const { projects } = await api('/api/projects');
   const lim = me.limits, used = me.used || {}, D = ui.defaults || {};
   const f = {
-    topic: h('textarea', { id: 'f-topic', rows: 4, maxlength: 3000, placeholder: T('topicHint') }),
+    source: h('select', { id: 'f-source' }, options((ui.enabledSources || ['topic']).map((k) => [k, L('sources', k)]), (ui.enabledSources || []).includes(D.source) ? D.source : ui.enabledSources?.[0])),
+    topic: h('textarea', { id: 'f-topic', rows: 4, maxlength: 20000, placeholder: T('topicHint') }),
+    subtitles: h('input', { type: 'checkbox', checked: !!D.subtitles }),
     ai: h('select', { id: 'f-ai' }, options(textAIOptions(), me.ai?.[D.textAI] ? D.textAI : textAIOptions()[0]?.[0])),
     seconds: h('select', { id: 'f-seconds' }, options(secondsOptions(D.seconds), String(D.seconds || 45))),
     ratio: h('select', { id: 'f-ratio' }, options([['9:16', 'Dọc 9:16 (TikTok, Shorts, Reels)'], ['16:9', 'Ngang 16:9 (YouTube)']], D.ratio || '9:16')),
@@ -136,28 +138,41 @@ async function showHome() {
     channel: h('input', { id: 'f-channel', maxlength: 40, value: D.channel || '', placeholder: T('channel') }),
     episode: h('input', { id: 'f-episode', maxlength: 30, placeholder: T('episodeHint') }),
     tone: h('input', { id: 'f-tone', maxlength: 200, value: D.tone || '', placeholder: T('toneHint') }),
-    visual: h('select', { id: 'f-visual' }, options(Object.entries(ui.labels.visual), D.visual || 'diagram')),
+    visual: h('select', { id: 'f-visual' }, options(Object.entries(ui.labels.visual), D.visual || 'sketch')),
   };
+  const topicLabel = h('span', {}, T('topic'));
+  const only = {}; // fields that only make sense for some ways of starting
+  const sync = () => {
+    const src = f.source.value, mine = src !== 'topic';
+    topicLabel.textContent = mine ? T('script') : T('topic');
+    f.topic.placeholder = mine ? T('scriptHint') : T('topicHint'); f.topic.rows = mine ? 10 : 4;
+    only.ai.hidden = src === 'mine-free'; only.seconds.hidden = mine; only.tone.hidden = mine; only.visual.hidden = mine;
+    go.textContent = src === 'mine-free' ? 'Tạo video (miễn phí)' : mine ? 'AI minh hoạ kịch bản' : T('write');
+  };
+  f.source.addEventListener('change', sync);
   if (!f.ai.options.length) f.ai.append(h('option', { value: '' }, 'Chưa có khoá AI — vào trang Quản trị để nhập'));
   const go = h('button', { type: 'submit' }, T('write'));
   const form = h('form', { class: 'card', onsubmit: async (e) => {
     e.preventDefault(); go.disabled = true; go.textContent = T('writing');
     try {
       const r = await api('/api/projects/generate', { method: 'POST', body: {
-        topic: f.topic.value, provider: f.ai.value, seconds: Number(f.seconds.value), ratio: f.ratio.value, style: f.style.value,
+        source: f.source.value, subtitles: f.subtitles.checked, topic: f.topic.value, provider: f.ai.value, seconds: Number(f.seconds.value), ratio: f.ratio.value, style: f.style.value,
         voiceId: f.voice.value, channel: f.channel.value, episode: f.episode.value, tone: f.tone.value, visual: f.visual.value } });
       try { sessionStorage.setItem('autodraw:' + r.id, '1'); } catch {}
       location.hash = '#/p/' + r.id;
-    } catch (err) { toast(err.message); go.disabled = false; go.textContent = T('write'); }
+    } catch (err) { toast(err.message); go.disabled = false; sync(); }
   } },
     h('h2', {}, T('newVideo')),
-    h('label', { for: 'f-topic' }, T('topic'), f.topic),
+    h('div', { class: 'grid' }, h('label', {}, T('source'), f.source)),
+    h('label', { for: 'f-topic' }, topicLabel, f.topic),
     h('div', { class: 'grid' },
-      h('label', {}, T('textAI'), f.ai), h('label', {}, T('duration'), f.seconds), h('label', {}, T('ratio'), f.ratio),
-      h('label', {}, T('visual'), f.visual), h('label', {}, T('style'), f.style), h('label', {}, T('voice'), f.voice), h('label', {}, T('tone'), f.tone),
-      h('label', {}, T('channel'), f.channel), h('label', {}, T('episode'), f.episode)),
+      only.ai = h('label', {}, T('textAI'), f.ai), only.seconds = h('label', {}, T('duration'), f.seconds), h('label', {}, T('ratio'), f.ratio),
+      only.visual = h('label', {}, T('visual'), f.visual), h('label', {}, T('style'), f.style), h('label', {}, T('voice'), f.voice), only.tone = h('label', {}, T('tone'), f.tone),
+      h('label', {}, T('channel'), f.channel), h('label', {}, T('episode'), f.episode),
+      h('label', { class: 'check' }, f.subtitles, T('subsOnPicture'))),
     h('div', { class: 'row' }, go,
       h('span', { class: 'muted' }, `Hôm nay còn ${Math.max(0, lim.script - (used.script || 0))} lượt viết kịch bản, ${Math.max(0, lim.render - (used.render || 0))} lượt dựng video.`)));
+  sync();
   const list = projects.length
     ? h('div', { class: 'projects' }, projects.map((p) => h('a', { class: 'proj', href: '#/p/' + p.id },
         h('strong', {}, p.title), h('small', {}, 'Sửa lần cuối ' + fmtDate(p.updated_at)),
@@ -175,6 +190,8 @@ function loadImg(src) {
   if (!imgCache.has(src)) imgCache.set(src, new Promise((ok, fail) => { const i = new Image(); i.onload = () => ok(i); i.onerror = fail; i.src = src; }));
   return imgCache.get(src);
 }
+let iconSet = null;
+const getIcons = () => (iconSet ||= fetch('/assets/icons/tabler.json').then((r) => r.json()).catch(() => ({})));
 let handAsset = null;
 async function getHand() {
   if (!handAsset) {
@@ -212,7 +229,8 @@ async function showEditor(id) {
       h('label', {}, 'Tốc độ đọc', h('select', { onchange: (e) => { spec.voice.speed = Number(e.target.value); save(); } },
         options([['0.9', 'Chậm'], ['1', 'Vừa'], ['1.1', 'Hơi nhanh'], ['1.2', 'Nhanh']], String(spec.voice?.speed ?? 1)))),
       h('label', {}, 'Tên kênh', h('input', { value: spec.channel || '', maxlength: 40, oninput: (e) => { spec.channel = e.target.value; changed(); } })),
-      h('label', {}, 'Số tập', h('input', { value: spec.episode || '', maxlength: 30, oninput: (e) => { spec.episode = e.target.value; changed(); } }))));
+      h('label', {}, 'Số tập', h('input', { value: spec.episode || '', maxlength: 30, oninput: (e) => { spec.episode = e.target.value; changed(); } })),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!spec.subtitles, onchange: (e) => { spec.subtitles = e.target.checked; changed(); } }), T('subsOnPicture'))));
 
   const scenesBox = h('div', { class: 'scenes' });
   const DIAGRAM_KINDS = Object.entries(ui.labels.kinds);
@@ -223,6 +241,7 @@ async function showEditor(id) {
     const kind = h('select', { onchange: (e) => {
       d.kind = e.target.value;
       if (d.kind === 'stick' && !d.actors?.length) d.actors = [{ action: 'wave', label: 'Bạn' }];
+      if (d.kind === 'sketch') return redesign(sc);
       drawScenes(); changed();
     } }, options(DIAGRAM_KINDS, d.kind));
     const actorRow = (i) => {
@@ -242,11 +261,38 @@ async function showEditor(id) {
         field('Nhãn từng cột (cách nhau bởi dấu phẩy)', (d.labels || []).join(', '), (v) => set('labels', list(v))), field('Đơn vị', d.unit, (v) => set('unit', v), { max: 6 })],
       compare: [field('Bên trái (cách sai)', d.left, (v) => set('left', v), { max: 24 }), field('Ghi chú trái', d.leftNote, (v) => set('leftNote', v)),
         field('Bên phải (cách đúng)', d.right, (v) => set('right', v), { max: 24 }), field('Ghi chú phải', d.rightNote, (v) => set('rightNote', v))],
+      sketch: [sketchEditor(sc)],
       stick: [actorRow(0), actorRow(1), field('Lời thoại người 1 (bong bóng)', d.bubble, (v) => set('bubble', v), { max: 60 }), field('Chú thích', d.caption, (v) => set('caption', v), { max: 60 })],
       steps: [field('Các bước (mỗi dòng một bước)', (d.items || []).join('\n'), (v) => set('items', v.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 4)), { area: true, max: 300 })],
     }[d.kind] || [];
     return h('div', { class: 'panel' }, h('span', { class: 'tag' }, 'Sơ đồ vẽ tay (bàn tay vẽ từng nét)'),
-      h('div', { class: 'grid' }, h('label', {}, 'Kiểu sơ đồ', kind), field('Tiêu đề (không bắt buộc)', d.title, (v) => set('title', v), { max: 60 })), ...fields);
+      h('div', { class: 'grid' }, h('label', {}, 'Kiểu sơ đồ', kind), d.kind === 'sketch' ? null : field('Tiêu đề (không bắt buộc)', d.title, (v) => set('title', v), { max: 60 })), ...fields);
+  }
+  // free redesign of one scene's sketch from its current lines (rules on the server, no AI cost)
+  async function redesign(sc) {
+    try {
+      await save.flush();
+      const r = await api(`/api/projects/${id}/compose`, { method: 'POST', body: { scene: spec.scenes.indexOf(sc) } });
+      Object.assign(spec, r.spec); drawScenes(); refresh();
+    } catch (e) { toast(e.message); }
+  }
+  const ITEM_NAMES = { text: 'Chữ', icon: 'Hình', person: 'Người que', chart: 'Biểu đồ' };
+  function sketchEditor(sc) {
+    const d = sc.diagram, items = d.items || [];
+    const rows = items.map((it) => {
+      if (!ITEM_NAMES[it.t]) return null;
+      const set = (k, v) => { it[k] = v; changed(); };
+      const f = [];
+      if (it.t === 'text') f.push(field('Chữ', it.text, (v) => set('text', v), { max: 60 }));
+      if (it.t === 'icon') f.push(field('Tên hình (tiếng Anh, vd pig-money)', it.name, (v) => set('name', v.trim().toLowerCase()), { max: 40 }), field('Nhãn', it.label, (v) => set('label', v), { max: 30 }));
+      if (it.t === 'person') f.push(h('label', {}, 'Động tác', h('select', { onchange: (e) => set('action', e.target.value) }, options(Object.entries(ui.labels.actions), it.action))),
+        field('Nhãn', it.label, (v) => set('label', v), { max: 16 }), field('Lời thoại', it.bubble, (v) => set('bubble', v), { max: 50 }));
+      if (it.t === 'chart') f.push(h('small', { class: 'muted' }, ui.labels.kinds[it.kind] || it.kind));
+      return h('div', { class: 'skrow' }, h('span', { class: 'tag' }, ITEM_NAMES[it.t]), ...f,
+        h('button', { type: 'button', class: 'ghost small', onclick: () => { d.items = items.filter((x) => x !== it && !(x.on === it.id || x.from === it.id || x.to === it.id)); drawScenes(); changed(); } }, 'Bỏ'));
+    });
+    return h('div', { class: 'sketch' }, ...rows,
+      h('div', { class: 'row' }, h('button', { type: 'button', class: 'ghost small', onclick: () => redesign(sc) }, 'Thiết kế lại theo lời (miễn phí)')));
   }
   const panelImgs = new Map();
   async function drawPanel(si, pi, btn) {
@@ -283,9 +329,9 @@ async function showEditor(id) {
         h('div', { class: 'row' },
           h('button', { type: 'button', class: 'ghost small', onclick: () => {
             if (sc.diagram) { delete sc.diagram; sc.panels = [{ prompt: 'a simple illustration of: ' + (sc.lines[0] || ''), image: '' }]; }
-            else { sc.diagram = { kind: 'statement', text: sc.lines[sc.lines.length - 1] || '' }; sc.panels = []; }
+            else return redesign(sc);
             drawScenes(); changed();
-          } }, sc.diagram ? 'Đổi sang tranh' : 'Đổi sang sơ đồ'),
+          } }, sc.diagram ? 'Đổi sang tranh AI' : 'Đổi sang bảng vẽ'),
           h('button', { type: 'button', class: 'ghost small', disabled: spec.scenes.length < 2, onclick: () => { spec.scenes.splice(si, 1); drawScenes(); changed(); } }, 'Xoá cảnh'))),
       sc.lines.map((line, li) => h('label', {}, `Câu ${li + 1}`, h('textarea', { class: 'line', rows: 2, maxlength: 160, value: line,
         oninput: (e) => { sc.lines[li] = e.target.value; changed(); } }))),
@@ -302,6 +348,7 @@ async function showEditor(id) {
       h('div', { class: 'row' },
         h('button', { type: 'button', class: 'ghost', onclick: () => {
           spec.scenes.push({ lines: ['Câu thoại mới.'], panels: [], diagram: { kind: 'statement', text: 'Câu chốt' } }); drawScenes(); changed();
+          redesign(spec.scenes[spec.scenes.length - 1]);
         } }, '+ Thêm cảnh'),
         drawAllBtn));
   }
@@ -366,13 +413,14 @@ async function buildPreview(spec, canvas, playBtn) {
     Promise.all(spec.scenes.map((sc) => Promise.all(sc.panels.map((p) => (imageUrl(p.image) ? loadImg(imageUrl(p.image)) : Promise.resolve(Object.assign(document.createElement('canvas'), { width: 4, height: 3 }))))))),
     getHand(), document.fonts.load('29px Pangolin').catch(() => {}),
   ]);
+  const icons = await getIcons();
   const timeline = NV.buildTimeline(spec.scenes, spec.scenes.map((s) => NV.estimateVoice(s.lines)));
   const { W, H } = NV.logicalSize(spec.ratio);
   const dpr = Math.min(1.5, (window.devicePixelRatio || 1) * (spec.ratio === '9:16' ? 0.7 : 0.45));
   canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
   canvas.parentElement?.classList.toggle('landscape', spec.ratio === '16:9');
   const env = { createCanvas: (w, hgt) => { const c = document.createElement('canvas'); c.width = w; c.height = hgt; return c; } };
-  const model = NV.prepare({ env, project: spec, timeline, images, hand, dpr });
+  const model = NV.prepare({ env, project: spec, timeline, images, hand, dpr, icons });
   const ctx = canvas.getContext('2d');
   const keep = pv && pv.canvas === canvas ? pv : null;
   stopPreview();

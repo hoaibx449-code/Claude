@@ -1,7 +1,8 @@
 import type { Ctx, Env, HandMeta, Img, ProjectSpec, Ratio, Timeline, ToolKind } from './types.ts';
 import { STYLES, type Style } from './styles.ts';
 import { drawTool } from './tools.ts';
-import { buildDiagram, drawElement, elementPen } from './diagram.ts';
+import { buildDiagram, drawElement, elementPen, type Element } from './diagram.ts';
+import { buildSketch, type IconSet } from './sketch.ts';
 
 /** Logical canvas size; the output size is a multiple of it (dpr). */
 export function logicalSize(ratio: Ratio) {
@@ -83,15 +84,23 @@ export interface Model {
 /** `t` is the frame time: animated parts (stick figures) keep moving after they are drawn. */
 export interface Unit { start: number; end: number; draw(c: Ctx, p: number, alpha: number, t: number): void; pen(p: number): [number, number] }
 
-/** Area a diagram may use (above the subtitles). */
-export function diagramBox(ratio: Ratio): Box {
-  return ratio === '9:16' ? { x: 40, y: 112, w: 460, h: 540 } : { x: 70, y: 72, w: 820, h: 350 };
+/** Area a diagram may use (above the subtitles when they are shown on the picture). */
+export function diagramBox(ratio: Ratio, subtitles = false): Box {
+  if (ratio === '9:16') return subtitles ? { x: 40, y: 112, w: 460, h: 540 } : { x: 40, y: 112, w: 460, h: 640 };
+  return subtitles ? { x: 70, y: 72, w: 820, h: 350 } : { x: 70, y: 76, w: 820, h: 400 };
+}
+
+/** Area a free composition (sketch) may use. */
+export function stageBox(ratio: Ratio, subtitles = false): Box {
+  if (ratio === '9:16') return subtitles ? { x: 26, y: 96, w: 488, h: 580 } : { x: 26, y: 96, w: 488, h: 820 };
+  return subtitles ? { x: 40, y: 64, w: 880, h: 370 } : { x: 40, y: 64, w: 880, h: 452 };
 }
 
 export function prepare(opts: {
-  env: Env; project: ProjectSpec; timeline: Timeline; images: Img[][]; hand: HandAsset; dpr: number;
+  env: Env; project: ProjectSpec; timeline: Timeline; images: Img[][]; hand: HandAsset; dpr: number; icons?: IconSet;
 }): Model {
   const { env, project, timeline, images, hand, dpr } = opts;
+  const subs = !!project.subtitles;
   const style = STYLES[project.style] ?? STYLES.notebook;
   const { W, H } = logicalSize(project.ratio);
   const bgc = env.createCanvas(W * dpr, H * dpr), b = bgc.getContext('2d');
@@ -115,16 +124,41 @@ export function prepare(opts: {
         draw: (c: Ctx, p: number, a: number) => drawPanel(c, m, si, k, p, a), pen: (p: number) => penAt(m, si, k, p) }));
     }
     // diagram: spread its strokes over the time the scene is spoken
-    const els = buildDiagram(measure, sc.diagram, diagramBox(project.ratio), colors);
-    const t0 = T.lines[0].start + 0.05;
-    const t1 = Math.min(T.end - 0.35, Math.max(t0 + 1.2, T.lines[T.lines.length - 1].end - 0.1));
-    const total = els.reduce((a, e) => a + e.weight, 0) || 1;
-    let t = t0;
-    return els.map((e) => {
-      const d = ((t1 - t0) * e.weight) / total, start = t, end = t + Math.max(0.12, d * 0.92);
-      t += d;
-      return { start, end, draw: (c: Ctx, p: number, a: number, now: number) => drawElement(c, e, p, a, pen, now - end), pen: (p: number) => elementPen(e, p) };
-    });
+    const els = sc.diagram.kind === 'sketch'
+      ? buildSketch(measure, sc.diagram.items || [], stageBox(project.ratio, subs), colors, opts.icons || {}, project.ratio === '9:16')
+      : buildDiagram(measure, sc.diagram, diagramBox(project.ratio, subs), colors);
+    const last = T.lines.length - 1;
+    const sceneEnd = Math.min(T.end - 0.35, Math.max(T.lines[0].start + 1.2, T.lines[last].end - 0.1));
+    // elements tied to a narration line are drawn while that line is spoken; the rest share the scene
+    const groups = new Map<number, Element[]>();
+    for (const e of els) {
+      const l = e.line != null && e.line >= 0 && e.line <= last ? e.line : -1;
+      if (!groups.has(l)) groups.set(l, []);
+      groups.get(l)!.push(e);
+    }
+    const windows: [number, Element[], number, number][] = [];
+    if (groups.has(-1) && groups.size === 1) windows.push([0, groups.get(-1)!, T.lines[0].start + 0.05, sceneEnd]);
+    else {
+      // untagged elements go first, at the start of the scene
+      if (groups.has(-1)) groups.set(0, [...groups.get(-1)!, ...(groups.get(0) || [])]);
+      for (let l = 0; l <= last; l++) {
+        if (!groups.has(l)) continue;
+        const nextTagged = [...groups.keys()].filter((k) => k > l).sort((a, b) => a - b)[0];
+        const end = nextTagged != null ? T.lines[nextTagged].start - 0.08 : sceneEnd;
+        windows.push([l, groups.get(l)!, T.lines[l].start + 0.05, Math.max(T.lines[l].start + 0.6, end)]);
+      }
+    }
+    const units: Unit[] = [];
+    for (const [, list, t0, t1] of windows) {
+      const total = list.reduce((a, e) => a + e.weight, 0) || 1;
+      let t = t0;
+      for (const e of list) {
+        const d = ((t1 - t0) * e.weight) / total, start = t, end = t + Math.max(0.1, d * 0.92);
+        t += d;
+        units.push({ start, end, draw: (c: Ctx, p: number, a: number, now: number) => drawElement(c, e, p, a, pen, now - end), pen: (p: number) => elementPen(e, p) });
+      }
+    }
+    return units;
   });
   return m;
 }
@@ -211,7 +245,14 @@ export function renderFrame(c: Ctx, m: Model, t: number) {
   const prog = units.map((u) => clamp((t - u.start) / (u.end - u.start)));
   units.forEach((u, k) => u.draw(c, prog[k], 1, t));
 
-  // subtitles: each line appears when it is spoken
+  // subtitles on the picture (optional: the board already shows the key words)
+  if (project.subtitles) drawSubtitles(c, m, si, t);
+
+  drawHandAt(c, m, t, si, units, prog);
+}
+
+function drawSubtitles(c: Ctx, m: Model, si: number, t: number) {
+  const { W, style, project, timeline } = m, portrait = project.ratio === '9:16', S = timeline.scenes[si];
   const size = portrait ? 29 : 26;
   c.font = `${size}px Pangolin`; c.fillStyle = style.sub;
   let y = portrait ? 700 : 462;
@@ -219,15 +260,18 @@ export function renderFrame(c: Ctx, m: Model, t: number) {
     if (t < S.lines[i].start - 0.1) return;
     for (const l of wrapLines(c, line, W - 68)) { c.fillText(l, 34, y); y += size * 1.5; }
   });
+}
+
+function drawHandAt(c: Ctx, m: Model, t: number, si: number, units: Unit[], prog: number[]) {
+  const { W, H, timeline } = m, scenes = timeline.scenes, S = scenes[si];
 
   // hand
   // the hand rests just beside the last thing it drew, enters from bottom-right and leaves at the end
   const off: [number, number] = [W * 1.1, H * 1.05];
   const restAfter = (s: number): [number, number] => {
-    const us = m.units[s];
-    if (!us.length) return off;
-    const [x, y] = us[us.length - 1].pen(1);
-    return [x + 18, y + 26];
+    if (!m.units[s].length) return off;
+    // between scenes the hand waits at the lower right, out of the way of the drawing
+    return [W * 0.97, H * 0.97];
   };
   let pos: [number, number] = off, lift = 0;
   const active = prog.findIndex((p) => p > 0 && p < 1);

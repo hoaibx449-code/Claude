@@ -17,6 +17,7 @@
     "@napi-rs/canvas": "0.1.80"
   },
   "devDependencies": {
+    "@tabler/icons": "^3.31.0",
     "esbuild": "^0.25.10",
     "wrangler": "^4.40.0"
   }

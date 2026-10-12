@@ -9,41 +9,43 @@ export interface Colors { ink: string; accent: string; accent2: string; good: st
 /** How the tool marks the paper: extra offset passes (chalk, pencil) and brush pressure. */
 export interface Pen { passes: [number, number, number, number][]; brush?: boolean; width: number }
 
-export type Element =
+export type Element = { line?: number } & (
   | { kind: 'path'; pts: [number, number][]; cum: number[]; len: number; color: string; width: number; weight: number }
   | { kind: 'text'; text: string; x: number; y: number; size: number; w: number; color: string; weight: number }
   | { kind: 'fill'; pts: [number, number][]; color: string; anchor: [number, number]; weight: number }
   // stick figure: sketched in its first pose, then animated (tau = seconds since it was finished)
-  | { kind: 'actor'; actor: Actor; first: [number, number][][]; len: number; color: string; width: number; weight: number };
+  | { kind: 'actor'; actor: Actor; first: [number, number][][]; len: number; color: string; width: number; weight: number }
+  // several strokes drawn one after another (icons)
+  | { kind: 'lines'; lines: [number, number][][]; len: number; color: string; width: number; weight: number });
 
-type P = [number, number];
-function line(a: P, b: P, step = 5): P[] {
+export type P = [number, number];
+export function line(a: P, b: P, step = 5): P[] {
   const d = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(2, Math.ceil(d / step)), o: P[] = [];
   for (let i = 0; i <= n; i++) o.push([a[0] + ((b[0] - a[0]) * i) / n, a[1] + ((b[1] - a[1]) * i) / n]);
   return o;
 }
-function poly(pts: P[], closed = false): P[] {
+export function poly(pts: P[], closed = false): P[] {
   const all = closed ? [...pts, pts[0]] : pts, o: P[] = [];
   for (let i = 0; i < all.length - 1; i++) { const s = line(all[i], all[i + 1]); if (i) s.shift(); o.push(...s); }
   return o;
 }
-function ellipse(cx: number, cy: number, rx: number, ry: number): P[] {
+export function ellipse(cx: number, cy: number, rx: number, ry: number): P[] {
   const o: P[] = [];
   for (let i = 0; i <= 52; i++) { const a = -Math.PI * 0.6 + (i / 48) * Math.PI * 2; o.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]); }
   return o;
 }
-function arrow(a: P, b: P): P[] {
+export function arrow(a: P, b: P): P[] {
   const ang = Math.atan2(b[1] - a[1], b[0] - a[0]), h = 16;
   const l: P = [b[0] - h * Math.cos(ang - 0.5), b[1] - h * Math.sin(ang - 0.5)], r: P = [b[0] - h * Math.cos(ang + 0.5), b[1] - h * Math.sin(ang + 0.5)];
   return [...line(a, b), ...line(b, l), ...line(l, b), ...line(b, r)];
 }
-function wavy(x0: number, x1: number, y: number): P[] {
+export function wavy(x0: number, x1: number, y: number): P[] {
   const o: P[] = [];
   for (let x = x0; x <= x1; x += 4) o.push([x, y + Math.sin((x - x0) / 9) * 3]);
   return o;
 }
 // tiny deterministic wobble so strokes look hand drawn
-function wobble(pts: P[], seed: number): P[] {
+export function wobble(pts: P[], seed: number): P[] {
   return pts.map(([x, y], i) => [x + Math.sin(i * 0.7 + seed) * 0.7, y + Math.cos(i * 0.9 + seed * 1.3) * 0.7]);
 }
 
@@ -254,6 +256,7 @@ const fmt = (v: number) => (Math.round(v * 10) / 10).toLocaleString('vi-VN');
 
 export function drawElement(c: Ctx, e: Element, p: number, alpha: number, pen: Pen = { passes: [[0, 0, 1, 1]], width: 1 }, tau = 0) {
   if (p <= 0 || alpha <= 0) return;
+  if (e.kind === 'lines') { drawLines(c, e.lines, e.len * p, e.color, e.width * pen.width, pen.passes, alpha); return; }
   if (e.kind === 'actor') {
     const lines = p < 1 ? e.first : actorAt(e.actor, tau);
     drawLines(c, lines, p < 1 ? e.len * p : Infinity, e.color, e.width * pen.width, pen.passes, alpha);
@@ -301,6 +304,7 @@ export function drawElement(c: Ctx, e: Element, p: number, alpha: number, pen: P
 export function elementPen(e: Element, p: number): [number, number] {
   if (e.kind === 'fill') return e.anchor;
   if (e.kind === 'actor') return pointAlong(e.first, e.len * p);
+  if (e.kind === 'lines') return pointAlong(e.lines, e.len * p);
   if (e.kind === 'text') return [e.x + e.w * p, e.y - e.size * 0.3 + Math.sin(p * e.w * 0.2) * e.size * 0.18];
   const L = e.len * p;
   let i = 1;
