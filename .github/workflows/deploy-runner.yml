@@ -89,5 +89,13 @@ jobs:
               GCP_TRIGGER_KEY: fs.readFileSync("trigger-key.json", "utf8"),
               GCP_PROJECT: process.env.GCP_PROJECT, GCP_REGION: process.env.REGION, GCP_JOB: process.env.JOB }));'
           rm -f trigger-key.json
-          cd web && npx wrangler secret bulk .gcp-secrets.json --name net-ve-studio; rm -f .gcp-secrets.json
+          cd web
+          # the Cloudflare API sometimes answers 504; uploading secrets is idempotent, so retry
+          ok=
+          for i in 1 2 3 4; do
+            if npx wrangler secret bulk .gcp-secrets.json --name net-ve-studio; then ok=1; break; fi
+            echo "Lỗi tạm thời từ Cloudflare, thử lại…"; sleep $((15 * i))
+          done
+          rm -f .gcp-secrets.json
+          test -n "$ok" || exit 1
           echo "Xong: video sẽ tự dựng ngay khi bấm Dựng video."

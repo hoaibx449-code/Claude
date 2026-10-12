@@ -12,6 +12,16 @@ const web = dirname(fileURLToPath(import.meta.url));
 const NAME = 'net-ve-studio';
 const wrangler = (args, opts = {}) =>
   execFileSync('npx', ['wrangler', ...args], { cwd: web, encoding: 'utf8', stdio: ['pipe', 'pipe', 'inherit'], ...opts });
+// The Cloudflare API sometimes answers 504; deploy and secret upload are idempotent, so retry them.
+const retry = async (what, fn) => {
+  for (let i = 1; ; i++) {
+    try { return fn(); } catch (e) {
+      if (i >= 4) throw e;
+      console.log(`${what}: lỗi tạm thời từ Cloudflare, thử lại lần ${i + 1}…`);
+      await new Promise((r) => setTimeout(r, 15000 * i));
+    }
+  }
+};
 
 for (const k of ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) {
   if (!process.env[k]) { console.error(`Thiếu secret ${k} (xem hướng dẫn triển khai).`); process.exit(1); }
@@ -53,7 +63,7 @@ if (!sub) throw new Error('Chưa có tên miền workers.dev. Mở Cloudflare �
 // 5. schema (idempotent), build, deploy
 wrangler(['d1', 'execute', NAME, '--remote', '--file', 'schema.sql', '-c', cfgFile, '-y']);
 execFileSync('node', [join(web, 'build.mjs')], { stdio: 'inherit' });
-console.log(wrangler(['deploy', '-c', cfgFile]));
+console.log(await retry('deploy', () => wrangler(['deploy', '-c', cfgFile])));
 
 // 6. secrets (only the ones provided)
 const secrets = Object.fromEntries(['GOOGLE_CLIENT_ID', 'RUNNER_TOKEN', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GCP_TRIGGER_KEY', 'GCP_PROJECT', 'GCP_REGION', 'GCP_JOB']
@@ -62,7 +72,7 @@ if (secrets.RUNNER_TOKEN && secrets.RUNNER_TOKEN.length < 32) throw new Error('R
 if (Object.keys(secrets).length) {
   const f = join(web, '.secrets.tmp.json');
   writeFileSync(f, JSON.stringify(secrets), { mode: 0o600 });
-  try { wrangler(['secret', 'bulk', f, '-c', cfgFile]); } finally { rmSync(f, { force: true }); }
+  try { await retry('secret', () => wrangler(['secret', 'bulk', f, '-c', cfgFile])); } finally { rmSync(f, { force: true }); }
   console.log('Đã cài khoá bí mật: ' + Object.keys(secrets).join(', '));
 }
 console.log(`\nTriển khai xong. Địa chỉ trang web: https://${NAME}.${sub}.workers.dev\n`);
