@@ -121,3 +121,22 @@ CREATE TABLE IF NOT EXISTS consents (
   ua TEXT,
   PRIMARY KEY (user_id, version)
 );
+-- videos people chose to show in the community gallery
+CREATE TABLE IF NOT EXISTS community (
+  job_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  author TEXT,                     -- display name shown with the video
+  style TEXT, mode TEXT, ratio TEXT,
+  created_at INTEGER NOT NULL,
+  likes INTEGER NOT NULL DEFAULT 0,
+  views INTEGER NOT NULL DEFAULT 0,
+  hidden INTEGER NOT NULL DEFAULT 0 -- set by an admin
+);
+CREATE INDEX IF NOT EXISTS community_new ON community(hidden, created_at);
+CREATE TABLE IF NOT EXISTS community_likes (
+  job_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  PRIMARY KEY (job_id, user_id)
+);

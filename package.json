@@ -15,7 +15,8 @@
     "typecheck": "tsc -p web"
   },
   "dependencies": {
-    "@napi-rs/canvas": "0.1.80"
+    "@napi-rs/canvas": "0.1.80",
+    "qrcode-generator": "2.0.4"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260702.1",

@@ -17,7 +17,7 @@ const norm = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{N}%$]/gu, '');
 /** Cost of breaking the line between words a and b (0 = natural, higher = worse). */
 function breakCost(a: string, b: string) {
   if (/[,.;:!?…)”"]$/.test(a)) return 0;
-  if (/^\d/.test(a) && UNITS.test(b)) return 80; // "10 | triệu"
+  if (/^\d/.test(a) && UNITS.test(b)) return 200; // "10 | triệu"
   if (/^[(“"]/.test(b)) return 0;
   const na = norm(a), nb = norm(b);
   if (WORDS.has(na + ' ' + nb)) return 200;

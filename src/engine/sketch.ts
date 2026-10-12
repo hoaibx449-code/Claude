@@ -3,7 +3,7 @@
 // idea on a board. The script gives rough positions; this file measures everything, keeps it
 // on the page, moves items that would overlap, and routes arrows between items by id.
 import type { Ctx, InkColor, SketchItem } from './types.ts';
-import { buildDiagram, ellipse, line, poly, wavy, wobble, wrap, type Box, type Colors, type Element, type P } from './diagram.ts';
+import { buildDiagram, ellipse, line, poly, wavy, wobble, wrap as wrapBase, type Box, type Colors, type Element, type P } from './diagram.ts';
 import { flatten } from './svgpath.ts';
 import { ACTIONS, actorAt, lengthOf, type Action } from './stick.ts';
 
@@ -27,6 +27,8 @@ const overlap = (a: BBox, b: BBox) => Math.max(0, Math.min(a.x1, b.x1) - Math.ma
 const area = (a: BBox) => Math.max(1, (a.x1 - a.x0) * (a.y1 - a.y0));
 
 export function buildSketch(c: Ctx, items: SketchItem[], stage: Box, col: Colors, icons: IconSet, portrait: boolean): Element[] {
+  const F = col.font || 'Pangolin';
+  const wrap = (cc: Ctx, s: string, size: number, max: number) => wrapBase(cc, s, size, max, F);
   const els: Element[] = [];
   const boxes = new Map<string, BBox>();
   const placed: BBox[] = [];
@@ -45,15 +47,15 @@ export function buildSketch(c: Ctx, items: SketchItem[], stage: Box, col: Colors
   const textEls = (s: string, cx: number, top: number, size: number, clr: string, maxW: number, align: 'center' | 'left', line?: number) => {
     let sz = size, rows = wrap(c, s, sz, maxW);
     // shrink until it fits in 3 rows and no single word overflows
-    while (sz > 18 && (rows.length > 3 || rows.some((r) => (c.font = `${sz}px Pangolin`, c.measureText(r).width > maxW)))) { sz -= 2; rows = wrap(c, s, sz, maxW); }
+    while (sz > 18 && (rows.length > 3 || rows.some((r) => (c.font = `${sz}px ${F}`, c.measureText(r).width > maxW)))) { sz -= 2; rows = wrap(c, s, sz, maxW); }
     rows = rows.slice(0, 3);
-    c.font = `${sz}px Pangolin`;
+    c.font = `${sz}px ${F}`;
     const out: Element[] = [];
     let wMax = 0;
     rows.forEach((r, i) => {
       const w = c.measureText(r).width, x = align === 'center' ? cx - w / 2 : cx;
       wMax = Math.max(wMax, w);
-      out.push({ kind: 'text', text: r, x, y: top + sz * 0.95 + i * sz * 1.22, size: sz, w, color: clr, weight: Math.max(0.3, r.length * 0.045), line });
+      out.push({ kind: 'text', font: F, text: r, x, y: top + sz * 0.95 + i * sz * 1.22, size: sz, w, color: clr, weight: Math.max(0.3, r.length * 0.045), line });
     });
     const h = sz * 1.22 * rows.length;
     const x0 = align === 'center' ? cx - wMax / 2 : cx;
@@ -80,7 +82,13 @@ export function buildSketch(c: Ctx, items: SketchItem[], stage: Box, col: Colors
         const lines: P[][] = [];
         for (const d of icons[name].split('|')) for (const l of flatten(d)) lines.push(wobble(l.map(([a, b]) => [ox + a * k, oy + b * k] as P), seed++));
         const len = lengthOf(lines);
-        const els: Element[] = [{ kind: 'lines', lines, len, color: color(it.color), width: Math.max(2.6, Math.min(4.2, size / 34)), weight: Math.max(0.45, len / 520), line }];
+        const badge: Element[] = [];
+        if (col.flat && col.fills?.length) {
+          // motion graphics: a coloured disc behind the icon
+          const cx = ox + size / 2, cy = oy + size / 2, r = size * 0.62;
+          badge.push({ kind: 'fill', pts: ellipse(cx, cy, r, r), color: col.fills[seed % col.fills.length], anchor: [cx, cy + r], weight: 0.2, line });
+        }
+        const els: Element[] = [...badge, { kind: 'lines', lines, len, color: color(it.color), width: Math.max(2.6, Math.min(4.2, size / 34)), weight: Math.max(0.45, len / 520), line }];
         const box: BBox = { x0: ox, y0: oy, x1: ox + size, y1: oy + size };
         if (it.label) {
           const t = textEls(it.label, ox + size / 2, oy + size + 6, SIZES.s[portrait ? 0 : 1], col.ink, Math.max(size * 1.6, 140), 'center', line);
@@ -96,7 +104,11 @@ export function buildSketch(c: Ctx, items: SketchItem[], stage: Box, col: Colors
         const x0 = moving ? x - facing * Math.min(stage.w * 0.25, 120) : x;
         const actor = { action, x0: Math.max(stage.x + 20, Math.min(stage.x + stage.w - 20, x0)), x1: x, ground, scale: k, facing };
         const first = actorAt(actor, 0), len = lengthOf(first);
-        const els: Element[] = [{ kind: 'actor', actor, first, len, color: col.ink, width: 3.6, weight: Math.max(0.6, len / 380), line }];
+        const d = hpx * 0.78;
+        // a reference character (real picture) plays the person; otherwise an animated stick figure
+        const els: Element[] = col.character
+          ? [{ kind: 'image', img: col.character, x: x - d / 2, y: ground - d - 4, w: d, h: d, shape: 'circle', color: col.accent, weight: 0.7, line }]
+          : [{ kind: 'actor', actor, first, len, color: col.ink, width: 3.6, weight: Math.max(0.6, len / 380), line }];
         const box: BBox = { x0: x - 45 * k, y0: ground - hpx, x1: x + 45 * k, y1: ground };
         if (it.label) {
           const t = textEls(it.label, x, ground + 4, SIZES.s[portrait ? 0 : 1], col.accent2, 160, 'center', line);
@@ -113,11 +125,31 @@ export function buildSketch(c: Ctx, items: SketchItem[], stage: Box, col: Colors
           const ex = bx + (right ? -1 : 1) * bw * 0.32, ey = by + bh * 0.42;
           els.push(pathEl(poly([[ex - 10, ey], [head[0] + (right ? 22 : -22) * k, head[1] - 4], [ex + 10, ey]]), col.ink, 3, line));
           rows.forEach((r, i) => {
-            c.font = `${bs}px Pangolin`; const w = c.measureText(r).width;
-            els.push({ kind: 'text', text: r, x: bx - w / 2, y: by - (rows.length - 1) * bs * 0.61 + i * bs * 1.22 + bs * 0.35, size: bs, w, color: col.ink, weight: 0.4, line });
+            c.font = `${bs}px ${F}`; const w = c.measureText(r).width;
+            els.push({ kind: 'text', font: F, text: r, x: bx - w / 2, y: by - (rows.length - 1) * bs * 0.61 + i * bs * 1.22 + bs * 0.35, size: bs, w, color: col.ink, weight: 0.4, line });
           });
           box.y0 = Math.min(box.y0, by - bh / 2); box.x0 = Math.min(box.x0, bx - bw / 2); box.x1 = Math.max(box.x1, bx + bw / 2);
         }
+        return { els, box };
+      }
+      case 'image': {
+        const img = col.images?.[it.src];
+        if (!img) return null;
+        const w = (stage.w * Math.max(15, Math.min(100, it.w || 55))) / 100;
+        const h = it.h ? (stage.h * Math.max(10, Math.min(90, it.h))) / 100 : it.shape === 'circle' ? w : Math.min(stage.h * 0.6, (w * img.height) / img.width);
+        const x = X(it.x) + dx - w / 2, y = Y(it.y) + dy - h / 2;
+        const els: Element[] = [{ kind: 'image', img, x, y, w, h, shape: it.shape, color: col.accent, weight: 0.7, line }];
+        const box: BBox = { x0: x, y0: y, x1: x + w, y1: y + h };
+        if (it.label) { const t = textEls(it.label, x + w / 2, y + h + 8, SIZES.m[portrait ? 0 : 1], col.ink, Math.max(w, 200), 'center', line); els.push(...t.els); box.y1 = t.box.y1; }
+        return { els, box };
+      }
+      case 'qr': {
+        const cells = col.qr?.(it.text);
+        if (!cells) return null;
+        const size = (stage.w * Math.max(15, Math.min(60, it.w || 32))) / 100, x = X(it.x) + dx - size / 2, y = Y(it.y) + dy - size / 2;
+        const els: Element[] = [{ kind: 'qr', cells, x, y, size, color: col.ink, weight: 0.6, line }];
+        const box: BBox = { x0: x, y0: y, x1: x + size, y1: y + size };
+        if (it.label) { const t = textEls(it.label, x + size / 2, y + size + 8, SIZES.s[portrait ? 0 : 1], col.ink, Math.max(size * 1.4, 180), 'center', line); els.push(...t.els); box.y1 = t.box.y1; }
         return { els, box };
       }
       case 'chart': {
@@ -134,7 +166,7 @@ export function buildSketch(c: Ctx, items: SketchItem[], stage: Box, col: Colors
   // ---- pass 1: things with a size, nudged apart and kept on the page
   const order: { it: any; built: Built; idx: number }[] = [];
   items.forEach((it: any, idx) => {
-    if (!['text', 'icon', 'person', 'chart'].includes(it.t)) return;
+    if (!['text', 'icon', 'person', 'chart', 'image', 'qr'].includes(it.t)) return;
     let built = solid(it, 0, 0);
     if (!built) return;
     const fit = (b: BBox) => [Math.max(0, stage.x - b.x0) - Math.max(0, b.x1 - (stage.x + stage.w)), Math.max(0, stage.y - b.y0) - Math.max(0, b.y1 - (stage.y + stage.h))];

@@ -11,6 +11,7 @@ import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, 
 import { adminRoutes } from './admin.ts';
 import { checkShare, notifyJob, rememberOrigin, zaloUser, zaloWebhook } from './zalo.ts';
 import { checkAllowed, checkSource, expireOrders, limitsFor, planOf, planRoutes, sepayWebhook } from './plans.ts';
+import { affiliateScene, communityPublic, introFor, serveObject, shareToCommunity, upload } from './media.ts';
 import { body, type Env, HttpError, json, randomId, refundQuota, sha256, timingSafeEqual, today, useQuota } from './util.ts';
 
 const MAX_ACTIVE_JOBS = 2;
@@ -85,6 +86,18 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
   const sh = path.match(/^\/api\/share\/([a-f0-9]{24})$/);
   if (sh && method === 'GET') return shareVideo(env, rc, sh[1], url);
 
+  // Google sign-in by full-page redirect (works in installed apps and in-app browsers where popups hang)
+  if (path === '/api/auth/google/start' && method === 'GET') {
+    if (!env.GOOGLE_CLIENT_ID) throw new HttpError(503, 'Chủ trang chưa cấu hình đăng nhập Google.');
+    const next = safeNext(url.searchParams.get('next'));
+    const nonce = await newNonce(env);
+    const q = new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, redirect_uri: url.origin + '/api/auth/google/callback', response_type: 'id_token', response_mode: 'form_post',
+      scope: 'openid email profile', nonce, state: nonce + '.' + btoa(next).replace(/=+$/, ''), prompt: 'select_account' });
+    rc.log('auth.redirect');
+    return new Response(null, { status: 302, headers: { location: 'https://accounts.google.com/o/oauth2/v2/auth?' + q } });
+  }
+  if (path === '/api/auth/google/callback' && method === 'POST') return googleCallback(req, env, rc, url);
+
   // Browser requests that change data must come from our own page (CSRF guard on top of SameSite cookies).
   if (method !== 'GET') {
     const origin = req.headers.get('origin');
@@ -143,6 +156,8 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
 
   const user = await currentUser(env, req);
   if (user) rc.userId = user.id;
+  const pub = await communityPublic(req, env, rc, path, user);
+  if (pub) return pub;
   // what people do in the page (guests included): views, clicks, errors
   if (path === '/api/events' && method === 'POST') return clientEvents(req, env, rc);
   if (!user) throw new HttpError(401, 'Bạn cần đăng nhập.');
@@ -155,6 +170,34 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
 }
 
 const BLOCKED = 'Tài khoản này đã bị khoá. Liên hệ quản trị viên.';
+
+/** Where to land after signing in: a path of this site only. */
+function safeNext(v: string | null) {
+  const n = String(v || '/');
+  return /^\/(?!\/)[\w\-./#?=&%]{0,200}$/.test(n) ? n : '/';
+}
+
+async function googleCallback(req: Request, env: XEnv, rc: Rc, url: URL) {
+  const back = (next: string, err?: string) => new Response(null, { status: 303, headers: { location: err ? `/#/dang-nhap-loi?m=${encodeURIComponent(err)}` : next } });
+  try {
+    const form = await req.formData();
+    if (form.get('error')) return back('/', 'Bạn đã huỷ đăng nhập Google.');
+    const [nonce, enc] = String(form.get('state') || '').split('.');
+    await consumeNonce(env, nonce);
+    let next = '/';
+    try { next = safeNext(atob(enc || '')); } catch { /* keep home */ }
+    const u = await verifyGoogleToken(String(form.get('id_token') || ''), env.GOOGLE_CLIENT_ID!, nonce);
+    if (await blocked(env, u.id)) return back('/', BLOCKED);
+    const cookie = await startSession(env, u);
+    // continuing past "By continuing you agree to the Terms and Privacy Policy" is the consent
+    rc.userId = u.id; await recordConsent(env, rc, u.id);
+    rc.log('auth.login', { data: { method: 'google-redirect', email: u.email } });
+    return new Response(null, { status: 303, headers: { location: next, 'set-cookie': cookie } });
+  } catch (e: any) {
+    rc.log('auth.login', { ok: false, data: { method: 'google-redirect', error: String(e?.message || e).slice(0, 200) } });
+    return back('/', e instanceof HttpError ? e.message : 'Đăng nhập chưa thành công, thử lại nhé.');
+  }
+}
 const blocked = async (env: Env, id: string) => !!(await env.DB.prepare('SELECT 1 AS b FROM blocked_users WHERE user_id = ?').bind(id).first());
 
 
@@ -218,12 +261,18 @@ async function deleteAccount(env: XEnv, rc: Rc, user: User) {
     if (l.objects.length) await env.BUCKET.delete(l.objects.map((o) => o.key));
     cursor = l.truncated ? l.cursor : undefined;
   } while (cursor);
+  do {
+    const l = await env.BUCKET.list({ prefix: `up/${user.id}/`, cursor });
+    if (l.objects.length) await env.BUCKET.delete(l.objects.map((o) => o.key));
+    cursor = l.truncated ? l.cursor : undefined;
+  } while (cursor);
   const anon = 'deleted-' + (await sha256(user.id)).slice(0, 12);
   await env.DB.batch([
     env.DB.prepare('DELETE FROM jobs WHERE user_id = ?').bind(user.id), env.DB.prepare('DELETE FROM projects WHERE user_id = ?').bind(user.id),
     env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(user.id), env.DB.prepare('DELETE FROM zalo_links WHERE user_id = ?').bind(user.id),
     env.DB.prepare('DELETE FROM usage WHERE user_id = ?').bind(user.id), env.DB.prepare('DELETE FROM user_plans WHERE user_id = ?').bind(user.id),
-    env.DB.prepare('DELETE FROM consents WHERE user_id = ?').bind(user.id), env.DB.prepare('UPDATE orders SET user_id = ? WHERE user_id = ?').bind(anon, user.id),
+    env.DB.prepare('DELETE FROM consents WHERE user_id = ?').bind(user.id), env.DB.prepare('DELETE FROM community WHERE user_id = ?').bind(user.id),
+    env.DB.prepare('DELETE FROM community_likes WHERE user_id = ?').bind(user.id), env.DB.prepare('UPDATE orders SET user_id = ? WHERE user_id = ?').bind(anon, user.id),
     env.DB.prepare('UPDATE events SET user_id = NULL, ip = NULL, ua = NULL WHERE user_id = ?').bind(user.id),
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id),
   ]);
@@ -272,9 +321,11 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
   }
   if (path === '/api/projects' && method === 'GET') {
     const r = await env.DB.prepare(
-      `SELECT p.id, p.title, p.updated_at,
-         (SELECT status FROM jobs j WHERE j.project_id = p.id ORDER BY created_at DESC LIMIT 1) AS last_job
-       FROM projects p WHERE p.user_id = ? ORDER BY p.updated_at DESC LIMIT 100`,
+      `SELECT p.id, p.title, p.updated_at, json_extract(p.spec, '$.ratio') AS ratio, json_extract(p.spec, '$.style') AS style, json_extract(p.spec, '$.mode') AS mode,
+         (SELECT status FROM jobs j WHERE j.project_id = p.id ORDER BY created_at DESC LIMIT 1) AS last_job,
+         (SELECT id FROM jobs j WHERE j.project_id = p.id AND j.status = 'done' ORDER BY created_at DESC LIMIT 1) AS done_job,
+         (SELECT 1 FROM community c WHERE c.project_id = p.id LIMIT 1) AS shared
+       FROM projects p WHERE p.user_id = ? ORDER BY p.updated_at DESC LIMIT 200`,
     ).bind(user.id).all();
     return json({ projects: r.results });
   }
@@ -370,6 +421,11 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
     const job = await env.DB.prepare("SELECT id FROM jobs WHERE id = ? AND user_id = ? AND status = 'done'").bind(f[1], user.id).first();
     if (!job) throw new HttpError(404, 'Video chưa sẵn sàng.');
     const ext = f[2] === 'video' ? 'mp4' : 'srt';
+    if (ext === 'mp4' && new URL(req.url).searchParams.get('inline') === '1') {
+      // watching in the page: streamed with seeking, logged once (not every range request)
+      if (!req.headers.get('range') || /^bytes=0-/.test(req.headers.get('range') || '')) rc.log('video.play', { data: { job: f[1] } }); else rc.quiet = true;
+      return serveObject(env, req, `video/${user.id}/${f[1]}.mp4`, 'video/mp4', { 'cache-control': 'private, max-age=3600', 'content-disposition': 'inline' });
+    }
     const obj = await env.BUCKET.get(`video/${user.id}/${f[1]}.${ext}`);
     if (!obj) throw new HttpError(404, 'Không tìm thấy tệp.');
     rc.log('video.download', { data: { job: f[1], kind: f[2] } });
@@ -388,6 +444,17 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
     return new Response(obj.body, { headers: { 'content-type': obj.httpMetadata?.contentType || 'image/png', 'cache-control': 'private, max-age=86400' } });
   }
 
+  if (path === '/api/uploads' && method === 'POST') return upload(req, env, rc, user);
+  const md = path.match(/^\/api\/media\/(up\/([^/]+)\/[a-f0-9]{24}\.(?:png|jpg|webp))$/);
+  if (md && method === 'GET') {
+    if (md[2] !== user.id) throw new HttpError(404, 'Không tìm thấy.');
+    rc.quiet = true;
+    const obj = await env.BUCKET.get(md[1]);
+    if (!obj) throw new HttpError(404, 'Không tìm thấy.');
+    return new Response(obj.body, { headers: { 'content-type': obj.httpMetadata?.contentType || 'image/png', 'cache-control': 'private, max-age=31536000, immutable' } });
+  }
+  const js = path.match(/^\/api\/jobs\/([a-f0-9]{24})\/share$/);
+  if (js && method === 'POST') return shareToCommunity(req, env, rc, user, js[1]);
   if (path === '/api/styles' && method === 'GET') return json({ styles: STYLES });
   throw new HttpError(404, 'Không tìm thấy.');
 }
@@ -415,7 +482,7 @@ async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Promise<Res
   }
   if (sub === 'asset' && req.method === 'GET') {
     const key = new URL(req.url).searchParams.get('key') || '';
-    if (!/^img\/[^/]+\/[a-f0-9]{24}\.(png|jpg|webp)$/.test(key)) throw new HttpError(400, 'Khoá tệp không hợp lệ.');
+    if (!/^(img|up)\/[^/]+\/[a-f0-9]{24}\.(png|jpg|webp)$/.test(key)) throw new HttpError(400, 'Khoá tệp không hợp lệ.');
     const obj = await env.BUCKET.get(key);
     if (!obj) throw new HttpError(404, 'Không tìm thấy.');
     return new Response(obj.body);
@@ -494,12 +561,19 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     const on = (k: string) => vis(env.config, k) === 'on';
     const visual = ['sketch', 'images', 'diagram', 'mix'].includes(b.visual) && on('visual:' + b.visual) ? b.visual : D.visual;
     const ratio = (b.ratio === '16:9' || b.ratio === '9:16') && on('ratio:' + b.ratio) ? b.ratio : D.ratio;
-    if ((b.provider === 'openai' || b.provider === 'gemini') && !on('ai:' + b.provider)) b.provider = undefined;
+    // which AI writes and draws is the admin's choice (Quản trị → Cài đặt), not the visitor's
+    if (b.provider !== 'mock') b.provider = undefined;
     // what kind of video the words ask for (the user may override it)
     const intent = detectIntent(text);
     const format = FORMATS.includes(b.format) ? b.format : intent.format;
     const niche = NICHES.includes(b.niche) ? b.niche : intent.niche;
     let raw: any, note = '', usage: any = null;
+    // reference character and affiliate product: the user's uploaded pictures
+    const media: Record<string, string> = {};
+    if (b.character && on('feature:character')) media.nv = String(b.character);
+    const aff = b.affiliate && on('feature:affiliate') && /^https?:\/\/\S{3,300}$/.test(String(b.affiliate.link || ''))
+      ? { link: String(b.affiliate.link), product: String(b.affiliate.product || '').slice(0, 80), price: String(b.affiliate.price || '').slice(0, 30), image: b.affiliate.image ? (media.sp = String(b.affiliate.image), 'sp') : undefined } : null;
+    const mode = ['hand', 'motion', 'math', 'kinetic'].includes(b.mode) && on('mode:' + b.mode) ? b.mode : on('mode:' + D.mode) ? D.mode : 'hand';
     if (source !== 'topic') {
       // the user's own words, split into scenes; pictures are designed by rules (free) or by the AI
       const scenes = splitScript(text);
@@ -521,26 +595,32 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
       }
     } else {
       const provider: TextProvider | 'mock' = b.provider === 'mock' && devAllowed ? 'mock' : b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (D.textAI as TextProvider);
-      const seconds = Math.max(15, Math.min(180, (await planOf(env, user.id)).plan.maxSeconds, Number(b.seconds) || D.seconds));
+      const seconds = Math.max(15, Math.min(env.config.limits.maxSeconds, (await planOf(env, user.id)).plan.maxSeconds, Number(b.seconds) || D.seconds));
       if (provider === 'mock') raw = sampleScript(text);
       else {
         await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
         try {
-          raw = await writeScript(env, provider, { topic: text, seconds, tone: String(b.tone || '').slice(0, 200), ratio, visual, extra: env.config.promptExtra, format, niche });
+          raw = await writeScript(env, provider, { topic: text, seconds, tone: String(b.tone || '').slice(0, 200), ratio, visual, extra: env.config.promptExtra + affiliateBrief(aff), format: aff ? 'sales' : format, niche });
           usage = raw._usage;
         } catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
       }
     }
     const autoStyle = FORMAT_STYLE[format as keyof typeof FORMAT_STYLE] || NICHE_STYLE[niche as keyof typeof NICHE_STYLE];
-    const style = env.config.enabledStyles.includes(b.style) ? b.style : b.style === 'auto' && env.config.enabledStyles.includes(autoStyle) ? autoStyle : D.style;
-    const spec = cleanSpec({ ...raw, format, niche, visual, ratio, subtitles: typeof b.subtitles === 'boolean' ? b.subtitles : D.subtitles,
-      style, tool: b.tool, channel: b.channel ?? D.channel, episode: b.episode,
+    // each kind of animation has a look made for it; "auto" picks it (or the one for the topic)
+    const modeStyle = ({ motion: 'cosmos', math: 'manim', kinetic: 'bold' } as Record<string, string>)[mode];
+    const auto = modeStyle && env.config.enabledStyles.includes(modeStyle) ? modeStyle : autoStyle;
+    const style = env.config.enabledStyles.includes(b.style) ? b.style : (b.style === 'auto' || !b.style) && env.config.enabledStyles.includes(auto) ? auto : D.style;
+    if (aff && raw.scenes?.length) raw.scenes = [...raw.scenes, affiliateScene(aff, ratio === '9:16')];
+    const spec: any = cleanSpec({ ...raw, format: aff ? 'sales' : format, niche, visual, ratio, subtitles: typeof b.subtitles === 'boolean' ? b.subtitles : D.subtitles,
+      style, tool: b.tool, channel: b.channel ?? D.channel, episode: b.episode, mode, media, character: media.nv ? 'nv' : undefined, affiliate: aff,
       voice: voiceFor(env.config, b.voiceId, Number(b.speed) || 1) }, user.id);
+    const wantIntro = typeof b.intro === 'boolean' ? b.intro : D.intro;
+    if (wantIntro && on('feature:intro')) spec.intro = introFor(spec);
     if (usage) rc.log('ai.script', { cost: aiCost(env.config, usage), data: { source, format, niche, ...usage } });
     const id = randomId(12), now = Date.now();
     await env.DB.prepare('INSERT INTO projects (id, user_id, title, spec, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(id, user.id, spec.title, JSON.stringify(spec), now, now).run();
-    rc.log('project.create', { projectId: id, data: { source, format, niche, style: spec.style, ratio, visual, scenes: spec.scenes.length, chars: text.length, via: rc.channel, note: note || undefined } });
+    rc.log('project.create', { projectId: id, data: { source, format, niche, style: spec.style, mode, intro: !!spec.intro, character: !!spec.character, affiliate: !!spec.affiliate, ratio, visual, scenes: spec.scenes.length, chars: text.length, via: rc.channel, note: note || undefined } });
   return { id, spec, note };
 }
 
@@ -558,6 +638,10 @@ export async function queueRender(env: XEnv, rc: Rc, user: User, id: string, spe
   rc.wait(startRunner(env).catch((e) => { rc.log('render.trigger', { ok: false, data: { error: String(e.message || e) } }); }));
   rc.log('render.queue', { projectId: id, data: { job: jobId, scenes: spec.scenes.length, chars: spec.scenes.reduce((n: number, sc: any) => n + sc.lines.join(' ').length, 0), voice: spec.voice, style: spec.style, via: rc.channel } });
   return { id: jobId, status: 'queued', progress: 0 };
+}
+
+function affiliateBrief(a: { product?: string; price?: string } | null) {
+  return a ? `\nĐây là video tiếp thị liên kết cho sản phẩm "${a.product || 'sản phẩm'}"${a.price ? ` (giá ${a.price})` : ''}: nêu vấn đề người xem gặp, lợi ích cụ thể của sản phẩm, bằng chứng/cảm nhận, rồi kêu gọi mua. Trung thực, không phóng đại, không hứa hẹn sai sự thật.` : '';
 }
 
 /** Offline script for local development (DEV_LOGIN only): no AI key needed. */

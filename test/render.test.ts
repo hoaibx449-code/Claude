@@ -34,7 +34,7 @@ test('a frame is a pure function of time', async () => {
 });
 
 test('every style renders in both ratios', async () => {
-  for (const style of ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'pencil', 'blueprint', 'ricepaper', 'neon', 'pastel', 'newspaper', 'comic', 'darkboard', 'sunset'] as const) {
+  for (const style of ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'pencil', 'blueprint', 'ricepaper', 'neon', 'pastel', 'newspaper', 'comic', 'darkboard', 'sunset', 'cosmos', 'manim', 'bold'] as const) {
     for (const ratio of ['9:16', '16:9'] as const) {
       const m = await model(ratio, style);
       const c = createCanvas(m.W * 0.5, m.H * 0.5);
@@ -66,4 +66,24 @@ test('stick figures keep moving after the hand has drawn them', async () => {
   const shot = (t: number) => { x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, 270, 480); x.setTransform(0.5, 0, 0, 0.5, 0, 0); actor.draw(x, 1, 1, t); return Buffer.from(x.getImageData(0, 0, 270, 480).data); };
   assert.ok(!shot(actor.end + 0.3).equals(shot(actor.end + 0.6)));
   assert.ok(shot(actor.end + 0.3).equals(shot(actor.end + 0.3)));
+});
+
+test('motion, maths and kinetic modes render with an opening title card', async () => {
+  GlobalFonts.registerFromPath('assets/fonts/BeVietnamPro-ExtraBold.ttf', 'NVSans');
+  const icons = JSON.parse(readFileSync('assets/icons/tabler.json', 'utf8'));
+  const meta = JSON.parse(readFileSync('assets/hands/default/hand.json', 'utf8'));
+  const hand = { img: await loadImage('assets/hands/default/hand.webp'), fingers: await loadImage('assets/hands/default/fingers.webp'), meta };
+  for (const mode of ['motion', 'math', 'kinetic'] as const) {
+    const project: ProjectSpec = {
+      title: 't', channel: 'Kênh', ratio: '9:16', style: 'cosmos', mode, intro: { title: 'Bí mật 10 triệu', badge: 'Mới', icon: 'pig-money' },
+      scenes: [{ lines: ['Gửi 10 triệu mỗi tháng, đều đặn.', 'Tiền tăng nhờ lãi kép.'], panels: [], diagram: { kind: 'sketch', items: [
+        { t: 'icon', name: 'pig-money', x: 30, y: 40, line: 0 }, { t: 'text', text: 'lãi kép', x: 50, y: 10, line: 1 },
+        { t: 'chart', kind: 'plot', fn: 'exp', x: 50, y: 75, w: 90, h: 30, line: 1 }, { t: 'qr', text: 'https://example.com', x: 70, y: 40, line: 1 }] } }],
+    };
+    const tl = buildTimeline(project.scenes, project.scenes.map((s) => estimateVoice(s.lines)), { intro: true });
+    assert.ok(tl.intro! > 1 && tl.scenes[0].start === tl.intro);
+    const m = prepare({ env: { createCanvas: (w, h) => createCanvas(w, h) as any }, project, timeline: tl, images: [[]], hand, dpr: 0.5, icons });
+    const c = createCanvas(m.W * 0.5, m.H * 0.5), x = c.getContext('2d');
+    for (const t of [0, tl.intro! + 0.1, tl.scenes[0].lines[1].start + 0.5, tl.duration - 0.2]) renderFrame(x, m, t);
+  }
 });

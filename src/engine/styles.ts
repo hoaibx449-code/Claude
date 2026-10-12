@@ -139,6 +139,34 @@ export const STYLES: Record<StyleKey, Style> = {
       const b = c.createLinearGradient(0, 0, W, 0); b.addColorStop(0, '#7c3aed'); b.addColorStop(1, '#f97316'); c.fillStyle = b; c.fillRect(0, 0, W, 6); c.fillRect(0, H - 6, W, 6);
     },
   },
+  cosmos: {
+    name: 'Vũ trụ phẳng (motion)', tool: 'colormarker', ink: '#f8fafc', sub: '#fde68a', channel: '#a5b4fc', episode: '#fb923c', good: '#4ade80', accent2: '#38bdf8', passes: [[0, 0, 1, 1]], width: 1.25,
+    fills: ['#f97316', '#a855f7', '#22d3ee', '#facc15'],
+    bg(c, W, H) {
+      const g = c.createLinearGradient(0, 0, W * 0.4, H); g.addColorStop(0, '#1e1b4b'); g.addColorStop(1, '#3b0764'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+      const r = rng(29);
+      for (let i = 0; i < (W * H) / 900; i++) { c.fillStyle = `rgba(255,255,255,${0.15 + r() * 0.5})`; c.beginPath(); c.arc(r() * W, r() * H, 0.6 + r() * 1.4, 0, Math.PI * 2); c.fill(); }
+      // a planet rising from a corner
+      c.fillStyle = 'rgba(249,115,22,.18)'; c.beginPath(); c.arc(W * 0.95, H * 1.02, Math.min(W, H) * 0.42, 0, Math.PI * 2); c.fill();
+      c.fillStyle = 'rgba(168,85,247,.22)'; c.beginPath(); c.arc(W * 0.02, H * 0.06, Math.min(W, H) * 0.16, 0, Math.PI * 2); c.fill();
+    },
+  },
+  manim: {
+    name: 'Toán học (kiểu Manim)', tool: 'technical', ink: '#ece6e2', sub: '#ece6e2', channel: '#888', episode: '#ffd166', good: '#83c167', accent2: '#58c4dd', passes: [[0, 0, 0.25, 2.4], [0, 0, 1, 1]], width: 0.9,
+    bg(c, W, H) {
+      c.fillStyle = '#0c0c0f'; c.fillRect(0, 0, W, H);
+      grid(c, W, H, Math.min(W, H) / 9, () => 'rgba(88,196,221,.07)');
+    },
+  },
+  bold: {
+    name: 'Chữ nổi bật (kinetic)', tool: 'marker', ink: '#ffffff', sub: '#ffffff', channel: '#fde68a', episode: '#fde047', good: '#86efac', accent2: '#38bdf8', passes: [[0, 0, 1, 1]], width: 1.3,
+    fills: ['#fde047', '#f472b6', '#38bdf8', '#4ade80'],
+    bg(c, W, H) {
+      const g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#6d28d9'); g.addColorStop(0.55, '#c026d3'); g.addColorStop(1, '#f97316'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+      c.fillStyle = 'rgba(255,255,255,.06)';
+      for (let i = -H; i < W; i += 46) { c.beginPath(); c.moveTo(i, 0); c.lineTo(i + 18, 0); c.lineTo(i + 18 + H, H); c.lineTo(i + H, H); c.fill(); }
+    },
+  },
   ricepaper: {
     name: 'Giấy dó mực tàu', tool: 'brush', ink: '#141414', sub: '#141414', channel: '#5a5040', episode: '#b3261e', good: '#2f5d3a', accent2: '#141414', passes: [[0, 0, 1, 1]], width: 1.3, brush: true,
     bg(c, W, H) { c.fillStyle = '#f2ecdf'; c.fillRect(0, 0, W, H); fibers(c, W, H, 400, '120,100,60', 0.1, 5); },

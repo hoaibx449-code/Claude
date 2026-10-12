@@ -4,12 +4,17 @@ import { HttpError } from './util.ts';
 import { composeScene } from './compose.ts';
 import { detectIntent, FORMATS, NICHES } from './intent.ts';
 
-export const STYLES = ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'pencil', 'blueprint', 'ricepaper', 'neon', 'pastel', 'newspaper', 'comic', 'darkboard', 'sunset'] as const;
+export const STYLES = ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'pencil', 'blueprint', 'ricepaper', 'neon', 'pastel', 'newspaper', 'comic', 'darkboard', 'sunset', 'cosmos', 'manim', 'bold'] as const;
+export const MODES = ['hand', 'motion', 'math', 'kinetic'] as const;
+export const MAX_SCENES = 80;
+/** an uploaded picture of this user (reference character, product photo) */
+export const mediaRef = (userId: string) => new RegExp(`^r2:up/${userId.replace(/[^\w-]/g, '')}/[a-f0-9]{24}\\.(png|jpg|webp)$`);
 export const TRANSITIONS = ['auto', 'fade', 'slide', 'wipe', 'zoom'] as const;
 export const TOOLS = ['marker', 'chalk', 'fountain', 'colormarker', 'pencil', 'technical', 'brush'] as const;
 export const RATIOS = ['9:16', '16:9'] as const;
 export const VOICE_PROVIDERS = ['everai', 'google', 'elevenlabs', 'free', 'mock'] as const;
-export const DIAGRAM_KINDS = ['bars', 'compare', 'steps', 'flow', 'number', 'statement', 'stick', 'sketch'] as const;
+export const DIAGRAM_KINDS = ['bars', 'compare', 'steps', 'flow', 'number', 'statement', 'stick', 'sketch', 'plot'] as const;
+const PLOT_FNS = ['linear', 'exp', 'log', 'sin', 'square', 'sqrt', 'down', 'wave'] as const;
 export const ACTIONS = ['idle', 'walk', 'run', 'wave', 'think', 'cheer', 'sad', 'point', 'shrug', 'jump'] as const;
 export const VISUAL_MODES = ['sketch', 'diagram', 'mix', 'images'] as const;
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max) : '');
@@ -21,7 +26,7 @@ const pct = (v: unknown, def: number) => (Number.isFinite(Number(v)) ? Math.max(
 const ref = (v: unknown) => (Array.isArray(v) && v.length === 2 ? [pct(v[0], 50), pct(v[1], 50)] : /^[A-Za-z0-9_-]{1,20}$/.test(String(v ?? '')) ? String(v) : null);
 
 /** Free composition: each item is checked field by field; unknown items are dropped. */
-function cleanSketch(items: unknown, lines: number) {
+function cleanSketch(items: unknown, lines: number, media: string[] = []) {
   if (!Array.isArray(items)) return null;
   const out: any[] = [];
   for (const it of items.slice(0, 18) as any[]) {
@@ -52,7 +57,7 @@ function cleanSketch(items: unknown, lines: number) {
         break;
       case 'chart': {
         const d = cleanDiagram({ ...it, title: undefined });
-        if (!d || !['bars', 'flow', 'compare', 'steps', 'number'].includes(d.kind)) continue;
+        if (!d || !['bars', 'flow', 'compare', 'steps', 'number', 'plot'].includes(d.kind)) continue;
         at(); Object.assign(o, d, { t: 'chart', w: Math.max(30, pct(it.w, 80)), h: Math.max(15, Math.min(80, pct(it.h, 35))) });
         break;
       }
@@ -60,6 +65,18 @@ function cleanSketch(items: unknown, lines: number) {
         o.from = ref(it.from); o.to = ref(it.to); if (!o.from || !o.to) continue;
         if (Number.isFinite(Number(it.curve))) o.curve = Math.max(-1, Math.min(1, Number(it.curve)));
         if (str(it.label, 24)) o.label = str(it.label, 24);
+        break;
+      case 'image':
+        o.src = str(it.src, 20); if (!media.includes(o.src)) continue; at();
+        o.w = Math.max(15, Math.min(100, pct(it.w, 55)));
+        if (it.h != null) o.h = Math.max(10, Math.min(90, pct(it.h, 40)));
+        if (it.shape === 'circle' || it.shape === 'rounded') o.shape = it.shape;
+        if (str(it.label, 40)) o.label = str(it.label, 40);
+        break;
+      case 'qr':
+        o.text = str(it.text, 300); if (!/^https?:\/\/[^\s"<>]{3,}$/.test(o.text)) continue; at();
+        o.w = Math.max(15, Math.min(60, pct(it.w, 32)));
+        if (str(it.label, 30)) o.label = str(it.label, 30);
         break;
       case 'circle': case 'underline': case 'box': case 'cross': case 'check':
         o.on = ref(it.on ?? it.around ?? it.under); if (!o.on || Array.isArray(o.on)) continue;
@@ -71,7 +88,7 @@ function cleanSketch(items: unknown, lines: number) {
   return out.length ? out : null;
 }
 
-function cleanDiagram(d: any, lines = 3) {
+function cleanDiagram(d: any, lines = 3, media: string[] = []) {
   if (!d || typeof d !== 'object' || !DIAGRAM_KINDS.includes(d.kind)) return null;
   const strs = (v: unknown, n: number, max: number) => (Array.isArray(v) ? v.map((x) => str(x, max)).filter(Boolean).slice(0, n) : []);
   const out: any = { kind: d.kind };
@@ -92,8 +109,16 @@ function cleanDiagram(d: any, lines = 3) {
     case 'flow': out.items = strs(d.items, 4, 28); if (out.items.length < 2) return null; break;
     case 'number': out.number = str(d.number, 10); out.caption = str(d.caption, 80); if (!out.number) return null; break;
     case 'statement': out.text = str(d.text, 140); if (!out.text) return null; break;
+    case 'plot':
+      out.fn = pick(d.fn, PLOT_FNS, 'exp');
+      out.values = (Array.isArray(d.values) ? d.values : []).map(Number).filter((v: number) => isFinite(v) && Math.abs(v) < 1e12).slice(0, 12);
+      if (!out.values.length) delete out.values;
+      if (str(d.xLabel, 16)) out.xLabel = str(d.xLabel, 16);
+      if (str(d.yLabel, 16)) out.yLabel = str(d.yLabel, 16);
+      if (str(d.caption, 40)) out.caption = str(d.caption, 40);
+      break;
     case 'sketch':
-      out.items = cleanSketch(d.items, lines); if (!out.items) return null;
+      out.items = cleanSketch(d.items, lines, media); if (!out.items) return null;
       delete out.title;
       break;
     case 'stick':
@@ -120,10 +145,14 @@ export function cleanSpec(input: any, userId: string) {
   const guess = FORMATS.includes(input.format) && NICHES.includes(input.niche) ? null : detectIntent(words);
   const format = FORMATS.includes(input.format) ? input.format : guess!.format;
   const niche = NICHES.includes(input.niche) ? input.niche : guess!.niche;
-  const total = Math.min(20, input.scenes.length);
-  const scenes = input.scenes.slice(0, 20).map((sc: any, si: number) => {
+  const total = Math.min(MAX_SCENES, input.scenes.length);
+  // uploaded pictures: only this user's own files
+  const own = mediaRef(userId), media: Record<string, string> = {};
+  for (const [k, v] of Object.entries(input.media && typeof input.media === 'object' ? input.media : {}).slice(0, 12)) if (/^[a-z0-9]{1,20}$/.test(k) && own.test(String(v))) media[k] = String(v);
+  const mk = Object.keys(media);
+  const scenes = input.scenes.slice(0, MAX_SCENES).map((sc: any, si: number) => {
     const lines = (Array.isArray(sc?.lines) ? sc.lines : []).map((l: unknown) => str(l, 160)).filter(Boolean).slice(0, 3);
-    let diagram = cleanDiagram(sc?.diagram, lines.length);
+    let diagram = cleanDiagram(sc?.diagram, lines.length, mk);
     // drawn-only videos: a scene that came back without a usable drawing gets one designed from its words
     if (!diagram && (visual === 'diagram' || visual === 'sketch') && lines.length) diagram = { kind: 'sketch', items: cleanSketch(composeScene(lines, ratio === '9:16', si, { format, index: si, total }), lines.length) };
     if (diagram) return { lines, panels: [], diagram };
@@ -149,6 +178,16 @@ export function cleanSpec(input: any, userId: string) {
     subtitles: input.subtitles === true,
     transition: pick(input.transition, TRANSITIONS, 'auto'),
     style: pick(input.style, STYLES, 'notebook'),
+    mode: pick(input.mode, MODES, 'hand'),
+    intro: input.intro && str(input.intro.title, 90) ? {
+      title: str(input.intro.title, 90), sub: str(input.intro.sub, 80) || undefined, badge: str(input.intro.badge, 18) || undefined,
+      icon: /^[a-z0-9-]{2,40}$/.test(String(input.intro.icon || '')) ? String(input.intro.icon) : undefined,
+    } : null,
+    media,
+    character: mk.includes(input.character) ? input.character : undefined,
+    affiliate: input.affiliate && /^https?:\/\/[^\s"<>]{3,300}$/.test(String(input.affiliate.link || '')) ? {
+      link: String(input.affiliate.link), product: str(input.affiliate.product, 80), price: str(input.affiliate.price, 30), image: mk.includes(input.affiliate.image) ? input.affiliate.image : undefined,
+    } : undefined,
     tool: input.tool ? pick(input.tool, TOOLS, 'marker') : undefined,
     voice: {
       provider: pick(v.provider, VOICE_PROVIDERS, 'everai'),

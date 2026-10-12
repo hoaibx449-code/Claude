@@ -37,6 +37,13 @@ async function runJob(job: { id: string; spec: ProjectSpec }) {
         p.image = file;
       } else throw new Error('Có khung hình chưa có tranh AI.');
     }
+    // uploaded pictures (reference character, product photos)
+    for (const [k, ref] of Object.entries(spec.media || {})) {
+      if (!ref.startsWith('r2:')) { delete spec.media![k]; continue; }
+      const file = join(dir, 'img', 'm-' + ref.split('/').pop()!);
+      writeFileSync(file, Buffer.from(await (await call('/api/runner/asset?key=' + encodeURIComponent(ref.slice(3)))).arrayBuffer()));
+      spec.media![k] = file;
+    }
     let last = 0;
     const r = await renderProject({
       project: spec, projDir: dir, out: join(dir, 'video.mp4'), tts: process.env.RUNNER_TTS || spec.voice?.provider, size: 1080,

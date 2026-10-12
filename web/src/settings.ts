@@ -13,9 +13,12 @@ const RUNNER_SECRETS: SecretName[] = ['EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'E
 /** Visibility of an option ("style:kraft", "feature:zalo"); anything not set is on. */
 export const vis = (c: Config, key: string): Vis => c.visibility[key] || 'on';
 
-export const STYLE_KEYS = ['sunset', 'whiteboard', 'chalkboard', 'neon', 'darkboard', 'comic', 'pastel', 'oly', 'kraft', 'pencil', 'newspaper', 'blueprint', 'ricepaper', 'notebook'] as const;
+export const STYLE_KEYS = ['sunset', 'cosmos', 'manim', 'bold', 'whiteboard', 'chalkboard', 'neon', 'darkboard', 'comic', 'pastel', 'oly', 'kraft', 'pencil', 'newspaper', 'blueprint', 'ricepaper', 'notebook'] as const;
 export const TOOL_KEYS = ['marker', 'chalk', 'fountain', 'colormarker', 'pencil', 'technical', 'brush'] as const;
-export const KIND_KEYS = ['sketch', 'bars', 'flow', 'compare', 'steps', 'number', 'statement', 'stick'] as const;
+export const KIND_KEYS = ['sketch', 'bars', 'flow', 'compare', 'steps', 'number', 'statement', 'stick', 'plot'] as const;
+/** How the picture comes alive (the four genres of explainer video). */
+export const MODE_KEYS = ['hand', 'motion', 'math', 'kinetic'] as const;
+export const GOOGLE_MODES = ['auto', 'popup', 'redirect'] as const;
 export const VISUAL_KEYS = ['sketch', 'diagram', 'mix', 'images'] as const;
 export const SOURCE_KEYS = ['topic', 'mine-ai', 'mine-free'] as const;
 export const ACTION_KEYS = ['idle', 'walk', 'run', 'wave', 'think', 'cheer', 'sad', 'point', 'shrug', 'jump'] as const;
@@ -28,15 +31,19 @@ export interface Config {
   labels: {
     styles: Record<string, string>; tools: Record<string, string>; kinds: Record<string, string>;
     visual: Record<string, string>; actions: Record<string, string>; ai: Record<string, string>; sources: Record<string, string>;
+    modes: Record<string, string>;
   };
   /** Ways to start a video the users may pick (AI from a topic, own script + AI pictures, own script free). */
   enabledSources: string[];
   texts: Record<string, string>;
   enabledStyles: string[];
-  defaults: { source: string; textAI: string; imageAI: string; style: string; visual: string; ratio: string; seconds: number; voice: string; channel: string; tone: string; subtitles: boolean };
+  defaults: { source: string; textAI: string; imageAI: string; style: string; visual: string; ratio: string; seconds: number; voice: string; channel: string; tone: string; subtitles: boolean; mode: string; intro: boolean };
+  /** Google sign-in: popup (Google's button), redirect (full page, works in installed apps and in-app browsers), auto. */
+  auth: { google: string };
   voices: Voice[];
   models: { openaiText: string; openaiImage: string; openaiImageQuality: string; geminiText: string; geminiImage: string; openaiFallback: string; geminiFallback: string };
-  limits: { script: number; image: number; render: number };
+  /** daily defaults; maxSeconds: longest video anyone may make (plans may allow less) */
+  limits: { script: number; image: number; render: number; maxSeconds: number };
   promptExtra: string;
   admins: string[];
   /** Price table used to log what every AI call costs (VND = USD × usdVnd). */
@@ -47,7 +54,7 @@ export interface Config {
   visibility: Record<string, Vis>;
   zalo: ZaloConfig;
   plans: Plan[];
-  payment: { enabled: boolean; bank: string; account: string; accountName: string; prefix: string; expiryDays: number; note: string };
+  payment: { enabled: boolean; bank: string; account: string; accountName: string; prefix: string; expiryDays: number; note: string; /** countdown shown in the payment window */ holdMinutes: number };
   /** Shown on the home page above the form (announcements). Empty = nothing. */
   notice: string;
   /** Ready-made scripts users can start from (no AI needed). */
@@ -77,6 +84,7 @@ export interface Plan {
 export const FEATURES: Record<string, string> = {
   zalo: 'Tạo video qua Zalo', imageAI: 'Tranh AI cho cảnh', duplicate: 'Nhân bản video', cover: 'Tải ảnh bìa', templates: 'Kịch bản mẫu',
   subtitles: 'Bật phụ đề trên hình', speed: 'Chỉnh tốc độ đọc', editor: 'Sửa từng cảnh', srt: 'Tải phụ đề SRT', plans: 'Gói cước & nâng cấp', music: 'Nhạc nền',
+  intro: 'Mở đầu là ảnh bìa (thumbnail)', character: 'Nhân vật tham chiếu (ảnh thật)', affiliate: 'Tiếp thị liên kết (ảnh SP + mã QR)', community: 'Cộng đồng', platform: 'Xem trước như TikTok / YouTube / Facebook',
 };
 export const RATIO_KEYS = ['9:16', '16:9'] as const;
 
@@ -101,18 +109,20 @@ export function defaultConfig(env: Env): Config {
   return {
     brand: { name: 'Nét Vẽ', accent: 'Studio', tagline: 'Tạo video bàn tay vẽ kèm thuyết minh tiếng Việt.' },
     labels: {
-      styles: { sunset: 'Hoàng hôn tím cam', neon: 'Neon đêm', darkboard: 'Bảng đen hiện đại', comic: 'Truyện tranh', pastel: 'Pastel dễ thương', newspaper: 'Báo giấy cổ điển', whiteboard: 'Bảng trắng', chalkboard: 'Bảng phấn', oly: 'Vở ô ly', kraft: 'Giấy kraft', pencil: 'Sổ phác chì', blueprint: 'Bản vẽ kỹ thuật', ricepaper: 'Giấy dó mực tàu', notebook: 'Giấy kem kể chuyện' },
+      styles: { sunset: 'Hoàng hôn tím cam', cosmos: 'Vũ trụ phẳng', manim: 'Bảng đen toán học', bold: 'Chữ nổi bật', neon: 'Neon đêm', darkboard: 'Bảng đen hiện đại', comic: 'Truyện tranh', pastel: 'Pastel dễ thương', newspaper: 'Báo giấy cổ điển', whiteboard: 'Bảng trắng', chalkboard: 'Bảng phấn', oly: 'Vở ô ly', kraft: 'Giấy kraft', pencil: 'Sổ phác chì', blueprint: 'Bản vẽ kỹ thuật', ricepaper: 'Giấy dó mực tàu', notebook: 'Giấy kem kể chuyện' },
       tools: { marker: 'Bút dạ bảng', chalk: 'Phấn', fountain: 'Bút máy', colormarker: 'Bút dạ màu', pencil: 'Bút chì', technical: 'Bút kỹ thuật', brush: 'Bút lông' },
-      kinds: { sketch: 'Bảng vẽ tự do (chữ + hình + mũi tên)', bars: 'Biểu đồ cột (mũi tên, đường cong)', flow: 'Chuỗi nguyên nhân → kết quả', compare: 'So sánh ✗ / ✓', steps: 'Các bước', number: 'Con số nổi bật', statement: 'Câu chốt', stick: 'Người que chuyển động' },
+      kinds: { plot: 'Đồ thị hàm số', sketch: 'Bảng vẽ tự do (chữ + hình + mũi tên)', bars: 'Biểu đồ cột (mũi tên, đường cong)', flow: 'Chuỗi nguyên nhân → kết quả', compare: 'So sánh ✗ / ✓', steps: 'Các bước', number: 'Con số nổi bật', statement: 'Câu chốt', stick: 'Người que chuyển động' },
       visual: { sketch: 'Bảng vẽ tự do: chữ + hình + sơ đồ (như demo)', diagram: 'Sơ đồ theo mẫu', mix: 'Kết hợp sơ đồ + tranh AI', images: 'Tranh AI cho mọi cảnh' },
       sources: { topic: 'AI viết từ chủ đề', 'mine-ai': 'Kịch bản của tôi + AI minh hoạ', 'mine-free': 'Kịch bản của tôi + tự minh hoạ (miễn phí)' },
       actions: { idle: 'Đứng', walk: 'Đi bộ', run: 'Chạy', wave: 'Vẫy tay', think: 'Suy nghĩ', cheer: 'Ăn mừng', sad: 'Buồn', point: 'Chỉ tay', shrug: 'Nhún vai', jump: 'Nhảy' },
       ai: { openai: 'OpenAI', gemini: 'Gemini' },
+      modes: { hand: 'Bàn tay vẽ (whiteboard)', motion: 'Đồ hoạ chuyển động (motion graphics)', math: 'Toán học / học thuật (kiểu Manim)', kinetic: 'Chữ chuyển động (kinetic typography)' },
     },
     texts: { ...DEFAULT_TEXTS },
     enabledStyles: [...STYLE_KEYS],
     enabledSources: [...SOURCE_KEYS],
-    defaults: { source: 'topic', subtitles: false, textAI: 'gemini', imageAI: 'gemini', style: 'sunset', visual: 'sketch', ratio: '9:16', seconds: 45, voice: 'vi_female_thuytrang_mb', channel: '', tone: '' },
+    defaults: { source: 'topic', subtitles: false, textAI: 'gemini', imageAI: 'gemini', style: 'sunset', visual: 'sketch', ratio: '9:16', seconds: 45, voice: 'vi_female_thuytrang_mb', channel: '', tone: '', mode: 'hand', intro: true },
+    auth: { google: 'auto' },
     voices: [
       ['vi_female_thuytrang_mb', 'Thùy Trang · nữ Bắc · nói chuyện'], ['vi_male_minhtriet_mb', 'Minh Triết · nam Bắc · sách nói'],
       ['vi_male_leduc_mb', 'Lê Đức · nam Bắc · kể chuyện'], ['vi_female_kimphuong_mb', 'Kim Phượng · nữ Bắc · kể chuyện'],
@@ -129,7 +139,7 @@ export function defaultConfig(env: Env): Config {
       geminiText: env.GEMINI_TEXT_MODEL || 'gemini-2.5-flash', geminiImage: env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
       openaiFallback: 'gpt-4.1-mini', geminiFallback: 'gemini-2.5-flash-lite,gemini-2.0-flash',
     },
-    limits: { script: Number(env.DAILY_SCRIPTS) || 20, image: Number(env.DAILY_IMAGES) || 60, render: Number(env.DAILY_RENDERS) || 5 },
+    limits: { script: Number(env.DAILY_SCRIPTS) || 20, image: Number(env.DAILY_IMAGES) || 60, render: Number(env.DAILY_RENDERS) || 5, maxSeconds: 600 },
     promptExtra: '',
     admins: [],
     costs: {
@@ -157,9 +167,9 @@ export function defaultConfig(env: Env): Config {
       { id: 'free', name: 'Miễn phí', price: 0, days: 0, visible: true, highlight: false, desc: 'Dùng thử đầy đủ quy trình', features: ['Bảng vẽ tự do', 'Kịch bản của bạn', 'Giọng máy miễn phí'],
         limits: { script: 3, image: 0, render: 2 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 90 },
       { id: 'pro', name: 'Chuyên nghiệp', price: 199000, days: 30, visible: true, highlight: true, desc: 'Cho người làm kênh đều đặn', features: ['AI viết & minh hoạ', 'Giọng EverAI tự nhiên', 'Tranh AI', 'Ưu tiên dựng'],
-        limits: { script: 30, image: 60, render: 10 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 300 },
+        limits: { script: 30, image: 60, render: 10 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 600 },
     ],
-    payment: { enabled: false, bank: '970436', account: '', accountName: '', prefix: 'NV', expiryDays: 7, note: 'Chuyển khoản đúng nội dung để được kích hoạt tự động trong 1-2 phút.' },
+    payment: { enabled: false, bank: '970436', account: '', accountName: '', prefix: 'NV', expiryDays: 7, holdMinutes: 15, note: 'Chuyển khoản đúng nội dung để được kích hoạt tự động trong 1-2 phút.' },
     notice: '',
     templates: DEFAULT_TEMPLATES,
     legal: { company: 'Nét Vẽ Studio', email: 'hotro@example.com', address: 'Việt Nam', taxId: '', version: LEGAL_VERSION, terms: DEFAULT_TERMS, privacy: DEFAULT_PRIVACY, refund: DEFAULT_REFUND },
@@ -180,7 +190,8 @@ function labels(v: any, keys: readonly string[], def: Record<string, string>, ma
 export function cleanConfig(input: any, base: Config): Config {
   const i = input && typeof input === 'object' ? input : {};
   const L = i.labels || {}, d = i.defaults || {}, m = i.models || {}, lim = i.limits || {};
-  const enabled = Array.isArray(i.enabledStyles) ? STYLE_KEYS.filter((k) => i.enabledStyles.includes(k)) : base.enabledStyles;
+  // visibility decides (newer settings); the old enabled list only matters for settings saved before it existed
+  const enabled: string[] = i.visibility || !Array.isArray(i.enabledStyles) ? [...STYLE_KEYS] : STYLE_KEYS.filter((k) => i.enabledStyles.includes(k));
   const voices = (Array.isArray(i.voices) ? i.voices : base.voices)
     .map((v: any) => ({ provider: pick(v?.provider, ['everai', 'google', 'elevenlabs', 'free'], 'everai') as Voice['provider'], code: str(v?.code, 60, ''), label: str(v?.label, 80, '') }))
     .filter((v: Voice) => /^[A-Za-z0-9_-]{3,60}$/.test(v.code)).map((v: Voice) => ({ ...v, label: v.label || v.code })).slice(0, 80);
@@ -194,7 +205,7 @@ export function cleanConfig(input: any, base: Config): Config {
       styles: labels(L.styles, STYLE_KEYS, base.labels.styles), tools: labels(L.tools, TOOL_KEYS, base.labels.tools),
       kinds: labels(L.kinds, KIND_KEYS, base.labels.kinds), visual: labels(L.visual, VISUAL_KEYS, base.labels.visual, 80),
       actions: labels(L.actions, ACTION_KEYS, base.labels.actions), ai: labels(L.ai, AI_KEYS, base.labels.ai),
-      sources: labels(L.sources, SOURCE_KEYS, base.labels.sources, 80),
+      sources: labels(L.sources, SOURCE_KEYS, base.labels.sources, 80), modes: labels(L.modes, MODE_KEYS, base.labels.modes, 80),
     },
     enabledSources: (() => {
       let v: string[] = Array.isArray(i.enabledSources) ? SOURCE_KEYS.filter((k) => i.enabledSources.includes(k)) : [...base.enabledSources];
@@ -207,9 +218,11 @@ export function cleanConfig(input: any, base: Config): Config {
       source: pick(d.source, SOURCE_KEYS, base.defaults.source), subtitles: typeof d.subtitles === 'boolean' ? d.subtitles : base.defaults.subtitles,
       textAI: pick(d.textAI, AI_KEYS, base.defaults.textAI), imageAI: pick(d.imageAI, AI_KEYS, base.defaults.imageAI),
       style: pick(d.style, en, en.includes(base.defaults.style) ? base.defaults.style : en[0]), visual: pick(d.visual, VISUAL_KEYS, base.defaults.visual),
-      ratio: pick(d.ratio, ['9:16', '16:9'], base.defaults.ratio), seconds: int(d.seconds, 15, 180, base.defaults.seconds),
+      ratio: pick(d.ratio, ['9:16', '16:9'], base.defaults.ratio), seconds: int(d.seconds, 15, 1800, base.defaults.seconds),
       voice: pick(d.voice, vs.map((v: Voice) => v.code), vs[0].code), channel: str(d.channel, 40, base.defaults.channel), tone: str(d.tone, 200, base.defaults.tone),
+      mode: pick(d.mode, MODE_KEYS, base.defaults.mode), intro: typeof d.intro === 'boolean' ? d.intro : base.defaults.intro,
     },
+    auth: { google: pick(i.auth?.google, GOOGLE_MODES, base.auth.google) },
     voices: vs,
     models: {
       openaiText: MODEL.test(m.openaiText) ? m.openaiText : base.models.openaiText, openaiImage: MODEL.test(m.openaiImage) ? m.openaiImage : base.models.openaiImage,
@@ -218,7 +231,7 @@ export function cleanConfig(input: any, base: Config): Config {
       openaiFallback: typeof m.openaiFallback === 'string' ? m.openaiFallback.split(',').map((x: string) => x.trim()).filter((x: string) => MODEL.test(x)).slice(0, 4).join(',') : base.models.openaiFallback,
       geminiFallback: typeof m.geminiFallback === 'string' ? m.geminiFallback.split(',').map((x: string) => x.trim()).filter((x: string) => MODEL.test(x)).slice(0, 4).join(',') : base.models.geminiFallback,
     },
-    limits: { script: int(lim.script, 0, 1000, base.limits.script), image: int(lim.image, 0, 5000, base.limits.image), render: int(lim.render, 0, 500, base.limits.render) },
+    limits: { script: int(lim.script, 0, 1000, base.limits.script), image: int(lim.image, 0, 5000, base.limits.image), render: int(lim.render, 0, 500, base.limits.render), maxSeconds: int(lim.maxSeconds, 30, 1800, base.limits.maxSeconds) },
     promptExtra: str(i.promptExtra, 1500, base.promptExtra),
     costs: (() => {
       const c = i.costs || {}, b = base.costs, n = (v: unknown, d: number) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : d);
@@ -270,7 +283,7 @@ export function cleanConfig(input: any, base: Config): Config {
     payment: (() => {
       const p = i.payment || {}, b = base.payment;
       return { enabled: !!(p.enabled ?? b.enabled), bank: /^\d{6}$/.test(p.bank || '') ? p.bank : b.bank, account: /^[0-9A-Za-z]{4,30}$/.test(p.account || '') ? p.account : '',
-        accountName: str(p.accountName, 60, '').toUpperCase(), prefix: /^[A-Z]{2,4}$/.test(p.prefix || '') ? p.prefix : b.prefix, expiryDays: int(p.expiryDays, 1, 60, b.expiryDays), note: str(p.note, 300, b.note) };
+        accountName: str(p.accountName, 60, '').toUpperCase(), prefix: /^[A-Z]{2,4}$/.test(p.prefix || '') ? p.prefix : b.prefix, expiryDays: int(p.expiryDays, 1, 60, b.expiryDays), note: str(p.note, 300, b.note), holdMinutes: int(p.holdMinutes, 3, 120, b.holdMinutes) };
     })(),
     notice: str(i.notice, 500, base.notice),
     templates: (Array.isArray(i.templates) ? i.templates : base.templates).slice(0, 40).map((t: any, k: number) => ({
@@ -386,6 +399,8 @@ export function publicConfig(config: Config) {
     templates: config.visibility['feature:templates'] === 'hidden' ? [] : config.templates.map((t) => ({ id: t.id, title: t.title, niche: t.niche })),
     legal: { version: config.legal.version, company: config.legal.company, email: config.legal.email },
     zalo: { enabled: config.zalo.enabled && config.visibility['feature:zalo'] !== 'hidden', botLink: config.zalo.botLink, dev: config.visibility['feature:zalo'] === 'dev' },
-    payment: { enabled: config.payment.enabled },
+    payment: { enabled: config.payment.enabled, holdMinutes: config.payment.holdMinutes },
+    limits: { maxSeconds: config.limits.maxSeconds },
+    auth: config.auth,
   };
 }

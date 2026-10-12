@@ -13,3 +13,4 @@ web/.secrets.tmp.json
 web/.gcp-secrets.json
 web/public/icons/icon-*.png
 web/public/demos.json
+.scratch/

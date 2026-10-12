@@ -72,7 +72,7 @@ export async function body<T = any>(req: Request, maxBytes = 200_000): Promise<T
 export const today = () => new Date().toISOString().slice(0, 10);
 
 /** Count one use of `kind` today; refuse when the daily limit is reached. */
-export async function useQuota(env: Env, userId: string, kind: 'script' | 'image' | 'render' | 'events' | 'zalo' | 'try', limit: number) {
+export async function useQuota(env: Env, userId: string, kind: 'script' | 'image' | 'render' | 'events' | 'zalo' | 'try' | 'upload' | 'like', limit: number) {
   const day = today();
   const row = await env.DB.prepare(
     `INSERT INTO usage (user_id, day, kind, n) VALUES (?, ?, ?, 1)

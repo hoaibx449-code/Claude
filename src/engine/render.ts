@@ -1,8 +1,11 @@
-import type { Ctx, Env, HandMeta, Img, ProjectSpec, Ratio, SceneTiming, Timeline, ToolKind } from './types.ts';
+import type { Ctx, Env, HandMeta, Img, Mode, ProjectSpec, Ratio, SceneTiming, Timeline, ToolKind } from './types.ts';
 import { STYLES, type Style } from './styles.ts';
 import { drawTool } from './tools.ts';
-import { buildDiagram, drawElement, elementPen, type Element } from './diagram.ts';
-import { buildSketch, type IconSet } from './sketch.ts';
+import { buildDiagram, drawElement, elementCentre, elementPen, type Element, type Pen } from './diagram.ts';
+import { buildSketch, resolveIcon, type IconSet } from './sketch.ts';
+import { buildKinetic } from './kinetic.ts';
+import { flatten } from './svgpath.ts';
+import { qrCells } from './qr.ts';
 import { wrapVi } from './textwrap.ts';
 
 /** Logical canvas size; the output size is a multiple of it (dpr). */
@@ -80,7 +83,12 @@ export interface Model {
   env: Env;
   /** What gets drawn in each scene, in order, with its time window. */
   units: Unit[][];
+  mode: Mode;
+  icons: IconSet;
 }
+
+/** Family of the modern sans (Be Vietnam Pro ExtraBold, registered under this name). */
+export const SANS = 'NVSans';
 
 /** `t` is the frame time: animated parts (stick figures) keep moving after they are drawn. */
 export interface Unit { start: number; end: number; draw(c: Ctx, p: number, alpha: number, t: number): void; pen(p: number): [number, number] }
@@ -99,8 +107,11 @@ export function stageBox(ratio: Ratio, subtitles = false): Box {
 
 export function prepare(opts: {
   env: Env; project: ProjectSpec; timeline: Timeline; images: Img[][]; hand: HandAsset; dpr: number; icons?: IconSet;
+  /** loaded pictures for image items, by ProjectSpec.media key */
+  media?: Record<string, Img>;
 }): Model {
   const { env, project, timeline, images, hand, dpr } = opts;
+  const mode: Mode = (['motion', 'math', 'kinetic'] as const).includes(project.mode as any) ? project.mode! : 'hand';
   const subs = !!project.subtitles;
   const style = STYLES[project.style] ?? STYLES.notebook;
   const { W, H } = logicalSize(project.ratio);
@@ -114,20 +125,43 @@ export function prepare(opts: {
       return { canvas: inkify(env, images[si][k], Math.round(box.w * dpr), Math.round(box.h * dpr), style.ink), box, zig: zigzag(box.w, box.h, si * 3 + k) };
     });
   });
-  const m: Model = { project, timeline, style, tool: project.tool ?? style.tool, W, H, dpr, background: bgc, panels, mask: new Map(), hand, env, units: [] };
+  const m: Model = { project, timeline, style, tool: project.tool ?? style.tool, W, H, dpr, background: bgc, panels, mask: new Map(), hand, env, units: [], mode, icons: opts.icons || {} };
   const measure = env.createCanvas(4, 4).getContext('2d');
-  const colors = { ink: style.ink, accent: style.episode, accent2: style.accent2, good: style.good, fills: style.fills };
-  const pen = { passes: style.passes, brush: style.brush, width: style.width };
+  const colors = { ink: style.ink, accent: style.episode, accent2: style.accent2, good: style.good, fills: style.fills,
+    font: mode === 'hand' ? 'Pangolin' : SANS, flat: mode === 'motion', images: opts.media || {}, qr: qrCells,
+    character: project.character ? opts.media?.[project.character] || undefined : undefined };
+  // maths animation: crisp single strokes with a faint glow, no paper texture passes
+  const pen: Pen = mode === 'math' ? { passes: [[0, 0, 0.22, 2.6], [0, 0, 1, 0.85]], width: style.width } : { passes: style.passes, brush: style.brush, width: style.width };
   m.units = project.scenes.map((sc, si) => {
     const T = timeline.scenes[si];
+    if (mode === 'kinetic') {
+      const keys = (sc.diagram?.items || []).filter((it: any) => it.t === 'text').map((it: any) => String(it.text));
+      if (sc.diagram?.title) keys.push(sc.diagram.title);
+      const box = project.ratio === '9:16' ? { x: 34, y: 150, w: 472, h: 660 } : { x: 70, y: 80, w: 820, h: 390 };
+      const ic = (sc.diagram?.items || []).find((it: any) => it.t === 'icon'), name = ic ? resolveIcon(ic.name, m.icons) : null;
+      const deco = name ? m.icons[name].split('|').flatMap((d) => flatten(d)) : undefined;
+      return [buildKinetic(measure, sc, T, box, colors, keys, deco)];
+    }
     if (!sc.diagram) {
       return sc.panels.map((_, k) => ({ start: T.panels[k].start, end: T.panels[k].end,
         draw: (c: Ctx, p: number, a: number) => drawPanel(c, m, si, k, p, a), pen: (p: number) => penAt(m, si, k, p) }));
     }
     // diagram: spread its strokes over the time the scene is spoken
+    let items = sc.diagram.items || [];
+    // the reference character appears in every board, beside the drawing when it has no person
+    if (colors.character && sc.diagram.kind === 'sketch' && !items.some((it: any) => it.t === 'person' || it.t === 'image')) {
+      items = [...items, { t: 'image', src: project.character, x: si % 2 ? 16 : 84, y: 86, w: project.ratio === '9:16' ? 26 : 16, shape: 'circle', line: 0 }];
+    }
     const els = sc.diagram.kind === 'sketch'
-      ? buildSketch(measure, sc.diagram.items || [], stageBox(project.ratio, subs), colors, opts.icons || {}, project.ratio === '9:16')
+      ? buildSketch(measure, items, stageBox(project.ratio, subs), colors, opts.icons || {}, project.ratio === '9:16')
       : buildDiagram(measure, sc.diagram, diagramBox(project.ratio, subs), colors);
+    if (mode === 'motion') {
+      // motion graphics: each thing springs into place quickly, then keeps floating gently
+      return schedule(els, sc.lines, T, sc.diagram.kind === 'sketch', (e, start, end) => {
+        const stop = start + Math.min(end - start, e.kind === 'path' ? 0.7 : 0.5), ctr = elementCentre(e), ph = ctr[0] * 0.013 + ctr[1] * 0.007;
+        return { start, end: stop, draw: (c: Ctx, p: number, a: number, now: number) => drawPop(c, e, p, a, pen, now - stop, ctr, ph), pen: (p: number) => elementPen(e, p) };
+      });
+    }
     return schedule(els, sc.lines, T, sc.diagram.kind === 'sketch', (e, start, end) => ({
       start, end, draw: (c: Ctx, p: number, a: number, now: number) => drawElement(c, e, p, a, pen, now - end), pen: (p: number) => elementPen(e, p),
     }));
@@ -218,6 +252,18 @@ function schedule(els: Element[], lines: string[], T: SceneTiming, sketch: boole
 }
 
 const clamp = (v: number) => Math.max(0, Math.min(1, v));
+const backOut = (u: number) => 1 + 2.4 * (u - 1) ** 3 + 1.4 * (u - 1) ** 2;
+
+function drawPop(c: Ctx, e: Element, p: number, a: number, pen: Pen, tau: number, [cx, cy]: [number, number], ph: number) {
+  if (p <= 0 || a <= 0) return;
+  // lines and arrows draw themselves on; shapes, icons and words pop with a small overshoot
+  if (e.kind === 'path') { drawElement(c, e, ease(p), a, pen, tau); return; }
+  const k = 0.35 + 0.65 * backOut(p), float = tau > 0 && e.kind !== 'text' ? Math.sin(tau * 1.7 + ph) * 3 : 0;
+  c.save();
+  c.translate(cx, cy + float + (e.kind === 'text' ? (1 - ease(p)) * 24 : 0)); c.scale(e.kind === 'text' ? 1 : k, e.kind === 'text' ? 1 : k); c.translate(-cx, -cy);
+  drawElement(c, e, 1, a * Math.min(1, p * 2.2), pen, tau);
+  c.restore();
+}
 const ease = (u: number) => u * u * (3 - 2 * u);
 const lerp = (a: number[], b: number[], u: number): [number, number] => [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
 
@@ -270,7 +316,7 @@ export function renderFrame(c: Ctx, m: Model, t: number, opts: { hand?: boolean 
   c.drawImage(m.background, 0, 0, W, H);
   const portrait = project.ratio === '9:16';
   const top = portrait ? 70 : 46;
-  c.font = `${portrait ? 22 : 20}px Pangolin`; c.textAlign = 'left'; c.fillStyle = style.channel;
+  c.font = m.mode === 'hand' ? `${portrait ? 22 : 20}px Pangolin` : `${portrait ? 19 : 17}px ${SANS}`; c.textAlign = 'left'; c.fillStyle = style.channel;
   c.fillText(project.channel, 28, top);
   if (project.episode) { c.textAlign = 'right'; c.fillStyle = style.episode; c.fillText(project.episode, W - 28, top); c.textAlign = 'left'; }
 
@@ -297,13 +343,114 @@ export function renderFrame(c: Ctx, m: Model, t: number, opts: { hand?: boolean 
   }
   c.save();
   if (si > 0 && u < 1 && kind === 'slide') c.translate(W * (1 - e), 0);
+  if (m.mode === 'motion') {
+    // slow camera push-in during the scene
+    const z = 1 + 0.035 * ease(clamp((t - S.start) / Math.max(1, S.end - S.start)));
+    c.translate(W / 2, H / 2); c.scale(z, z); c.translate(-W / 2, -H / 2);
+  }
   units.forEach((x, k) => x.draw(c, prog[k], 1, t));
   c.restore();
 
   // subtitles on the picture (optional: the board already shows the key words)
   if (project.subtitles) drawSubtitles(c, m, si, t);
 
-  if (opts.hand !== false) drawHandAt(c, m, t, si, units, prog);
+  if (opts.hand !== false && m.mode === 'hand') drawHandAt(c, m, t, si, units, prog);
+  if (timeline.intro && t < timeline.intro + 0.4) drawIntro(c, m, t);
+}
+
+/**
+ * Opening title card: complete on the very first frame (platforms use it as the thumbnail),
+ * then it bursts away as the first scene starts.
+ */
+export function drawIntro(c: Ctx, m: Model, t: number) {
+  const { W, H, project, timeline } = m, I = project.intro, D = timeline.intro || 0;
+  if (!I?.title) return;
+  const portrait = project.ratio === '9:16', out = clamp((t - (D - 0.3)) / 0.55);
+  if (out >= 1) return;
+  c.save();
+  c.globalAlpha = 1 - ease(out);
+  c.translate(W / 2, H / 2); c.scale(1 + 0.18 * ease(out), 1 + 0.18 * ease(out)); c.translate(-W / 2, -H / 2);
+  // vivid background with light rays
+  const g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#5b21b6'); g.addColorStop(0.5, '#c026d3'); g.addColorStop(1, '#f97316');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  c.save(); c.translate(W / 2, H * 0.42); c.rotate(t * 0.25);
+  c.fillStyle = 'rgba(255,255,255,.07)';
+  for (let i = 0; i < 12; i++) { c.rotate(Math.PI / 6); c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.max(W, H), -60); c.lineTo(Math.max(W, H), 60); c.fill(); }
+  c.restore();
+  const v = c.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.2, W / 2, H / 2, Math.max(W, H) * 0.75);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.35)'); c.fillStyle = v; c.fillRect(0, 0, W, H);
+
+  let y = portrait ? H * 0.17 : H * 0.15;
+  // badge
+  const badge = (I.badge || '').toUpperCase().slice(0, 18);
+  if (badge) {
+    c.font = `${portrait ? 26 : 22}px ${SANS}`;
+    const bw = c.measureText(badge).width + 40, bh = portrait ? 46 : 40, pulse = 1 + Math.sin(t * 6) * 0.03;
+    c.save(); c.translate(W / 2, y); c.scale(pulse, pulse); c.rotate(-0.04);
+    c.fillStyle = '#facc15'; rr(c, -bw / 2, -bh / 2, bw, bh, bh / 2); c.fill();
+    c.fillStyle = '#1e1b4b'; c.textAlign = 'center'; c.fillText(badge, 0, bh * 0.2);
+    c.restore();
+    y += portrait ? 60 : 44;
+  }
+  // vertical budget: badge · icon · title · subtitle, above the call to action
+  const ctaY = H - (portrait ? 150 : 76), ss = portrait ? 28 : 22, maxW = W - (portrait ? 56 : 140);
+  const subRows = I.sub ? wrapVi(c, I.sub, ss, maxW - 40, SANS).slice(0, 2) : [];
+  const subH = subRows.length ? subRows.length * ss * 1.3 + 22 : 0;
+  const icon = I.icon ? resolveIcon(I.icon, m.icons) : null;
+  const r = portrait ? 62 : 40;
+  if (icon) {
+    const cy = y + r + 4;
+    c.fillStyle = 'rgba(255,255,255,.16)'; c.beginPath(); c.arc(W / 2, cy, r * 1.25, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#ffffff'; c.beginPath(); c.arc(W / 2, cy, r, 0, Math.PI * 2); c.fill();
+    const k = (r * 1.15) / 24, ox = W / 2 - 12 * k, oy = cy - 12 * k;
+    c.strokeStyle = '#7c3aed'; c.lineWidth = 2.1 * k; c.lineCap = 'round'; c.lineJoin = 'round';
+    for (const d of m.icons[icon].split('|')) for (const l of flatten(d)) { c.beginPath(); l.forEach(([a, b], i) => (i ? c.lineTo(ox + a * k, oy + b * k) : c.moveTo(ox + a * k, oy + b * k))); c.stroke(); }
+    y = cy + r * 1.25 + (portrait ? 18 : 8);
+  } else y += portrait ? 30 : 6;
+  // title: as big as the space allows, outlined, key word in yellow
+  const room = ctaY - (subH ? subH + 18 : 0) - 16 - y;
+  let size = portrait ? 80 : 64, rows: string[] = [];
+  for (; size > 30; size -= 3) { rows = wrapVi(c, I.title, size, maxW, SANS); if (rows.length <= 4 && rows.length * size * 1.16 <= room) break; }
+  const words = I.title.split(/\s+/), key = words.find((w) => /\d/.test(w)) || words.reduce((a, b) => (b.length > a.length ? b : a), '');
+  const lh = size * 1.16, ty = y + Math.max(0, (room - rows.length * lh) / 2);
+  c.textAlign = 'left'; c.lineJoin = 'round';
+  rows.forEach((row, i) => {
+    c.font = `${size}px ${SANS}`;
+    const rw = c.measureText(row).width;
+    let x = (W - rw) / 2;
+    const yy = ty + size * 0.92 + i * lh;
+    for (const w of row.split(' ')) {
+      const ww = c.measureText(w).width;
+      c.lineWidth = size * 0.16; c.strokeStyle = '#1e1b4b'; c.strokeText(w, x, yy);
+      c.fillStyle = w === key ? '#facc15' : '#ffffff'; c.fillText(w, x, yy);
+      x += ww + c.measureText(' ').width;
+    }
+  });
+  if (subRows.length) {
+    const sy = ctaY - 18 - subH;
+    c.font = `${ss}px ${SANS}`;
+    const sw = Math.min(W - 56, Math.max(...subRows.map((r) => c.measureText(r).width)) + 48);
+    c.fillStyle = 'rgba(30,27,75,.55)'; rr(c, (W - sw) / 2, sy, sw, subH, 18); c.fill();
+    c.fillStyle = '#ffffff'; c.textAlign = 'center';
+    subRows.forEach((r, i) => c.fillText(r, W / 2, sy + 11 + ss * 0.95 + i * ss * 1.3));
+  }
+  // call to action at the bottom
+  const cta = 'XEM NGAY', cs = portrait ? 26 : 20;
+  c.font = `${cs}px ${SANS}`;
+  const tw = c.measureText(cta).width, cw = tw + cs * 3.2, ch = cs * 2, cx0 = (W - cw) / 2;
+  c.fillStyle = '#ffffff'; rr(c, cx0, ctaY, cw, ch, ch / 2); c.fill();
+  // play triangle
+  const px = cx0 + cs * 1.1, py = ctaY + ch / 2;
+  c.fillStyle = '#f97316'; c.beginPath(); c.moveTo(px, py - cs * 0.45); c.lineTo(px + cs * 0.75, py); c.lineTo(px, py + cs * 0.45); c.closePath(); c.fill();
+  c.fillStyle = '#7c3aed'; c.textAlign = 'left'; c.fillText(cta, px + cs * 1.15, ctaY + ch * 0.68);
+  c.textAlign = 'center';
+  if (project.channel) { c.font = `${portrait ? 20 : 16}px ${SANS}`; c.fillStyle = 'rgba(255,255,255,.85)'; c.fillText(project.channel, W / 2, H - (portrait ? 70 : 18)); }
+  c.textAlign = 'left';
+  c.restore();
+}
+
+function rr(c: Ctx, x: number, y: number, w: number, h: number, r: number) {
+  c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
 }
 
 function drawSubtitles(c: Ctx, m: Model, si: number, t: number) {

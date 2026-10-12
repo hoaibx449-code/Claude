@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas';
 import { buildTimeline } from '../engine/timeline.ts';
-import { logicalSize, prepare, renderFrame } from '../engine/render.ts';
+import { logicalSize, prepare, renderFrame, SANS } from '../engine/render.ts';
 import type { HandMeta, ProjectSpec, Timeline } from '../engine/types.ts';
 import { pickTTS, withFallback } from './tts.ts';
 import { cachedImage, pickImages } from './images.ts';
@@ -46,6 +46,7 @@ export async function renderProject(o: RenderOptions) {
   const fps = o.fps ?? 30;
 
   GlobalFonts.registerFromPath(join(ROOT, 'assets/fonts/Pangolin-Regular.ttf'), 'Pangolin');
+  GlobalFonts.registerFromPath(join(ROOT, 'assets/fonts/BeVietnamPro-ExtraBold.ttf'), SANS);
 
   // 1. images
   const gen = pickImages(o.images ?? project.images?.provider);
@@ -67,7 +68,7 @@ export async function renderProject(o: RenderOptions) {
   const tts = name && name !== 'mock' && name !== 'free' ? withFallback(await pickTTS(name, project.voice).catch(() => pickTTS('free', project.voice)), project.voice?.voiceId) : await pickTTS(name, project.voice);
   const voice = [];
   for (let i = 0; i < project.scenes.length; i++) voice.push(await tts.synth(project.scenes[i].lines, join(work, `scene${i}`)));
-  const timeline = buildTimeline(project.scenes, voice);
+  const timeline = buildTimeline(project.scenes, voice, { intro: !!project.intro?.title });
 
   // 3. hand
   const handDir = resolve(project.hand ? resolve(projDir, project.hand) : join(ROOT, 'assets/hands/default'));
@@ -80,7 +81,9 @@ export async function renderProject(o: RenderOptions) {
   const PW = Math.round(W * dpr), PH = Math.round(H * dpr);
   const env = { createCanvas: (w: number, h: number) => createCanvas(w, h) as any };
   const icons = JSON.parse(readFileSync(join(ROOT, 'assets/icons/tabler.json'), 'utf8'));
-  const model = prepare({ env, project, timeline, images, hand, dpr, icons });
+  const media: Record<string, any> = {};
+  for (const [k, f] of Object.entries(project.media || {})) media[k] = await loadImage(resolve(projDir, f)).catch(() => null);
+  const model = prepare({ env, project, timeline, images, hand, dpr, icons, media });
   const canvas = createCanvas(PW, PH), ctx = canvas.getContext('2d');
 
   const audioArgs: string[] = [], delays: string[] = [];

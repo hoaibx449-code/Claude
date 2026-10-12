@@ -3,7 +3,9 @@
 
 export type Ratio = '9:16' | '16:9';
 export type ToolKind = 'marker' | 'chalk' | 'fountain' | 'colormarker' | 'pencil' | 'technical' | 'brush';
-export type StyleKey = 'notebook' | 'whiteboard' | 'chalkboard' | 'kraft' | 'oly' | 'pencil' | 'blueprint' | 'ricepaper' | 'neon' | 'pastel' | 'newspaper' | 'comic' | 'darkboard' | 'sunset';
+export type StyleKey = 'notebook' | 'whiteboard' | 'chalkboard' | 'kraft' | 'oly' | 'pencil' | 'blueprint' | 'ricepaper' | 'neon' | 'pastel' | 'newspaper' | 'comic' | 'darkboard' | 'sunset' | 'cosmos' | 'manim' | 'bold';
+/** How the board comes alive: a hand drawing, motion graphics, maths animation, kinetic typography. */
+export type Mode = 'hand' | 'motion' | 'math' | 'kinetic';
 
 export interface PanelSpec {
   /** Local image file (SVG/PNG/WebP). Used as is when present. */
@@ -15,7 +17,9 @@ export interface PanelSpec {
 }
 
 export interface DiagramSpec {
-  kind: 'bars' | 'compare' | 'steps' | 'flow' | 'number' | 'statement' | 'stick' | 'sketch';
+  kind: 'bars' | 'compare' | 'steps' | 'flow' | 'number' | 'statement' | 'stick' | 'sketch' | 'plot';
+  /** plot: the shape of the curve (or explicit values), axis names */
+  fn?: 'linear' | 'exp' | 'log' | 'sin' | 'square' | 'sqrt' | 'down' | 'wave'; xLabel?: string; yLabel?: string;
   /** Handwritten heading above the diagram. */
   title?: string;
   values?: number[]; labels?: string[]; unit?: string; // bars
@@ -40,6 +44,10 @@ export type SketchItem = { id?: string; line?: number; /** words of the line: dr
   | { t: 'chart'; x: number; y: number; w?: number; h?: number; kind: 'bars' | 'flow' | 'compare' | 'steps' | 'number'; [k: string]: any }
   | { t: 'arrow'; from: string | [number, number]; to: string | [number, number]; curve?: number; color?: InkColor; label?: string }
   | { t: 'circle' | 'underline' | 'box' | 'cross' | 'check'; on: string; color?: InkColor }
+  /** a real picture (reference character, product photo); `src` is a key of ProjectSpec.media */
+  | { t: 'image'; src: string; x: number; y: number; w?: number; h?: number; shape?: 'rounded' | 'circle'; label?: string }
+  /** QR code of a link (affiliate) */
+  | { t: 'qr'; text: string; x: number; y: number; w?: number; label?: string }
 );
 
 export interface SceneSpec {
@@ -67,6 +75,16 @@ export interface ProjectSpec {
   subtitles?: boolean;
   /** How one board gives way to the next; auto = varied. */
   transition?: 'auto' | 'fade' | 'slide' | 'wipe' | 'zoom';
+  /** hand (default) · motion graphics · maths animation · kinetic typography */
+  mode?: Mode;
+  /** Opening title card, made to work as the video's thumbnail. */
+  intro?: { title: string; sub?: string; badge?: string; icon?: string } | null;
+  /** Pictures used by image items: key → URL (browser) or file path (server). */
+  media?: Record<string, string>;
+  /** media key of a reference character: it plays the people of every scene */
+  character?: string;
+  /** affiliate product shown at the end (the editor builds that scene from it) */
+  affiliate?: { link: string; product?: string; price?: string; image?: string };
   scenes: SceneSpec[];
 }
 
@@ -78,7 +96,7 @@ export interface SceneTiming extends Span {
   panels: Span[];
 }
 
-export interface Timeline { scenes: SceneTiming[]; duration: number }
+export interface Timeline { scenes: SceneTiming[]; duration: number; /** length of the opening title card */ intro?: number }
 
 export interface HandMeta {
   width: number;

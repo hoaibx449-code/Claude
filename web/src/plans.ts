@@ -41,6 +41,8 @@ export async function checkAllowed(env: XEnv, user: User, spec: any) {
   if (spec.voice?.voiceId && !allows(plan.voices, spec.voice.voiceId)) {
     throw new HttpError(402, 'Giọng đọc này thuộc gói cao hơn. Chọn giọng khác hoặc nâng cấp.', upgradeFor(env, (p) => allows(p.voices, spec.voice.voiceId)));
   }
+  const cap = env.config.limits.maxSeconds;
+  if (seconds > cap * 1.15) throw new HttpError(400, `Video dài khoảng ${Math.round(seconds / 60)} phút, hệ thống cho tối đa ${Math.round(cap / 60)} phút. Hãy rút gọn kịch bản.`);
   if (seconds > plan.maxSeconds * 1.15) {
     throw new HttpError(402, `Video dài khoảng ${Math.round(seconds)} giây, gói ${plan.name} cho tối đa ${plan.maxSeconds} giây.`, upgradeFor(env, (p) => p.maxSeconds >= seconds));
   }
@@ -104,7 +106,7 @@ export async function planRoutes(req: Request, env: XEnv, rc: Rc, user: User, pa
       rc.log('order.create', { data: { code, plan: plan.id, amount: plan.price } });
       rc.wait(notifyOwner(env, 'order', `Đơn mới ${code}: gói ${plan.name}, ${plan.price.toLocaleString('vi-VN')}đ — ${user.email}`));
     }
-    return json({ order: { ...o, qr: qrUrl(env, o.amount, o.code), bank: p.bank, account: p.account, accountName: p.accountName, memo: o.code, expires: o.created_at + p.expiryDays * DAY, note: p.note } });
+    return json({ order: { ...o, qr: qrUrl(env, o.amount, o.code), bank: p.bank, account: p.account, accountName: p.accountName, memo: o.code, expires: o.created_at + p.expiryDays * DAY, note: p.note, holdMinutes: p.holdMinutes, planName: plan.name } });
   }
   const m = path.match(/^\/api\/orders\/([A-Z0-9]{6,12})(\/cancel)?$/);
   if (m) {

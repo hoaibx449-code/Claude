@@ -32,7 +32,7 @@ function sketchSchema(ratio: string) {
     '{"t":"text","id":"a","text":"≤6 chữ","x":50,"y":8,"size":"s|m|l|xl|xxl","color":"ink|accent|accent2|good"} (xxl cho con số lớn; accent = đỏ nhấn, accent2 = xanh) · ' +
     '{"t":"icon","id":"b","name":"tên icon","x":30,"y":40,"w":10-45 (% bề ngang),"label":"≤4 chữ (tuỳ chọn)"} · ' +
     '{"t":"person","id":"c","action":"idle|walk|run|wave|think|cheer|sad|point|shrug|jump","x":..,"y":..,"h":20-45 (% chiều cao),"facing":1|-1,"label":"≤2 chữ","bubble":"≤8 chữ (tuỳ chọn)"} (người que chuyển động thật) · ' +
-    '{"t":"chart","kind":"bars|flow|compare|steps|number",...trường như diagram ở trên (không title)...,"x":..,"y":..,"w":%,"h":%} · ' +
+    '{"t":"chart","kind":"bars|flow|compare|steps|number|plot",...trường như diagram ở trên (không title)...,"x":..,"y":..,"w":%,"h":%} · ' +
     '{"t":"arrow","from":"id","to":"id","curve":-1..1,"label":"≤3 chữ"} · {"t":"circle|underline|box|cross|check","on":"id"}',
     `x,y là TÂM của vật, tính theo % vùng vẽ (0-100). Vùng vẽ ${portrait ? 'DỌC (cao ≈ 1,7 lần rộng): xếp các vật theo chiều dọc, tiêu đề y≈6, nội dung y 20-90, mỗi hàng tối đa 2-3 vật' : 'NGANG (rộng ≈ 2 lần cao): xếp theo chiều ngang, tiêu đề y≈8, nội dung trải từ x 10 tới 90'}. Không để các vật chồng lên nhau; chừa khoảng trống giữa chúng.`,
     'Tên icon (tiếng Anh, chữ thường, nối gạch) chọn trong: ' + ICON_VOCAB + '. Có thể dùng tên icon Tabler khác nếu chắc chắn tồn tại.',
@@ -50,6 +50,7 @@ const DIAGRAM_SCHEMA =
   '{"kind":"steps","title":"...","items":["≤10 chữ", "..."]} (2-4 bước) · ' +
   '{"kind":"number","number":"≤6 ký tự, vd 90% hoặc 3 lần","caption":"≤10 chữ"} · ' +
   '{"kind":"statement","text":"câu chốt ≤14 chữ"} · ' +
+  '{"kind":"plot","fn":"linear|exp|log|sin|square|sqrt|down|wave","values":[(tuỳ chọn) dãy số thật],"xLabel":"≤2 chữ","yLabel":"≤2 chữ","caption":"≤4 chữ"} — đồ thị hàm số có trục toạ độ (tăng trưởng, xu hướng, công thức, khoa học) · ' +
   '{"kind":"stick","title":"(tuỳ chọn)","actors":[{"action":"idle|walk|run|wave|think|cheer|sad|point|shrug|jump","label":"≤2 chữ, vd Bạn, Sếp"}],"bubble":"lời thoại ≤8 chữ (tuỳ chọn)","caption":"≤8 chữ (tuỳ chọn)"} — 1-2 người que CHUYỂN ĐỘNG THẬT (đi, chạy, vẫy tay, ăn mừng...), dùng cho tình huống, cảm xúc, nhân vật; người đầu tiên nói câu trong bubble. Chỉ dùng số liệu có thật hoặc ví dụ minh hoạ đã nói rõ là ví dụ';
 
 function systemPrompt(r: ScriptRequest) {

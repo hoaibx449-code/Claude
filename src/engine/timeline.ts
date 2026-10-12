@@ -7,9 +7,11 @@ export const LEAD_IN = 0.3; // hand moves in before the first line
  * Lay scenes end to end. `voice[i]` holds line spans relative to the start of
  * scene i's audio, plus that audio's duration.
  */
-export function buildTimeline(scenes: SceneSpec[], voice: { lines: Span[]; duration: number }[]): Timeline {
+export const INTRO = 1.8; // opening title card (thumbnail), seconds
+
+export function buildTimeline(scenes: SceneSpec[], voice: { lines: Span[]; duration: number }[], opts: { intro?: boolean } = {}): Timeline {
   const out: SceneTiming[] = [];
-  let t = 0;
+  let t = opts.intro ? INTRO : 0;
   scenes.forEach((sc, i) => {
     const v = voice[i];
     const audioStart = t + LEAD_IN;
@@ -35,7 +37,7 @@ export function buildTimeline(scenes: SceneSpec[], voice: { lines: Span[]; durat
     out.push({ start: t, end: sceneEnd, lines, panels });
     t = sceneEnd;
   });
-  return { scenes: out, duration: t + 0.6 };
+  return { scenes: out, duration: t + 0.6, intro: opts.intro ? INTRO : 0 };
 }
 
 /** Rough narration timing when no TTS timestamps exist (≈14 chars/s for Vietnamese). */

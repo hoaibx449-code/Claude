@@ -6,14 +6,17 @@ import { wrapVi } from './textwrap.ts';
 import { ACTIONS, actorAt, drawLines, lengthOf, pointAlong, type Action, type Actor } from './stick.ts';
 
 export interface Box { x: number; y: number; w: number; h: number }
-export interface Colors { ink: string; accent: string; accent2: string; good: string; fills?: string[] }
+export interface Colors { ink: string; accent: string; accent2: string; good: string; fills?: string[]; /** canvas font family (handwriting or the sans of the modern modes) */ font?: string; /** motion graphics: icons sit on coloured discs */ flat?: boolean; /** loaded pictures for image items */ images?: Record<string, any>; /** QR matrix maker for qr items */ qr?: (text: string) => boolean[][] | null; /** reference character picture: replaces the stick figures */ character?: any }
 /** How the tool marks the paper: extra offset passes (chalk, pencil) and brush pressure. */
 export interface Pen { passes: [number, number, number, number][]; brush?: boolean; width: number }
 
 /** line: narration line it is drawn with; item: sketch item it belongs to; cue: words of the line that trigger it */
 export type Element = { line?: number; item?: number; cue?: string } & (
   | { kind: 'path'; pts: [number, number][]; cum: number[]; len: number; color: string; width: number; weight: number }
-  | { kind: 'text'; text: string; x: number; y: number; size: number; w: number; color: string; weight: number }
+  | { kind: 'text'; text: string; x: number; y: number; size: number; w: number; color: string; weight: number; font?: string }
+  // a real picture, revealed (not traced)
+  | { kind: 'image'; img: any; x: number; y: number; w: number; h: number; shape?: 'rounded' | 'circle'; color: string; weight: number }
+  | { kind: 'qr'; cells: boolean[][]; x: number; y: number; size: number; color: string; weight: number }
   | { kind: 'fill'; pts: [number, number][]; color: string; anchor: [number, number]; weight: number }
   // stick figure: sketched in its first pose, then animated (tau = seconds since it was finished)
   | { kind: 'actor'; actor: Actor; first: [number, number][][]; len: number; color: string; width: number; weight: number }
@@ -51,11 +54,13 @@ export function wobble(pts: P[], seed: number): P[] {
   return pts.map(([x, y], i) => [x + Math.sin(i * 0.7 + seed) * 0.7, y + Math.cos(i * 0.9 + seed * 1.3) * 0.7]);
 }
 
-export function wrap(c: Ctx, text: string, size: number, max: number): string[] {
-  return wrapVi(c, text, size, max);
+export function wrap(c: Ctx, text: string, size: number, max: number, font = 'Pangolin'): string[] {
+  return wrapVi(c, text, size, max, font);
 }
 
 export function buildDiagram(c: Ctx, d: DiagramSpec, box: Box, col: Colors): Element[] {
+  const F = col.font || 'Pangolin';
+  const wrap = (cc: Ctx, s: string, size: number, max: number) => wrapVi(cc, s, size, max, F);
   const els: Element[] = [];
   let seed = 1;
   const path = (pts: P[], color = col.ink, width = 3.4) => {
@@ -67,9 +72,9 @@ export function buildDiagram(c: Ctx, d: DiagramSpec, box: Box, col: Colors): Ele
   // filled shape (kraft style colours bars after outlining them); the hand rests at `anchor`
   const fill = (pts: P[], color: string | undefined) => { if (color) els.push({ kind: 'fill', pts, color, anchor: pts[pts.length - 1], weight: 0.3 }); };
   const text = (s: string, x: number, y: number, size: number, color = col.ink, align: 'left' | 'center' = 'left') => {
-    c.font = `${size}px Pangolin`;
+    c.font = `${size}px ${F}`;
     const w = c.measureText(s).width;
-    els.push({ kind: 'text', text: s, x: align === 'center' ? x - w / 2 : x, y, size, w, color, weight: Math.max(0.35, s.length * 0.045) });
+    els.push({ kind: 'text', font: F, text: s, x: align === 'center' ? x - w / 2 : x, y, size, w, color, weight: Math.max(0.35, s.length * 0.045) });
     return w;
   };
   const portrait = box.h > box.w;
@@ -87,6 +92,29 @@ export function buildDiagram(c: Ctx, d: DiagramSpec, box: Box, col: Colors): Ele
   const bottom = box.y + box.h, avail = bottom - top, cx = box.x + box.w / 2;
 
   switch (d.kind) {
+    case 'plot': {
+      // axes with arrow heads, light ticks, then the curve traced point by point (maths-video look)
+      const pad = portrait ? 34 : 40, x0 = box.x + pad, x1 = box.x + box.w - 12, y0 = top + 14, y1 = bottom - pad;
+      path(arrow([x0, y1], [x1, y1]), col.ink, 2.6);
+      path(arrow([x0, y1], [x0, y0]), col.ink, 2.6);
+      for (let i = 1; i <= 4; i++) { const x = x0 + ((x1 - x0 - 20) * i) / 4, y = y1 - ((y1 - y0 - 20) * i) / 4; path(line([x, y1 - 6], [x, y1 + 6]), col.ink, 1.8); path(line([x0 - 6, y], [x0 + 6, y]), col.ink, 1.8); }
+      const f: Record<string, (u: number) => number> = {
+        linear: (u) => u, exp: (u) => (Math.exp(3 * u) - 1) / (Math.exp(3) - 1), log: (u) => Math.log(1 + 9 * u) / Math.log(10), sin: (u) => 0.5 + 0.42 * Math.sin(u * Math.PI * 2),
+        square: (u) => u * u, sqrt: (u) => Math.sqrt(u), down: (u) => 1 - u * 0.9, wave: (u) => 0.5 + 0.35 * Math.sin(u * Math.PI * 3) * (1 - u * 0.5),
+      };
+      const vals = (d.values || []).filter((v) => isFinite(v));
+      const fn = vals.length > 1 ? (u: number) => { const k = u * (vals.length - 1), i = Math.min(vals.length - 2, Math.floor(k)), mx = Math.max(...vals), mn = Math.min(0, ...vals); return ((vals[i] + (vals[i + 1] - vals[i]) * (k - i)) - mn) / (mx - mn || 1); } : f[d.fn || 'exp'] || f.exp;
+      const pts: P[] = [];
+      for (let i = 0; i <= 80; i++) { const u = i / 80; pts.push([x0 + 6 + (x1 - x0 - 30) * u, y1 - 8 - (y1 - y0 - 40) * Math.max(0, Math.min(1, fn(u)))]); }
+      path(pts, col.accent2, 4.2);
+      const end = pts[pts.length - 1];
+      path(ellipse(end[0], end[1], 7, 7), col.accent, 3);
+      const ls = portrait ? 24 : 21;
+      if (d.xLabel) text(d.xLabel, x1 - 4, y1 + ls + 10, ls, col.ink, 'center');
+      if (d.yLabel) text(d.yLabel, x0 + 8, y0 - 6 + ls * 0.2, ls, col.ink, 'left');
+      if (d.caption) text(wrap(c, d.caption, ls + 4, box.w * 0.6)[0] || '', Math.min(end[0], x1 - box.w * 0.25), Math.max(y0 + ls * 2, end[1] - 26), ls + 4, col.accent, 'center');
+      break;
+    }
     case 'bars': {
       const vals = (d.values || []).slice(0, 5), labels = d.labels || [];
       if (!vals.length) break;
@@ -258,6 +286,30 @@ export function drawElement(c: Ctx, e: Element, p: number, alpha: number, pen: P
     return;
   }
   c.save();
+  if (e.kind === 'image') {
+    // the picture is revealed by a growing rounded window and a soft pop
+    const q = Math.min(1, p * 1.15), k = 0.9 + 0.1 * q;
+    c.globalAlpha = alpha * Math.min(1, p * 2);
+    c.translate(e.x + e.w / 2, e.y + e.h / 2); c.scale(k, k); c.translate(-e.w / 2, -e.h / 2);
+    c.beginPath();
+    if (e.shape === 'circle') c.arc(e.w / 2, e.h / 2, Math.min(e.w, e.h) / 2, 0, Math.PI * 2);
+    else roundRect(c, 0, 0, e.w, e.h * q, Math.min(e.w, e.h) * 0.08);
+    c.save(); c.clip();
+    const s = Math.max(e.w / e.img.width, e.h / e.img.height), dw = e.img.width * s, dh = e.img.height * s;
+    c.drawImage(e.img, (e.w - dw) / 2, (e.h - dh) / 2, dw, dh);
+    c.restore();
+    c.lineWidth = 4; c.strokeStyle = e.color; c.stroke();
+    c.restore(); return;
+  }
+  if (e.kind === 'qr') {
+    const n = e.cells.length, cell = e.size / (n + 2);
+    c.globalAlpha = alpha * Math.min(1, p * 1.5);
+    c.fillStyle = '#ffffff'; c.beginPath(); roundRect(c, e.x, e.y, e.size, e.size, cell * 1.2); c.fill();
+    c.fillStyle = '#111111';
+    const rows = Math.ceil(n * Math.min(1, p * 1.2));
+    for (let r = 0; r < rows; r++) for (let q = 0; q < n; q++) if (e.cells[r][q]) c.fillRect(e.x + cell * (q + 1), e.y + cell * (r + 1), cell + 0.3, cell + 0.3);
+    c.restore(); return;
+  }
   if (e.kind === 'fill') {
     c.globalAlpha = alpha * 0.85 * p; c.fillStyle = e.color; c.beginPath();
     e.pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); c.fill();
@@ -265,7 +317,7 @@ export function drawElement(c: Ctx, e: Element, p: number, alpha: number, pen: P
   }
   if (e.kind === 'text') {
     c.beginPath(); c.rect(e.x - 4, e.y - e.size * 1.15, e.w * p + 6, e.size * 1.6); c.clip();
-    c.font = `${e.size}px Pangolin`; c.textAlign = 'left'; c.fillStyle = e.color;
+    c.font = `${e.size}px ${e.font || 'Pangolin'}`; c.textAlign = 'left'; c.fillStyle = e.color;
     for (const [dx, dy, a] of pen.passes) { c.globalAlpha = alpha * a; c.fillText(e.text, e.x + dx * 0.6, e.y + dy * 0.6); }
     c.restore(); return;
   }
@@ -296,7 +348,25 @@ export function drawElement(c: Ctx, e: Element, p: number, alpha: number, pen: P
   c.restore();
 }
 
+function roundRect(c: Ctx, x: number, y: number, w: number, h: number, r: number) {
+  c.moveTo(x + r, y); c.lineTo(x + w - r, y); c.quadraticCurveTo(x + w, y, x + w, y + r); c.lineTo(x + w, y + h - r); c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  c.lineTo(x + r, y + h); c.quadraticCurveTo(x, y + h, x, y + h - r); c.lineTo(x, y + r); c.quadraticCurveTo(x, y, x + r, y); c.closePath();
+}
+
+/** Centre of an element (motion graphics scale things around it). */
+export function elementCentre(e: Element): [number, number] {
+  if (e.kind === 'image') return [e.x + e.w / 2, e.y + e.h / 2];
+  if (e.kind === 'qr') return [e.x + e.size / 2, e.y + e.size / 2];
+  if (e.kind === 'text') return [e.x + e.w / 2, e.y - e.size * 0.35];
+  const all: [number, number][] = e.kind === 'path' || e.kind === 'fill' ? e.pts : e.kind === 'lines' ? e.lines.flat() : e.first.flat();
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of all) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  return isFinite(x0) ? [(x0 + x1) / 2, (y0 + y1) / 2] : [0, 0];
+}
+
 export function elementPen(e: Element, p: number): [number, number] {
+  if (e.kind === 'image') return [e.x + e.w * p, e.y + e.h * Math.min(1, p * 1.15)];
+  if (e.kind === 'qr') return [e.x + e.size, e.y + e.size * p];
   if (e.kind === 'fill') return e.anchor;
   if (e.kind === 'actor') return pointAlong(e.first, e.len * p);
   if (e.kind === 'lines') return pointAlong(e.lines, e.len * p);

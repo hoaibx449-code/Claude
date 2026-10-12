@@ -6,6 +6,7 @@ import { body, type Env, HttpError, json, today } from './util.ts';
 import type { Rc, XEnv } from './worker.ts';
 import { zaloAdmin } from './zalo.ts';
 import { plansAdmin } from './plans.ts';
+import { communityAdmin } from './media.ts';
 
 const DAY = 86_400_000, TZ = 7 * 3_600_000; // days are counted in Vietnam time
 
@@ -159,6 +160,7 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
     return json({ ok: true });
   }
 
+  if (sub.startsWith('community')) { const r = await communityAdmin(req, env, sub, method, rc); if (r) return r; }
   if (sub.startsWith('zalo')) return zaloAdmin(req, env, rawEnv, sub, method, rc);
   if (sub.startsWith('plans') || sub.startsWith('orders') || sub.startsWith('grant')) return plansAdmin(req, env, sub, method, rc);
   throw new HttpError(404, 'Không tìm thấy.');
