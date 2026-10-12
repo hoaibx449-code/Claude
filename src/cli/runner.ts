@@ -55,12 +55,20 @@ async function runJob(job: { id: string; spec: ProjectSpec }) {
   }
 }
 
+// Voice keys entered on the admin page override the machine's own environment.
+async function loadKeys() {
+  try {
+    const { env } = (await (await call('/api/runner/config')).json()) as { env: Record<string, string> };
+    for (const [k, v] of Object.entries(env || {})) if (/^[A-Z_]+_API_KEY$/.test(k) && v) process.env[k] = v;
+  } catch (e: any) { console.error('Không đọc được cài đặt:', e.message); }
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 for (;;) {
   let job = null;
   try { job = (await (await post('/api/runner/claim', { runner: hostname() })).json() as any).job; }
   catch (e: any) { console.error(e.message); }
-  if (job) { await runJob(job); if (once) break; }
+  if (job) { await loadKeys(); await runJob(job); if (once) break; }
   else if (once || drain) break;
   else await sleep(10_000);
 }

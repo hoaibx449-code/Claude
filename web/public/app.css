@@ -78,3 +78,19 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; col
   .preview { position: static; max-width: 360px; margin: 0 auto; width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+
+/* admin */
+#adminLink { font-weight: 600; text-decoration: none; }
+.keyrow { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+.keyrow > label { flex: 1 1 320px; }
+.keyrow small { color: var(--muted); }
+label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--ink); }
+label.check input { width: auto; }
+details { border-top: 1px solid var(--line); padding-top: 10px; }
+summary { cursor: pointer; font-weight: 600; margin-bottom: 10px; }
+code { font-size: 0.75rem; color: var(--muted); }
+.table { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; }
+.savebar { position: sticky; bottom: 12px; display: flex; justify-content: flex-end; }

@@ -1,17 +1,22 @@
 // Nét Vẽ Studio — browser app. All user text is inserted with textContent, never as HTML.
 'use strict';
 
-const VOICES = [
-  ['vi_female_thuytrang_mb', 'Thùy Trang · nữ Bắc · nói chuyện'], ['vi_male_minhtriet_mb', 'Minh Triết · nam Bắc · sách nói'],
-  ['vi_male_leduc_mb', 'Lê Đức · nam Bắc · kể chuyện'], ['vi_female_kimphuong_mb', 'Kim Phượng · nữ Bắc · kể chuyện'],
-  ['vi_male_lehoang_mb', 'Lê Hoàng · nam Bắc · mạch lạc'], ['vi_male_vanduy_mb', 'Văn Duy · nam Bắc · bình luận'],
-  ['vi_female_thuylinh_mb', 'Thùy Linh · nữ Bắc · podcast'], ['vi_female_hoaian_mb', 'Hoài An · nữ Bắc · đọc tin'],
-  ['vi_male_minhkhang_mb', 'Minh Khang · nam Bắc · mạng xã hội'], ['vi_female_khanhlinh_mb', 'Khánh Linh · nữ Bắc · review'],
-  ['vi_female_thuytien_mn', 'Thùy Tiên · nữ Nam · trò chuyện'], ['vi_female_hongngan_mn', 'Hồng Ngân · nữ Nam · nhẹ nhàng'],
-  ['vi_male_tridung_mn', 'Trí Dũng · nam Nam · sách nói'], ['vi_male_thanhtrung_mn', 'Thành Trung · nam Nam · podcast'],
-  ['vi_male_tuankiet_mn', 'Tuấn Kiệt · nam Nam · tin tức'], ['vi_male_vanduc_mn', 'Văn Đức · nam Nam · tự sự'],
-];
-const STYLE_KEYS = ['whiteboard', 'chalkboard', 'oly', 'kraft', 'pencil', 'blueprint', 'ricepaper', 'notebook'];
+// Every name shown here comes from the admin settings (/api/me → ui); see web/src/settings.ts.
+let ui = { brand: {}, labels: { styles: {}, tools: {}, kinds: {}, visual: {}, actions: {}, ai: {} }, texts: {}, enabledStyles: [], defaults: {}, voices: [] };
+const T = (k) => ui.texts?.[k] ?? k;
+const L = (group, k) => ui.labels?.[group]?.[k] ?? k;
+const voiceOptions = () => ui.voices.map((v) => [v.code, v.label]);
+const styleOptions = () => ui.enabledStyles.map((k) => [k, L('styles', k)]);
+function applyUI(next) {
+  if (!next) return;
+  ui = next;
+  const b = document.querySelector('.brand');
+  b.replaceChildren(ui.brand.name + ' ', h('span', {}, ui.brand.accent || ''));
+  document.title = [ui.brand.name, ui.brand.accent].filter(Boolean).join(' ');
+  document.querySelector('meta[name=description]')?.setAttribute('content', ui.brand.tagline || '');
+  document.getElementById('logout').textContent = T('logout');
+  document.getElementById('adminLink').textContent = T('admin');
+}
 const view = document.getElementById('view');
 let me = null;
 
@@ -66,7 +71,9 @@ async function boot() {
     location.hash = '#/'; location.reload();
   });
   try { me = await api('/api/me'); } catch (e) { if (e.status === 401) return showLogin(); return fatal(e); }
+  applyUI(me.ui);
   document.getElementById('who').hidden = false;
+  document.getElementById('adminLink').hidden = !me.admin;
   document.getElementById('whoEmail').textContent = me.user.email;
   window.addEventListener('hashchange', route);
   route();
@@ -74,16 +81,15 @@ async function boot() {
 function route() {
   stopPreview();
   const m = location.hash.match(/^#\/p\/([a-f0-9]{24})$/);
-  (m ? showEditor(m[1]) : showHome()).catch(fatal);
+  (m ? showEditor(m[1]) : location.hash === '#/admin' && me.admin ? showAdmin() : showHome()).catch(fatal);
 }
 function fatal(e) { view.replaceChildren(h('div', { class: 'card' }, h('p', { class: 'error' }, e.message || String(e)), h('a', { href: '#/' }, 'Về trang chủ'))); }
 
 // ---------- login
 async function showLogin() {
   const cfg = await api('/api/auth/config');
-  const box = h('div', { class: 'card login' },
-    h('h1', {}, 'Video bàn tay vẽ, từ một câu chủ đề'),
-    h('p', { class: 'muted' }, 'AI viết kịch bản, bạn chỉnh từng câu, xem trước bàn tay vẽ ngay trên trang, rồi nhận video MP4 có giọng đọc và phụ đề.'));
+  applyUI(cfg.ui);
+  const box = h('div', { class: 'card login' }, h('h1', {}, T('loginTitle')), h('p', { class: 'muted' }, T('loginText')));
   if (cfg.clientId) {
     const slot = h('div', { class: 'gbtn' });
     box.append(slot);
@@ -110,46 +116,54 @@ async function showLogin() {
 }
 
 // ---------- home
+const textAIOptions = () => [...['gemini', 'openai'].filter((k) => me.ai?.[k]).map((k) => [k, L('ai', k)]), ...(location.hostname === 'localhost' ? [['mock', 'Mẫu có sẵn (thử nghiệm)']] : [])];
+function secondsOptions(def) {
+  const list = [['30', '30 giây'], ['45', '45 giây'], ['60', '1 phút'], ['90', '1,5 phút'], ['150', '2,5 phút']];
+  if (def && !list.some(([v]) => Number(v) === Number(def))) list.push([String(def), `${def} giây`]);
+  return list;
+}
+
 async function showHome() {
   const { projects } = await api('/api/projects');
-  const lim = me.limits, used = me.used || {};
+  const lim = me.limits, used = me.used || {}, D = ui.defaults || {};
   const f = {
-    topic: h('textarea', { id: 'f-topic', rows: 4, maxlength: 3000, placeholder: 'Ví dụ: Vì sao lương mãi không tăng dù làm việc chăm chỉ?' }),
-    ai: h('select', { id: 'f-ai' }, options([...(me.ai?.gemini ? [['gemini', 'Gemini']] : []), ...(me.ai?.openai ? [['openai', 'OpenAI']] : []), ...(location.hostname === 'localhost' ? [['mock', 'Mẫu có sẵn (thử nghiệm)']] : [])], me.ai?.gemini ? 'gemini' : 'openai')),
-    seconds: h('select', { id: 'f-seconds' }, options([['30', '30 giây'], ['45', '45 giây'], ['60', '1 phút'], ['90', '1,5 phút'], ['150', '2,5 phút']], '45')),
-    ratio: h('select', { id: 'f-ratio' }, options([['9:16', 'Dọc 9:16 (TikTok, Shorts, Reels)'], ['16:9', 'Ngang 16:9 (YouTube)']], '9:16')),
-    style: h('select', { id: 'f-style' }, options(STYLE_KEYS.map((k) => [k, NV.STYLES[k].name]), 'whiteboard')),
-    voice: h('select', { id: 'f-voice' }, options(VOICES, VOICES[0][0])),
-    channel: h('input', { id: 'f-channel', maxlength: 40, placeholder: 'Tên kênh (hiện góc trái)' }),
-    episode: h('input', { id: 'f-episode', maxlength: 30, placeholder: 'Ví dụ: Tập 1' }),
-    tone: h('input', { id: 'f-tone', maxlength: 200, placeholder: 'Ví dụ: gần gũi, hài hước nhẹ' }),
-    visual: h('select', { id: 'f-visual' }, options([['diagram', 'Sơ đồ vẽ tay — giống demo (không tốn tiền ảnh)'], ['mix', 'Kết hợp sơ đồ + tranh AI'], ['images', 'Tranh AI cho mọi cảnh']], 'diagram')),
+    topic: h('textarea', { id: 'f-topic', rows: 4, maxlength: 3000, placeholder: T('topicHint') }),
+    ai: h('select', { id: 'f-ai' }, options(textAIOptions(), me.ai?.[D.textAI] ? D.textAI : textAIOptions()[0]?.[0])),
+    seconds: h('select', { id: 'f-seconds' }, options(secondsOptions(D.seconds), String(D.seconds || 45))),
+    ratio: h('select', { id: 'f-ratio' }, options([['9:16', 'Dọc 9:16 (TikTok, Shorts, Reels)'], ['16:9', 'Ngang 16:9 (YouTube)']], D.ratio || '9:16')),
+    style: h('select', { id: 'f-style' }, options(styleOptions(), D.style)),
+    voice: h('select', { id: 'f-voice' }, options(voiceOptions(), D.voice)),
+    channel: h('input', { id: 'f-channel', maxlength: 40, value: D.channel || '', placeholder: T('channel') }),
+    episode: h('input', { id: 'f-episode', maxlength: 30, placeholder: T('episodeHint') }),
+    tone: h('input', { id: 'f-tone', maxlength: 200, value: D.tone || '', placeholder: T('toneHint') }),
+    visual: h('select', { id: 'f-visual' }, options(Object.entries(ui.labels.visual), D.visual || 'diagram')),
   };
-  const go = h('button', { type: 'submit' }, 'Viết kịch bản');
+  if (!f.ai.options.length) f.ai.append(h('option', { value: '' }, 'Chưa có khoá AI — vào trang Quản trị để nhập'));
+  const go = h('button', { type: 'submit' }, T('write'));
   const form = h('form', { class: 'card', onsubmit: async (e) => {
-    e.preventDefault(); go.disabled = true; go.textContent = 'AI đang viết…';
+    e.preventDefault(); go.disabled = true; go.textContent = T('writing');
     try {
       const r = await api('/api/projects/generate', { method: 'POST', body: {
         topic: f.topic.value, provider: f.ai.value, seconds: Number(f.seconds.value), ratio: f.ratio.value, style: f.style.value,
         voiceId: f.voice.value, channel: f.channel.value, episode: f.episode.value, tone: f.tone.value, visual: f.visual.value } });
       try { sessionStorage.setItem('autodraw:' + r.id, '1'); } catch {}
       location.hash = '#/p/' + r.id;
-    } catch (err) { toast(err.message); go.disabled = false; go.textContent = 'Viết kịch bản'; }
+    } catch (err) { toast(err.message); go.disabled = false; go.textContent = T('write'); }
   } },
-    h('h2', {}, 'Tạo video mới'),
-    h('label', { for: 'f-topic' }, 'Chủ đề hoặc kịch bản có sẵn', f.topic),
+    h('h2', {}, T('newVideo')),
+    h('label', { for: 'f-topic' }, T('topic'), f.topic),
     h('div', { class: 'grid' },
-      h('label', {}, 'AI viết kịch bản', f.ai), h('label', {}, 'Thời lượng', f.seconds), h('label', {}, 'Khung hình', f.ratio),
-      h('label', {}, 'Kiểu hình', f.visual), h('label', {}, 'Phong cách', f.style), h('label', {}, 'Giọng đọc', f.voice), h('label', {}, 'Giọng văn', f.tone),
-      h('label', {}, 'Tên kênh', f.channel), h('label', {}, 'Số tập', f.episode)),
+      h('label', {}, T('textAI'), f.ai), h('label', {}, T('duration'), f.seconds), h('label', {}, T('ratio'), f.ratio),
+      h('label', {}, T('visual'), f.visual), h('label', {}, T('style'), f.style), h('label', {}, T('voice'), f.voice), h('label', {}, T('tone'), f.tone),
+      h('label', {}, T('channel'), f.channel), h('label', {}, T('episode'), f.episode)),
     h('div', { class: 'row' }, go,
       h('span', { class: 'muted' }, `Hôm nay còn ${Math.max(0, lim.script - (used.script || 0))} lượt viết kịch bản, ${Math.max(0, lim.render - (used.render || 0))} lượt dựng video.`)));
   const list = projects.length
     ? h('div', { class: 'projects' }, projects.map((p) => h('a', { class: 'proj', href: '#/p/' + p.id },
         h('strong', {}, p.title), h('small', {}, 'Sửa lần cuối ' + fmtDate(p.updated_at)),
         p.last_job ? h('span', { class: 'pill ' + p.last_job }, JOB_TEXT[p.last_job] || p.last_job) : null)))
-    : h('p', { class: 'muted' }, 'Chưa có video nào. Nhập chủ đề ở trên để tạo video đầu tiên.');
-  view.replaceChildren(h('h1', {}, 'Xưởng video của bạn'), form, h('h2', {}, 'Video đã tạo'), list);
+    : h('p', { class: 'muted' }, T('noVideos'));
+  view.replaceChildren(h('h1', {}, T('homeTitle')), form, h('h2', {}, T('myVideos')), list);
 }
 
 // ---------- editor
@@ -176,7 +190,8 @@ async function showEditor(id) {
   const canvas = h('canvas', { 'aria-label': 'Xem trước video' });
   const playBtn = h('button', { type: 'button', class: 'small' }, 'Tạm dừng');
   const status = h('span', { class: 'muted' }, 'Đã lưu');
-  const imgProvider = h('select', {}, options([...(me.ai?.gemini ? [['gemini', 'Vẽ bằng Gemini']] : []), ...(me.ai?.openai ? [['openai', 'Vẽ bằng OpenAI']] : [])], me.ai?.gemini ? 'gemini' : 'openai'));
+  const imgList = ['gemini', 'openai'].filter((k) => me.ai?.[k]).map((k) => [k, 'Vẽ bằng ' + L('ai', k)]);
+  const imgProvider = h('select', {}, options(imgList, me.ai?.[ui.defaults.imageAI] ? ui.defaults.imageAI : imgList[0]?.[0]));
 
   const save = debounce(async () => {
     status.textContent = 'Đang lưu…';
@@ -189,23 +204,36 @@ async function showEditor(id) {
   const settings = h('div', { class: 'card' },
     h('label', {}, 'Tiêu đề', h('input', { value: spec.title, maxlength: 100, oninput: (e) => { spec.title = e.target.value; save(); } })),
     h('div', { class: 'grid' },
-      h('label', {}, 'Phong cách', h('select', { onchange: (e) => { spec.style = e.target.value; delete spec.tool; changed(); } }, options(STYLE_KEYS.map((k) => [k, NV.STYLES[k].name]), spec.style))),
+      h('label', {}, 'Phong cách', h('select', { onchange: (e) => { spec.style = e.target.value; delete spec.tool; changed(); } }, options(styleOptions().concat(ui.enabledStyles.includes(spec.style) ? [] : [[spec.style, L('styles', spec.style)]]), spec.style))),
       h('label', {}, 'Dụng cụ vẽ', h('select', { onchange: (e) => { if (e.target.value) spec.tool = e.target.value; else delete spec.tool; changed(); } },
-        options([['', 'Theo phong cách'], ...Object.entries(NV.TOOL_NAMES)], spec.tool || ''))),
+        options([['', 'Theo phong cách'], ...Object.entries(ui.labels.tools)], spec.tool || ''))),
       h('label', {}, 'Khung hình', h('select', { onchange: (e) => { spec.ratio = e.target.value; changed(); } }, options([['9:16', 'Dọc 9:16'], ['16:9', 'Ngang 16:9']], spec.ratio))),
-      h('label', {}, 'Giọng đọc', h('select', { onchange: (e) => { spec.voice.voiceId = e.target.value; save(); } }, options(VOICES, spec.voice?.voiceId || VOICES[0][0]))),
+      h('label', {}, T('voice'), h('select', { onchange: (e) => { spec.voice.voiceId = e.target.value; save(); } }, options(voiceOptions(), spec.voice?.voiceId || ui.defaults.voice))),
       h('label', {}, 'Tốc độ đọc', h('select', { onchange: (e) => { spec.voice.speed = Number(e.target.value); save(); } },
         options([['0.9', 'Chậm'], ['1', 'Vừa'], ['1.1', 'Hơi nhanh'], ['1.2', 'Nhanh']], String(spec.voice?.speed ?? 1)))),
       h('label', {}, 'Tên kênh', h('input', { value: spec.channel || '', maxlength: 40, oninput: (e) => { spec.channel = e.target.value; changed(); } })),
       h('label', {}, 'Số tập', h('input', { value: spec.episode || '', maxlength: 30, oninput: (e) => { spec.episode = e.target.value; changed(); } }))));
 
   const scenesBox = h('div', { class: 'scenes' });
-  const DIAGRAM_KINDS = [['bars', 'Biểu đồ cột (có mũi tên, đường cong)'], ['flow', 'Chuỗi nguyên nhân → kết quả'], ['compare', 'So sánh ✗ / ✓'], ['steps', 'Các bước'], ['number', 'Con số nổi bật'], ['statement', 'Câu chốt']];
+  const DIAGRAM_KINDS = Object.entries(ui.labels.kinds);
   const field = (label, value, onInput, opts = {}) => h('label', {}, label, h(opts.area ? 'textarea' : 'input', { value: value ?? '', maxlength: opts.max || 80, rows: opts.area ? 3 : undefined, oninput: (e) => onInput(e.target.value) }));
   function diagramEditor(sc) {
     const d = sc.diagram, set = (k, v) => { d[k] = v; changed(); };
     const list = (v) => v.split(',').map((x) => x.trim()).filter(Boolean);
-    const kind = h('select', { onchange: (e) => { d.kind = e.target.value; drawScenes(); changed(); } }, options(DIAGRAM_KINDS, d.kind));
+    const kind = h('select', { onchange: (e) => {
+      d.kind = e.target.value;
+      if (d.kind === 'stick' && !d.actors?.length) d.actors = [{ action: 'wave', label: 'Bạn' }];
+      drawScenes(); changed();
+    } }, options(DIAGRAM_KINDS, d.kind));
+    const actorRow = (i) => {
+      const a = (d.actors ||= [])[i];
+      return h('div', { class: 'grid' },
+        h('label', {}, `Người ${i + 1} — động tác`, h('select', { onchange: (e) => {
+          if (!e.target.value) d.actors.splice(i, 1); else if (a) a.action = e.target.value; else d.actors.push({ action: e.target.value });
+          drawScenes(); changed();
+        } }, options([...(i > 0 ? [['', '— không có —']] : []), ...Object.entries(ui.labels.actions)], a?.action || ''))),
+        a ? field('Nhãn dưới chân', a.label, (v) => { a.label = v; changed(); }, { max: 16 }) : null);
+    };
     const fields = {
       statement: [field('Câu chốt (viết tay)', d.text, (v) => set('text', v), { max: 140, area: true })],
       number: [field('Con số', d.number, (v) => set('number', v), { max: 10 }), field('Chú thích', d.caption, (v) => set('caption', v))],
@@ -214,6 +242,7 @@ async function showEditor(id) {
         field('Nhãn từng cột (cách nhau bởi dấu phẩy)', (d.labels || []).join(', '), (v) => set('labels', list(v))), field('Đơn vị', d.unit, (v) => set('unit', v), { max: 6 })],
       compare: [field('Bên trái (cách sai)', d.left, (v) => set('left', v), { max: 24 }), field('Ghi chú trái', d.leftNote, (v) => set('leftNote', v)),
         field('Bên phải (cách đúng)', d.right, (v) => set('right', v), { max: 24 }), field('Ghi chú phải', d.rightNote, (v) => set('rightNote', v))],
+      stick: [actorRow(0), actorRow(1), field('Lời thoại người 1 (bong bóng)', d.bubble, (v) => set('bubble', v), { max: 60 }), field('Chú thích', d.caption, (v) => set('caption', v), { max: 60 })],
       steps: [field('Các bước (mỗi dòng một bước)', (d.items || []).join('\n'), (v) => set('items', v.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 4)), { area: true, max: 300 })],
     }[d.kind] || [];
     return h('div', { class: 'panel' }, h('span', { class: 'tag' }, 'Sơ đồ vẽ tay (bàn tay vẽ từng nét)'),
@@ -231,7 +260,7 @@ async function showEditor(id) {
     } catch (e) { toast(e.message); return false; }
     finally { if (btn) { btn.disabled = false; btn.textContent = 'Vẽ lại bằng AI'; } }
   }
-  const drawAllBtn = h('button', { type: 'button', class: 'ghost', onclick: async () => { if (await drawAll()) toast('Mọi khung đã có tranh AI.'); } }, 'Vẽ tất cả bằng AI');
+  const drawAllBtn = h('button', { type: 'button', class: 'ghost', onclick: async () => { if (await drawAll()) toast('Mọi khung đã có tranh AI.'); } }, T('drawAll'));
   async function drawAll() {
     const todo = [];
     spec.scenes.forEach((sc, si) => sc.panels.forEach((p, pi) => { if (p.prompt && !p.image?.startsWith('r2:')) todo.push([si, pi]); }));
@@ -243,7 +272,7 @@ async function showEditor(id) {
       drawAllBtn.textContent = `Đang vẽ ${i + 1}/${todo.length}…`;
       if (!(await drawPanel(...todo[i]))) { ok = false; break; }
     }
-    drawAllBtn.disabled = false; drawAllBtn.textContent = 'Vẽ tất cả bằng AI';
+    drawAllBtn.disabled = false; drawAllBtn.textContent = T('drawAll');
     drawScenes();
     return ok;
   }
@@ -279,7 +308,7 @@ async function showEditor(id) {
   drawScenes();
 
   const tags = () => [spec.caption, (spec.hashtags || []).join(' ')].filter(Boolean).join('\n\n');
-  const postCard = h('div', { class: 'card' }, h('h2', {}, 'Nội dung đăng bài'),
+  const postCard = h('div', { class: 'card' }, h('h2', {}, T('post')),
     field('Caption', spec.caption, (v) => { spec.caption = v; save(); }, { area: true, max: 300 }),
     field('Hashtag (cách nhau bởi dấu cách)', (spec.hashtags || []).join(' '), (v) => { spec.hashtags = v.split(/\s+/).filter(Boolean); save(); }, { max: 300 }),
     h('button', { type: 'button', class: 'ghost small', onclick: async (e) => {
@@ -299,7 +328,7 @@ async function showEditor(id) {
     }
     catch (e) { toast(e.message); }
     renderBtn.disabled = false;
-  } }, 'Dựng video');
+  } }, T('render'));
   let pollTimer;
   async function pollJobs() {
     clearTimeout(pollTimer);
@@ -310,7 +339,7 @@ async function showEditor(id) {
       j.status === 'queued' ? h('small', { class: 'muted' }, `Có ${queueLength} video đang chờ trong hàng.`) : null,
       j.status === 'running' ? h('div', { class: 'bar' }, h('i', { style: `width:${j.progress}%` })) : null,
       j.status === 'failed' ? h('p', { class: 'error' }, j.error || 'Dựng thất bại.') : null,
-      j.status === 'done' ? h('div', { class: 'row' }, h('a', { href: `/api/jobs/${j.id}/video`, download: true }, 'Tải video MP4'), h('a', { href: `/api/jobs/${j.id}/srt`, download: true }, 'Tải phụ đề')) : null))
+      j.status === 'done' ? h('div', { class: 'row' }, h('a', { href: `/api/jobs/${j.id}/video`, download: true }, T('download')), h('a', { href: `/api/jobs/${j.id}/srt`, download: true }, T('subtitles'))) : null))
       : [h('p', { class: 'muted' }, 'Chưa dựng lần nào.')]));
     if (jobs.some((j) => j.status === 'queued' || j.status === 'running')) pollTimer = setTimeout(pollJobs, 4000);
   }
@@ -321,10 +350,10 @@ async function showEditor(id) {
       h('button', { type: 'button', class: 'ghost small', onclick: () => { if (pv) { pv.t = 0; pv.playing = true; playBtn.textContent = 'Tạm dừng'; } } }, 'Phát lại'),
       status),
     h('small', { class: 'muted' }, 'Xem trước không có tiếng; nhịp vẽ ước tính theo độ dài câu. Video dựng xong sẽ khớp đúng giọng đọc.'),
-    h('div', { class: 'card' }, h('h2', {}, 'Xuất video'), h('div', { class: 'row' }, renderBtn, imgProvider), jobsBox));
+    h('div', { class: 'card' }, h('h2', {}, T('export')), h('div', { class: 'row' }, renderBtn, imgProvider), jobsBox));
   playBtn.addEventListener('click', () => { if (!pv) return; pv.playing = !pv.playing; playBtn.textContent = pv.playing ? 'Tạm dừng' : 'Phát'; });
 
-  view.replaceChildren(h('a', { href: '#/' }, '← Tất cả video'), h('div', { class: 'editor' }, preview, h('div', { class: 'scenes' }, settings, scenesBox, postCard)));
+  view.replaceChildren(h('a', { href: '#/' }, T('allVideos')), h('div', { class: 'editor' }, preview, h('div', { class: 'scenes' }, settings, scenesBox, postCard)));
   await buildPreview(spec, canvas, playBtn);
   pollJobs();
   let auto = false;
@@ -359,4 +388,5 @@ async function buildPreview(spec, canvas, playBtn) {
   pv.raf = requestAnimationFrame(loop);
 }
 
-boot().catch(fatal);
+// admin.js (loaded after this file) defines showAdmin; start once every script is in
+document.addEventListener('DOMContentLoaded', () => boot().catch(fatal));

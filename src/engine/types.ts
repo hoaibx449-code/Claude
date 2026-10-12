@@ -15,7 +15,7 @@ export interface PanelSpec {
 }
 
 export interface DiagramSpec {
-  kind: 'bars' | 'compare' | 'steps' | 'flow' | 'number' | 'statement';
+  kind: 'bars' | 'compare' | 'steps' | 'flow' | 'number' | 'statement' | 'stick';
   /** Handwritten heading above the diagram. */
   title?: string;
   values?: number[]; labels?: string[]; unit?: string; // bars
@@ -25,6 +25,9 @@ export interface DiagramSpec {
   items?: string[]; // steps, flow (cause → effect)
   number?: string; caption?: string; // number
   text?: string; // statement
+  /** stick: 1-2 animated stick figures, a speech bubble for the first one, caption under the ground. */
+  actors?: { action: string; label?: string }[];
+  bubble?: string;
 }
 
 export interface SceneSpec {

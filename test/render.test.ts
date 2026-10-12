@@ -50,3 +50,20 @@ test('diagram strokes are drawn while their scene is spoken', async () => {
   assert.ok(units[0].start >= T.lines[0].start && units[units.length - 1].end <= T.end);
   for (let i = 1; i < units.length; i++) assert.ok(units[i].start >= units[i - 1].start);
 });
+
+test('stick figures keep moving after the hand has drawn them', async () => {
+  const project: ProjectSpec = {
+    title: 't', channel: 'Kênh', ratio: '9:16', style: 'whiteboard',
+    scenes: [{ lines: ['Một người đang chạy rất nhanh về đích.', 'Và vui mừng nhảy lên.'], panels: [], diagram: { kind: 'stick', title: 'Về đích', actors: [{ action: 'run', label: 'Bạn' }, { action: 'cheer' }], bubble: 'Xong rồi!', caption: 'Cố lên' } }],
+  };
+  const tl = buildTimeline(project.scenes, project.scenes.map((s) => estimateVoice(s.lines)));
+  const meta = JSON.parse(readFileSync('assets/hands/default/hand.json', 'utf8'));
+  const hand = { img: await loadImage('assets/hands/default/hand.webp'), fingers: await loadImage('assets/hands/default/fingers.webp'), meta };
+  const m = prepare({ env: { createCanvas: (w, h) => createCanvas(w, h) as any }, project, timeline: tl, images: [[]], hand, dpr: 0.5 });
+  const actor = m.units[0][3]; // title, underline, ground, first figure
+  const c = createCanvas(270, 480), x = c.getContext('2d');
+  // only the figure layer: draw the unit alone at two moments after it was finished
+  const shot = (t: number) => { x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, 270, 480); x.setTransform(0.5, 0, 0, 0.5, 0, 0); actor.draw(x, 1, 1, t); return Buffer.from(x.getImageData(0, 0, 270, 480).data); };
+  assert.ok(!shot(actor.end + 0.3).equals(shot(actor.end + 0.6)));
+  assert.ok(shot(actor.end + 0.3).equals(shot(actor.end + 0.3)));
+});

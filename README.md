@@ -62,6 +62,7 @@ Khoá chỉ đọc từ môi trường, không ghi vào log hay tệp. Ảnh AI 
 
 - Mỗi `lines[i]` là một câu thoại và một dòng phụ đề. Khung thứ i được vẽ khi câu thứ i bắt đầu được đọc (đổi bằng `"line": n`).
 - `image` dùng ảnh có sẵn. Nếu chỉ có `prompt`, ảnh được tạo bằng AI với một câu lệnh phong cách line-art cố định (`src/node/images.ts`).
+- Sơ đồ `{"kind":"stick","actors":[{"action":"walk","label":"Bạn"}],"bubble":"...","caption":"..."}`: 1-2 người que được bàn tay vẽ rồi chuyển động thật (`idle` `walk` `run` `wave` `think` `cheer` `sad` `point` `shrug` `jump`).
 - `style`: `notebook` · `whiteboard` · `chalkboard` · `kraft` · `oly` · `blueprint` · `ricepaper`. Mỗi phong cách có màu mực và dụng cụ vẽ riêng. Đổi dụng cụ bằng `"tool"`: `marker` · `chalk` · `fountain` · `colormarker` · `pencil` · `technical` · `brush`.
 
 ## Thay ảnh bàn tay
@@ -102,6 +103,8 @@ assets/       font Pangolin (OFL), hình Open Doodles (CC0), ảnh tay
 - **Triển khai:** chạy workflow **Triển khai web** trên GitHub (tab Actions). Workflow tự tạo D1 + R2, áp schema, đưa trang lên và cài khoá bí mật.
 - **Máy dựng (chạy thật):** workflow **Triển khai máy dựng** đưa `runner.Dockerfile` lên Google Cloud Run Jobs (asia-southeast1) và cài cho trang web một khoá chỉ có quyền bật job đó. Khi có video được xếp hàng, trang web bật job; job dựng hết hàng chờ rồi tắt. Cron 10 phút/lần là lưới an toàn. Cần secret `GCP_SA_KEY` (khoá service account có quyền Owner trên dự án Google Cloud, đã bật thanh toán).
 - **Máy dựng (thử):** `NV_API_URL=https://... RUNNER_TOKEN=... npm run runner` trên máy có FFmpeg, hoặc workflow **Máy dựng (thử nghiệm)**.
+
+**Trang quản trị** (`#/admin`, liên kết "Quản trị" trên thanh đầu trang): nhập/xoá khoá API (Gemini, OpenAI, EverAI, Google TTS, ElevenLabs — mã hoá AES-GCM trong D1, không bao giờ hiện lại, ưu tiên hơn khoá trên máy chủ), đổi tên trang và mọi tên hiển thị (phong cách, dụng cụ, kiểu sơ đồ, động tác người que, chữ trên giao diện), bật/tắt phong cách, giá trị mặc định, danh sách giọng đọc, model AI, giới hạn mỗi ngày, lời dặn thêm cho AI, danh sách quản trị viên, khoá/mở khoá người dùng. Chưa khai báo quản trị viên thì tài khoản Google đăng nhập đầu tiên là quản trị viên.
 
 Secrets cần trong GitHub (Settings → Secrets and variables → Actions):
 

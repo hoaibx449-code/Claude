@@ -47,3 +47,12 @@ CREATE TABLE IF NOT EXISTS usage (
   n INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, day, kind)
 );
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,           -- 'config' (JSON) or 'secret:<NAME>' (AES-GCM, see src/settings.ts)
+  value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS blocked_users (
+  user_id TEXT PRIMARY KEY,
+  blocked_at INTEGER NOT NULL
+);

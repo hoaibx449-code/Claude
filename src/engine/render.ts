@@ -80,7 +80,8 @@ export interface Model {
   units: Unit[][];
 }
 
-export interface Unit { start: number; end: number; draw(c: Ctx, p: number, alpha: number): void; pen(p: number): [number, number] }
+/** `t` is the frame time: animated parts (stick figures) keep moving after they are drawn. */
+export interface Unit { start: number; end: number; draw(c: Ctx, p: number, alpha: number, t: number): void; pen(p: number): [number, number] }
 
 /** Area a diagram may use (above the subtitles). */
 export function diagramBox(ratio: Ratio): Box {
@@ -122,7 +123,7 @@ export function prepare(opts: {
     return els.map((e) => {
       const d = ((t1 - t0) * e.weight) / total, start = t, end = t + Math.max(0.12, d * 0.92);
       t += d;
-      return { start, end, draw: (c: Ctx, p: number, a: number) => drawElement(c, e, p, a, pen), pen: (p: number) => elementPen(e, p) };
+      return { start, end, draw: (c: Ctx, p: number, a: number, now: number) => drawElement(c, e, p, a, pen, now - end), pen: (p: number) => elementPen(e, p) };
     });
   });
   return m;
@@ -204,11 +205,11 @@ export function renderFrame(c: Ctx, m: Model, t: number) {
   // previous scene fades out while this one begins
   if (si > 0 && t - S.start < 0.4) {
     const a = 1 - (t - S.start) / 0.4;
-    m.units[si - 1].forEach((u) => u.draw(c, 1, a));
+    m.units[si - 1].forEach((u) => u.draw(c, 1, a, t));
   }
   const units = m.units[si];
   const prog = units.map((u) => clamp((t - u.start) / (u.end - u.start)));
-  units.forEach((u, k) => u.draw(c, prog[k], 1));
+  units.forEach((u, k) => u.draw(c, prog[k], 1, t));
 
   // subtitles: each line appears when it is spoken
   const size = portrait ? 29 : 26;

@@ -2,6 +2,7 @@
 // highlighted maximum), comparisons, steps, cause→effect flows, big numbers and statements,
 // drawn stroke by stroke with the hand following the pen (no images needed).
 import type { Ctx, DiagramSpec } from './types.ts';
+import { ACTIONS, actorAt, drawLines, lengthOf, pointAlong, type Action, type Actor } from './stick.ts';
 
 export interface Box { x: number; y: number; w: number; h: number }
 export interface Colors { ink: string; accent: string; accent2: string; good: string; fills?: string[] }
@@ -11,7 +12,9 @@ export interface Pen { passes: [number, number, number, number][]; brush?: boole
 export type Element =
   | { kind: 'path'; pts: [number, number][]; cum: number[]; len: number; color: string; width: number; weight: number }
   | { kind: 'text'; text: string; x: number; y: number; size: number; w: number; color: string; weight: number }
-  | { kind: 'fill'; pts: [number, number][]; color: string; anchor: [number, number]; weight: number };
+  | { kind: 'fill'; pts: [number, number][]; color: string; anchor: [number, number]; weight: number }
+  // stick figure: sketched in its first pose, then animated (tau = seconds since it was finished)
+  | { kind: 'actor'; actor: Actor; first: [number, number][][]; len: number; color: string; width: number; weight: number };
 
 type P = [number, number];
 function line(a: P, b: P, step = 5): P[] {
@@ -188,6 +191,52 @@ export function buildDiagram(c: Ctx, d: DiagramSpec, box: Box, col: Colors): Ele
       wrap(c, d.caption || '', cs, box.w - 20).slice(0, 3).forEach((l, i) => text(l, cx, y + size * 0.75 + 30 + i * cs * 1.35, cs, col.ink, 'center'));
       break;
     }
+    case 'stick': {
+      const acts = (d.actors || []).slice(0, 2), n = acts.length;
+      if (!n) break;
+      const labels = acts.some((a) => a.label), ls = portrait ? 26 : 22;
+      const ground = bottom - 8 - (labels ? ls + 14 : 0) - (d.caption ? (portrait ? 48 : 38) : 0);
+      const room = ground - top - (d.bubble && portrait ? 128 : 16);
+      const k = Math.max(0.55, Math.min(portrait ? 1.6 : 1.3, room / 172));
+      // where each figure ends up; landscape keeps the right side for the bubble
+      const span = portrait || !d.bubble ? [box.x, box.x + box.w] : [box.x, box.x + box.w * 0.55];
+      const slots = n === 1 ? [span[0] + (span[1] - span[0]) * 0.5] : [span[0] + (span[1] - span[0]) * 0.27, span[0] + (span[1] - span[0]) * 0.73];
+      path(wavy(box.x, box.x + box.w, ground + 2), col.ink, 2.6);
+      const heads: P[] = [];
+      acts.forEach((a, i) => {
+        const action = (ACTIONS.includes(a.action as Action) ? a.action : 'idle') as Action;
+        const facing: 1 | -1 = n === 2 && i === 1 ? -1 : 1;
+        const x1 = slots[i], moving = action === 'walk' || action === 'run';
+        const x0 = moving ? Math.max(box.x + 30 * k, Math.min(box.x + box.w - 30 * k, x1 - facing * box.w * (n === 2 ? 0.22 : 0.34))) : x1;
+        const actor: Actor = { action, x0, x1, ground, scale: k, facing };
+        const first = actorAt(actor, 0), len = lengthOf(first);
+        els.push({ kind: 'actor', actor, first, len, color: col.ink, width: 3.6, weight: Math.max(0.6, len / 360) });
+        heads.push([x1, ground - 172 * k]);
+        if (a.label) text(a.label.slice(0, 16), x1, ground + ls + 10, ls, col.accent2, 'center');
+      });
+      if (d.bubble) {
+        const bs = portrait ? 27 : 22, h = heads[0];
+        const rx = portrait ? box.w * 0.46 : box.w * 0.2;
+        const lines = wrap(c, d.bubble, bs, rx * 1.55).slice(0, portrait ? 2 : 3);
+        const ry = Math.max(44, lines.length * bs * 0.8 + 22);
+        // portrait: above the figures; landscape: up and to the right of the speaker
+        const bx = portrait ? cx : Math.min(box.x + box.w - rx - 4, h[0] + rx + 70 * k);
+        const by = portrait ? top + ry + 4 : Math.max(top + ry, h[1] - ry * 0.9);
+        // short tail from the bubble edge towards the speaker's head
+        const ang = Math.atan2(h[1] - by, h[0] - bx), ex = bx + Math.cos(ang) * rx * 0.96, ey = by + Math.sin(ang) * ry * 0.96;
+        const dl = Math.hypot(h[0] - ex, h[1] - ey) || 1, tl = Math.min(44, dl * 0.6);
+        const tip: P = [ex + ((h[0] - ex) / dl) * tl, ey + ((h[1] - ey) / dl) * tl];
+        const nx = -Math.sin(ang) * 11, ny = Math.cos(ang) * 11;
+        path(ellipse(bx, by, rx, ry));
+        path(poly([[ex - nx, ey - ny], tip, [ex + nx, ey + ny]]));
+        lines.forEach((l, i) => text(l, bx, by + bs * 0.35 + (i - (lines.length - 1) / 2) * bs * 1.25, bs, col.ink, 'center'));
+      }
+      if (d.caption) {
+        const cs = portrait ? 30 : 24;
+        text(wrap(c, d.caption, cs, box.w)[0] || '', cx, bottom - 8, cs, col.accent, 'center');
+      }
+      break;
+    }
     case 'statement': {
       const size = portrait ? 46 : 38;
       const lines = wrap(c, d.text || '', size, box.w - 10).slice(0, 5);
@@ -203,8 +252,13 @@ export function buildDiagram(c: Ctx, d: DiagramSpec, box: Box, col: Colors): Ele
 
 const fmt = (v: number) => (Math.round(v * 10) / 10).toLocaleString('vi-VN');
 
-export function drawElement(c: Ctx, e: Element, p: number, alpha: number, pen: Pen = { passes: [[0, 0, 1, 1]], width: 1 }) {
+export function drawElement(c: Ctx, e: Element, p: number, alpha: number, pen: Pen = { passes: [[0, 0, 1, 1]], width: 1 }, tau = 0) {
   if (p <= 0 || alpha <= 0) return;
+  if (e.kind === 'actor') {
+    const lines = p < 1 ? e.first : actorAt(e.actor, tau);
+    drawLines(c, lines, p < 1 ? e.len * p : Infinity, e.color, e.width * pen.width, pen.passes, alpha);
+    return;
+  }
   c.save();
   if (e.kind === 'fill') {
     c.globalAlpha = alpha * 0.85 * p; c.fillStyle = e.color; c.beginPath();
@@ -246,6 +300,7 @@ export function drawElement(c: Ctx, e: Element, p: number, alpha: number, pen: P
 
 export function elementPen(e: Element, p: number): [number, number] {
   if (e.kind === 'fill') return e.anchor;
+  if (e.kind === 'actor') return pointAlong(e.first, e.len * p);
   if (e.kind === 'text') return [e.x + e.w * p, e.y - e.size * 0.3 + Math.sin(p * e.w * 0.2) * e.size * 0.18];
   const L = e.len * p;
   let i = 1;

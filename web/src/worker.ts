@@ -3,6 +3,7 @@ import { consumeNonce, currentUser, endSession, newNonce, startSession, User, ve
 import { drawImage, ImageProvider, TextProvider, writeScript } from './ai.ts';
 import { startRunner } from './gcp.ts';
 import { cleanSpec, STYLES } from './spec.ts';
+import { clearCache, Config, effectiveEnv, isAdmin, publicConfig, runnerSecrets, save as saveSettings, secretStatus } from './settings.ts';
 import { body, Env, HttpError, json, randomId, refundQuota, sha256, timingSafeEqual, today, useQuota } from './util.ts';
 
 const MAX_ACTIVE_JOBS = 2;
@@ -25,9 +26,12 @@ export default {
   },
 };
 
-async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+type XEnv = Env & { config: Config };
+
+async function route(req: Request, rawEnv: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(req.url), path = url.pathname, method = req.method;
-  if (!path.startsWith('/api/')) return env.ASSETS.fetch(req);
+  if (!path.startsWith('/api/')) return rawEnv.ASSETS.fetch(req);
+  const env = await effectiveEnv(rawEnv);
   if (path.startsWith('/api/runner/')) return runner(req, env, path.slice('/api/runner/'.length));
 
   // Browser requests that change data must come from our own page (CSRF guard on top of SameSite cookies).
@@ -39,13 +43,14 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
 
   // ---- sign-in
   if (path === '/api/auth/config' && method === 'GET') {
-    return json({ clientId: env.GOOGLE_CLIENT_ID || null, nonce: env.GOOGLE_CLIENT_ID ? await newNonce(env) : null, dev: devAllowed });
+    return json({ clientId: env.GOOGLE_CLIENT_ID || null, nonce: env.GOOGLE_CLIENT_ID ? await newNonce(env) : null, dev: devAllowed, ui: publicConfig(env.config) });
   }
   if (path === '/api/auth/google' && method === 'POST') {
     if (!env.GOOGLE_CLIENT_ID) throw new HttpError(503, 'Chủ trang chưa cấu hình đăng nhập Google.');
     const b = await body<{ credential?: string; nonce?: string }>(req, 20_000);
     await consumeNonce(env, String(b.nonce || ''));
     const u = await verifyGoogleToken(String(b.credential || ''), env.GOOGLE_CLIENT_ID, String(b.nonce));
+    if (await blocked(env, u.id)) throw new HttpError(403, BLOCKED);
     return json({ user: u }, 200, { 'set-cookie': await startSession(env, u) });
   }
   if (path === '/api/auth/dev' && method === 'POST') {
@@ -58,8 +63,16 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
 
   const user = await currentUser(env, req);
   if (!user) throw new HttpError(401, 'Bạn cần đăng nhập.');
+  if (await blocked(env, user.id)) throw new HttpError(403, BLOCKED);
+  if (path.startsWith('/api/admin/')) {
+    if (!(await isAdmin(env, env.config, user))) throw new HttpError(403, 'Chỉ quản trị viên mới vào được trang này.');
+    return adminRoutes(req, env, rawEnv, path.slice('/api/admin/'.length), method);
+  }
   return userRoutes(req, env, ctx, user, path, method, devAllowed);
 }
+
+const BLOCKED = 'Tài khoản này đã bị khoá. Liên hệ quản trị viên.';
+const blocked = async (env: Env, id: string) => !!(await env.DB.prepare('SELECT 1 AS b FROM blocked_users WHERE user_id = ?').bind(id).first());
 
 const limits = (env: Env) => ({ script: Number(env.DAILY_SCRIPTS), image: Number(env.DAILY_IMAGES), render: Number(env.DAILY_RENDERS) });
 
@@ -73,10 +86,11 @@ async function saveSpec(env: Env, user: User, id: string, spec: any) {
     .bind(JSON.stringify(spec), spec.title, Date.now(), id, user.id).run();
 }
 
-async function userRoutes(req: Request, env: Env, ctx: ExecutionContext, user: User, path: string, method: string, devAllowed: boolean): Promise<Response> {
+async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: User, path: string, method: string, devAllowed: boolean): Promise<Response> {
   if (path === '/api/me' && method === 'GET') {
     const used = await env.DB.prepare('SELECT kind, n FROM usage WHERE user_id = ? AND day = ?').bind(user.id, today()).all<any>();
-    return json({ user, limits: limits(env), used: Object.fromEntries(used.results.map((r) => [r.kind, r.n])), ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY } });
+    return json({ user, limits: limits(env), used: Object.fromEntries(used.results.map((r) => [r.kind, r.n])), ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY },
+      ui: publicConfig(env.config), admin: await isAdmin(env, env.config, user) });
   }
 
   if (path === '/api/projects' && method === 'GET') {
@@ -92,16 +106,17 @@ async function userRoutes(req: Request, env: Env, ctx: ExecutionContext, user: U
     const b = await body<any>(req, 10_000);
     const topic = String(b.topic || '').trim().slice(0, 3000);
     if (topic.length < 5) throw new HttpError(400, 'Nhập chủ đề hoặc nội dung (ít nhất vài chữ).');
-    const provider: TextProvider | 'mock' = b.provider === 'openai' ? 'openai' : b.provider === 'mock' && devAllowed ? 'mock' : 'gemini';
+    const provider: TextProvider | 'mock' = b.provider === 'mock' && devAllowed ? 'mock' : b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (env.config.defaults.textAI as TextProvider);
     const seconds = Math.max(15, Math.min(180, Number(b.seconds) || 45));
     let raw: any;
     if (provider === 'mock') raw = sampleScript(topic);
     else {
       await useQuota(env, user.id, 'script', limits(env).script);
-      try { raw = await writeScript(env, provider, { topic, seconds, tone: String(b.tone || '').slice(0, 200), ratio: b.ratio, visual: ['images', 'diagram'].includes(b.visual) ? b.visual : 'mix' }); }
+      try { raw = await writeScript(env, provider, { topic, seconds, tone: String(b.tone || '').slice(0, 200), ratio: b.ratio, visual: ['images', 'diagram', 'mix'].includes(b.visual) ? b.visual : env.config.defaults.visual as any, extra: env.config.promptExtra }); }
       catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
     }
-    const spec = cleanSpec({ ...raw, visual: b.visual, ratio: b.ratio, style: b.style, tool: b.tool, channel: b.channel, episode: b.episode, voice: { provider: 'everai', voiceId: b.voiceId, speed: Number(b.speed) || 1 } }, user.id);
+    const D = env.config.defaults;
+    const spec = cleanSpec({ ...raw, visual: b.visual || D.visual, ratio: b.ratio || D.ratio, style: env.config.enabledStyles.includes(b.style) ? b.style : D.style, tool: b.tool, channel: b.channel ?? D.channel, episode: b.episode, voice: voiceFor(env.config, b.voiceId, Number(b.speed) || 1) }, user.id);
     const id = randomId(12), now = Date.now();
     await env.DB.prepare('INSERT INTO projects (id, user_id, title, spec, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(id, user.id, spec.title, JSON.stringify(spec), now, now).run();
@@ -114,7 +129,9 @@ async function userRoutes(req: Request, env: Env, ctx: ExecutionContext, user: U
     const p = await getProject(env, user, id);
     if (!sub && method === 'GET') return json({ id, spec: p.spec, updated_at: p.updated_at });
     if (!sub && method === 'PUT') {
-      const spec = cleanSpec((await body<any>(req)).spec, user.id);
+      const input = (await body<any>(req)).spec;
+      if (input?.voice) input.voice = voiceFor(env.config, input.voice.voiceId, input.voice.speed);
+      const spec = cleanSpec(input, user.id);
       await saveSpec(env, user, id, spec);
       return json({ id, spec });
     }
@@ -130,7 +147,7 @@ async function userRoutes(req: Request, env: Env, ctx: ExecutionContext, user: U
       const sc = p.spec.scenes[Number(b.scene)], panel = sc?.panels[Number(b.panel)];
       if (!panel) throw new HttpError(400, 'Không tìm thấy khung hình.');
       if (!panel.prompt) throw new HttpError(400, 'Khung hình chưa có mô tả để vẽ.');
-      const provider: ImageProvider = b.provider === 'openai' ? 'openai' : 'gemini';
+      const provider: ImageProvider = b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (env.config.defaults.imageAI as ImageProvider);
       const base = `img/${user.id}/${(await sha256(provider + '\n' + panel.prompt)).slice(0, 24)}`;
       let key = (await env.BUCKET.head(base + '.webp')) ? base + '.webp' : (await env.BUCKET.head(base + '.png')) ? base + '.png' : '';
       if (!key) {
@@ -196,6 +213,8 @@ async function runner(req: Request, env: Env, sub: string): Promise<Response> {
   if (!env.RUNNER_TOKEN || env.RUNNER_TOKEN.length < 32 || !timingSafeEqual(auth, `Bearer ${env.RUNNER_TOKEN}`)) throw new HttpError(401, 'Không có quyền.');
   const now = Date.now();
 
+  // voice keys entered on the admin page (sent only to the render machine, over HTTPS, with its token)
+  if (sub === 'config' && req.method === 'GET') return json({ env: await runnerSecrets(env) });
   if (sub === 'claim' && req.method === 'POST') {
     const name = String((await body(req, 1_000)).runner || 'runner').slice(0, 60);
     await env.DB.prepare("UPDATE jobs SET status = 'queued', runner = NULL WHERE status = 'running' AND started_at < ?").bind(now - STALE_JOB_MS).run();
@@ -241,6 +260,49 @@ async function runner(req: Request, env: Env, sub: string): Promise<Response> {
   throw new HttpError(405, 'Không hỗ trợ.');
 }
 
+/** Voice picked in the editor: its provider comes from the admin's voice list. */
+function voiceFor(config: Config, voiceId: unknown, speed: unknown) {
+  const v = config.voices.find((x) => x.code === voiceId) || config.voices.find((x) => x.code === config.defaults.voice) || config.voices[0];
+  return { provider: v.provider, voiceId: v.code, speed: Number(speed) || 1 };
+}
+
+// ---- admin page API
+async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: string, method: string): Promise<Response> {
+  if (sub === 'settings' && method === 'GET') return json({ config: env.config, secrets: await secretStatus(rawEnv) });
+  if (sub === 'settings' && method === 'PUT') {
+    const b = await body<any>(req, 100_000);
+    const config = await saveSettings(rawEnv, b.config, b.secrets || {});
+    clearCache();
+    return json({ config, secrets: await secretStatus(rawEnv) });
+  }
+  if (sub === 'users' && method === 'GET') {
+    const r = await env.DB.prepare(
+      `SELECT u.id, u.email, u.name, u.created_at,
+         (SELECT COUNT(*) FROM projects p WHERE p.user_id = u.id) AS projects,
+         (SELECT COUNT(*) FROM jobs j WHERE j.user_id = u.id AND j.status = 'done') AS videos,
+         (SELECT COALESCE(SUM(n), 0) FROM usage g WHERE g.user_id = u.id AND g.day = ?) AS today,
+         EXISTS (SELECT 1 FROM blocked_users b WHERE b.user_id = u.id) AS blocked
+       FROM users u ORDER BY u.created_at DESC LIMIT 500`,
+    ).bind(today()).all();
+    const jobs = await env.DB.prepare("SELECT status, COUNT(*) AS n FROM jobs WHERE created_at > ? GROUP BY status").bind(Date.now() - 7 * 86_400_000).all<any>();
+    return json({ users: r.results, jobs7d: Object.fromEntries(jobs.results.map((j) => [j.status, j.n])) });
+  }
+  const b = sub.match(/^users\/([A-Za-z0-9_-]{1,80})\/block$/);
+  if (b && method === 'POST') {
+    const on = !!(await body<any>(req, 1_000)).blocked;
+    if (on) {
+      if (await isAdmin(env, env.config, { id: b[1], email: (await env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(b[1]).first<any>())?.email || '', name: null, picture: null }))
+        throw new HttpError(400, 'Không thể khoá tài khoản quản trị.');
+      await env.DB.batch([
+        env.DB.prepare('INSERT OR IGNORE INTO blocked_users (user_id, blocked_at) VALUES (?, ?)').bind(b[1], Date.now()),
+        env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(b[1]),
+      ]);
+    } else await env.DB.prepare('DELETE FROM blocked_users WHERE user_id = ?').bind(b[1]).run();
+    return json({ ok: true });
+  }
+  throw new HttpError(404, 'Không tìm thấy.');
+}
+
 /** Offline script for local development (DEV_LOGIN only): no AI key needed. */
 function sampleScript(topic: string) {
   return {
@@ -252,6 +314,7 @@ function sampleScript(topic: string) {
       { lines: ['Gửi mười triệu, lãi tám phần trăm, ba mươi năm sau thành hơn trăm triệu.'], diagram: { kind: 'bars', title: 'Sức mạnh lãi kép', start: '10tr', values: [21.6, 46.6, 100.6], labels: ['10 năm', '20 năm', '30 năm'], unit: 'tr' } },
       { lines: ['Hết tiền thì vay, vay thì trả lãi, trả lãi lại hết tiền.'], diagram: { kind: 'flow', title: 'Vòng lặp nghèo', items: ['Hết tiền', 'Vay nóng', 'Trả lãi', 'Lại hết tiền'] } },
       { lines: ['Người làm theo cảm hứng và người làm theo thói quen khác nhau thế nào?'], diagram: { kind: 'compare', title: 'Hai kiểu người', left: 'Cảm hứng', right: 'Thói quen', leftNote: 'Làm vài hôm rồi bỏ', rightNote: 'Đều đặn dù không hứng' } },
+      { lines: ['Người đều đặn cứ thế đi tới, và một ngày bạn sẽ thấy mình về đích.'], diagram: { kind: 'stick', title: 'Đi đều', actors: [{ action: 'walk', label: 'Bạn' }, { action: 'cheer', label: 'Đích' }], bubble: 'Mỗi ngày một chút!', caption: 'Chậm mà chắc' } },
       { lines: ['Bắt đầu bằng ba bước.'], diagram: { kind: 'steps', title: '3 bước nhỏ', items: ['Chọn một việc 15 phút', 'Gắn vào việc có sẵn', 'Đánh dấu mỗi ngày'] } },
       { lines: ['Lưu video này lại, tối nay làm bước một nhé.'], diagram: { kind: 'statement', text: 'Nhỏ nhưng đều thắng lớn nhưng bỏ dở' } },
     ],

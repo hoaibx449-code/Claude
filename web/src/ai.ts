@@ -11,7 +11,7 @@ export const LINE_ART_STYLE =
   'no color, no gray fill, plain pure white background, no text, no letters, no frame, centered subject, 4:3 composition. Scene: ';
 
 export type VisualMode = 'mix' | 'images' | 'diagram';
-export interface ScriptRequest { topic: string; seconds: number; tone: string; ratio: string; visual: VisualMode }
+export interface ScriptRequest { topic: string; seconds: number; tone: string; ratio: string; visual: VisualMode; /** admin's extra instructions */ extra?: string }
 
 const DIAGRAM_SCHEMA =
   '"diagram" là hình bàn tay vẽ từng nét, một trong: ' +
@@ -20,14 +20,15 @@ const DIAGRAM_SCHEMA =
   '{"kind":"compare","title":"...","left":"≤3 chữ (cách sai)","right":"≤3 chữ (cách đúng)","leftNote":"≤10 chữ","rightNote":"≤10 chữ"} · ' +
   '{"kind":"steps","title":"...","items":["≤10 chữ", "..."]} (2-4 bước) · ' +
   '{"kind":"number","number":"≤6 ký tự, vd 90% hoặc 3 lần","caption":"≤10 chữ"} · ' +
-  '{"kind":"statement","text":"câu chốt ≤14 chữ"}. Chỉ dùng số liệu có thật hoặc ví dụ minh hoạ đã nói rõ là ví dụ';
+  '{"kind":"statement","text":"câu chốt ≤14 chữ"} · ' +
+  '{"kind":"stick","title":"(tuỳ chọn)","actors":[{"action":"idle|walk|run|wave|think|cheer|sad|point|shrug|jump","label":"≤2 chữ, vd Bạn, Sếp"}],"bubble":"lời thoại ≤8 chữ (tuỳ chọn)","caption":"≤8 chữ (tuỳ chọn)"} — 1-2 người que CHUYỂN ĐỘNG THẬT (đi, chạy, vẫy tay, ăn mừng...), dùng cho tình huống, cảm xúc, nhân vật; người đầu tiên nói câu trong bubble. Chỉ dùng số liệu có thật hoặc ví dụ minh hoạ đã nói rõ là ví dụ';
 
 function systemPrompt(r: ScriptRequest) {
   const scenes = Math.max(4, Math.min(14, Math.round(r.seconds / 5.5)));
   const visual = {
     images: 'Mọi cảnh dùng "panels": thường 1 khung; 2 khung chỉ khi cần đối lập hai hình.',
-    diagram: 'Mọi cảnh dùng "diagram" (không dùng "panels"). Đa dạng kiểu: ưu tiên bars/flow/compare/steps/number; statement chỉ cho câu chốt; không 2 cảnh liền nhau cùng kiểu.',
-    mix: 'Cảnh có số liệu, so sánh, các bước hoặc câu chốt thì dùng "diagram"; cảnh kể tình huống, cảm xúc thì dùng "panels" (1 khung). Khoảng 40-60% cảnh là diagram.',
+    diagram: 'Mọi cảnh dùng "diagram" (không dùng "panels"). Đa dạng kiểu: bars/flow/compare/steps/number cho ý và số liệu, stick (người que chuyển động) cho tình huống, nhân vật, cảm xúc (khoảng 1/4 số cảnh); statement chỉ cho câu chốt; không 2 cảnh liền nhau cùng kiểu.',
+    mix: 'Cảnh có số liệu, so sánh, các bước, câu chốt hoặc tình huống đơn giản (stick) thì dùng "diagram"; cảnh kể chuyện cần hình chi tiết thì dùng "panels" (1 khung). Khoảng 50-70% cảnh là diagram.',
   }[r.visual];
   return [
     'Bạn là biên kịch video ngắn tiếng Việt kiểu "bàn tay vẽ" (whiteboard), chuyên viết video giữ chân người xem tới giây cuối. Viết đúng chủ đề người dùng đưa.',
@@ -41,6 +42,7 @@ function systemPrompt(r: ScriptRequest) {
     'Số viết bằng chữ trong lời đọc khi đọc tự nhiên hơn. Không bịa số liệu, nghiên cứu, trích dẫn; nếu dùng con số minh hoạ thì nói rõ là ví dụ. Không đưa lời khuyên đầu tư, y tế, pháp lý cụ thể.',
     r.tone ? `Giọng văn: ${r.tone}.` : '',
     'HÌNH: ' + visual,
+    r.extra ? 'YÊU CẦU THÊM CỦA CHỦ TRANG: ' + r.extra : '',
     '"panels": [{"prompt":"TIẾNG ANH, 1 hình minh hoạ đơn giản: chủ thể, hành động, đồ vật ẩn dụ; không chữ trong hình"}].',
     DIAGRAM_SCHEMA + '. Chữ trong diagram là tiếng Việt, rất ngắn, khớp ý câu thoại của cảnh.',
     'Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption đăng bài ≤ 150 ký tự, kết bằng một câu hỏi mời bình luận","hashtags":["#tiengvietkhongdau", "... 5-8 thẻ"],"scenes":[{"lines":["câu 1","câu 2"],"panels":[...]} hoặc {"lines":[...],"diagram":{...}}]}',

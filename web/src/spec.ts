@@ -6,7 +6,8 @@ export const STYLES = ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', '
 export const TOOLS = ['marker', 'chalk', 'fountain', 'colormarker', 'pencil', 'technical', 'brush'] as const;
 export const RATIOS = ['9:16', '16:9'] as const;
 export const VOICE_PROVIDERS = ['everai', 'google', 'elevenlabs', 'mock'] as const;
-export const DIAGRAM_KINDS = ['bars', 'compare', 'steps', 'flow', 'number', 'statement'] as const;
+export const DIAGRAM_KINDS = ['bars', 'compare', 'steps', 'flow', 'number', 'statement', 'stick'] as const;
+export const ACTIONS = ['idle', 'walk', 'run', 'wave', 'think', 'cheer', 'sad', 'point', 'shrug', 'jump'] as const;
 export const VISUAL_MODES = ['mix', 'images', 'diagram'] as const;
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max) : '');
 const pick = <T extends string>(v: unknown, list: readonly T[], def: T): T => (list.includes(v as T) ? (v as T) : def);
@@ -33,6 +34,16 @@ function cleanDiagram(d: any) {
     case 'flow': out.items = strs(d.items, 4, 28); if (out.items.length < 2) return null; break;
     case 'number': out.number = str(d.number, 10); out.caption = str(d.caption, 80); if (!out.number) return null; break;
     case 'statement': out.text = str(d.text, 140); if (!out.text) return null; break;
+    case 'stick':
+      out.actors = (Array.isArray(d.actors) ? d.actors : []).slice(0, 2).map((a: any) => {
+        const o: any = { action: pick(a?.action, ACTIONS, 'idle') };
+        if (str(a?.label, 16)) o.label = str(a.label, 16);
+        return o;
+      });
+      if (!out.actors.length) out.actors = [{ action: 'idle' }];
+      if (str(d.bubble, 60)) out.bubble = str(d.bubble, 60);
+      if (str(d.caption, 60)) out.caption = str(d.caption, 60);
+      break;
   }
   return out;
 }
@@ -70,7 +81,7 @@ export function cleanSpec(input: any, userId: string) {
     tool: input.tool ? pick(input.tool, TOOLS, 'marker') : undefined,
     voice: {
       provider: pick(v.provider, VOICE_PROVIDERS, 'everai'),
-      voiceId: /^[a-z]{2}_[a-z]+_[a-z0-9_-]{2,40}$/i.test(v.voiceId || '') ? v.voiceId : undefined,
+      voiceId: /^[A-Za-z0-9_-]{3,60}$/.test(v.voiceId || '') ? v.voiceId : undefined,
       speed: num(v.speed, 0.5, 2, 1),
     },
     scenes,
