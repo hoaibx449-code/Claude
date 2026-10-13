@@ -253,7 +253,7 @@ export function cleanSpec(input: any, userId: string) {
       chatName: look === 'chat' ? str(input.chatName, 30) || 'Bạn thân' : undefined,
       music: /^site:[a-f0-9]{24}\.(mp3|m4a)$/.test(String(input.music || '')) ? input.music : undefined,
       sfx: input.sfx !== false,
-      ...(look === 'act' ? { cast, subtitles: input.subtitles === true } : {}),
+      ...(look === 'act' ? { cast, subtitles: input.subtitles === true, figures: input.figures === 'rig' ? 'rig' : 'peeps' } : {}),
     } : {}),
     audio: cleanAudio(input.audio),
     transition: pick(input.transition, TRANSITIONS, 'auto'),

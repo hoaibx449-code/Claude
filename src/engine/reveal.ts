@@ -19,11 +19,15 @@ export interface Reveal {
 
 const ease = (u: number) => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
 
-export function makeReveal(env: Env, canvas: any, w: number, h: number, dpr: number, seconds?: number, opts: { minLen?: number; reading?: number } = {}): Reveal {
+export function makeReveal(env: Env, canvas: any, w: number, h: number, dpr: number, seconds?: number, opts: { minLen?: number; reading?: number; dark?: boolean } = {}): Reveal {
   const s = Math.min(1.2, 560 / Math.max(w, h)), ww = Math.max(8, Math.round(w * s)), hh = Math.max(8, Math.round(h * s));
   const small = env.createCanvas(ww, hh), x = small.getContext('2d');
   x.drawImage(canvas, 0, 0, ww, hh);
-  const full = extractStrokes(x.getImageData(0, 0, ww, hh).data, ww, hh, s, opts);
+  const px = x.getImageData(0, 0, ww, hh).data;
+  // filled artwork (white shapes under the ink): only the dark ink is drawn line by line, the white
+  // fill is paper-coloured and settles in with the final fade
+  if (opts.dark) for (let i = 0; i < px.length; i += 4) if (px[i] + px[i + 1] + px[i + 2] > 420) px[i + 3] = 0;
+  const full = extractStrokes(px, ww, hh, s, opts);
   if (full && seconds) { const f = pace(full, seconds); return { canvas, w, h, dpr, plan: f.plan, share: f.share }; }
   return { canvas, w, h, dpr, plan: full, share: LINE_SHARE };
 }

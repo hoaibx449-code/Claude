@@ -1613,12 +1613,15 @@ const blankCanvas = () => Object.assign(document.createElement('canvas'), { widt
 let sansReady = null;
 /** The modern sans the motion / maths / kinetic modes and the title card draw with. */
 const loadSans = () => (sansReady ||= (async () => { try { const f = new FontFace(NV.SANS, 'url(/assets/fonts/BeVietnamPro-ExtraBold.ttf)'); await f.load(); document.fonts.add(f); } catch {} })());
+let peepsReady = null;
+/** The hand-drawn people of story animation (Open Peeps), fetched once. */
+const loadPeeps = () => (peepsReady ||= fetch('/assets/peeps/peeps.json').then((r) => r.json()).then((d) => NV.setPeeps(d)).catch(() => { peepsReady = null; }));
 async function previewModel(spec, dpr) {
   const entries = Object.entries(spec.media || {});
   const [images, hand, icons, pics] = await Promise.all([
     Promise.all(spec.scenes.map((sc) => Promise.all(sc.panels.map((p) => (imageUrl(p.image) ? loadImg(imageUrl(p.image)).catch(blankCanvas) : Promise.resolve(blankCanvas())))))),
     getHand(), getIcons(), Promise.all(entries.map(([, v]) => loadImg(mediaUrl(v)).catch(() => null))),
-    document.fonts.load('29px Pangolin').catch(() => {}), loadSans(),
+    document.fonts.load('29px Pangolin').catch(() => {}), loadSans(), spec.look === 'act' && spec.figures !== 'rig' ? loadPeeps() : null,
   ]);
   const media = Object.fromEntries(entries.map(([k], i) => [k, pics[i]]).filter(([, v]) => v));
   const timeline = NV.buildTimeline(spec.scenes, spec.scenes.map((s) => NV.estimateVoice(s.lines)), { intro: !!spec.intro?.title && spec.look !== 'act' });

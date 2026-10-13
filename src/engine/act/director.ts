@@ -92,7 +92,8 @@ export function buildAct(opts: { project: { ratio: Ratio; cast?: ActCast[]; scen
   const SX = portrait ? 258 : 480, SY = portrait ? 440 : 262, groundY = portrait ? 772 : 478;
   const stageW = portrait ? 600 : 1000;
   const m: ActModel = { W, H, portrait, scale, SX, SY, groundY, actors: [], props: [], hand: [], cams: [], bubbles: [], marks: [], texts: [], badges: [], cues: [], duration: timeline.duration, font: opts.font, hand2: opts.hand, filled: 0, measure: opts.measure, env: opts.env, dpr: opts.dpr || 1, peepScale: (BODY_HEIGHT * scale) / FRAME.height.standing * 1.05 };
-  const usePeeps = project.figures === 'peeps' && hasPeeps() && !!opts.env;
+  // hand-drawn people (Open Peeps) whenever the artwork is loaded; 'rig' keeps the vector figures
+  const usePeeps = project.figures !== 'rig' && hasPeeps() && !!opts.env;
   const castSpec = project.cast || [];
   const actors = new Map<string, Actor>();
   const actor = (id: string): Actor => {
@@ -237,7 +238,7 @@ export function buildAct(opts: { project: { ratio: Ratio; cast?: ActCast[]; scen
         // a peeps person: the hand draws the picture along its own strokes
         const st = bodyAt(a, ht), [g, pose] = poseOf(actionAt(a, ht).do, a.peep), pic = peepPicture(m.env!, a.peep, g, pose, 'Calm', m.peepScale, m.dpr);
         if (pic) {
-          const R0 = makeReveal(m.env!, pic.canvas, pic.w, pic.h, m.dpr);
+          const R0 = makeReveal(m.env!, pic.canvas, pic.w, pic.h, m.dpr, undefined, { dark: true });
           const len = R0.plan ? R0.plan.total : pic.w * 6;
           a.reveal = { R: R0, pic, flip: st.f, x: xAt(a, ht) };
           tasks.push({ id, plan: { prims: [], lens: [], starts: [], travel: [], total: len } as any, speed: HAND_SPEED, min: 1.4, max: 3.6, target: a });
@@ -264,7 +265,7 @@ export function buildAct(opts: { project: { ratio: Ratio; cast?: ActCast[]; scen
         if (rv.R.plan) { const f = pace(rv.R.plan, d); rv.R.plan = f.plan; rv.R.share = f.share; }
         const { pic, flip, x } = rv;
         m.hand.push({ start, end, space: 'world', pen: (q) => { const p = revealPen(rv.R, q); return { x: x + (p.x - pic.ax) * flip, y: p.y - pic.ay, lift: p.lift }; } });
-        m.cues.push({ t: start, k: 'scribble', d: d * rv.R.share });
+        for (const [a, b] of rv.R.plan ? strokeSpansOf(rv.R) : [[0, 1]]) m.cues.push({ t: start + a * d, k: 'scribble', d: Math.max(0.05, (b - a) * d) });
         const who = k.target as Actor; who.draw = { start, end, plan: P }; who.visibleFrom = start;
         ht = end + 0.12;
         continue;

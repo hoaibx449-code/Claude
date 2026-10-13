@@ -102,3 +102,25 @@ test('an uploaded recording keeps scenes back to back', () => {
   assert.equal(tl.scenes[1].start, tl.scenes[0].end);
   assert.ok(Math.abs(tl.scenes[1].lines[0].start - 2.8) < 1e-9);
 });
+
+test('hand-drawn people keep one outfit, stand under their head and are drawn by the hand', async () => {
+  const { createCanvas, Path2D } = await import('@napi-rs/canvas');
+  const { setPeeps, peepPicture, poseOf, PEEP_LOOKS } = await import('../src/engine/act/peeps.ts');
+  (globalThis as any).Path2D ||= Path2D;
+  setPeeps(JSON.parse(readFileSync(new URL('../assets/peeps/peeps.json', import.meta.url), 'utf8')));
+  const env = { createCanvas: (w: number, h: number) => createCanvas(w, h) as any };
+  try {
+    for (const look of Object.values(PEEP_LOOKS)) {
+      // every standing pose of a person wears the same outfit
+      const poses = ['idle', 'walk', 'point', 'cross', 'explain'].map((a) => poseOf(a, look));
+      for (const [g, n] of poses) if (g === 'standing') assert.ok(n.endsWith(look.outfit), `${n} keeps ${look.outfit}`);
+      const pic = peepPicture(env, look, 'standing', poseOf('idle', look)[1], 'Calm', 0.1, 1)!;
+      assert.ok(pic && pic.h > pic.w, 'a standing person is taller than wide');
+      // the feet anchor is under the head
+      assert.ok(Math.abs(pic.ax - pic.head[0]) < pic.w * 0.25 && pic.head[1] < pic.h * 0.25);
+    }
+    const m = buildAct({ project: spec, timeline: buildTimeline(spec.scenes, spec.scenes.map((x: any) => estimateVoice(x.lines)), {}), font: 'sans', hand: 'sans', measure: createCanvas(4, 4).getContext('2d') as any, env, dpr: 1 });
+    const a = m.actors.find((x: any) => x.reveal)!;
+    assert.ok(a && a.reveal!.R.plan, 'the person is revealed along its own strokes');
+  } finally { setPeeps(null); }
+});

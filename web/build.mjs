@@ -12,7 +12,7 @@ await build({
   outfile: join(pub, 'engine.js'),
 });
 mkdirSync(join(pub, 'assets'), { recursive: true });
-for (const dir of ['fonts', 'hands/default', 'icons', 'doodles']) cpSync(join(root, 'assets', dir), join(pub, 'assets', dir), { recursive: true });
+for (const dir of ['fonts', 'hands/default', 'icons', 'doodles', 'peeps']) cpSync(join(root, 'assets', dir), join(pub, 'assets', dir), { recursive: true });
 
 // app icons (PNG for phones that do not take SVG)
 const { createCanvas, loadImage } = await import('@napi-rs/canvas');

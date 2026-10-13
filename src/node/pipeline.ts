@@ -5,7 +5,8 @@ import { once } from 'node:events';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas';
+import { createCanvas, GlobalFonts, loadImage, Path2D } from '@napi-rs/canvas';
+import { setPeeps, hasPeeps } from '../engine/act/peeps.ts';
 import { buildTimeline } from '../engine/timeline.ts';
 import { cuesOf, logicalSize, prepare, renderFrame, SANS } from '../engine/render.ts';
 import type { HandMeta, ProjectSpec, Timeline } from '../engine/types.ts';
@@ -118,6 +119,10 @@ export async function renderProject(o: RenderOptions) {
     const icons = JSON.parse(readFileSync(join(ROOT, 'assets/icons/tabler.json'), 'utf8'));
     const media: Record<string, any> = {};
     for (const [k, f] of Object.entries(project.media || {})) media[k] = await loadImage(resolve(projDir, f)).catch(() => null);
+    if (project.look === 'act' && project.figures !== 'rig' && !hasPeeps()) {
+      (globalThis as any).Path2D ||= Path2D;
+      setPeeps(JSON.parse(readFileSync(join(ROOT, 'assets/peeps/peeps.json'), 'utf8')));
+    }
     const model = prepare({ env, project, timeline, images, hand, dpr, icons, media });
     const canvas = createCanvas(PW, PH), ctx = canvas.getContext('2d');
 
