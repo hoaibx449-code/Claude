@@ -3,10 +3,16 @@
 // API keys are write-only: the page only learns whether a key is set, never its value.
 'use strict';
 
-const ADMIN_TABS = [
-  ['tong-quan', 'Tổng quan'], ['nhat-ky', 'Nhật ký'], ['nguoi-dung', 'Người dùng'], ['don-hang', 'Đơn hàng'], ['goi', 'Gói cước'],
-  ['may-dung', 'Máy dựng'], ['cong-dong', 'Cộng đồng'], ['zalo', 'Zalo'], ['hien-thi', 'Hiển thị'], ['noi-dung', 'Nội dung'], ['cai-dat', 'Cài đặt'],
+// grouped by the job at hand: watch, make videos, people, sell, run the site
+const ADMIN_GROUPS = [
+  ['Theo dõi', [['tong-quan', 'Bảng điều khiển', 'Số liệu chính, phễu người dùng, lỗi và tình trạng cài đặt.'], ['nhat-ky', 'Nhật ký', 'Mọi thao tác và lỗi, lọc theo người, loại, thời gian.']]],
+  ['Sản xuất video', [['huan-luyen', 'Huấn luyện video', 'Prompt của từng định dạng, học định dạng mới từ video mẫu, triển khai theo giai đoạn.'], ['hien-thi', 'Định dạng & hiển thị', 'Bật, ẩn hoặc để chỉ quản trị thấy từng định dạng, phong cách, tính năng.'],
+    ['giong-doc', 'Giọng đọc', 'Giọng nào đang đọc thật, giọng nào dùng giọng thay thế, nghe thử từng giọng.'], ['may-dung', 'Máy dựng', 'Hàng chờ, tiến độ và lỗi khi dựng video.']]],
+  ['Người dùng', [['nguoi-dung', 'Người dùng', 'Tìm người dùng, xem video, cấp gói hoặc credit, khoá tài khoản.'], ['cong-dong', 'Cộng đồng', 'Duyệt video chia sẻ.'], ['zalo', 'Zalo', 'Kết nối Zalo Bot, tự kiểm tra và hộp thư.']]],
+  ['Kinh doanh', [['goi', 'Gói cước', 'Giá, hạn mức, thanh toán.'], ['don-hang', 'Đơn hàng', 'Đơn chờ, đã trả, huỷ.']]],
+  ['Hệ thống', [['noi-dung', 'Trang chủ & nội dung', 'Ảnh, video mẫu, chữ trên trang, ngân sách AI.'], ['cai-dat', 'Cài đặt & khoá API', 'Mặc định khi tạo video, model AI, khoá API, quản trị viên.']]],
 ];
+const ADMIN_TABS = ADMIN_GROUPS.flatMap(([, list]) => list);
 const SECRET_INFO = {
   GEMINI_API_KEY: ['Gemini (Google AI Studio)', 'Viết kịch bản + vẽ ảnh. aistudio.google.com → Get API key.'],
   OPENAI_API_KEY: ['OpenAI', 'Viết kịch bản + vẽ ảnh. platform.openai.com → API keys.'],
@@ -30,12 +36,15 @@ const evName = (t) => EVENT_NAMES[t] || t;
 const VIS_NAMES = { on: 'Hiện', dev: 'Đang phát triển', hidden: 'Ẩn' };
 
 async function showAdmin() {
-  const tab = (location.hash.split('/')[2] || 'tong-quan');
+  const tab = ADMIN_TABS.some(([k]) => k === location.hash.split('/')[2]) ? location.hash.split('/')[2] : 'tong-quan';
   viewed('admin', { tab });
-  const nav = h('nav', { class: 'tabs' }, ADMIN_TABS.map(([k, name]) => h('a', { href: '#/admin/' + k, class: k === tab ? 'on' : null }, name)));
-  const body = h('div', { class: 'scenes' }, h('p', { class: 'muted' }, 'Đang tải…'));
-  show(h('a', { href: '#/' }, T('allVideos')), h('h1', {}, T('admin')), nav, body);
-  const pages = { 'may-dung': adminRenders, 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings };
+  const [, title, desc] = ADMIN_TABS.find(([k]) => k === tab);
+  const nav = h('nav', { class: 'admin-nav', 'aria-label': 'Mục quản trị' }, ADMIN_GROUPS.map(([g, list]) => h('div', { class: 'admin-group' }, h('span', {}, g),
+    list.map(([k, name]) => h('a', { href: '#/admin/' + k, class: k === tab ? 'on' : null, 'aria-current': k === tab ? 'page' : null }, name)))));
+  const body = h('div', { class: 'admin-body' }, h('p', { class: 'muted' }, 'Đang tải…'));
+  show(h('div', { class: 'admin' }, nav, h('div', { class: 'admin-main' }, h('header', { class: 'admin-head' }, h('h1', {}, title), h('p', { class: 'muted' }, desc)), body)));
+  setTimeout(() => nav.querySelector('a.on')?.scrollIntoView({ block: 'nearest', inline: 'center' }), 0);
+  const pages = { 'may-dung': adminRenders, 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings, 'huan-luyen': adminSettings, 'giong-doc': adminSettings };
   await (pages[tab] || adminOverview)(body, tab);
 }
 
@@ -188,7 +197,8 @@ async function adminOrders(body) {
 
 // ---------------------------------------------------------------- settings-based tabs
 async function adminSettings(body, tab) {
-  const [{ config, secrets }, zcheck, inbox] = await Promise.all([api('/api/admin/settings'), tab === 'zalo' ? api('/api/admin/zalo/check').catch(() => null) : null, tab === 'zalo' ? api('/api/admin/zalo/inbox') : null]);
+  const [{ config, secrets, briefs }, zcheck, inbox, voices] = await Promise.all([api('/api/admin/settings'), tab === 'zalo' ? api('/api/admin/zalo/check').catch(() => null) : null, tab === 'zalo' ? api('/api/admin/zalo/inbox') : null,
+    tab === 'giong-doc' ? api('/api/admin/voices').catch(() => null) : null]);
   const c = structuredClone(config);
   const secretInput = {};
   const saveBtn = h('button', { type: 'button', 'data-ev': 'admin-save', onclick: async () => {
@@ -201,7 +211,8 @@ async function adminSettings(body, tab) {
     } catch (e) { fail(e); }
     saveBtn.disabled = false; saveBtn.textContent = 'Lưu cài đặt';
   } }, 'Lưu cài đặt');
-  const sections = ({ goi: plansTab, zalo: zaloTab, 'hien-thi': visTab, 'noi-dung': contentTab, 'cai-dat': settingsTab }[tab] || settingsTab)(c, secrets, secretInput, zcheck, inbox);
+  const sections = tab === 'huan-luyen' ? trainTab(c, briefs || {}) : tab === 'giong-doc' ? voiceTab(c, secrets, secretInput, voices)
+    : ({ goi: plansTab, zalo: zaloTab, 'hien-thi': visTab, 'noi-dung': contentTab, 'cai-dat': settingsTab }[tab] || settingsTab)(c, secrets, secretInput, zcheck, inbox);
   body.replaceChildren(...sections, h('div', { class: 'savebar' }, saveBtn));
 }
 
@@ -219,9 +230,8 @@ function keysCard(secrets, secretInput, names) {
 }
 
 function settingsTab(c, secrets, secretInput) {
-  const voiceText = () => c.voices.map((v) => `${v.provider} | ${v.code} | ${v.label}`).join('\n');
   return [
-    keysCard(secrets, secretInput, ['GEMINI_API_KEY', 'OPENAI_API_KEY', 'EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'ELEVENLABS_API_KEY']),
+    keysCard(secrets, secretInput, ['GEMINI_API_KEY', 'OPENAI_API_KEY']),
     card('Mặc định khi tạo video', 'Người dùng vẫn đổi được từng video.', h('div', { class: 'grid' },
       h('label', {}, 'Cách tạo', select(Object.entries(c.labels.sources), c.defaults.source, (v) => { c.defaults.source = v; })),
       h('label', {}, 'AI viết kịch bản', select(Object.entries(c.labels.ai), c.defaults.textAI, (v) => { c.defaults.textAI = v; })),
@@ -242,8 +252,6 @@ function settingsTab(c, secrets, secretInput) {
     card('Đăng nhập Google', null,
       h('label', {}, 'Cách mở Google', select([['auto', 'Tự động (khuyên dùng): chuyển trang khi là app cài trên màn hình chính hoặc trình duyệt trong Zalo/Facebook'], ['redirect', 'Luôn chuyển trang (ổn định nhất)'], ['popup', 'Luôn cửa sổ bật lên']], c.auth.google, (v) => { c.auth.google = v; })),
       h('p', { class: 'muted' }, 'Để kiểu chuyển trang hoạt động, vào Google Cloud Console → APIs & Services → Credentials → OAuth client (Web) → Authorized redirect URIs, thêm đúng địa chỉ: ', h('code', {}, location.origin + '/api/auth/google/callback'))),
-    card('Danh sách giọng đọc', 'Mỗi dòng: nhà cung cấp | mã giọng | tên hiển thị. Nhà cung cấp: everai, google, elevenlabs, free (miễn phí, không cần khoá). Giọng trả phí lỗi sẽ tự chuyển sang giọng miễn phí.',
-      area(voiceText(), (v) => { c.voices = v.split('\n').map((l) => l.split('|').map((x) => x.trim())).filter((p) => p.length >= 2 && p[1]).map(([provider, code, label]) => ({ provider, code, label: label || code })); }, 10)),
     card('Model AI', 'Model dự phòng được thử lần lượt khi model chính lỗi hoặc quá tải; hết model thì chuyển sang nhà cung cấp còn lại.', h('div', { class: 'grid' },
       h('label', {}, 'OpenAI viết', input(c.models.openaiText, (v) => { c.models.openaiText = v; })),
       h('label', {}, 'OpenAI dự phòng', input(c.models.openaiFallback, (v) => { c.models.openaiFallback = v; })),
@@ -251,8 +259,7 @@ function settingsTab(c, secrets, secretInput) {
       h('label', {}, 'Chất lượng ảnh OpenAI', select([['low', 'Thấp (rẻ nhất)'], ['medium', 'Vừa'], ['high', 'Cao']], c.models.openaiImageQuality, (v) => { c.models.openaiImageQuality = v; })),
       h('label', {}, 'Gemini viết', input(c.models.geminiText, (v) => { c.models.geminiText = v; })),
       h('label', {}, 'Gemini dự phòng', input(c.models.geminiFallback, (v) => { c.models.geminiFallback = v; })),
-      h('label', {}, 'Gemini vẽ', input(c.models.geminiImage, (v) => { c.models.geminiImage = v; }))),
-      h('label', {}, 'Lời dặn thêm cho AI viết kịch bản (áp dụng mọi video)', area(c.promptExtra, (v) => { c.promptExtra = v; }, 3))),
+      h('label', {}, 'Gemini vẽ', input(c.models.geminiImage, (v) => { c.models.geminiImage = v; })))),
     budgetCard(c),
     card('Bảng giá vốn', 'Dùng để ghi chi phí từng lần gọi AI và giọng đọc vào nhật ký. Model: "tên-model: giá vào, giá ra" (USD / 1 triệu token), "*" = mặc định.',
       h('div', { class: 'grid' },
@@ -374,7 +381,10 @@ function zaloTab(c, secrets, secretInput, zcheck, inbox) {
   const out = h('div');
   const tplNames = { help: 'Hướng dẫn (HUONGDAN)', linked: 'Khi kết nối xong', queued: 'Khi nhận yêu cầu dựng', done: 'Khi video xong', failed: 'Khi dựng lỗi', unknown: 'Khi không hiểu tin nhắn', noAI: 'Khi chưa có AI (lệnh TAO)' };
   return [
-    card('Kiểm tra kết nối', 'Làm lần lượt từ trên xuống. Lưu cài đặt trước khi bấm Kết nối webhook.',
+    card('Cách nhận tin nhắn', 'Tự động: dùng webhook khi nó đang chạy, nếu không web tự hỏi Zalo mỗi phút (không cần webhook, không phụ thuộc tường lửa). Trả lời chậm hơn tối đa khoảng 1 phút.',
+      h('div', { class: 'grid' }, h('label', {}, 'Chế độ', select([['auto', 'Tự động (khuyên dùng)'], ['poll', 'Luôn hỏi định kỳ (không cần webhook)'], ['webhook', 'Chỉ webhook']], z.receive || 'auto', (v) => { z.receive = v; }))),
+      zcheck?.recv ? h('p', { class: 'muted' }, `Đang dùng: ${zcheck.recv.mode === 'poll' ? 'hỏi định kỳ' : 'webhook'}` + (zcheck.recv.status?.at ? ` · lần gần nhất ${fmtDate(zcheck.recv.status.at)}` : '') + (zcheck.recv.status?.error ? ` · lỗi: ${zcheck.recv.status.error}` : '')) : null),
+    card('Kiểm tra kết nối', 'Làm lần lượt từ trên xuống. Lưu cài đặt trước khi bấm Kết nối webhook (chỉ cần khi dùng webhook).',
       zcheck ? h('ul', {}, zcheck.steps.map((s) => h('li', { class: s.ok ? 'ok' : 'bad' }, (s.ok ? '✓ ' : '✗ ') + s.k, s.detail ? h('small', { class: 'muted' }, ' — ' + s.detail) : null, !s.ok ? h('div', { class: 'muted' }, '→ ' + s.fix) : null))) : null,
       zcheck ? h('p', { class: 'muted' }, `${zcheck.links?.n || 0} người đã kết nối (${zcheck.links?.guests || 0} chỉ dùng Zalo).`) : null,
       h('div', { class: 'row' },
@@ -573,4 +583,106 @@ async function adminRenders(body) {
         event.currentTarget.disabled = true;
         try { await api('/api/admin/renders/' + job.id + '/retry', { method: 'POST' }); toast('Đã tạo lượt dựng mới.'); await adminRenders(body); } catch (error) { fail(error); event.currentTarget.disabled = false; }
       } }, 'Dựng lại') : null))))));
+}
+
+// ---------------------------------------------------------------- training: prompts, learn from samples, stages
+const STAGES = [['idea', 'Ý tưởng'], ['test', 'Thử nghiệm · chỉ quản trị'], ['live', 'Phát hành']];
+const slug = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 18) || 'dinh-dang';
+
+/** Frames from a sample video (taken in the browser: nothing big is uploaded), or the pictures themselves. */
+async function sampleFrames(files) {
+  const out = [];
+  const shot = (src, w, hgt) => { const k = Math.min(1, 480 / Math.max(w, hgt)), c = h('canvas', { width: Math.round(w * k), height: Math.round(hgt * k) }); c.getContext('2d').drawImage(src, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.72); };
+  for (const f of files) {
+    if (f.type.startsWith('image/')) {
+      const img = await loadImg(URL.createObjectURL(f)); out.push(shot(img, img.naturalWidth, img.naturalHeight));
+    } else if (f.type.startsWith('video/')) {
+      const v = h('video', { muted: true, playsinline: true, preload: 'auto', src: URL.createObjectURL(f) });
+      await new Promise((ok, no) => { v.onloadeddata = ok; v.onerror = () => no(new Error('Không đọc được video này.')); });
+      for (const at of [0.08, 0.25, 0.45, 0.65, 0.85]) {
+        v.currentTime = v.duration * at;
+        await new Promise((ok) => { v.onseeked = ok; });
+        out.push(shot(v, v.videoWidth, v.videoHeight));
+      }
+    }
+    if (out.length >= 6) break;
+  }
+  return out.slice(0, 6);
+}
+
+function trainTab(c, briefs) {
+  c.briefs ||= {}; c.formats ||= [];
+  const formatsBox = h('div', { class: 'formats' });
+  const paintFormats = () => formatsBox.replaceChildren(...(c.formats.length ? c.formats.map((f, i) => h('article', { class: 'fmt' },
+    h('div', { class: 'fmt-head' }, h('b', {}, f.name || 'Chưa đặt tên'), h('span', { class: 'pill ' + (f.stage === 'live' ? 'done' : f.stage === 'test' ? 'running' : '') }, STAGES.find(([k]) => k === f.stage)?.[1]),
+      h('button', { type: 'button', class: 'ghost small danger', onclick: () => { c.formats.splice(i, 1); paintFormats(); } }, 'Xoá')),
+    h('div', { class: 'grid' },
+      h('label', {}, 'Tên hiển thị', input(f.name, (v) => { f.name = v; }, { maxlength: 40 })),
+      h('label', {}, 'Định dạng gốc', select(Object.entries(ui.labels.looks || {}).filter(([k]) => k !== 'doc' && k !== 'story'), f.base, (v) => { f.base = v; })),
+      h('label', {}, 'Giai đoạn', select(STAGES, f.stage, (v) => { f.stage = v; paintFormats(); }))),
+    h('label', {}, 'Lời dặn riêng cho AI (thêm vào prompt của định dạng gốc)', area(f.brief, (v) => { f.brief = v; }, 4)),
+    h('label', {}, 'Ghi chú triển khai (dòng đầu hiện cho người dùng khi phát hành)', area(f.note, (v) => { f.note = v; }, 3)))) : [h('p', { class: 'muted' }, 'Chưa có định dạng riêng. Phân tích một video mẫu ở trên để AI đề xuất, hoặc thêm tay.')]));
+  paintFormats();
+
+  // learn from a sample
+  const files = h('input', { type: 'file', accept: 'video/mp4,video/webm,video/quicktime,image/png,image/jpeg,image/webp', multiple: true });
+  const notes = area('', () => {}, 3); notes.placeholder = 'Mô tả mẫu: kênh nào, vì sao hiệu quả, muốn giống ở điểm nào (nhịp, nhân vật, chữ, âm thanh)…';
+  const thumbs = h('div', { class: 'frames' }), result = h('div', { class: 'proposal' });
+  let frames = [];
+  files.addEventListener('change', async () => {
+    thumbs.replaceChildren(h('small', { class: 'muted' }, 'Đang lấy khung hình…'));
+    try { frames = await sampleFrames([...files.files]); thumbs.replaceChildren(...frames.map((src) => h('img', { src, alt: '' }))); }
+    catch (e) { thumbs.replaceChildren(h('small', { class: 'bad' }, e.message)); }
+  });
+  const go = h('button', { type: 'button', onclick: async () => {
+    go.disabled = true; go.textContent = 'AI đang phân tích…'; result.replaceChildren();
+    try {
+      const r = await api('/api/admin/train/analyze', { method: 'POST', body: { frames, notes: notes.value } });
+      const row = (k, v) => (v && (!Array.isArray(v) || v.length) ? [h('dt', {}, k), h('dd', {}, Array.isArray(v) ? h('ol', {}, v.map((x) => h('li', {}, x))) : v)] : []);
+      result.replaceChildren(h('h3', {}, r.name), h('p', {}, r.summary), h('dl', { class: 'kv' }, ...row('Định dạng gốc', ui.labels.looks?.[r.base] || r.base), ...row('Cấu trúc', r.structure), ...row('Nhịp', r.pacing), ...row('Hình ảnh', r.visuals), ...row('Âm thanh', r.audio), ...row('Lời dặn cho AI', r.brief), ...row('Các bước triển khai', r.stages)),
+        h('button', { type: 'button', onclick: () => {
+          c.formats.push({ id: slug(r.name) + '-' + Math.random().toString(36).slice(2, 5), name: r.name, base: r.base, brief: r.brief, stage: 'idea', created: Date.now(),
+            note: [r.summary, r.stages?.length ? 'Kế hoạch: ' + r.stages.join(' → ') : ''].filter(Boolean).join('\n') });
+          paintFormats(); toast('Đã thêm vào "Định dạng riêng" (giai đoạn Ý tưởng). Bấm Lưu cài đặt để giữ.');
+        } }, 'Thêm thành định dạng riêng'));
+    } catch (e) { fail(e); }
+    go.disabled = false; go.textContent = 'AI phân tích mẫu';
+  } }, 'AI phân tích mẫu');
+
+  // the brief of each built-in format
+  const briefRows = Object.entries(briefs).filter(([k]) => k !== 'story').map(([k, def]) => {
+    const box = area(c.briefs[k] || def, (v) => { c.briefs[k] = v.trim() === def.trim() ? '' : v; tag.textContent = c.briefs[k] ? 'Đã chỉnh' : 'Mặc định'; }, 6);
+    const tag = h('span', { class: 'pill' + (c.briefs[k] ? ' running' : '') }, c.briefs[k] ? 'Đã chỉnh' : 'Mặc định');
+    return h('details', { class: 'brief' }, h('summary', {}, h('b', {}, ui.labels.looks?.[k] || k), tag), box,
+      h('button', { type: 'button', class: 'ghost small', onclick: () => { c.briefs[k] = ''; box.value = def; tag.textContent = 'Mặc định'; } }, 'Khôi phục mặc định'));
+  });
+  return [
+    card('Học định dạng mới từ video mẫu', 'Tải một video mẫu (hoặc vài ảnh chụp màn hình). Trình duyệt lấy 5 khung hình, AI nhận diện cấu trúc, nhịp, hình ảnh, âm thanh và đề xuất định dạng mới dựa trên một định dạng gốc.',
+      h('div', { class: 'grid wide-2' }, h('label', {}, 'Video hoặc ảnh mẫu', files), h('label', {}, 'Ghi chú về mẫu', notes)), thumbs, h('div', { class: 'row' }, go), result),
+    card('Định dạng riêng', 'Ý tưởng: chỉ lưu lại. Thử nghiệm: quản trị viên tạo video thử bằng định dạng này. Phát hành: mọi người thấy trong mục "Định dạng riêng".',
+      formatsBox, h('button', { type: 'button', class: 'ghost small', onclick: () => { c.formats.push({ id: 'moi-' + Math.random().toString(36).slice(2, 6), name: 'Định dạng mới', base: 'act', brief: '', note: '', stage: 'idea', created: Date.now() }); paintFormats(); } }, '+ Thêm tay')),
+    card('Prompt của từng định dạng', 'Đây là phần hướng dẫn AI biên kịch cho mỗi định dạng. Sửa để sát nhu cầu; để như cũ là dùng bản mặc định.', ...briefRows),
+    card('Lời dặn chung cho AI', 'Áp dụng cho mọi video, mọi định dạng (ví dụ: giọng văn của thương hiệu, điều cần tránh).', area(c.promptExtra, (v) => { c.promptExtra = v; }, 3)),
+  ];
+}
+
+// ---------------------------------------------------------------- voices: what really reads, listen to each
+function voiceTab(c, secrets, secretInput, data) {
+  const st = data?.status || {}, list = data?.voices || [];
+  const state = (ok, yes, no) => h('span', { class: 'pill ' + (ok ? 'done' : 'failed') }, ok ? yes : no);
+  const audioBtn = (code) => { const b = h('button', { type: 'button', class: 'ghost small', onclick: () => window.nvPlayPreview?.('/api/voices/preview?code=' + encodeURIComponent(code), b) }, '▶'); return b; };
+  return [
+    card('Tình trạng', 'Người dùng chỉ thấy giọng đang đọc thật. Giọng chưa có khoá được đọc bằng giọng miễn phí cùng giới tính.',
+      h('dl', { class: 'kv' },
+        h('dt', {}, 'EverAI (giọng Việt tự nhiên)'), h('dd', {}, state(st.everai && !st.failing, 'Đang hoạt động', st.everai ? 'Có khoá nhưng đang lỗi' : 'Chưa có khoá')),
+        h('dt', {}, 'Google Text-to-Speech'), h('dd', {}, state(true, st.google ? 'Có khoá riêng' : 'Dùng tài khoản máy dựng', '')),
+        h('dt', {}, 'Giọng miễn phí'), h('dd', {}, state(true, 'Luôn sẵn sàng', '')),
+        h('dt', {}, 'Máy dựng báo lần cuối'), h('dd', {}, st.runnerSeen ? fmtDate(st.runnerSeen) : 'Chưa có video nào được dựng'),
+        st.failing ? h('dt', {}, 'Lần gần nhất phải đọc thay') : null, st.failing ? h('dd', {}, `${fmtDate(st.failing.at)} · ${st.failing.provider}${st.failing.error ? ' · ' + st.failing.error : ''}`) : null)),
+    keysCard(secrets, secretInput, ['EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'ELEVENLABS_API_KEY']),
+    card('Giọng đang có', null, list.length ? table(['Giọng', 'Nhà cung cấp', 'Tình trạng', 'Nghe'], list.map((v) => h('tr', {}, h('td', {}, v.label), h('td', {}, v.provider), h('td', {}, v.ready ? state(true, 'Đọc thật', '') : h('span', { class: 'pill' }, 'Đọc thay bằng ' + (v.standIn || 'giọng miễn phí'))), h('td', {}, audioBtn(v.code)))))
+      : h('p', { class: 'muted' }, 'Chưa tải được danh sách.')),
+    card('Sửa danh sách giọng', 'Mỗi dòng: nhà cung cấp | mã giọng | tên hiển thị. Nhà cung cấp: everai, google, elevenlabs, free.',
+      area(c.voices.map((v) => `${v.provider} | ${v.code} | ${v.label}`).join('\n'), (v) => { c.voices = v.split('\n').map((l) => l.split('|').map((x) => x.trim())).filter((p) => p.length >= 2 && p[1]).map(([provider, code, label]) => ({ provider, code, label: label || code })); }, 10)),
+  ];
 }

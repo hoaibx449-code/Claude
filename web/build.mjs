@@ -51,6 +51,11 @@ const lookDemos = Object.entries(LOOK_DEMOS).map(([look, lines]) => {
   return { id: 'look-' + look, title: lines[0], look, spec };
 });
 demos.push(...lookDemos);
+// story animation: the hand-written storyboard of the test video (talking to strangers)
+{
+  const ex = JSON.parse(readFileSync(join(root, 'examples', 'giao-tiep-nguoi-la', 'project.json'), 'utf8'));
+  demos.unshift({ id: 'look-act', title: ex.scenes[0].lines[0], look: 'act', spec: cleanSpec({ ...ex, visual: 'sketch', look: 'act' }, 'demo') });
+}
 // classic hand drawing, as in the proposal: Open Doodles revealed by the hand, handwritten subtitles
 const { doodlePanels } = await import('./src/doodles.ts');
 const classicLines = [['Bạn có biết vì sao đọc sách mỗi ngày lại thay đổi cuộc đời?'], ['Mỗi sáng một tách cà phê, mười lăm phút đọc, không cần nhiều hơn.'], ['Một năm sau, kiến thức ấy lớn dần như một cái cây.']];

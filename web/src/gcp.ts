@@ -24,7 +24,7 @@ export async function signAssertion(key: { client_email: string; private_key: st
   return `${head}.${body}.${b64url(sig)}`;
 }
 
-async function accessToken(env: Env) {
+export async function accessToken(env: Env) {
   if (cached && cached.until > Date.now()) return cached.token;
   const key = JSON.parse(env.GCP_TRIGGER_KEY!);
   const res = await fetch('https://oauth2.googleapis.com/token', {

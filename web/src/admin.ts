@@ -1,5 +1,8 @@
 // Admin API: settings, users, activity log, analytics. Every route here is admin-only
 // (checked in worker.ts before dispatch) and every change is itself logged.
+import { aiCost } from './log.ts';
+import { analyzeSample, LOOK_BRIEF } from './ai.ts';
+import { voiceStatus, voicesWithStatus } from './voices.ts';
 import type { User } from './auth.ts';
 import { clearCache, isAdmin, save as saveSettings, secretStatus } from './settings.ts';
 import { body, type Env, HttpError, json, today } from './util.ts';
@@ -58,7 +61,16 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
     const top = await env.DB.prepare('SELECT type, COUNT(*) AS n, ROUND(SUM(cost)) AS cost FROM events WHERE cost > 0 AND ts > ? GROUP BY type ORDER BY cost DESC LIMIT 10').bind(Date.now() - 30 * 86_400_000).all<any>();
     return json({ ...state, top: top.results });
   }
-  if (sub === 'settings' && method === 'GET') return json({ config: env.config, secrets: await secretStatus(rawEnv) });
+  if (sub === 'settings' && method === 'GET') return json({ config: env.config, secrets: await secretStatus(rawEnv), briefs: LOOK_BRIEF });
+  // training page: AI reads a sample (frames taken in the admin's browser + notes) and proposes a format
+  if (sub === 'train/analyze' && method === 'POST') {
+    const b = await body<any>(req, 6_000_000);
+    const frames = (Array.isArray(b.frames) ? b.frames : []).filter((f: unknown) => typeof f === 'string' && f.length < 1_500_000).slice(0, 6);
+    const out = await analyzeSample(env, frames, String(b.notes || '').slice(0, 2000));
+    rc.log('admin.train', { cost: aiCost(env.config, { model: '', tokensIn: out._usage.tokensIn, tokensOut: out._usage.tokensOut }), data: { frames: frames.length, base: out.base } });
+    return json(out);
+  }
+  if (sub === 'voices' && method === 'GET') return json({ status: await voiceStatus(env), voices: await voicesWithStatus(env) });
   if (sub === 'settings' && method === 'PUT') {
     const b = await body<any>(req, 200_000);
     const before = env.config;

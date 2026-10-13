@@ -29,6 +29,8 @@ export const SOURCE_KEYS = ['topic', 'mine-ai', 'mine-free'] as const;
 export const ACTION_KEYS = ['idle', 'walk', 'run', 'wave', 'think', 'cheer', 'sad', 'point', 'shrug', 'jump'] as const;
 export const AI_KEYS = ['openai', 'gemini'] as const;
 
+/** idea: written down only · test: admins can make videos with it · live: everyone sees it */
+export interface CustomFormat { id: string; name: string; base: string; brief: string; note: string; stage: 'idea' | 'test' | 'live'; created: number }
 export interface Voice { provider: 'everai' | 'google' | 'elevenlabs' | 'free'; code: string; label: string }
 
 export interface Config {
@@ -50,6 +52,10 @@ export interface Config {
   /** daily defaults; maxSeconds: longest video anyone may make (plans may allow less) */
   limits: { script: number; image: number; render: number; maxSeconds: number };
   promptExtra: string;
+  /** the admin's own brief per video format (empty = the built-in one) */
+  briefs: Record<string, string>;
+  /** formats made on the training page: a built-in format plus extra instructions, released stage by stage */
+  formats: CustomFormat[];
   admins: string[];
   /** Price table used to log what every AI call costs (VND = USD × usdVnd). */
   costs: { usdVnd: number; models: Record<string, [number, number]>; imageOpenai: number; imageGemini: number; everaiPer1000: number; googleTtsPerM: number; elevenPer1000: number };
@@ -57,6 +63,8 @@ export interface Config {
   logDays: number;
   /** Every option shown to users: on (usable) · dev (shown greyed "đang phát triển") · hidden. Keys: "style:whiteboard", "feature:zalo"... */
   visibility: Record<string, Vis>;
+  /** settings layout revision (older saved settings are brought up to date on load) */
+  rev?: number;
   zalo: ZaloConfig;
   plans: Plan[];
   payment: { enabled: boolean; bank: string; account: string; accountName: string; prefix: string; expiryDays: number; note: string; /** countdown shown in the payment window */ holdMinutes: number };
@@ -89,6 +97,8 @@ export interface SiteConfig {
 export type Vis = 'on' | 'dev' | 'hidden';
 export interface ZaloConfig {
   enabled: boolean; botLink: string;
+  /** how messages reach the site: auto (webhook when it works, else polling), webhook only, polling only */
+  receive: 'auto' | 'webhook' | 'poll';
   /** People who message the bot without a web account get one automatically. */
   allowGuests: boolean;
   /** How a script sent by chat is illustrated: free rules or AI. */
@@ -167,7 +177,11 @@ export function defaultConfig(env: Env): Config {
       ['vi_male_tridung_mn', 'Trí Dũng · nam Nam · sách nói'], ['vi_male_thanhtrung_mn', 'Thành Trung · nam Nam · podcast'],
       ['vi_male_tuankiet_mn', 'Tuấn Kiệt · nam Nam · tin tức'], ['vi_male_vanduc_mn', 'Văn Đức · nam Nam · tự sự'],
     ].map(([code, label]): Voice => ({ provider: 'everai', code, label }))
-      .concat([{ provider: 'free', code: 'free-female', label: 'Miễn phí · nữ (không cần khoá)' }, { provider: 'free', code: 'free-male', label: 'Miễn phí · nam (không cần khoá)' }, { provider: 'google', code: 'vi-VN-Neural2-A', label: 'Google · nữ (Neural2 A)' }, { provider: 'google', code: 'vi-VN-Neural2-D', label: 'Google · nam (Neural2 D)' }] as Voice[]),
+      .concat([
+        { provider: 'free', code: 'free-female', label: 'Mai · nữ · rõ ràng' }, { provider: 'free', code: 'free-male', label: 'Nam · nam · trầm ấm' },
+        { provider: 'free', code: 'vi-VN-Wavenet-C', label: 'Ngọc · nữ · nhẹ nhàng' }, { provider: 'free', code: 'vi-VN-Wavenet-B', label: 'Hùng · nam · mạnh mẽ' },
+        { provider: 'free', code: 'vi-VN-Wavenet-A', label: 'Thảo · nữ · tươi tắn' }, { provider: 'free', code: 'vi-VN-Wavenet-D', label: 'Tuấn · nam · điềm tĩnh' },
+      ] as Voice[]),
     models: {
       openaiText: env.OPENAI_TEXT_MODEL || 'gpt-4o-mini', openaiImage: env.OPENAI_IMAGE_MODEL || 'gpt-image-1', openaiImageQuality: env.OPENAI_IMAGE_QUALITY || 'medium',
       geminiText: env.GEMINI_TEXT_MODEL || 'gemini-2.5-flash', geminiImage: env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
@@ -175,6 +189,8 @@ export function defaultConfig(env: Env): Config {
     },
     limits: { script: Number(env.DAILY_SCRIPTS) || 20, image: Number(env.DAILY_IMAGES) || 60, render: Number(env.DAILY_RENDERS) || 5, maxSeconds: 600 },
     promptExtra: '',
+    briefs: {},
+    formats: [],
     admins: [],
     costs: {
       usdVnd: 26000,
@@ -185,7 +201,7 @@ export function defaultConfig(env: Env): Config {
     logDays: 180,
     visibility: { 'feature:music': 'dev', 'look:story': 'hidden' },
     zalo: {
-      enabled: false, botLink: '', allowGuests: true, scriptSource: 'mine-free', autoRender: true, ownerChat: '',
+      enabled: false, botLink: '', receive: 'auto', allowGuests: true, scriptSource: 'mine-free', autoRender: true, ownerChat: '',
       notifyOwner: { signup: true, failed: true, order: true, daily: false },
       templates: {
         help: 'Chào {ten}! Gửi cho mình:\n• KB + kịch bản của bạn → mình dựng video\n• TAO + chủ đề → AI viết kịch bản rồi dựng\n• TT → xem video đang dựng\n• DS → video gần đây\n• KHUNG DOC hoặc KHUNG NGANG → đổi khung hình\n• DINHDANG → chọn định dạng video\n• GIONG → chọn giọng đọc\n• TAT / BAT → tắt/bật thông báo\n• HUYKETNOI → bỏ liên kết',
@@ -237,7 +253,7 @@ export function cleanConfig(input: any, base: Config): Config {
     .filter((v: Voice) => /^[A-Za-z0-9_-]{3,60}$/.test(v.code)).map((v: Voice) => ({ ...v, label: v.label || v.code })).slice(0, 80);
   let vs: Voice[] = voices.length ? voices : base.voices;
   // the free voices always exist: the site must work without any paid key
-  if (!vs.some((v) => v.provider === 'free')) vs = [...vs, ...base.voices.filter((v) => v.provider === 'free')];
+  vs = [...vs.filter((v) => !(v.provider === 'free' && /Miễn phí/.test(v.label))), ...base.voices.filter((v) => v.provider === 'free' && !vs.some((x) => x.code === v.code && !/Miễn phí/.test(x.label)))];
   const en = enabled.length ? enabled : [...STYLE_KEYS];
   return {
     brand: { name: str(i.brand?.name, 40, base.brand.name) || base.brand.name, accent: str(i.brand?.accent, 30, base.brand.accent), tagline: str(i.brand?.tagline, 160, base.brand.tagline) },
@@ -262,7 +278,7 @@ export function cleanConfig(input: any, base: Config): Config {
       ratio: pick(d.ratio, ['9:16', '16:9'], base.defaults.ratio), seconds: int(d.seconds, 15, 1800, base.defaults.seconds),
       voice: pick(d.voice, vs.map((v: Voice) => v.code), vs[0].code), channel: str(d.channel, 40, base.defaults.channel), tone: str(d.tone, 200, base.defaults.tone),
       mode: pick(d.mode, MODE_KEYS, base.defaults.mode), intro: typeof d.intro === 'boolean' ? d.intro : base.defaults.intro,
-      look: pick(d.look, LOOK_KEYS.filter((k) => k !== 'doc'), base.defaults.look), music: typeof d.music === 'string' && /^(auto|none|[a-z0-9-]{2,20})$/.test(d.music) ? d.music : base.defaults.music,
+      look: (Number(i.rev) || 0) < 2 ? 'act' : pick(d.look, LOOK_KEYS.filter((k) => k !== 'doc'), base.defaults.look), music: typeof d.music === 'string' && /^(auto|none|[a-z0-9-]{2,20})$/.test(d.music) ? d.music : base.defaults.music,
     },
     auth: { google: pick(i.auth?.google, GOOGLE_MODES, base.auth.google) },
     voices: vs,
@@ -275,6 +291,11 @@ export function cleanConfig(input: any, base: Config): Config {
     },
     limits: { script: int(lim.script, 0, 1000, base.limits.script), image: int(lim.image, 0, 5000, base.limits.image), render: int(lim.render, 0, 500, base.limits.render), maxSeconds: int(lim.maxSeconds, 30, 1800, base.limits.maxSeconds) },
     promptExtra: str(i.promptExtra, 1500, base.promptExtra),
+    briefs: Object.fromEntries(LOOK_KEYS.map((k) => [k, str(i.briefs?.[k], 4000, '')]).filter(([, v]) => v)),
+    formats: (Array.isArray(i.formats) ? i.formats : []).slice(0, 30).map((f: any) => ({
+      id: /^[a-z0-9-]{2,24}$/.test(String(f?.id || '')) ? String(f.id) : '', name: str(f?.name, 40, ''), base: (LOOK_KEYS as readonly string[]).includes(f?.base) && f.base !== 'doc' ? f.base : 'act',
+      brief: str(f?.brief, 3000, ''), note: str(f?.note, 1500, ''), stage: ['idea', 'test', 'live'].includes(f?.stage) ? f.stage : 'idea', created: Number(f?.created) || Date.now(),
+    })).filter((f: CustomFormat) => f.id && f.name),
     costs: (() => {
       const c = i.costs || {}, b = base.costs, n = (v: unknown, d: number) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : d);
       const models: Record<string, [number, number]> = {};
@@ -292,14 +313,17 @@ export function cleanConfig(input: any, base: Config): Config {
       // older settings kept a list of enabled styles / ways to start
       if (!i.visibility && Array.isArray(i.enabledStyles)) for (const k of STYLE_KEYS) if (!i.enabledStyles.includes(k)) v['style:' + k] = 'hidden';
       if (!i.visibility && Array.isArray(i.enabledSources)) for (const k of SOURCE_KEYS) if (!i.enabledSources.includes(k)) v['source:' + k] = 'hidden';
+      // rev 2: the story animation replaces the stick-figure story
+      if ((Number(i.rev) || 0) < 2) v['look:story'] = 'hidden';
       return v;
     })(),
+    rev: 2,
     zalo: (() => {
       const z = i.zalo || {}, b = base.zalo;
       const tpl: Record<string, string> = {};
       for (const k of Object.keys(b.templates)) tpl[k] = typeof z.templates?.[k] === 'string' && z.templates[k].trim() ? z.templates[k].slice(0, 1500) : b.templates[k];
       return {
-        enabled: typeof z.enabled === 'boolean' ? z.enabled : b.enabled, botLink: /^https:\/\/[^\s"<>]{4,200}$/.test(z.botLink || '') ? z.botLink : z.botLink === '' ? '' : b.botLink,
+        enabled: typeof z.enabled === 'boolean' ? z.enabled : b.enabled, receive: ['auto', 'webhook', 'poll'].includes(z.receive) ? z.receive : 'auto', botLink: /^https:\/\/[^\s"<>]{4,200}$/.test(z.botLink || '') ? z.botLink : z.botLink === '' ? '' : b.botLink,
         allowGuests: typeof z.allowGuests === 'boolean' ? z.allowGuests : b.allowGuests, scriptSource: z.scriptSource === 'mine-ai' ? 'mine-ai' : 'mine-free',
         autoRender: typeof z.autoRender === 'boolean' ? z.autoRender : b.autoRender, ownerChat: /^[\w.-]{1,80}$/.test(z.ownerChat || '') ? z.ownerChat : z.ownerChat === '' ? '' : b.ownerChat,
         notifyOwner: { signup: z.notifyOwner?.signup ?? b.notifyOwner.signup, failed: z.notifyOwner?.failed ?? b.notifyOwner.failed, order: z.notifyOwner?.order ?? b.notifyOwner.order, daily: z.notifyOwner?.daily ?? b.notifyOwner.daily },
@@ -468,7 +492,8 @@ export async function isAdmin(env: Env, config: Config, user: User) {
 export function publicConfig(config: Config) {
   return {
     brand: config.brand, labels: config.labels, texts: config.texts, enabledStyles: config.enabledStyles, enabledSources: config.enabledSources, defaults: config.defaults,
-    voices: config.voices.filter((v) => config.visibility['voice:' + v.code] !== 'hidden'), visibility: config.beta.enabled ? { ...config.visibility, 'feature:plans': 'hidden' as Vis } : config.visibility, notice: config.notice,
+    voices: config.voices.filter((v) => config.visibility['voice:' + v.code] !== 'hidden'),
+    formats: config.formats.filter((f) => f.stage === 'live').map((f) => ({ id: 'f:' + f.id, name: f.name, base: f.base, note: f.note.split('\n')[0].slice(0, 160) })), visibility: config.beta.enabled ? { ...config.visibility, 'feature:plans': 'hidden' as Vis } : config.visibility, notice: config.notice,
     beta: config.beta.enabled ? { label: config.beta.label, note: config.beta.note } : null,
     site: config.site,
     plans: !selling(config) ? [] : config.plans.filter((p) => p.visible).map((p) => ({ id: p.id, name: p.name, price: p.price, days: p.days, highlight: p.highlight, desc: p.desc, features: p.features, limits: p.limits, maxSeconds: Math.min(p.maxSeconds, config.limits.maxSeconds), docPerMonth: p.docPerMonth || 0 })),
