@@ -130,6 +130,8 @@ export interface ProjectSpec {
   affiliate?: { link: string; product?: string; price?: string; image?: string };
   /** story animation: the people of the story (same look in every scene) */
   cast?: ActCast[];
+  /** how the people are drawn: Open Peeps artwork (hand-drawn style) or the vector rig */
+  figures?: 'peeps' | 'rig';
   /** sound layers, kept separate: narration source, levels of each layer */
   audio?: { voice?: 'tts' | 'upload' | 'none'; voiceFile?: string; voiceVolume?: number; musicVolume?: number; sfxVolume?: number; mood?: 'warm' | 'curious' | 'calm' | 'upbeat' | 'none' };
   scenes: SceneSpec[];

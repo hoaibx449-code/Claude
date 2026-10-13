@@ -215,7 +215,7 @@ function prepareLook(opts: Parameters<typeof prepare>[0]): Model {
 function prepareAct(opts: Parameters<typeof prepare>[0]): Model {
   const { env, project, timeline, hand, dpr } = opts;
   const { W, H } = logicalSize(project.ratio);
-  const act = buildAct({ project, timeline, font: SANS, hand: 'Pangolin', measure: env.createCanvas(4, 4).getContext('2d') });
+  const act = buildAct({ project, timeline, font: SANS, hand: 'Pangolin', measure: env.createCanvas(4, 4).getContext('2d'), env, dpr });
   return { project, timeline, style: STYLES.notebook, tool: 'marker', W, H, dpr, background: env.createCanvas(4, 4), panels: project.scenes.map(() => []), mask: new Map(), hand, env,
     units: project.scenes.map(() => []), mode: 'hand', icons: opts.icons || {}, act };
 }

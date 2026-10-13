@@ -189,6 +189,16 @@ export function order(lines: Pt[][]): { i: number; pts: Pt[] }[] {
   return out;
 }
 
+/** Reading order for handwriting: by text line (lineHeight in logical px), then by left edge. */
+export function reading(lines: Pt[][], lineHeight: number): { i: number; pts: Pt[] }[] {
+  const info = lines.map((pts, i) => {
+    let x0 = Infinity, y = 0;
+    for (const p of pts) { x0 = Math.min(x0, p[0]); y += p[1]; }
+    return { i, pts: pts[0][0] <= pts[pts.length - 1][0] ? pts : pts.slice().reverse(), x0, row: Math.floor((y / pts.length) / lineHeight) };
+  });
+  return info.sort((a, b) => a.row - b.row || a.x0 - b.x0).map(({ i, pts }) => ({ i, pts }));
+}
+
 /** Time plan for ordered strokes (cost = line length + cheaper pen travel + a little per lift). */
 export function planStrokes(strokes: Pt[][], widths: number[]): StrokePlan {
   const cums: number[][] = [], starts: number[] = [], travel: number[] = [], rates: number[] = [];
@@ -215,14 +225,14 @@ export function strokeSpans(P: StrokePlan): [number, number][] {
  * Strokes of a picture. `px` is RGBA of the picture at a working scale `s` (working px per
  * logical px). Returns null when the picture is not line art (too much ink to draw line by line).
  */
-export function extractStrokes(px: Uint8ClampedArray, w: number, h: number, s: number): StrokePlan | null {
+export function extractStrokes(px: Uint8ClampedArray, w: number, h: number, s: number, opts: { minLen?: number; reading?: number } = {}): StrokePlan | null {
   const b = new Uint8Array(w * h);
   let ink = 0;
   for (let i = 0; i < w * h; i++) if (px[i * 4 + 3] > 96) { b[i] = 1; ink++; }
   if (!ink || ink > w * h * 0.35) return null;
   const dt = distance(b, w, h);
   thin(b, w, h);
-  const raw = trace(b, w, h).filter((l) => length(l) >= MIN_LEN);
+  const raw = trace(b, w, h).filter((l) => length(l) >= (opts.minLen ?? MIN_LEN));
   if (!raw.length || raw.length > 2500) return null;
   // each stroke reveals as wide as the ink around its centre line (a filled shoe, not just a line)
   const widths: number[] = [];
@@ -231,7 +241,8 @@ export function extractStrokes(px: Uint8ClampedArray, w: number, h: number, s: n
     widths.push(Math.max(3, Math.min(60, (2 * half + 1.5) / s + 2)));
     return smooth(l).map(([x, y]): Pt => [(x + 0.5) / s, (y + 0.5) / s]);
   });
-  const ordered = order(lines);
+  // writing: line by line, left to right (each stroke starts at its left end); drawing: nearest next
+  const ordered = opts.reading ? reading(lines, opts.reading) : order(lines);
   return planStrokes(ordered.map((o) => o.pts), ordered.map((o) => widths[o.i]));
 }
 

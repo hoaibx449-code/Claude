@@ -8,10 +8,13 @@
 //  · sparse text only for key words, figures and the conclusion;
 //  · sound cues for the pen, steps, pops, transitions.
 import type { Ctx, Ratio, SceneSpec, Timeline } from '../types.ts';
-import { clamp, drawPlan, ease, easeBack, hash, lerp, paint, paintPlan, place, planAt, resample, seg, transform, type DrawPlan, type Prim, type Pt } from './geom.ts';
+import { clamp, drawPlan, ease, easeBack, hash, lerp, paint, paintPlan, place, planAt, resample, roughArrow, roughLine, seg, transform, type DrawPlan, type Prim, type Pt } from './geom.ts';
 import { actionPose, BODY_HEIGHT, characterPrims, emotionFace, emotionPosture, handPoint, headPoint, LOOKS, mixPose, type CharLook, type Emotion, type Pose } from './rig.ts';
 import { propPrims, SETS } from './props.ts';
-import { HAND_SPEED } from '../strokes.ts';
+import { HAND_SPEED, pace } from '../strokes.ts';
+import { drawReveal, makeReveal, revealPen, type Reveal } from '../reveal.ts';
+import { faceOf, hasPeeps, peepPicture, PEEP_LOOKS, poseOf, FRAME, type PeepLook, type PeepPicture } from './peeps.ts';
+import type { Env } from '../types.ts';
 import type { ActBeat, ActCast, ActScene, When } from './spec.ts';
 
 export type ActSfx = 'whoosh' | 'pop' | 'msg' | 'tick' | 'ding' | 'scribble' | 'step' | 'buzz' | 'swish' | 'tap';
@@ -21,6 +24,10 @@ interface Move { t0: number; t1: number; x0: number; x1: number; run: boolean }
 interface BodyEv { t0: number; t1: number; do: string; hold: boolean; k?: number }
 interface Actor {
   id: string; look: CharLook; seed: number;
+  /** drawn as an Open Peeps person instead of the vector rig */
+  peep?: PeepLook;
+  /** the hand drawing a peeps person: its picture revealed stroke by stroke */
+  reveal?: { R: Reveal; pic: PeepPicture; flip: number; x: number };
   x0: number; visibleFrom: number;
   draw?: { start: number; end: number; plan: DrawPlan };
   moves: Move[]; body: BodyEv[]; emos: { t: number; e: Emotion }[]; faces: { t: number; f: number }[];
@@ -31,7 +38,11 @@ interface HandTask { start: number; end: number; space: 'world' | 'screen'; pen(
 interface CamKey { t: number; dur: number; x: number; y: number; z: number; from?: { x: number; y: number; z: number } }
 interface Bubble { who: string; t0: number; t1: number; text: string; think: boolean }
 interface Mark { who: string; t0: number; t1: number; kind: string }
-interface Txt { t0: number; t1: number; text: string; kind: string; who?: string; style: number; scene: number }
+interface Txt { t0: number; t1: number; text: string; kind: string; who?: string; style: number; scene: number;
+  /** written by the hand stroke by stroke (handwriting from the font's centre lines) */
+  rv?: { R: Reveal; x: number; y: number; start: number; end: number };
+  /** a rough arrow from the note to the person */
+  arrow?: { plan: DrawPlan; start: number; end: number } }
 interface Badge { t0: number; t1: number; ok: boolean }
 
 export interface ActModel {
@@ -43,6 +54,9 @@ export interface ActModel {
   /** auto-added micro actions (pacing) */
   filled: number;
   measure?: Ctx;
+  env?: Env; dpr: number;
+  /** logical px per peeps unit */
+  peepScale: number;
 }
 
 const GESTURE: Record<string, number> = { wave: 1.6, point: 1.4, nod: 1.1, shake: 1.2, surprised: 0.9, celebrate: 1.8, cheer: 1.8, laugh: 1.6, shrug: 1.3, handshake: 1.8, clap: 1.4, bow: 1.2, facepalm: 1.4, give: 1.4, reach: 1.2, 'look-around': 1.6 };
@@ -71,13 +85,14 @@ const lookOf = (c: ActCast | undefined, i: number): CharLook => {
   return { ...presets[i % presets.length], ...c.look };
 };
 
-export function buildAct(opts: { project: { ratio: Ratio; cast?: ActCast[]; scenes: SceneSpec[] }; timeline: Timeline; font: string; hand: string; measure?: Ctx }): ActModel {
+export function buildAct(opts: { project: { ratio: Ratio; cast?: ActCast[]; scenes: SceneSpec[]; figures?: 'peeps' | 'rig' }; timeline: Timeline; font: string; hand: string; measure?: Ctx; env?: Env; dpr?: number }): ActModel {
   const { project, timeline } = opts, portrait = project.ratio === '9:16';
   const W = portrait ? 540 : 960, H = portrait ? 960 : 540;
   const scale = portrait ? 1.6 : 1.12;
   const SX = portrait ? 258 : 480, SY = portrait ? 440 : 262, groundY = portrait ? 772 : 478;
   const stageW = portrait ? 600 : 1000;
-  const m: ActModel = { W, H, portrait, scale, SX, SY, groundY, actors: [], props: [], hand: [], cams: [], bubbles: [], marks: [], texts: [], badges: [], cues: [], duration: timeline.duration, font: opts.font, hand2: opts.hand, filled: 0, measure: opts.measure };
+  const m: ActModel = { W, H, portrait, scale, SX, SY, groundY, actors: [], props: [], hand: [], cams: [], bubbles: [], marks: [], texts: [], badges: [], cues: [], duration: timeline.duration, font: opts.font, hand2: opts.hand, filled: 0, measure: opts.measure, env: opts.env, dpr: opts.dpr || 1, peepScale: (BODY_HEIGHT * scale) / FRAME.height.standing * 1.05 };
+  const usePeeps = project.figures === 'peeps' && hasPeeps() && !!opts.env;
   const castSpec = project.cast || [];
   const actors = new Map<string, Actor>();
   const actor = (id: string): Actor => {
@@ -85,6 +100,7 @@ export function buildAct(opts: { project: { ratio: Ratio; cast?: ActCast[]; scen
     if (!a) {
       const i = actors.size, c = castSpec.find((x) => x.id === id);
       a = { id, look: lookOf(c, castSpec.indexOf(c!) >= 0 ? castSpec.indexOf(c!) : i), seed: i * 7 + 3, x0: 0, visibleFrom: Infinity, moves: [], body: [], emos: [], faces: [], talks: [], holds: [] };
+      if (usePeeps) { const key = typeof c?.look === 'string' ? c.look : ''; a.peep = PEEP_LOOKS[key] || Object.values(PEEP_LOOKS)[i % Object.keys(PEEP_LOOKS).length]; }
       actors.set(id, a); m.actors.push(a);
     }
     return a;
@@ -217,6 +233,17 @@ export function buildAct(opts: { project: { ratio: Ratio; cast?: ActCast[]; scen
         continue;
       }
       const a = actors.get(id);
+      if (a && a.peep) {
+        // a peeps person: the hand draws the picture along its own strokes
+        const st = bodyAt(a, ht), [g, pose] = poseOf(actionAt(a, ht).do, a.peep), pic = peepPicture(m.env!, a.peep, g, pose, 'Calm', m.peepScale, m.dpr);
+        if (pic) {
+          const R0 = makeReveal(m.env!, pic.canvas, pic.w, pic.h, m.dpr);
+          const len = R0.plan ? R0.plan.total : pic.w * 6;
+          a.reveal = { R: R0, pic, flip: st.f, x: xAt(a, ht) };
+          tasks.push({ id, plan: { prims: [], lens: [], starts: [], travel: [], total: len } as any, speed: HAND_SPEED, min: 1.4, max: 3.6, target: a });
+        }
+        continue;
+      }
       if (a) {
         const st = bodyAt(a, ht), prims = place(characterPrims(a.look, st.pose, emotionFace(st.emo, ht, false, a.seed), st.f, st.yaw, a.seed), xAt(a, ht), 0, scale);
         tasks.push({ id, plan: drawPlan(prims), speed: HAND_SPEED, min: 1.4, max: 3.6, target: a });
@@ -231,6 +258,17 @@ export function buildAct(opts: { project: { ratio: Ratio; cast?: ActCast[]; scen
     for (const k of tasks) {
       const d = clamp(k.plan.total / k.speed, k.min, k.max) * squeeze, start = ht, end = ht + d;
       const P = k.plan;
+      const rv = !Array.isArray(k.target) ? k.target.reveal : undefined;
+      if (rv) {
+        // pace the picture to its time, then the nib follows the reveal (mirrored when facing left)
+        if (rv.R.plan) { const f = pace(rv.R.plan, d); rv.R.plan = f.plan; rv.R.share = f.share; }
+        const { pic, flip, x } = rv;
+        m.hand.push({ start, end, space: 'world', pen: (q) => { const p = revealPen(rv.R, q); return { x: x + (p.x - pic.ax) * flip, y: p.y - pic.ay, lift: p.lift }; } });
+        m.cues.push({ t: start, k: 'scribble', d: d * rv.R.share });
+        const who = k.target as Actor; who.draw = { start, end, plan: P }; who.visibleFrom = start;
+        ht = end + 0.12;
+        continue;
+      }
       m.hand.push({ start, end, space: 'world', pen: (q) => planAt(P, q) });
       // the pen sounds stroke by stroke, silent while it travels to the next one
       let run: [number, number] | null = null;
@@ -297,15 +335,44 @@ export function buildAct(opts: { project: { ratio: Ratio; cast?: ActCast[]; scen
       const kind = tx.kind || 'stamp';
       let t = resolveWhen(tx.at, t0, lines, tEnd, ready + 0.3);
       const t1 = tx.dur ? t + tx.dur : si === project.scenes.length - 1 ? timeline.duration + 1 : tEnd - 0.15;
-      if (kind === 'big') {
+      if (kind === 'big' || kind === 'note') {
         t = Math.max(t, handFree + 0.3);
-        const d = Math.max(1.0, Math.min(2.6, tx.text.length * 0.07));
-        const st = styleN;
-        m.texts.push({ t0: t, t1: Math.max(t1, t + d + 0.8), text: tx.text, kind, style: st, scene: si });
-        const box = bigTextBox(m, tx.text);
-        m.hand.push({ start: t, end: t + d, space: 'screen', pen: (q) => writePen(box, q) });
-        m.cues.push({ t, k: 'scribble', d });
-        handFree = t + d + 0.15;
+        const box = bigTextBox(m, tx.text, kind === 'note');
+        const pic = m.env ? textPicture(m, box) : null;
+        let d = Math.max(1.0, Math.min(2.6, tx.text.length * 0.07));
+        const T: Txt = { t0: t, t1, text: tx.text, kind, who: tx.who, style: styleN, scene: si };
+        if (pic) {
+          // handwriting: the words' own centre lines, written by the hand at a writing pace
+          // every mark of the words is written (accents included), in reading order
+          const R = makeReveal(m.env!, pic.canvas, pic.w, pic.h, m.dpr, undefined, { minLen: 1.5, reading: box.lh });
+          d = clamp((R.plan?.total || 600) / (HAND_SPEED * 1.3), 1.0, 3.6);
+          let ox = box.x - pic.w / 2, oy = box.y - box.size * 1.05, space: 'world' | 'screen' = 'screen';
+          const who = tx.who && actors.get(tx.who);
+          if (kind === 'note' && who) {
+            // a note beside the person, above the head, on the side with more room
+            // on the side away from the other people (bubbles live over their heads), kept on the stage
+            const hx = xAt(who, t), others = m.actors.filter((o) => o !== who && o.visibleFrom <= t).map((o) => xAt(o, t));
+            const side = others.length ? (others.reduce((a2, v) => a2 + v, 0) / others.length < hx ? 1 : -1) : hx - X > 0 ? -1 : 1;
+            ox = hx + side * 40 * scale - (side < 0 ? pic.w : 0);
+            ox = Math.max(X - (portrait ? 255 : 450), Math.min(X + (portrait ? 230 : 450) - pic.w, ox));
+            oy = -BODY_HEIGHT * scale * 1.3 - pic.h; space = 'world';
+            const from: Pt = [ox + (side < 0 ? pic.w * 0.85 : pic.w * 0.15), oy + pic.h + 6], to: Pt = [hx + side * 22 * scale, -BODY_HEIGHT * scale * 1.05];
+            const plan = drawPlan(roughArrow(from, to, si * 31 + 7, '#e0453a', 3));
+            T.arrow = { plan, start: t + d + 0.05, end: t + d + 0.55 };
+          }
+          T.rv = { R, x: ox, y: oy, start: t, end: t + d };
+          const sp = space;
+          m.hand.push({ start: t, end: t + d, space: sp, pen: (q) => { const p = revealPen(R, q); return { x: ox + p.x, y: oy + p.y, lift: p.lift }; } });
+          if (T.arrow) { const A = T.arrow; m.hand.push({ start: A.start, end: A.end, space: 'world', pen: (q) => planAt(A.plan, q) }); }
+          for (const [a, b] of R.plan ? strokeSpansOf(R) : [[0, 1]]) m.cues.push({ t: t + a * d, k: 'scribble', d: Math.max(0.05, (b - a) * d) });
+        } else {
+          const bx = box;
+          m.hand.push({ start: t, end: t + d, space: 'screen', pen: (q) => writePen(bx, q) });
+          m.cues.push({ t, k: 'scribble', d });
+        }
+        T.t1 = Math.max(t1, t + d + (T.arrow ? 1.4 : 0.8));
+        m.texts.push(T);
+        handFree = t + d + (T.arrow ? 0.7 : 0.15);
       } else {
         m.texts.push({ t0: t, t1, text: tx.text, kind, who: tx.who, style: styleN++ % 3, scene: si });
         m.cues.push({ t, k: 'pop', v: 0.8 });
@@ -375,6 +442,14 @@ function fillPacing(m: ActModel, timeline: Timeline) {
 }
 
 // ---------------------------------------------------------------- state at time t
+/** What the person is doing at t (walking, a gesture, or the held action) and since when. */
+export function actionAt(a: Actor, t: number): { do: string; t0: number; t1: number; run?: boolean; dist?: number } {
+  for (const mv of a.moves) if (t >= mv.t0 && t <= mv.t1 && mv.t1 - mv.t0 > 0.01) return { do: mv.run ? 'run' : 'walk', t0: mv.t0, t1: mv.t1, run: mv.run, dist: Math.abs(lerp(mv.x0, mv.x1, (t - mv.t0) / (mv.t1 - mv.t0)) - mv.x0) };
+  let held: BodyEv | null = null, gest: BodyEv | null = null;
+  for (const b of a.body) { if (b.t0 > t) break; if (b.hold) { held = b; gest = null; } else if (t < b.t1) gest = b; else if (gest === b) gest = null; }
+  const ev = gest || held;
+  return ev ? { do: ev.do, t0: ev.t0, t1: ev.t1 } : { do: 'idle', t0: 0, t1: Infinity };
+}
 const TAU = Math.PI * 2;
 export function actorState(m: ActModel, a: Actor, t: number) {
   // emotion
@@ -436,14 +511,18 @@ export function actorX(a: Actor, t: number) {
   return x;
 }
 function headWorld(m: ActModel, a: Actor, t: number): Pt {
+  if (a.peep) {
+    const pic = peepNow(m, a, t);
+    if (pic) { const f = actorState(m, a, t).f; return [actorX(a, t) + (pic.head[0] - pic.ax) * f, pic.head[1] - pic.ay - pic.h * 0.12]; }
+  }
   const st = actorState(m, a, t), [hx, hy] = headPoint(st.pose, st.f, st.yaw);
   return [actorX(a, t) + hx * m.scale, hy * m.scale];
 }
 
 // ---------------------------------------------------------------- big handwritten text
 interface TextBox { x: number; y: number; w: number; lines: string[]; size: number; lh: number; widths: number[] }
-function bigTextBox(m: ActModel, text: string): TextBox {
-  const size = m.portrait ? 42 : 38, maxW = m.portrait ? 430 : 760;
+function bigTextBox(m: ActModel, text: string, note = false): TextBox {
+  const size = note ? (m.portrait ? 30 : 28) : m.portrait ? 42 : 38, maxW = note ? (m.portrait ? 230 : 300) : m.portrait ? 430 : 760;
   const c = m.measure;
   if (c) c.font = `${size}px ${m.hand2}`;
   const width = (s: string) => (c ? c.measureText(s).width : s.length * size * 0.5);
@@ -453,6 +532,19 @@ function bigTextBox(m: ActModel, text: string): TextBox {
   if (cur) lines.push(cur);
   const lh = size * 1.25, y = m.portrait ? 196 : 110;
   return { x: m.portrait ? 258 : 480, y, w: maxW, lines, size, lh, widths: lines.map(width) };
+}
+/** The words as a picture (handwriting font, ink on transparency), to be written stroke by stroke. */
+function textPicture(m: ActModel, b: TextBox) {
+  const pad = 8, w = Math.max(...b.widths) + pad * 2, h = b.lines.length * b.lh + pad;
+  const cv = m.env!.createCanvas(Math.ceil(w * m.dpr), Math.ceil(h * m.dpr)), c = cv.getContext('2d');
+  c.scale(m.dpr, m.dpr); c.font = `${b.size}px ${m.hand2}`; c.fillStyle = '#22252b'; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  b.lines.forEach((l, i) => c.fillText(l, w / 2, b.size * 1.0 + i * b.lh));
+  return { canvas: cv, w, h };
+}
+function strokeSpansOf(R: Reveal): [number, number][] {
+  const P = R.plan!, out: [number, number][] = [];
+  P.strokes.forEach((s, i) => { const L = P.cums[i][P.cums[i].length - 1] * P.rates[i]; const a = (P.starts[i] / P.total) * R.share, b = ((P.starts[i] + L) / P.total) * R.share; const last = out[out.length - 1]; if (last && a - last[1] < 0.02) last[1] = b; else out.push([a, b]); });
+  return out;
 }
 function writePen(b: TextBox, q: number) {
   const total = b.lines.reduce((s, l) => s + l.length, 0) || 1;
@@ -489,6 +581,7 @@ export function renderAct(c: Ctx, m: ActModel, t: number, drawHandFn?: (x: numbe
   }
   for (const a of m.actors) {
     if (t < a.visibleFrom) continue;
+    if (a.peep) { drawPeepActor(c, m, a, t); continue; }
     if (a.draw && t < a.draw.end) { paintPlan(c, a.draw.plan, seg(t, a.draw.start, a.draw.end)); continue; }
     paint(c, actorPrims(m, a, t));
   }
@@ -498,6 +591,13 @@ export function renderAct(c: Ctx, m: ActModel, t: number, drawHandFn?: (x: numbe
     const u = easeBack(seg(t, k.t0, k.t0 + 0.35)), fade = 1 - seg(t, k.t1 - 0.3, k.t1);
     const bob = Math.sin((t - k.t0) * 5) * 3;
     paint(c, place(propPrims(k.kind, 3), hx + 46 * m.scale * (a.faces.length && a.faces[a.faces.length - 1].f < 0 ? -1 : 1), hy - 50 * m.scale + bob, m.scale * 0.9 * u), fade);
+  }
+  // handwritten notes beside people, with a rough arrow to them
+  for (const tx of m.texts) {
+    if (tx.kind !== 'note' || !tx.rv || t < tx.t0 || t > tx.t1) continue;
+    const fade = 1 - seg(t, tx.t1 - 0.3, tx.t1);
+    drawReveal(c, m.env!, tx.rv.R, seg(t, tx.rv.start, tx.rv.end), tx.rv.x, tx.rv.y, fade);
+    if (tx.arrow && t >= tx.arrow.start) { c.save(); c.globalAlpha = fade; paintPlan(c, tx.arrow.plan, seg(t, tx.arrow.start, tx.arrow.end)); c.restore(); }
   }
   c.restore();
   for (const b of m.bubbles) {
@@ -512,6 +612,7 @@ export function renderAct(c: Ctx, m: ActModel, t: number, drawHandFn?: (x: numbe
   let stack = m.badges.some((bd) => t >= bd.t0 && t <= bd.t1) ? 0.9 : 0;
   for (const tx of m.texts) {
     if (t < tx.t0 || t > tx.t1) continue;
+    if (tx.kind === 'note') continue;
     if (tx.kind === 'big') drawBig(c, m, tx, t, m.hand.find((h) => h.space === 'screen' && Math.abs(h.start - tx.t0) < 0.01));
     else if (tx.kind === 'label' && tx.who) { const a = m.actors.find((x) => x.id === tx.who); if (a) { const p = toScreen([actorX(a, t), 30]); drawLabel(c, m, tx, p, t); } }
     else { drawStamp(c, m, tx, t, stack); stack++; }
@@ -619,7 +720,8 @@ function drawStamp(c: Ctx, m: ActModel, tx: Txt, t: number, stack: number) {
 function countUp(s: string, u: number) {
   const mm = /^(\D*)(\d+)(.*)$/.exec(s);
   if (!mm) return s;
-  return mm[1] + Math.round(Number(mm[2]) * ease(u)) + mm[3];
+  const n = Number(mm[2]);
+  return mm[1] + Math.max(Math.min(1, n), Math.round(n * ease(u))) + mm[3];
 }
 function drawLabel(c: Ctx, m: ActModel, tx: Txt, [x, y]: Pt, t: number) {
   const fade = seg(t, tx.t0, tx.t0 + 0.3) * (1 - seg(t, tx.t1 - 0.25, tx.t1));
@@ -646,6 +748,17 @@ function drawBig(c: Ctx, m: ActModel, tx: Txt, t: number, task?: HandTask) {
   const h = b.lines.length * b.lh + 44;
   c.fillStyle = 'rgba(251,250,246,0.97)'; rrect(c, b.x - b.w / 2 - 18, b.y - b.size - 14, b.w + 36, h, 18); c.fill();
   c.font = `${b.size}px ${m.hand2}`; c.fillStyle = '#22252b'; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  if (tx.rv) {
+    // handwriting, then a rough underline under the last line
+    drawReveal(c, m.env!, tx.rv.R, seg(t, tx.rv.start, tx.rv.end), tx.rv.x, tx.rv.y);
+    const ul = seg(t, tx.rv.end, tx.rv.end + 0.4);
+    if (ul > 0) {
+      const y = b.y + (b.lines.length - 1) * b.lh + 12, wl = b.widths[b.widths.length - 1];
+      const prims = roughLine([b.x - wl / 2, y + 2], [b.x + wl / 2, y - 2], 77).map((d, i) => ({ d, w: i ? 2.6 : 4, ink: '#e0453a', alpha: i ? 0.7 : 1 }));
+      paintPlan(c, drawPlan(prims), ul);
+    }
+    c.restore(); return;
+  }
   let done = q * total;
   b.lines.forEach((l, i) => {
     const y = b.y + i * b.lh;
@@ -673,3 +786,66 @@ export function longestStill(m: ActModel, from = 0, to = m.duration) {
   return max;
 }
 export { transform };
+
+// ---------------------------------------------------------------- Open Peeps people
+function peepNow(m: ActModel, a: Actor, t: number, face?: string) {
+  const st = actorState(m, a, t), [g, pose] = poseOf(actionAt(a, t).do, a.peep!);
+  return peepPicture(m.env!, a.peep!, g, pose, face || faceOf(st.emo, st.talking, t, a.seed), m.peepScale, m.dpr);
+}
+
+/** The person alive: breathing, sway, nodding, steps; a short cross-fade when the pose changes. */
+function drawPeepActor(c: Ctx, m: ActModel, a: Actor, t: number) {
+  const x = actorX(a, t);
+  if (a.draw && t < a.draw.end && a.reveal) {
+    const { R, pic, flip } = a.reveal, rx = a.reveal.x;
+    c.save(); c.translate(rx, 0); c.scale(flip, 1);
+    drawReveal(c, m.env!, R, seg(t, a.draw.start, a.draw.end), -pic.ax, -pic.ay);
+    c.restore();
+    return;
+  }
+  const st = actorState(m, a, t), act = actionAt(a, t);
+  const pic = peepNow(m, a, t);
+  if (!pic) return;
+  // turning: squash through the middle instead of a flat flip
+  const sx = Math.sign(st.yaw || 1) * (0.6 + 0.4 * Math.min(1, Math.abs(st.yaw) / 0.5));
+  const k = (t - act.t0);
+  let nod = Math.sin(t * 1.7 + a.seed) * 0.012, bob = 0, rock = Math.sin(t * Math.PI * 2 / 4.2 + a.seed) * 0.008, shift = 0;
+  switch (act.do) {
+    case 'walk': case 'run': { const ph = ((act.dist || 0) / (40 * m.scale)) * Math.PI; bob = -Math.abs(Math.sin(ph)) * (act.run ? 10 : 6); rock = Math.sin(ph) * 0.035; break; }
+    case 'nod': case 'listen': nod = Math.max(0, Math.sin(k * Math.PI * 2 * (act.do === 'nod' ? 1.8 : 0.6))) * (act.do === 'nod' ? 0.16 : 0.07); break;
+    case 'shake': nod = Math.sin(k * Math.PI * 2 * 2.4) * 0.07; shift = Math.sin(k * Math.PI * 2 * 2.4) * 3; break;
+    case 'talk': case 'explain': nod = Math.sin(k * 9) * 0.035; break;
+    case 'celebrate': case 'cheer': case 'clap': bob = -Math.abs(Math.sin(k * Math.PI * 2 * 1.6)) * 14; break;
+    case 'laugh': nod = -0.08 + Math.sin(k * 30) * 0.03; bob = Math.sin(k * 30) * 1.5; break;
+    case 'surprised': bob = -Math.sin(Math.min(1, k / 0.35) * Math.PI) * 14; nod = -0.08; break;
+    case 'sad': nod = 0.14; break;
+    case 'shy': case 'nervous': nod = 0.1 + Math.sin(k * 2) * 0.02; shift = Math.sin(k * 3) * 2; break;
+    case 'think': nod = -0.06 + Math.sin(k * 1.3) * 0.03; break;
+    case 'bow': nod = Math.sin(Math.min(1, k / (act.t1 - act.t0 || 1)) * Math.PI) * 0.3; break;
+  }
+  if (st.talking) nod += Math.sin(t * 11) * 0.02;
+  const breathe = 1 + Math.sin(t * Math.PI * 2 / 3.3 + a.seed) * 0.01;
+  const blend = seg(t, act.t0, act.t0 + 0.18);
+  if (blend < 1 && act.t0 > 0) {
+    const prev = peepNow(m, a, act.t0 - 0.01);
+    if (prev && prev !== pic) drawPeep(c, prev, x, sx, bob, rock, nod, shift, breathe, 1 - blend);
+  }
+  drawPeep(c, pic, x, sx, bob, rock, nod, shift, breathe, blend < 1 && act.t0 > 0 ? blend : 1);
+  // something held that the pose does not show
+  if (st.hold && act.do === 'phone') {
+    const hx = x + (pic.neck[0] - pic.ax + pic.w * 0.08) * sx, hy = pic.neck[1] - pic.ay + pic.h * 0.28;
+    paint(c, place(propPrims(st.hold, 5), hx, hy, m.scale * 0.8));
+  }
+}
+
+function drawPeep(c: Ctx, pic: PeepPicture, x: number, sx: number, bob: number, rock: number, nod: number, shift: number, breathe: number, alpha: number) {
+  const ox = -pic.ax, oy = -pic.ay, [nx, ny] = [ox + pic.neck[0], oy + pic.neck[1]];
+  c.save(); c.globalAlpha *= alpha;
+  c.translate(x, bob); c.rotate(rock); c.scale(sx, 1);
+  // body: below the neck, breathing from the feet
+  c.save(); c.beginPath(); c.rect(ox - 40, ny - 4, pic.w + 80, pic.h + 40); c.clip(); c.scale(1, breathe); c.drawImage(pic.canvas, ox, oy, pic.w, pic.h); c.restore();
+  // head: above the neck, turning about it, riding on the breathing shoulders
+  c.save(); c.translate(shift, ny * (breathe - 1)); c.translate(nx, ny); c.rotate(nod); c.translate(-nx, -ny);
+  c.beginPath(); c.rect(ox - 60, oy - 60, pic.w + 120, pic.neck[1] + 64); c.clip(); c.drawImage(pic.canvas, ox, oy, pic.w, pic.h); c.restore();
+  c.restore();
+}
