@@ -7,6 +7,7 @@ import type { Rc, XEnv } from './worker.ts';
 import { zaloAdmin } from './zalo.ts';
 import { plansAdmin } from './plans.ts';
 import { communityAdmin } from './media.ts';
+import { queueRender } from './worker.ts';
 
 const DAY = 86_400_000, TZ = 7 * 3_600_000; // days are counted in Vietnam time
 
@@ -30,6 +31,24 @@ function eventFilter(url: URL) {
 
 export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: string, method: string, rc: Rc, admin: User): Promise<Response> {
   const url = new URL(req.url);
+
+  if (sub === 'renders' && method === 'GET') {
+    const jobs = await env.DB.prepare(`SELECT j.id, j.project_id, j.user_id, j.status, j.progress, j.error, j.created_at, j.started_at, j.finished_at,
+      p.title, u.email, jp.phase, jp.message, jp.updated_at AS heartbeat_at FROM jobs j
+      LEFT JOIN projects p ON p.id = j.project_id LEFT JOIN users u ON u.id = j.user_id LEFT JOIN job_progress jp ON jp.job_id = j.id
+      ORDER BY j.created_at DESC LIMIT 100`).all<any>();
+    const counts = await env.DB.prepare('SELECT status, COUNT(*) AS n FROM jobs GROUP BY status').all<any>();
+    return json({ jobs: jobs.results, counts: Object.fromEntries(counts.results.map((row) => [row.status, row.n])) });
+  }
+  const retryJob = sub.match(/^renders\/([a-f0-9]{24})\/retry$/);
+  if (retryJob && method === 'POST') {
+    const row = await env.DB.prepare("SELECT j.*, u.email, u.name FROM jobs j JOIN users u ON u.id = j.user_id WHERE j.id = ? AND j.status = 'failed'").bind(retryJob[1]).first<any>();
+    if (!row) throw new HttpError(409, 'Chỉ thử lại video đã dựng thất bại.');
+    if (await env.DB.prepare('SELECT 1 FROM blocked_users WHERE user_id = ?').bind(row.user_id).first()) throw new HttpError(403, 'Tài khoản đang bị khóa.');
+    const job = await queueRender(env, rc, { id: row.user_id, email: row.email, name: row.name, picture: null }, row.project_id, JSON.parse(row.spec));
+    rc.log('admin.render.retry', { projectId: row.project_id, data: { previous: row.id, job: job.id } });
+    return json({ job });
+  }
 
   if (sub === 'settings' && method === 'GET') return json({ config: env.config, secrets: await secretStatus(rawEnv) });
   if (sub === 'settings' && method === 'PUT') {

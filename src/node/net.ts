@@ -4,11 +4,11 @@ export async function fetchRetry(url: string, init: RequestInit = {}, label = 'm
   let last: unknown;
   for (let i = 0; i < tries; i++) {
     try {
-      const res = await fetch(url, init);
-      if ((res.status === 429 || res.status >= 500) && i < tries - 1) { last = new Error(`HTTP ${res.status}`); }
+      const res = await fetch(url, { ...init, signal: init.signal ?? AbortSignal.timeout(60_000) });
+      if ((res.status === 429 || res.status >= 500) && i < tries - 1) { last = new Error(`HTTP ${res.status}`); await res.body?.cancel(); }
       else return res;
-    } catch (e) { last = e; }
-    await new Promise((r) => setTimeout(r, 1000 * 3 ** i));
+    } catch (e) { last = e; if (init.signal?.aborted) throw e; }
+    if (i < tries - 1) await new Promise((r) => setTimeout(r, 1000 * 3 ** i));
   }
   throw new Error(`${label}: ${describe(last)}`);
 }

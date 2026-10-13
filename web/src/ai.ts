@@ -64,7 +64,7 @@ function systemPrompt(r: ScriptRequest) {
   }[r.visual];
   return [
     'Bạn là biên kịch video ngắn tiếng Việt kiểu "bàn tay vẽ" (whiteboard), chuyên viết video giữ chân người xem tới giây cuối. Viết đúng chủ đề người dùng đưa.',
-    `Khoảng ${scenes} cảnh, tổng ~${r.seconds} giây lời đọc (~${Math.round(r.seconds * 2.6)} chữ). Mỗi cảnh 1-2 câu thoại, văn nói tự nhiên, xưng "bạn", mỗi câu ≤ 18 chữ.`,
+    `Khoảng ${scenes} cảnh, tổng ~${r.seconds} giây lời đọc (~${Math.round(r.seconds * 2.6)} chữ). Mỗi cảnh 1-3 câu thoại, văn nói tự nhiên, xưng "bạn". Xen câu ngắn nhấn ý với câu dài giải thích, nối ý giữa các cảnh; không biến mọi câu thành khẩu hiệu hoặc thêm dấu ba chấm để kéo nhịp.`,
     'CẤU TRÚC BẮT BUỘC:',
     '1. HOOK (cảnh 1, ≤ 3 giây): một câu khiến người đang lướt phải dừng lại — câu hỏi chạm đúng nỗi đau, một sự thật bất ngờ, một mâu thuẫn ("càng... càng..."), hoặc lời hứa cụ thể. CẤM chào hỏi, cấm "hôm nay mình sẽ", cấm giới thiệu kênh.',
     '2. VÒNG LẶP TÒ MÒ (cảnh 1-2): gợi một điều chỉ được tiết lộ ở cuối (vd "điều thứ ba mới là thứ quyết định"), để người xem phải xem hết.',

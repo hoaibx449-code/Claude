@@ -17,9 +17,10 @@ export async function zaloApi(token: string, method: string, payload: unknown = 
   try {
     const res = await fetch(`${API}${token}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(10_000) });
     const j: any = await res.json().catch(() => ({}));
-    return { ok: res.ok && j.ok !== false, status: res.status, result: j.result, error: j.description || j.message || (res.ok ? '' : `HTTP ${res.status}`) };
+    const ok = res.ok && j.ok === true;
+    return { ok, status: res.status, result: j.result, error: ok ? '' : String(j.description || j.message || `Zalo không xác nhận thành công (HTTP ${res.status})`).replaceAll(token, '[token]').slice(0, 300) };
   } catch (e: any) {
-    return { ok: false, status: 0, result: null, error: 'không gọi được Zalo: ' + String(e.message || e).slice(0, 120) };
+    return { ok: false, status: 0, result: null, error: 'không gọi được Zalo: ' + String(e.message || e).replaceAll(token, '[token]').slice(0, 120) };
   }
 }
 
@@ -28,7 +29,10 @@ async function hmacHex(secret: string, msg: string) {
   return [...new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(msg)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 /** Secret Zalo must echo in X-Bot-Api-Secret-Token (derived, so nothing extra to store). */
-export const webhookSecret = async (env: Env) => (await hmacHex(env.RUNNER_TOKEN || '', 'zalo-webhook')).slice(0, 48);
+export const webhookSecret = async (env: Env) => {
+  if (!env.RUNNER_TOKEN || env.RUNNER_TOKEN.length < 32) throw new HttpError(503, 'RUNNER_TOKEN cần ít nhất 32 ký tự để bảo vệ webhook.');
+  return (await hmacHex(env.RUNNER_TOKEN, 'zalo-webhook')).slice(0, 48);
+};
 
 /** Link that plays/downloads a finished video without logging in, valid for a few days. */
 export async function shareLink(env: Env, origin: string, jobId: string) {
@@ -44,11 +48,23 @@ export async function checkShare(env: Env, jobId: string, exp: number, sig: stri
 const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
 const fill = (tpl: string, v: Record<string, string | number>) => tpl.replace(/\{(\w+)\}/g, (_, k) => (v[k] ?? '').toString());
 
-async function send(env: XEnv, chatId: string, text: string) {
+async function send(env: XEnv, chatId: string, text: string, messageId?: string) {
+  const id = randomId(16), now = Date.now();
+  await env.DB.prepare('INSERT INTO zalo_outbox (id, chat_id, message_id, text, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, chatId, messageId || null, text.slice(0, 1900), 'pending', now, now).run();
+  return deliverReply(env, id);
+}
+
+async function deliverReply(env: XEnv, id: string, force = false) {
+  const row = await env.DB.prepare(`UPDATE zalo_outbox SET status = 'sending', attempts = attempts + 1, updated_at = ?
+    WHERE id = ? AND (attempts < 5 OR ?) AND (status IN ('pending','failed') OR (status = 'sending' AND updated_at < ?)) RETURNING *`)
+    .bind(Date.now(), id, force ? 1 : 0, Date.now() - 120_000).first<any>();
+  if (!row) return { ok: false, error: 'Tin đang gửi hoặc đã gửi.' };
   const token = (env as any).ZALO_BOT_TOKEN;
-  if (!token) return { ok: false, error: 'chưa có token' };
-  // never throws: a failed reply must not stop the work (creating the video) around it
-  return zaloApi(token, 'sendMessage', { chat_id: chatId, text: text.slice(0, 1900) });
+  const result = token ? await zaloApi(token, 'sendMessage', { chat_id: row.chat_id, text: row.text }) : { ok: false, error: 'Chưa có Zalo Bot token.' };
+  await env.DB.prepare("UPDATE zalo_outbox SET status = ?, error = ?, updated_at = ? WHERE id = ? AND status = 'sending' AND attempts = ?")
+    .bind(result.ok ? 'sent' : 'failed', result.ok ? null : result.error, Date.now(), id, row.attempts).run();
+  return result;
 }
 
 /** Tell the owner about something (if they claimed the bot and want this kind of news). */
@@ -60,41 +76,80 @@ export async function notifyOwner(env: XEnv, kind: keyof Config['zalo']['notifyO
 // ---------------------------------------------------------------- webhook
 export async function zaloWebhook(req: Request, env: XEnv, rc: Rc): Promise<Response> {
   const token = (env as any).ZALO_BOT_TOKEN;
-  if (!env.config.zalo.enabled || !token) return json({ ok: true });
+  if (!env.config.zalo.enabled || !token || !env.RUNNER_TOKEN || env.RUNNER_TOKEN.length < 32) {
+    rc.log('zalo.webhook', { ok: false, data: { error: !env.config.zalo.enabled ? 'Tính năng Zalo đang tắt.' : !token ? 'Chưa có Zalo Bot token.' : 'RUNNER_TOKEN chưa hợp lệ.' } });
+    throw new HttpError(503, 'Kết nối Zalo chưa được cấu hình đầy đủ.');
+  }
   const secret = await webhookSecret(env);
   const given = req.headers.get('x-bot-api-secret-token') || new URL(req.url).searchParams.get('s') || '';
   if (!timingSafeEqual(given, secret)) { rc.log('zalo.webhook', { ok: false, data: { error: 'sai mã bí mật' } }); throw new HttpError(401, 'Không có quyền.'); }
   const b = await body<any>(req, 50_000);
-  const ev = b.result || b;
-  const msg = ev.message || {};
-  const chatId = String(msg.chat?.id || msg.from?.id || '');
-  if (!/received/.test(String(ev.event_name || 'message.text.received')) || !chatId) return json({ ok: true });
-  // Zalo retries deliveries: handle each message once
-  const mid = String(msg.message_id || '');
-  if (mid) {
-    const fresh = await env.DB.prepare('INSERT OR IGNORE INTO zalo_seen (message_id, ts) VALUES (?, ?) RETURNING message_id').bind(mid, Date.now()).first();
-    if (!fresh) return json({ ok: true });
+  const event = normalizeMessage(b);
+  if (!event) {
+    rc.log('zalo.webhook', { ok: false, data: { error: 'Payload không có message/chat_id của Zalo Bot Platform.', event: String(b.event_name || b.result?.event_name || '').slice(0, 80) } });
+    throw new HttpError(400, 'Không nhận diện được tin nhắn Zalo Bot.');
   }
+  if (event.event && !event.event.includes('received')) { rc.log('zalo.ignored', { data: { event: event.event } }); return json({ ok: true, ignored: true }); }
+  const id = event.id || randomId(16), now = Date.now();
+  await env.DB.prepare(`INSERT OR IGNORE INTO zalo_messages (id, chat_id, sender_name, text, is_text, status, received_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'received', ?, ?)`)
+    .bind(id, event.chatId, event.name, event.text, event.isText ? 1 : 0, now, now).run();
+  rc.log('zalo.received', { data: { message: id, chat: event.chatId, event: event.event } });
   rc.quiet = true;
-  // answer Zalo at once; the work (AI, queueing) continues in the background
-  rc.wait(handleMessage(env, rc, chatId, String(msg.text || ''), msg.from?.display_name || msg.from?.name || '', !!msg.text));
-  return json({ ok: true });
+  rc.wait(processMessage(env, rc, id));
+  return json({ ok: true, recorded: true });
 }
 
-async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, name: string, isText: boolean) {
+export function normalizeMessage(payload: any) {
+  const event = payload?.result || payload;
+  const message = event?.message;
+  const chatId = String(message?.chat?.id ?? message?.from?.id ?? '');
+  if (!message || !chatId || chatId.length > 120) return null;
+  return { chatId, id: String(message.message_id ?? event.update_id ?? '').slice(0, 160),
+    name: String(message.from?.display_name || message.from?.name || '').slice(0, 60),
+    text: typeof message.text === 'string' ? message.text.slice(0, 20000) : '', isText: typeof message.text === 'string',
+    event: String(event.event_name || '').slice(0, 80) };
+}
+
+export async function processMessage(env: XEnv, rc: Rc, id: string, force = false) {
+  const row = await env.DB.prepare(`UPDATE zalo_messages SET status = 'processing', attempts = attempts + 1, updated_at = ?, error = NULL
+    WHERE id = ? AND (attempts < 5 OR ?) AND (status IN ('received','failed') OR (status = 'processing' AND updated_at < ?)) RETURNING *`)
+    .bind(Date.now(), id, force ? 1 : 0, Date.now() - 120_000).first<any>();
+  if (!row) return;
+  const messageRc: Rc = { ...rc, userId: null, log(type, extra = {}) { rc.log(type, { userId: messageRc.userId, ...extra }); } };
+  try {
+    await handleMessage(env, messageRc, row.chat_id, row.text, row.sender_name, !!row.is_text, id);
+    await env.DB.prepare("UPDATE zalo_messages SET status = 'handled', updated_at = ? WHERE id = ? AND status = 'processing' AND attempts = ?").bind(Date.now(), id, row.attempts).run();
+  } catch (error: any) {
+    const changed = await env.DB.prepare("UPDATE zalo_messages SET status = 'failed', error = ?, updated_at = ? WHERE id = ? AND status = 'processing' AND attempts = ?").bind(String(error.message || 'Lỗi xử lý tin nhắn.').slice(0, 300), Date.now(), id, row.attempts).run();
+    if (!changed.meta.changes) return;
+    messageRc.log('zalo.processing', { ok: false, data: { message: id, error: String(error.message || 'Lỗi xử lý').slice(0, 200) } });
+    await send(env, row.chat_id, 'Chưa xử lý được tin nhắn. Bạn thử lại sau ít phút hoặc liên hệ chủ web.', id);
+  }
+}
+
+export async function resumeZalo(env: XEnv, rc: Rc) {
+  if (!env.config.zalo.enabled || !(env as any).ZALO_BOT_TOKEN) return;
+  const messages = await env.DB.prepare("SELECT id FROM zalo_messages WHERE attempts < 5 AND (status IN ('received','failed') OR (status = 'processing' AND updated_at < ?)) ORDER BY received_at LIMIT 2").bind(Date.now() - 120_000).all<any>();
+  for (const row of messages.results) await processMessage(env, rc, row.id);
+  const replies = await env.DB.prepare("SELECT id FROM zalo_outbox WHERE attempts < 5 AND (status IN ('pending','failed') OR (status = 'sending' AND updated_at < ?)) ORDER BY created_at LIMIT 5").bind(Date.now() - 120_000).all<any>();
+  for (const row of replies.results) await deliverReply(env, row.id);
+}
+
+async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, name: string, isText: boolean, messageId: string) {
   const z = env.config.zalo, t = z.templates;
-  const reply = async (s: string) => { const r = await send(env, chatId, s); if (!r.ok) rc.log('zalo.reply', { ok: false, data: { chat: chatId, error: r.error } }); return r; };
+  const reply = async (s: string) => { const r = await send(env, chatId, s, messageId); rc.log('zalo.reply', { ok: r.ok, data: { chat: chatId, message: messageId, error: r.ok ? undefined : r.error } }); return r; };
   const link = await env.DB.prepare('SELECT l.user_id, l.prefs, l.notify, u.email, u.name FROM zalo_links l JOIN users u ON u.id = l.user_id WHERE l.chat_id = ?').bind(chatId).first<any>();
   rc.userId = link?.user_id || null;
   rc.log('zalo.message', { data: { chat: chatId, linked: !!link, text: text.slice(0, 200) } });
   if (!isText) return reply('Mình chỉ đọc được tin nhắn chữ. Gõ HUONGDAN để xem cách dùng.');
   // per chat: at most 60 messages a day
-  try { await useQuota(env, 'z:' + chatId, 'zalo', 60); } catch { return; }
+  try { await useQuota(env, 'z:' + chatId, 'zalo', 60); } catch { return reply('Bạn đã dùng hết lượt nhắn bot hôm nay. Thử lại vào ngày mai nhé.'); }
 
   const raw = text.trim(), plain = fold(raw).trim();
   const [cmd0, ...rest] = plain.split(/\s+/);
   const cmd = cmd0.replace(/^\//, '').toUpperCase();
-  const argRaw = raw.slice(raw.indexOf(' ') + 1).trim(), arg = raw.includes(' ') ? argRaw : '';
+  const arg = raw.match(/^\S+\s+([\s\S]*)$/)?.[1].trim() || '';
 
   // owner claims the bot (code from the admin page)
   if (cmd === 'CHUWEB' || (cmd === 'CHU' && rest[0]?.toUpperCase() === 'WEB')) {
@@ -122,9 +177,10 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   }
 
   let user: User | null = link ? { id: link.user_id, email: link.email, name: link.name, picture: null } : null;
+  if (user && await env.DB.prepare('SELECT 1 FROM blocked_users WHERE user_id = ?').bind(user.id).first()) return reply('Tài khoản đang bị khóa. Vui lòng liên hệ chủ web.');
   const prefs = link ? JSON.parse(link.prefs || '{}') : {};
   const help = () => reply(fill(t.help, { ten: name || link?.name || 'bạn' }));
-  if (!cmd || ['HUONGDAN', 'HELP', 'START', 'MENU', '?', 'HD', 'XINCHAO', 'CHAO', 'HI', 'HELLO'].includes(cmd)) return help();
+  if (!cmd || ['GIUP', 'HUONGDAN', 'HELP', 'START', 'MENU', '?', 'HD', 'XINCHAO', 'CHAO', 'HI', 'HELLO'].includes(cmd)) return help();
 
   const wantsVideo = ['KB', 'KICHBAN', 'TAO', 'MAU'].includes(cmd) || raw.length >= 120;
   if (!user && wantsVideo) {
@@ -182,38 +238,46 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
       if (!n) return reply('Kịch bản mẫu (gõ MAU + số để dựng ngay):\n' + list.map((x, i) => `${i + 1}. ${x.title}`).join('\n'));
       const tpl = list[n - 1];
       if (!tpl) return reply('Không có mẫu số ' + n);
-      return makeVideo(env, rc, user, chatId, 'mine-free', tpl.text, prefs, !link);
+      return makeVideo(env, rc, user, chatId, 'mine-free', tpl.text, prefs, !link, messageId);
     }
   }
   if (cmd === 'TAO') {
     if (!arg) return reply('Gửi: TAO + chủ đề. Ví dụ: TAO vì sao lương mãi không tăng');
     if (!env.config.enabledSources.includes('topic') || !(env.GEMINI_API_KEY || env.OPENAI_API_KEY)) return reply(t.noAI);
-    return makeVideo(env, rc, user, chatId, 'topic', arg, prefs, !link);
+    return makeVideo(env, rc, user, chatId, 'topic', arg, prefs, !link, messageId);
   }
   if (cmd === 'KB' || cmd === 'KICHBAN' || raw.length >= 120) {
     const script = cmd === 'KB' || cmd === 'KICHBAN' ? arg : raw;
     if (script.length < 20) return reply('Gửi: KB + kịch bản của bạn (ít nhất một câu).');
     const src = z.scriptSource === 'mine-ai' && (env.GEMINI_API_KEY || env.OPENAI_API_KEY) ? 'mine-ai' : 'mine-free';
-    return makeVideo(env, rc, user, chatId, src, script, prefs, !link);
+    return makeVideo(env, rc, user, chatId, src, script, prefs, !link, messageId);
   }
   return reply(t.unknown);
 }
 
-async function makeVideo(env: XEnv, rc: Rc, user: User, chatId: string, source: string, text: string, prefs: any, guest: boolean) {
+async function makeVideo(env: XEnv, rc: Rc, user: User, chatId: string, source: string, text: string, prefs: any, guest: boolean, messageId: string) {
   const t = env.config.zalo.templates;
   try {
-    await send(env, chatId, 'Đã nhận, mình đang chuẩn bị kịch bản và hình…');
-    const p = await createProject(env, rc, user, { source, topic: text, ratio: prefs.ratio, style: prefs.style || 'auto', voiceId: prefs.voice, visual: 'sketch', channel: '' });
-    if (!env.config.zalo.autoRender) return send(env, chatId, `Kịch bản "${p.spec.title}" đã sẵn sàng (${p.spec.scenes.length} cảnh). Mở web để xem và dựng: ${origin(env)}/#/p/${p.id}`);
-    await queueRender(env, rc, user, p.id, p.spec);
+    if (await env.DB.prepare('SELECT 1 FROM blocked_users WHERE user_id = ?').bind(user.id).first()) return send(env, chatId, 'Tài khoản đang bị khóa. Vui lòng liên hệ chủ web.', messageId);
+    const checkpoint = await env.DB.prepare('SELECT project_id, job_id FROM zalo_messages WHERE id = ?').bind(messageId).first<any>();
+    if (checkpoint?.job_id) return send(env, chatId, 'Video này đã vào hàng chờ. Gõ TT để xem tiến độ.', messageId);
+    await send(env, chatId, 'Đã nhận, mình đang chuẩn bị kịch bản và hình…', messageId);
+    const existing = checkpoint?.project_id ? await env.DB.prepare('SELECT id, spec FROM projects WHERE id = ? AND user_id = ?').bind(checkpoint.project_id, user.id).first<any>() : null;
+    const p = existing ? { id: existing.id, spec: JSON.parse(existing.spec), note: '' } : await createProject(env, rc, user, { source, topic: text, ratio: prefs.ratio, style: prefs.style || 'auto', voiceId: prefs.voice, visual: 'sketch', channel: '' });
+    await env.DB.prepare('UPDATE zalo_messages SET project_id = ? WHERE id = ?').bind(p.id, messageId).run();
+    if (!env.config.zalo.autoRender) return send(env, chatId, `Kịch bản "${p.spec.title}" đã sẵn sàng (${p.spec.scenes.length} cảnh). Mở web để xem và dựng: ${origin(env)}/#/p/${p.id}`, messageId);
+    const queued = await env.DB.prepare("SELECT id FROM jobs WHERE project_id = ? AND user_id = ? AND status IN ('queued','running','done') ORDER BY created_at DESC LIMIT 1").bind(p.id, user.id).first<any>();
+    const job = queued || await queueRender(env, rc, user, p.id, p.spec);
+    await env.DB.prepare('UPDATE zalo_messages SET job_id = ? WHERE id = ?').bind(job.id, messageId).run();
     const queue = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status IN ('queued','running')").first<any>();
     await send(env, chatId, fill(t.queued, {
       tieuDe: p.spec.title, canh: p.spec.scenes.length, dang: p.spec.ratio === '16:9' ? 'khung ngang' : 'khung dọc', hangCho: queue?.n || 1,
       suaWeb: guest ? '' : `\nSửa trên web: ${origin(env)}/#/p/${p.id}`,
-    }) + (p.note ? '\n' + p.note : ''));
+    }) + (p.note ? '\n' + p.note : ''), messageId);
   } catch (e: any) {
     rc.log('zalo.create', { ok: false, data: { error: e.message } });
-    await send(env, chatId, 'Chưa tạo được video: ' + (e instanceof HttpError ? e.message : 'máy chủ đang bận, thử lại sau ít phút.'));
+    await env.DB.prepare('UPDATE zalo_messages SET error = ? WHERE id = ?').bind(String(e.message || 'Lỗi tạo video').slice(0, 300), messageId).run();
+    await send(env, chatId, 'Chưa tạo được video: ' + (e instanceof HttpError ? e.message : 'máy chủ đang bận, thử lại sau ít phút.'), messageId);
   }
 }
 
@@ -261,7 +325,8 @@ export async function notifyJob(env: XEnv, rc: Rc, job: any, ok: boolean, error:
   const text = ok
     ? fill(z.templates.done, { tieuDe: spec.title, link: await shareLink(env, origin(env), job.id), hanNgay: SHARE_DAYS, giay: Math.round(seconds) || '?' })
     : fill(z.templates.failed, { tieuDe: spec.title, loi: error });
-  const r = await send(env, link.chat_id, text);
+  const source = await env.DB.prepare('SELECT id FROM zalo_messages WHERE job_id = ? LIMIT 1').bind(job.id).first<any>();
+  const r = await send(env, link.chat_id, text, source?.id);
   rc.log('zalo.notify', { ok: r.ok, projectId: job.project_id, data: { job: job.id, done: ok, error: r.ok ? undefined : r.error } });
 }
 
@@ -312,16 +377,40 @@ export async function zaloAdmin(req: Request, env: XEnv, rawEnv: Env, sub: strin
     const last = await env.DB.prepare("SELECT ts, ok, data FROM events WHERE type LIKE 'zalo.%' ORDER BY id DESC LIMIT 10").all<any>();
     const links = await env.DB.prepare('SELECT COUNT(*) AS n, SUM(user_id LIKE \'zl-%\') AS guests FROM zalo_links').first<any>();
     const expected = `${url.origin}/api/zalo/webhook`;
+    const inbox = await env.DB.prepare('SELECT id, chat_id, status, error, received_at FROM zalo_messages ORDER BY received_at DESC LIMIT 1').first<any>();
+    const reply = await env.DB.prepare('SELECT status, error, updated_at FROM zalo_outbox ORDER BY created_at DESC LIMIT 1').first<any>();
     return json({
       steps: [
         { k: 'Bật tính năng Zalo', ok: env.config.zalo.enabled, fix: 'Bật ở mục Zalo rồi lưu.' },
         { k: 'Token hợp lệ', ok: !!me?.ok, detail: me?.result?.account_name || me?.result?.display_name || me?.error || 'chưa nhập token', fix: 'Lấy token trong Zalo Bot Creator và dán vào Khoá API.' },
         { k: 'Webhook trỏ về web này', ok: info?.result?.url === expected, detail: info?.result?.url || '(chưa có)', fix: 'Bấm "Kết nối webhook".' },
-        { k: 'Chủ web đã nhận bot', ok: !!env.config.zalo.ownerChat, fix: 'Tạo mã chủ web và gửi CHUWEB <mã> cho bot.' },
+        { k: 'Web đã ghi nhận tin nhắn', ok: !!inbox, detail: inbox ? `Tin gần nhất: ${inbox.status}${inbox.error ? ' — ' + inbox.error : ''}` : 'Chưa có tin nhắn được ghi nhận.', fix: 'Nhắn GIUP cho bot rồi bấm Kiểm tra lại. Nếu không nhận, kiểm tra webhook và token.' },
+        { k: 'Phản hồi gần nhất gửi thành công', ok: reply?.status === 'sent', detail: reply ? `${reply.status}${reply.error ? ' — ' + reply.error : ''}` : 'Chưa gửi phản hồi.', fix: 'Xem Hộp thư Zalo để thử gửi lại phản hồi lỗi.' },
+        { k: 'Chủ web đã nhận bot (để nhận thông báo quản trị)', ok: !!env.config.zalo.ownerChat, fix: 'Tạo mã chủ web và gửi CHUWEB <mã> cho bot. Khách vẫn dùng bot khi chưa có chat chủ web.' },
         { k: 'Liên kết bot cho người dùng', ok: !!env.config.zalo.botLink, fix: 'Dán đường dẫn bot (https://zalo.me/...) ở mục Zalo.' },
       ],
       last: last.results, links,
     });
+  }
+  if (sub === 'zalo/inbox' && method === 'GET') {
+    const messages = await env.DB.prepare('SELECT id, chat_id, sender_name, text, status, received_at, updated_at, attempts, error, project_id, job_id FROM zalo_messages ORDER BY received_at DESC LIMIT 50').all<any>();
+    const replies = await env.DB.prepare('SELECT id, chat_id, message_id, text, status, updated_at, attempts, error FROM zalo_outbox ORDER BY created_at DESC LIMIT 50').all<any>();
+    return json({ messages: messages.results, replies: replies.results });
+  }
+  if (sub === 'zalo/retry' && method === 'POST') {
+    const input = await body<any>(req, 500);
+    if (input.replyId) {
+      const changed = await env.DB.prepare("UPDATE zalo_outbox SET status = 'pending' WHERE id = ? AND status = 'failed'").bind(String(input.replyId)).run();
+      if (!changed.meta.changes) throw new HttpError(409, 'Phản hồi này không ở trạng thái lỗi.');
+      const result = await deliverReply(env, String(input.replyId), true);
+      rc.log('admin.zalo.retry', { ok: result.ok, data: { reply: input.replyId } });
+      return json(result);
+    }
+    const changed = await env.DB.prepare("UPDATE zalo_messages SET status = 'received' WHERE id = ? AND (status = 'failed' OR (status = 'processing' AND updated_at < ?))").bind(String(input.messageId || ''), Date.now() - 120_000).run();
+    if (!changed.meta.changes) throw new HttpError(409, 'Chỉ thử lại tin lỗi hoặc tác vụ đã hết hạn.');
+    rc.wait(processMessage(env, rc, String(input.messageId), true));
+    rc.log('admin.zalo.retry', { data: { message: input.messageId } });
+    return json({ ok: true, queued: true });
   }
   if (sub === 'zalo/owner-code' && method === 'POST') {
     const code = Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');

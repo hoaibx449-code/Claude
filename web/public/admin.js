@@ -5,7 +5,7 @@
 
 const ADMIN_TABS = [
   ['tong-quan', 'Tổng quan'], ['nhat-ky', 'Nhật ký'], ['nguoi-dung', 'Người dùng'], ['don-hang', 'Đơn hàng'], ['goi', 'Gói cước'],
-  ['cong-dong', 'Cộng đồng'], ['zalo', 'Zalo'], ['hien-thi', 'Hiển thị'], ['noi-dung', 'Nội dung'], ['cai-dat', 'Cài đặt'],
+  ['may-dung', 'Máy dựng'], ['cong-dong', 'Cộng đồng'], ['zalo', 'Zalo'], ['hien-thi', 'Hiển thị'], ['noi-dung', 'Nội dung'], ['cai-dat', 'Cài đặt'],
 ];
 const SECRET_INFO = {
   GEMINI_API_KEY: ['Gemini (Google AI Studio)', 'Viết kịch bản + vẽ ảnh. aistudio.google.com → Get API key.'],
@@ -35,7 +35,7 @@ async function showAdmin() {
   const nav = h('nav', { class: 'tabs' }, ADMIN_TABS.map(([k, name]) => h('a', { href: '#/admin/' + k, class: k === tab ? 'on' : null }, name)));
   const body = h('div', { class: 'scenes' }, h('p', { class: 'muted' }, 'Đang tải…'));
   show(h('a', { href: '#/' }, T('allVideos')), h('h1', {}, T('admin')), nav, body);
-  const pages = { 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings };
+  const pages = { 'may-dung': adminRenders, 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings };
   await (pages[tab] || adminOverview)(body, tab);
 }
 
@@ -179,7 +179,7 @@ async function adminOrders(body) {
 
 // ---------------------------------------------------------------- settings-based tabs
 async function adminSettings(body, tab) {
-  const [{ config, secrets }, zcheck] = await Promise.all([api('/api/admin/settings'), tab === 'zalo' ? api('/api/admin/zalo/check').catch(() => null) : null]);
+  const [{ config, secrets }, zcheck, inbox] = await Promise.all([api('/api/admin/settings'), tab === 'zalo' ? api('/api/admin/zalo/check').catch(() => null) : null, tab === 'zalo' ? api('/api/admin/zalo/inbox') : null]);
   const c = structuredClone(config);
   const secretInput = {};
   const saveBtn = h('button', { type: 'button', 'data-ev': 'admin-save', onclick: async () => {
@@ -192,7 +192,7 @@ async function adminSettings(body, tab) {
     } catch (e) { fail(e); }
     saveBtn.disabled = false; saveBtn.textContent = 'Lưu cài đặt';
   } }, 'Lưu cài đặt');
-  const sections = ({ goi: plansTab, zalo: zaloTab, 'hien-thi': visTab, 'noi-dung': contentTab, 'cai-dat': settingsTab }[tab] || settingsTab)(c, secrets, secretInput, zcheck);
+  const sections = ({ goi: plansTab, zalo: zaloTab, 'hien-thi': visTab, 'noi-dung': contentTab, 'cai-dat': settingsTab }[tab] || settingsTab)(c, secrets, secretInput, zcheck, inbox);
   body.replaceChildren(...sections, h('div', { class: 'savebar' }, saveBtn));
 }
 
@@ -256,7 +256,7 @@ function settingsTab(c, secrets, secretInput) {
         c.costs.models = m;
       }, 8)),
     card('Quản trị viên và nhật ký', null,
-      h('label', {}, 'Email quản trị viên (mỗi dòng một email; để trống = tài khoản Google đầu tiên)', area(c.admins.join('\n'), (v) => { c.admins = v.split(/[\s,]+/).filter(Boolean); }, 3)),
+      h('label', {}, 'Email quản trị viên (mỗi dòng một email; để trống = dùng ADMIN_EMAIL trên máy chủ)', area(c.admins.join('\n'), (v) => { c.admins = v.split(/[\s,]+/).filter(Boolean); }, 3)),
       h('label', {}, 'Giữ nhật ký (ngày)', input(c.logDays, (v) => { c.logDays = v; }, { type: 'number', min: 7, max: 3650 }))),
   ];
 }
@@ -327,9 +327,9 @@ async function adminCommunity(body) {
       : h('p', { class: 'muted' }, 'Chưa có video nào.')));
 }
 
-function zaloTab(c, secrets, secretInput, zcheck) {
+function zaloTab(c, secrets, secretInput, zcheck, inbox) {
   const z = c.zalo;
-  const action = (label, fn) => h('button', { type: 'button', class: 'ghost small', onclick: async () => { try { await fn(); } catch (e) { fail(e); } } }, label);
+  const action = (label, fn) => h('button', { type: 'button', class: 'ghost small', onclick: async (event) => { const button = event.currentTarget; button.disabled = true; try { await fn(); } catch (e) { fail(e); } finally { button.disabled = false; } } }, label);
   const out = h('div');
   const tplNames = { help: 'Hướng dẫn (HUONGDAN)', linked: 'Khi kết nối xong', queued: 'Khi nhận yêu cầu dựng', done: 'Khi video xong', failed: 'Khi dựng lỗi', unknown: 'Khi không hiểu tin nhắn', noAI: 'Khi chưa có AI (lệnh TAO)' };
   return [
@@ -337,11 +337,13 @@ function zaloTab(c, secrets, secretInput, zcheck) {
       zcheck ? h('ul', {}, zcheck.steps.map((s) => h('li', { class: s.ok ? 'ok' : 'bad' }, (s.ok ? '✓ ' : '✗ ') + s.k, s.detail ? h('small', { class: 'muted' }, ' — ' + s.detail) : null, !s.ok ? h('div', { class: 'muted' }, '→ ' + s.fix) : null))) : null,
       zcheck ? h('p', { class: 'muted' }, `${zcheck.links?.n || 0} người đã kết nối (${zcheck.links?.guests || 0} chỉ dùng Zalo).`) : null,
       h('div', { class: 'row' },
+        action('Kiểm tra lại', async () => { const check = await api('/api/admin/zalo/check'); out.replaceChildren(h('ul', {}, check.steps.map((step) => h('li', { class: step.ok ? 'ok' : 'bad' }, (step.ok ? '✓ ' : '✗ ') + step.k, h('p', { class: 'muted' }, step.detail || step.fix || ''))))); }),
         action('Kết nối webhook', async () => { const r = await api('/api/admin/zalo/connect', { method: 'POST' }); toast('Đã kết nối: ' + r.url); }),
         action('Tạo mã chủ web', async () => { const r = await api('/api/admin/zalo/owner-code', { method: 'POST' }); out.replaceChildren('Gửi cho bot: ', h('b', { class: 'memo' }, r.command), ` (hạn ${r.expiresMin} phút)`); }),
         action('Gửi tin thử cho chủ web', async () => { await api('/api/admin/zalo/test', { method: 'POST' }); toast('Đã gửi.'); })),
       out,
       zcheck?.last?.length ? h('details', {}, h('summary', {}, 'Hoạt động Zalo gần đây'), table(['Lúc', 'Kết quả', 'Chi tiết'], zcheck.last.map((e) => h('tr', {}, h('td', {}, fmtDate(e.ts)), h('td', { class: e.ok ? 'ok' : 'bad' }, e.ok ? 'OK' : 'Lỗi'), h('td', { class: 'data' }, e.data || ''))))) : null),
+    zaloInboxCard(inbox),
     keysCard(secrets, secretInput, ['ZALO_BOT_TOKEN']),
     card('Cài đặt Zalo', null, h('div', { class: 'grid' },
       check(z.enabled, (v) => { z.enabled = v; }, 'Bật tạo video qua Zalo'),
@@ -410,4 +412,54 @@ function contentTab(c) {
       h('details', {}, h('summary', {}, 'Chữ trên giao diện'),
         h('div', { class: 'grid' }, Object.keys(c.texts).map((k) => h('label', {}, h('code', {}, k), input(c.texts[k], (v) => { c.texts[k] = v; }, { maxlength: 240 })))))),
   ];
+}
+
+// Operation desks adapted from the reference: recorded messages and real jobs.
+const ZALO_STATE = { received: 'Đã nhận', processing: 'Đang xử lý', handled: 'Đã xử lý', failed: 'Lỗi', pending: 'Chờ gửi', sending: 'Đang gửi', sent: 'Đã gửi' };
+function zaloInboxCard(initial) {
+  const body = h('div');
+  let current = initial, onlyErrors = false;
+  const search = h('input', { type: 'search', placeholder: 'Tìm người gửi, chat, nội dung hoặc lỗi…', oninput: () => paint(current) });
+  const load = async () => paint(await api('/api/admin/zalo/inbox'));
+  const retry = (payload) => async (event) => {
+    const button = event.currentTarget; button.disabled = true;
+    try { const result = await api('/api/admin/zalo/retry', { method: 'POST', body: payload }); if (result.ok === false) throw new Error(result.error || 'Zalo chưa nhận phản hồi.'); toast('Đã thử lại.'); await load(); }
+    catch (error) { fail(error); } finally { button.disabled = false; }
+  };
+  function paint(data) {
+    current = data;
+    const query = search.value.trim().toLocaleLowerCase('vi');
+    const matches = (row) => (!onlyErrors || row.status === 'failed' || row.error) && (!query || [row.sender_name,row.chat_id,row.text,row.error].join(' ').toLocaleLowerCase('vi').includes(query));
+    const filtered = { messages: (data?.messages || []).filter(matches), replies: (data?.replies || []).filter(matches) };
+    data = filtered;
+    body.replaceChildren(
+      h('h3', {}, 'Tin nhận từ Zalo'),
+      data?.messages?.length ? table(['Lúc', 'Người gửi', 'Nội dung', 'Xử lý', 'Lỗi / dự án', ''], data.messages.map((m) => h('tr', {},
+        h('td', {}, fmtDate(m.received_at)), h('td', {}, m.sender_name || m.chat_id), h('td', { class: 'zalo-message' }, m.text),
+        h('td', {}, (ZALO_STATE[m.status] || m.status) + ' · ' + m.attempts + ' lần'), h('td', { class: 'zalo-message' }, m.error || m.project_id || ''),
+        h('td', {}, m.status === 'failed' || m.status === 'processing' && Date.now() - m.updated_at > 120000 ? h('button', { type: 'button', class: 'ghost small', onclick: retry({ messageId: m.id }) }, 'Xử lý lại') : null)))) : h('p', { class: 'muted' }, 'Chưa nhận tin nào. Nhắn GIUP cho bot rồi tải lại hộp thư.'),
+      h('h3', {}, 'Phản hồi gửi đi'),
+      data?.replies?.length ? table(['Lúc', 'Chat', 'Phản hồi', 'Gửi', 'Lỗi', ''], data.replies.map((r) => h('tr', {},
+        h('td', {}, fmtDate(r.updated_at)), h('td', {}, r.chat_id), h('td', { class: 'zalo-message' }, r.text),
+        h('td', { class: r.status === 'sent' ? 'ok' : r.status === 'failed' ? 'bad' : '' }, (ZALO_STATE[r.status] || r.status) + ' · ' + r.attempts + ' lần'),
+        h('td', { class: 'zalo-message' }, r.error || ''), h('td', {}, r.status === 'failed' ? h('button', { type: 'button', class: 'ghost small', onclick: retry({ replyId: r.id }) }, 'Gửi lại') : null)))) : h('p', { class: 'muted' }, 'Chưa có phản hồi được ghi nhận.'));
+  }
+  paint(initial);
+  return card('Hộp thư Zalo', '50 tin gần nhất và trạng thái gửi thực tế. Tin lỗi không bị báo là đã gửi. Nội dung được giữ theo thời hạn nhật ký đã cấu hình.',
+    h('div', { class: 'grid' }, h('label', {}, 'Tìm trong 50 tin gần nhất', search), check(false, (value) => { onlyErrors = value; paint(current); }, 'Chỉ hiện tin lỗi')),
+    h('button', { type: 'button', class: 'ghost small', onclick: () => load().catch(fail) }, 'Tải lại hộp thư'), body);
+}
+async function adminRenders(body) {
+  const data = await api('/api/admin/renders');
+  body.replaceChildren(card('Máy dựng và hàng đợi', 'Tiến độ lấy từ máy chủ. Thử lại tạo một lượt dựng mới và áp dụng hạn mức của tài khoản khách.',
+    h('div', { class: 'row' }, ...Object.entries(data.counts).map(([status, count]) => h('span', { class: 'pill ' + status }, (JOB_TEXT[status] || status) + ': ' + count))),
+    h('button', { type: 'button', class: 'ghost small', onclick: () => adminRenders(body).catch(fail) }, 'Cập nhật trạng thái'),
+    table(['Video / tài khoản', 'Trạng thái', 'Bước thực tế', 'Heartbeat', 'Lỗi', ''], data.jobs.map((job) => h('tr', {},
+      h('td', {}, h('b', {}, job.title || job.id), h('p', { class: 'muted' }, job.email || job.user_id)),
+      h('td', {}, JOB_TEXT[job.status] || job.status, job.status === 'running' ? h('progress', { max: 100, value: job.progress, 'aria-label': 'Tiến độ dựng' }) : null),
+      h('td', { class: 'zalo-message' }, job.message || job.phase || '—'), h('td', {}, job.heartbeat_at ? fmtDate(job.heartbeat_at) : '—'),
+      h('td', { class: 'zalo-message bad' }, job.error || ''), h('td', {}, job.status === 'failed' ? h('button', { type: 'button', class: 'ghost small', onclick: async (event) => {
+        event.currentTarget.disabled = true;
+        try { await api('/api/admin/renders/' + job.id + '/retry', { method: 'POST' }); toast('Đã tạo lượt dựng mới.'); await adminRenders(body); } catch (error) { fail(error); event.currentTarget.disabled = false; }
+      } }, 'Dựng lại') : null))))));
 }

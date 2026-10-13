@@ -93,6 +93,39 @@ CREATE TABLE IF NOT EXISTS zalo_seen (
   message_id TEXT PRIMARY KEY,     -- Zalo retries deliveries: each message is handled once
   ts INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS zalo_messages (
+  id TEXT PRIMARY KEY,
+  chat_id TEXT NOT NULL,
+  sender_name TEXT NOT NULL DEFAULT '',
+  text TEXT NOT NULL DEFAULT '',
+  is_text INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'received',
+  received_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
+  project_id TEXT,
+  job_id TEXT
+);
+CREATE INDEX IF NOT EXISTS zalo_messages_status ON zalo_messages(status, updated_at);
+CREATE TABLE IF NOT EXISTS zalo_outbox (
+  id TEXT PRIMARY KEY,
+  chat_id TEXT NOT NULL,
+  message_id TEXT,
+  text TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  error TEXT
+);
+CREATE INDEX IF NOT EXISTS zalo_outbox_status ON zalo_outbox(status, updated_at);
+CREATE TABLE IF NOT EXISTS job_progress (
+  job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+  phase TEXT NOT NULL,
+  message TEXT NOT NULL DEFAULT '',
+  updated_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS user_plans (
   user_id TEXT PRIMARY KEY,
   plan TEXT NOT NULL,
@@ -113,6 +146,12 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 CREATE INDEX IF NOT EXISTS orders_user ON orders(user_id, created_at);
 CREATE INDEX IF NOT EXISTS orders_status ON orders(status, created_at);
+-- A bank transaction can pay exactly one order. Retain references for reconciliation.
+CREATE TABLE IF NOT EXISTS payment_receipts (
+  ref TEXT PRIMARY KEY,
+  order_code TEXT NOT NULL,
+  received_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS consents (
   user_id TEXT NOT NULL,
   version TEXT NOT NULL,           -- version of the terms + privacy policy accepted

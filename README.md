@@ -115,7 +115,7 @@ assets/       font Pangolin (OFL), hình Open Doodles (CC0), ảnh tay
 
 **Nhật ký** (`web/src/log.ts`, bảng `events`): mọi yêu cầu, từng bước video, chi phí AI/giọng (VND), lỗi, thao tác trong trang (xem, bấm, rời trang, lỗi trình duyệt). Trang quản trị có tổng quan, phễu, lọc, dòng thời gian từng người, xuất CSV.
 
-**Trang quản trị** (`#/admin`, liên kết "Quản trị" trên thanh đầu trang): nhập/xoá khoá API (Gemini, OpenAI, EverAI, Google TTS, ElevenLabs — mã hoá AES-GCM trong D1, không bao giờ hiện lại, ưu tiên hơn khoá trên máy chủ), đổi tên trang và mọi tên hiển thị (phong cách, dụng cụ, kiểu sơ đồ, động tác người que, chữ trên giao diện), bật/tắt phong cách, giá trị mặc định, danh sách giọng đọc, model AI, giới hạn mỗi ngày, lời dặn thêm cho AI, danh sách quản trị viên, khoá/mở khoá người dùng. Chưa khai báo quản trị viên thì tài khoản Google đăng nhập đầu tiên là quản trị viên.
+**Trang quản trị** (`#/admin`, liên kết "Quản trị" trên thanh đầu trang): nhập/xoá khoá API (Gemini, OpenAI, EverAI, Google TTS, ElevenLabs — mã hoá AES-GCM trong D1, không bao giờ hiện lại, ưu tiên hơn khoá trên máy chủ), đổi tên trang và mọi tên hiển thị (phong cách, dụng cụ, kiểu sơ đồ, động tác người que, chữ trên giao diện), bật/tắt phong cách, giá trị mặc định, danh sách giọng đọc, model AI, giới hạn mỗi ngày, lời dặn thêm cho AI, danh sách quản trị viên, khoá/mở khoá người dùng. Khi chưa có danh sách quản trị viên, phải cấu hình `ADMIN_EMAIL` đúng email Google của chủ web; khách đăng nhập đầu tiên không được tự cấp quyền quản trị. Trong GitHub Actions, đặt variable `ADMIN_EMAIL` trước khi triển khai.
 
 Secrets cần trong GitHub (Settings → Secrets and variables → Actions):
 
@@ -127,3 +127,19 @@ Secrets cần trong GitHub (Settings → Secrets and variables → Actions):
 | `GEMINI_API_KEY`, `OPENAI_API_KEY` | AI viết kịch bản và vẽ ảnh |
 | `NV_API_URL` | Địa chỉ trang web, cho máy dựng thử nghiệm |
 | `EVERAI_API_KEY`, `EVERAI_VOICE_CODE` | Giọng đọc (máy dựng) |
+
+## Rà soát thương mại và demo
+
+- [Đề xuất sản phẩm, nhịp kể chuyện, chi phí và điều kiện mở bán](docs/commercial-plan.md).
+- [Demo so sánh bốn phong cách](docs/commercial-demo.html): chạy `node tools/commercial-demo.mjs` trước khi mở; MP4 được dựng trên máy chủ, âm thanh mock im lặng.
+- [Kết quả kiểm chứng và giới hạn](docs/validation-commercial.md).
+
+EverAI hiện đọc liền đoạn trong mỗi cảnh thay vì gọi riêng từng câu. Khi provider không trả timestamp, mốc câu là ước lượng khớp thời lượng audio, không phải đồng bộ chính xác từng từ. Cache cục bộ ở `.cache/everai`, có thể đổi bằng `NV_VOICE_CACHE_DIR`; cache này chưa dùng chung giữa các instance Cloud Run.
+
+Trước triển khai cập nhật thanh toán, áp `web/schema.sql` để thêm bảng `payment_receipts`; đối soát/backfill giao dịch đã xử lý từ trước nếu đã có thanh toán thật. Không bật thu tiền với hạn mức ảnh/giọng hiện tại trước khi kiểm định chi phí và các điều kiện ra mắt trong đề xuất.
+
+## Tích hợp dự án tham khảo và Zalo
+
+[Chi tiết tích hợp FACIUP v3.3.8, ảnh giao diện và hướng dẫn kết nối bot](docs/reference-integration.md). Bàn dựng mới lấy tiến độ thực từ máy chủ; quản trị có tab Máy dựng và hộp thư Zalo có retry. Áp schema trước cập nhật Worker/runner. Connector Zalo dùng Bot Platform, không phải OA API.
+
+Chạy kiểm tra giao diện local bằng `npm run test:ui` (cần Wrangler dev và Chromium); dùng `NV_API_URL` để chọn cổng local khác. Test dùng mock TTS và không gửi tin Zalo thật.

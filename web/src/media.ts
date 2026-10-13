@@ -8,6 +8,28 @@ import type { Rc, XEnv } from './worker.ts';
 const TYPES: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 const MAX_UPLOAD = 5 * 1024 * 1024;
 
+/** Each claim writes its own objects, so a stale worker cannot overwrite a retry. */
+export function videoKey(userId: string, jobId: string, ext: 'mp4' | 'srt', lease?: string | null) {
+  return /^lease-[a-f0-9]{32}$/.test(lease || '')
+    ? `video/${userId}/${jobId}/${lease}.${ext}` : `video/${userId}/${jobId}.${ext}`;
+}
+
+export async function storedVideoKey(env: Env, userId: string, jobId: string, ext: 'mp4' | 'srt') {
+  const job = await env.DB.prepare("SELECT runner FROM jobs WHERE id = ? AND user_id = ? AND status = 'done'").bind(jobId, userId).first<any>();
+  if (!job) throw new HttpError(404, 'Video chưa sẵn sàng.');
+  return videoKey(userId, jobId, ext, job.runner);
+}
+
+export async function deleteVideo(env: Env, userId: string, jobId: string) {
+  await env.BUCKET.delete([videoKey(userId, jobId, 'mp4'), videoKey(userId, jobId, 'srt')]);
+  let cursor: string | undefined;
+  do {
+    const result = await env.BUCKET.list({ prefix: `video/${userId}/${jobId}/`, cursor });
+    if (result.objects.length) await env.BUCKET.delete(result.objects.map((o) => o.key));
+    cursor = result.truncated ? result.cursor : undefined;
+  } while (cursor);
+}
+
 /** Store a picture the user picked; the same picture always gets the same key. */
 export async function upload(req: Request, env: XEnv, rc: Rc, user: User) {
   const type = (req.headers.get('content-type') || '').split(';')[0].trim();
@@ -69,7 +91,7 @@ export async function communityPublic(req: Request, env: XEnv, rc: Rc, path: str
   if (!row) throw new HttpError(404, 'Video không còn trong cộng đồng.');
   if (m[2] === 'video' && req.method === 'GET') {
     rc.quiet = true;
-    return serveObject(env, req, `video/${row.user_id}/${m[1]}.mp4`, 'video/mp4', { 'cache-control': 'public, max-age=3600' });
+    return serveObject(env, req, await storedVideoKey(env, row.user_id, m[1], 'mp4'), 'video/mp4', { 'cache-control': 'public, max-age=3600' });
   }
   if (m[2] === 'view' && req.method === 'POST') {
     rc.quiet = true;
@@ -122,7 +144,7 @@ export async function communityAdmin(req: Request, env: XEnv, sub: string, metho
     const id = new URL(req.url).searchParams.get('job') || '';
     const row = await env.DB.prepare('SELECT user_id FROM community WHERE job_id = ?').bind(id).first<any>();
     if (!row) throw new HttpError(404, 'Không tìm thấy.');
-    return serveObject(env, req, `video/${row.user_id}/${id}.mp4`, 'video/mp4', { 'cache-control': 'private, max-age=600' });
+    return serveObject(env, req, await storedVideoKey(env, row.user_id, id, 'mp4'), 'video/mp4', { 'cache-control': 'private, max-age=600' });
   }
   return null;
 }
