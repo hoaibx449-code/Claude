@@ -4,6 +4,7 @@ import { drawImage, type ImageProvider, type TextProvider, writeScript } from '.
 import { startRunner } from './gcp.ts';
 import { cleanSpec, LOOKS, STYLES } from './spec.ts';
 import { composeLook, composeScene, splitScript } from './compose.ts';
+import { doodlePanels } from './doodles.ts';
 import { chargeDoc, closeDocProject, creditRoutes, giveBackDocImage, openDocProject, refundDoc, useDocImage } from './credits.ts';
 import { detectIntent, FORMATS, FORMAT_NAMES, FORMAT_STYLE, NICHES, NICHE_NAMES, NICHE_STYLE } from './intent.ts';
 import { fillLegal } from './legal.ts';
@@ -457,6 +458,14 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
     }
   }
 
+  // a frame of the finished video (made by the render machine), for the video list
+  const th = path.match(/^\/api\/jobs\/([a-f0-9]{24})\/thumb$/);
+  if (th && method === 'GET') {
+    rc.quiet = true;
+    const obj = await env.BUCKET.get(`thumb/${user.id}/${th[1]}.jpg`);
+    if (!obj) throw new HttpError(404, 'Chưa có ảnh.');
+    return new Response(obj.body, { headers: { 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=86400' } });
+  }
   const f = path.match(/^\/api\/jobs\/([a-f0-9]{24})\/(video|srt)$/);
   if (f && method === 'GET') {
     const job = await env.DB.prepare("SELECT id FROM jobs WHERE id = ? AND user_id = ? AND status = 'done'").bind(f[1], user.id).first();
@@ -530,9 +539,9 @@ export async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Prom
     if (!obj) throw new HttpError(404, 'Không tìm thấy.');
     return new Response(obj.body);
   }
-  const m = sub.match(/^jobs\/([a-f0-9]{24})\/(progress|video|srt|done|fail)$/);
+  const m = sub.match(/^jobs\/([a-f0-9]{24})\/(progress|video|srt|thumb|done|fail)$/);
   if (!m) throw new HttpError(404, 'Không tìm thấy.');
-  const expectedMethod = m[2] === 'video' || m[2] === 'srt' ? 'PUT' : 'POST';
+  const expectedMethod = m[2] === 'video' || m[2] === 'srt' || m[2] === 'thumb' ? 'PUT' : 'POST';
   if (req.method !== expectedMethod) throw new HttpError(405, 'Không hỗ trợ.');
   const lease = req.headers.get('x-nv-lease') || '';
   const job = await env.DB.prepare("SELECT id, user_id, project_id, created_at, spec, runner, status FROM jobs WHERE id = ? AND runner = ?").bind(m[1], lease).first<any>();
@@ -550,6 +559,11 @@ export async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Prom
       WHERE EXISTS (SELECT 1 FROM jobs WHERE id = ? AND status = 'running' AND runner = ?)
       ON CONFLICT(job_id) DO UPDATE SET phase = excluded.phase, message = excluded.message, updated_at = excluded.updated_at`)
       .bind(job.id, phase, String(update.message || '').slice(0, 160), now, job.id, lease).run();
+    return json({ ok: true });
+  }
+  if (m[2] === 'thumb') {
+    if (Number(req.headers.get('content-length')) > 600_000) throw new HttpError(413, 'Ảnh quá lớn.');
+    await env.BUCKET.put(`thumb/${job.user_id}/${job.id}.jpg`, req.body, { httpMetadata: { contentType: 'image/jpeg' } });
     return json({ ok: true });
   }
   if ((m[2] === 'video' || m[2] === 'srt') && req.method === 'PUT') {
@@ -616,7 +630,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     if (text.length < 5) throw new HttpError(400, source === 'topic' ? 'Nhập chủ đề (ít nhất vài chữ).' : 'Dán kịch bản của bạn vào ô (ít nhất một câu).');
     // options the admin hid or marked "in development" are never used, whatever the page sent
     const on = (k: string) => vis(env.config, k) === 'on';
-    const visual = ['sketch', 'images', 'diagram', 'mix'].includes(b.visual) && on('visual:' + b.visual) ? b.visual : D.visual;
+    const visual = ['doodle', 'sketch', 'images', 'diagram', 'mix'].includes(b.visual) && on('visual:' + b.visual) ? b.visual : D.visual;
     const ratio = (b.ratio === '16:9' || b.ratio === '9:16') && on('ratio:' + b.ratio) ? b.ratio : D.ratio;
     // which AI writes and draws is the admin's choice (Quản trị → Cài đặt), not the visitor's
     if (b.provider !== 'mock') b.provider = undefined;
@@ -643,7 +657,9 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
       const scenes = splitScript(text);
       if (!scenes.length) throw new HttpError(400, 'Không tách được câu nào từ kịch bản.');
       raw = { title: scenes[0][0].replace(/[.!?…]+$/, '').slice(0, 70), scenes: scenes.map((lines) => ({ lines })) };
-      if (source === 'mine-ai' && (await budgetState(env)).over) {
+      if (source === 'mine-ai' && !look && visual === 'doodle') {
+        // pictures come from the doodle library: no AI call needed
+      } else if (source === 'mine-ai' && (await budgetState(env)).over) {
         note = 'Hôm nay đã dùng hết ngân sách AI nên hình được tự thiết kế theo luật. Bạn vẫn sửa được từng cảnh.';
         rc.log('budget.fallback', { data: { source } });
       } else if (source === 'mine-ai') {
@@ -679,6 +695,12 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     const auto = modeStyle && env.config.enabledStyles.includes(modeStyle) ? modeStyle : autoStyle;
     const style = env.config.enabledStyles.includes(b.style) ? b.style : (b.style === 'auto' || !b.style) && env.config.enabledStyles.includes(auto) ? auto : D.style;
     if (aff && raw.scenes?.length && !look) raw.scenes = [...raw.scenes, affiliateScene(aff, ratio === '9:16')];
+    if (!look && visual === 'doodle') {
+      // classic hand drawing, as in the product proposal: one Open Doodle per line, revealed by the hand, handwritten subtitles
+      const panels = doodlePanels((raw.scenes || []).map((sc: any) => sc.lines || []));
+      raw = { ...raw, scenes: (raw.scenes || []).map((sc: any, i: number) => ({ lines: sc.lines, panels: panels[i] })) };
+      if (typeof b.subtitles !== 'boolean') b.subtitles = true;
+    }
     if (look) {
       // fill what the AI (or nobody) gave: free rules per format
       const c = composeLook({ look, scenes: (raw.scenes || []).map((sc: any) => ({ lines: sc.lines || [], x: sc.x, pause: sc.pause, panels: sc.panels })), sides: raw.sides, chatName: raw.chatName });
@@ -687,7 +709,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     const music = b.music === 'none' ? undefined : (env.config.music.find((m) => m.id === b.music) || (b.music === undefined || b.music === 'auto'
       ? (D.music === 'none' ? undefined : env.config.music.find((m) => m.id === D.music) || env.config.music[hashText(text) % Math.max(1, env.config.music.length)]) : undefined))?.file;
     const spec: any = cleanSpec({ ...raw, format: aff ? 'sales' : format, niche, visual, ratio, subtitles: typeof b.subtitles === 'boolean' ? b.subtitles : D.subtitles,
-      style, tool: b.tool, channel: b.channel ?? D.channel, episode: b.episode, mode, media, character: media.nv ? 'nv' : undefined, affiliate: aff,
+      style: !look && visual === 'doodle' && (!b.style || b.style === 'auto') && env.config.enabledStyles.includes('notebook') ? 'notebook' : style, tool: b.tool, channel: b.channel ?? D.channel, episode: b.episode, mode, media, character: media.nv ? 'nv' : undefined, affiliate: aff,
       voice: voiceFor(env.config, b.voiceId, Number(b.speed) || 1), look, skin: b.skin, music, sfx: b.sfx !== false }, user.id);
     const wantIntro = typeof b.intro === 'boolean' ? b.intro : D.intro;
     if (wantIntro && on('feature:intro')) spec.intro = introFor(spec);
@@ -705,7 +727,7 @@ const hashText = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) 
 
 /** Put a project in the render queue and wake the render machine. */
 export async function queueRender(env: XEnv, rc: Rc, user: User, id: string, spec: any) {
-  const missing = spec.scenes.reduce((n: number, sc: any) => n + sc.panels.filter((x: any) => !String(x.image).startsWith('r2:')).length, 0);
+  const missing = spec.scenes.reduce((n: number, sc: any) => n + sc.panels.filter((x: any) => !String(x.image).startsWith('r2:') && !String(x.image).startsWith('doodle:')).length, 0);
   if (missing) throw new HttpError(409, `Còn ${missing} khung chưa có tranh AI. Bấm "Vẽ tất cả bằng AI" hoặc đổi cảnh đó sang bảng vẽ.`);
   await checkAllowed(env, user, spec);
   const active = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE user_id = ? AND status IN ('queued','running')").bind(user.id).first<any>();

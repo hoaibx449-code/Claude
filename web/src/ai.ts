@@ -11,7 +11,7 @@ export const LINE_ART_STYLE =
   'Hand-drawn black ink line art illustration, clean confident outlines, light cross-hatching only for shadows, ' +
   'no color, no gray fill, plain pure white background, no text, no letters, no frame, centered subject, 4:3 composition. Scene: ';
 
-export type VisualMode = 'sketch' | 'mix' | 'images' | 'diagram';
+export type VisualMode = 'doodle' | 'sketch' | 'mix' | 'images' | 'diagram';
 
 /** Documentary pictures: photographic, not line art. */
 export const PHOTO_STYLE =
@@ -76,6 +76,7 @@ function systemPrompt(r: ScriptRequest) {
   if (r.scenes) return illustratePrompt(r);
   const scenes = Math.max(4, Math.min(14, Math.round(r.seconds / 5.5)));
   const visual = {
+    doodle: 'Không cần mô tả hình: tranh được chọn tự động theo lời. Mỗi cảnh chỉ cần "lines" (1-2 câu, mỗi câu một ý có hình ảnh cụ thể).',
     sketch: 'Mọi cảnh dùng "diagram" kiểu "sketch" (bảng vẽ tự do, xem dưới).',
     images: 'Mọi cảnh dùng "panels": thường 1 khung; 2 khung chỉ khi cần đối lập hai hình.',
     diagram: 'Mọi cảnh dùng "diagram" (không dùng "panels"). Đa dạng kiểu: bars/flow/compare/steps/number cho ý và số liệu, stick (người que chuyển động) cho tình huống, nhân vật, cảm xúc (khoảng 1/4 số cảnh); statement chỉ cho câu chốt; không 2 cảnh liền nhau cùng kiểu.',
@@ -96,8 +97,8 @@ function systemPrompt(r: ScriptRequest) {
     r.niche && r.niche !== 'general' ? 'Ngách: ' + (NICHE_NAMES as any)[r.niche] + '. Dùng ví dụ, từ ngữ, ẩn dụ đúng ngách này.' : '',
     r.look ? LOOK_BRIEF[r.look] + ' ' + ICON_HINT : 'HÌNH: ' + visual,
     r.extra ? 'YÊU CẦU THÊM CỦA CHỦ TRANG: ' + r.extra : '',
-    r.look ? '' : '"panels": [{"prompt":"TIẾNG ANH, 1 hình minh hoạ đơn giản: chủ thể, hành động, đồ vật ẩn dụ; không chữ trong hình"}].',
-    r.look ? '' : DIAGRAM_SCHEMA + '. Chữ trong diagram là tiếng Việt, rất ngắn, khớp ý câu thoại của cảnh.',
+    r.look || r.visual === 'doodle' ? '' : '"panels": [{"prompt":"TIẾNG ANH, 1 hình minh hoạ đơn giản: chủ thể, hành động, đồ vật ẩn dụ; không chữ trong hình"}].',
+    r.look || r.visual === 'doodle' ? '' : DIAGRAM_SCHEMA + '. Chữ trong diagram là tiếng Việt, rất ngắn, khớp ý câu thoại của cảnh.',
     !r.look && r.visual === 'sketch' ? sketchSchema(r.ratio) : '',
     r.look ? 'Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#... 5-8 thẻ"], (các trường gốc của định dạng nếu có), "scenes":[{"lines":["câu 1","câu 2"],"x":{...}}]}' : '',
     r.look ? '' : 'Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption đăng bài ≤ 150 ký tự, kết bằng một câu hỏi mời bình luận","hashtags":["#tiengvietkhongdau", "... 5-8 thẻ"],"scenes":[{"lines":["câu 1","câu 2"],"panels":[...]} hoặc {"lines":[...],"diagram":{...}}]}',

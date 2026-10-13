@@ -83,3 +83,16 @@ test('documentary credits: plan allowance first, then credits, refund when nothi
     assert.equal((await creditState(env, 'u1')).balance, 1);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('hand drawing picks Open Doodles from the words and never repeats one while others remain', async () => {
+  const { doodlePanels, isDoodle, DOODLE_NAMES } = await import('../web/src/doodles.ts');
+  const scenes = Array.from({ length: 20 }, (_, i) => [`Câu thứ ${i} về cuộc sống.`]);
+  scenes[0] = ['Mỗi ngày đọc sách mười lăm phút.']; scenes[1] = ['Mua sắm trên Shopee quá nhiều.'];
+  const panels = doodlePanels(scenes);
+  assert.equal(panels[0][0].image, 'doodle:ReadingDoodle'); assert.equal(panels[1][0].image, 'doodle:UnboxingDoodle');
+  const names = panels.map((p) => p[0].image);
+  assert.equal(new Set(names).size, names.length);
+  assert.ok(names.every(isDoodle)); assert.equal(isDoodle('doodle:../../etc'), false); assert.ok(DOODLE_NAMES.length >= 30);
+  const spec: any = cleanSpec({ title: 'x', visual: 'doodle', scenes: [{ lines: ['một hai'], panels: [{ image: 'doodle:ReadingDoodle', line: 0 }, { image: 'doodle:Nope' }] }] }, 'u1');
+  assert.equal(spec.scenes[0].panels[0].image, 'doodle:ReadingDoodle'); assert.equal(spec.scenes[0].panels[1].image, '');
+});

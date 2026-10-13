@@ -4,6 +4,7 @@
 import { type Env, HttpError } from './util.ts';
 import type { User } from './auth.ts';
 import { DEFAULT_TEMPLATES, type Template } from './templates.ts';
+import { DOODLE_NAMES } from './doodles.ts';
 import { DEFAULT_PRIVACY, DEFAULT_REFUND, DEFAULT_TERMS, LEGAL_VERSION, type LegalConfig } from './legal.ts';
 
 export const SECRET_NAMES = ['OPENAI_API_KEY', 'GEMINI_API_KEY', 'EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'ELEVENLABS_API_KEY', 'ZALO_BOT_TOKEN', 'SEPAY_API_KEY'] as const;
@@ -23,7 +24,7 @@ export const MODE_KEYS = ['hand', 'motion', 'math', 'kinetic'] as const;
 /** Video formats (src/engine/looks.ts). */
 export const LOOK_KEYS = ['kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
 export const GOOGLE_MODES = ['auto', 'popup', 'redirect'] as const;
-export const VISUAL_KEYS = ['sketch', 'diagram', 'mix', 'images'] as const;
+export const VISUAL_KEYS = ['doodle', 'sketch', 'diagram', 'mix', 'images'] as const;
 export const SOURCE_KEYS = ['topic', 'mine-ai', 'mine-free'] as const;
 export const ACTION_KEYS = ['idle', 'walk', 'run', 'wave', 'think', 'cheer', 'sad', 'point', 'shrug', 'jump'] as const;
 export const AI_KEYS = ['openai', 'gemini'] as const;
@@ -81,6 +82,8 @@ export interface SiteConfig {
   heroTitle: string; heroText: string;
   /** picture or video beside the headline; empty = live hand-drawn preview */
   heroMedia: string; heroPoster: string;
+  /** short how-to video shown next to the three steps */
+  tutorial: string;
   showcase: SiteMedia[];
 }
 export type Vis = 'on' | 'dev' | 'hidden';
@@ -135,7 +138,7 @@ export function defaultConfig(env: Env): Config {
       styles: { sunset: 'Hoàng hôn tím cam', cosmos: 'Vũ trụ phẳng', manim: 'Bảng đen toán học', bold: 'Chữ nổi bật', neon: 'Neon đêm', darkboard: 'Bảng đen hiện đại', comic: 'Truyện tranh', pastel: 'Pastel dễ thương', newspaper: 'Báo giấy cổ điển', whiteboard: 'Bảng trắng', chalkboard: 'Bảng phấn', oly: 'Vở ô ly', kraft: 'Giấy kraft', pencil: 'Sổ phác chì', blueprint: 'Bản vẽ kỹ thuật', ricepaper: 'Giấy dó mực tàu', notebook: 'Giấy kem kể chuyện' },
       tools: { marker: 'Bút dạ bảng', chalk: 'Phấn', fountain: 'Bút máy', colormarker: 'Bút dạ màu', pencil: 'Bút chì', technical: 'Bút kỹ thuật', brush: 'Bút lông' },
       kinds: { plot: 'Đồ thị hàm số', sketch: 'Bảng vẽ tự do (chữ + hình + mũi tên)', bars: 'Biểu đồ cột (mũi tên, đường cong)', flow: 'Chuỗi nguyên nhân → kết quả', compare: 'So sánh ✗ / ✓', steps: 'Các bước', number: 'Con số nổi bật', statement: 'Câu chốt', stick: 'Người que chuyển động' },
-      visual: { sketch: 'Bảng vẽ tự do: chữ + hình + sơ đồ (như demo)', diagram: 'Sơ đồ theo mẫu', mix: 'Kết hợp sơ đồ + tranh AI', images: 'Tranh AI cho mọi cảnh' },
+      visual: { doodle: 'Tranh vẽ tay lộ dần theo nét bút (Open Doodles, miễn phí)', sketch: 'Bảng vẽ tự do: chữ + hình + sơ đồ', diagram: 'Sơ đồ theo mẫu', mix: 'Kết hợp sơ đồ + tranh AI', images: 'Tranh AI cho mọi cảnh' },
       sources: { topic: 'AI viết từ chủ đề', 'mine-ai': 'Kịch bản của tôi + AI minh hoạ', 'mine-free': 'Kịch bản của tôi + tự minh hoạ (miễn phí)' },
       actions: { idle: 'Đứng', walk: 'Đi bộ', run: 'Chạy', wave: 'Vẫy tay', think: 'Suy nghĩ', cheer: 'Ăn mừng', sad: 'Buồn', point: 'Chỉ tay', shrug: 'Nhún vai', jump: 'Nhảy' },
       ai: { openai: 'OpenAI', gemini: 'Gemini' },
@@ -151,7 +154,7 @@ export function defaultConfig(env: Env): Config {
     texts: { ...DEFAULT_TEXTS },
     enabledStyles: [...STYLE_KEYS],
     enabledSources: [...SOURCE_KEYS],
-    defaults: { source: 'topic', subtitles: false, textAI: 'gemini', imageAI: 'gemini', style: 'sunset', visual: 'sketch', ratio: '9:16', seconds: 45, voice: 'vi_female_thuytrang_mb', channel: '', tone: '', mode: 'hand', intro: true, look: 'kinetic', music: 'auto' },
+    defaults: { source: 'topic', subtitles: false, textAI: 'gemini', imageAI: 'gemini', style: 'notebook', visual: 'doodle', ratio: '9:16', seconds: 45, voice: 'vi_female_thuytrang_mb', channel: '', tone: '', mode: 'hand', intro: true, look: 'kinetic', music: 'auto' },
     auth: { google: 'auto' },
     voices: [
       ['vi_female_thuytrang_mb', 'Thùy Trang · nữ Bắc · nói chuyện'], ['vi_male_minhtriet_mb', 'Minh Triết · nam Bắc · sách nói'],
@@ -203,7 +206,7 @@ export function defaultConfig(env: Env): Config {
     notice: '',
     templates: DEFAULT_TEMPLATES,
     beta: { enabled: true, label: 'Beta', note: 'Đang thử nghiệm: tính năng và giao diện có thể thay đổi. Góp ý giúp chúng tôi làm video hay hơn.' },
-    site: { heroTitle: 'Biến ý tưởng thành video giải thích cuốn hút', heroText: 'Viết hoặc dán kịch bản, chọn định dạng video, nhận MP4 có giọng đọc tiếng Việt và phụ đề.', heroMedia: '', heroPoster: '', showcase: [] },
+    site: { heroTitle: 'Tạo video giải thích có giọng đọc tiếng Việt', heroText: 'Dành cho người làm TikTok, giáo viên, chủ shop và người chia sẻ kiến thức: dán kịch bản hoặc một chủ đề, nhận video hoàn chỉnh sau vài phút.', heroMedia: '', heroPoster: '', tutorial: '', showcase: [] },
     budget: { dailyVnd: 200_000, monthlyVnd: 3_000_000, warnPct: 80, perVideoVnd: 15_000 },
     // one documentary ≈ 10 AI pictures + voice ≈ 11.000đ cost; 1 credit = 1 video, packs priced with margin
     doc: { creditsPerVideo: 1, imagesPerVideo: 14, packs: [{ id: 'doc1', name: '1 phim tài liệu', credits: 1, price: 29000 }, { id: 'doc5', name: '5 phim tài liệu', credits: 5, price: 119000 }, { id: 'doc20', name: '20 phim tài liệu', credits: 20, price: 399000 }] },
@@ -343,6 +346,7 @@ export function cleanConfig(input: any, base: Config): Config {
       return {
         heroTitle: str(x.heroTitle, 120, d.heroTitle) || d.heroTitle, heroText: str(x.heroText, 300, d.heroText),
         heroMedia: x.heroMedia === undefined ? d.heroMedia : media(x.heroMedia), heroPoster: x.heroPoster === undefined ? d.heroPoster : media(x.heroPoster),
+        tutorial: x.tutorial === undefined ? d.tutorial : media(x.tutorial),
         showcase: (Array.isArray(x.showcase) ? x.showcase : d.showcase).slice(0, 12)
           .map((m: any) => ({ title: str(m?.title, 60, ''), caption: str(m?.caption, 120, ''), video: media(m?.video), poster: media(m?.poster) }))
           .filter((m: SiteMedia) => m.video || m.poster),
@@ -466,12 +470,16 @@ export function publicConfig(config: Config) {
     voices: config.voices.filter((v) => config.visibility['voice:' + v.code] !== 'hidden'), visibility: config.beta.enabled ? { ...config.visibility, 'feature:plans': 'hidden' as Vis } : config.visibility, notice: config.notice,
     beta: config.beta.enabled ? { label: config.beta.label, note: config.beta.note } : null,
     site: config.site,
-    plans: !selling(config) ? [] : config.plans.filter((p) => p.visible).map((p) => ({ id: p.id, name: p.name, price: p.price, days: p.days, highlight: p.highlight, desc: p.desc, features: p.features, limits: p.limits })),
+    plans: !selling(config) ? [] : config.plans.filter((p) => p.visible).map((p) => ({ id: p.id, name: p.name, price: p.price, days: p.days, highlight: p.highlight, desc: p.desc, features: p.features, limits: p.limits, maxSeconds: Math.min(p.maxSeconds, config.limits.maxSeconds), docPerMonth: p.docPerMonth || 0 })),
     templates: config.visibility['feature:templates'] === 'hidden' ? [] : config.templates.map((t) => ({ id: t.id, title: t.title, niche: t.niche })),
-    legal: { version: config.legal.version, company: config.legal.company, email: config.legal.email },
+
     zalo: { enabled: config.zalo.enabled && config.visibility['feature:zalo'] !== 'hidden', botLink: config.zalo.botLink, dev: config.visibility['feature:zalo'] === 'dev' },
     payment: { enabled: selling(config) && config.payment.enabled, holdMinutes: config.payment.holdMinutes },
     music: config.music.map((m) => ({ id: m.id, title: m.title })),
+    doodles: DOODLE_NAMES,
+    // what anyone gets without paying (shown on the home page, in Beta too)
+    free: (() => { const p = config.plans.find((x) => x.price === 0) || config.plans[0]; return { render: p.limits.render, script: p.limits.script, maxSeconds: Math.min(p.maxSeconds, config.limits.maxSeconds) }; })(),
+    legal: { version: config.legal.version, company: config.legal.company, email: config.legal.email, address: config.legal.address, taxId: config.legal.taxId },
     doc: { perVideo: config.doc.creditsPerVideo, packs: selling(config) && config.payment.enabled ? config.doc.packs : [] },
     limits: { maxSeconds: config.limits.maxSeconds },
     auth: config.auth,

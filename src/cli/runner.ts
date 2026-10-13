@@ -3,10 +3,11 @@
 //   NV_API_URL=https://your-site RUNNER_TOKEN=... node src/cli/runner.ts [--once | --drain]
 // Voice/image keys (EVERAI_API_KEY, ...) are read from the environment as for the CLI.
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProjectSpec } from '../engine/types.ts';
-import { renderProject } from '../node/pipeline.ts';
+import { renderProject, ROOT } from '../node/pipeline.ts';
 import { describe, fetchRetry } from '../node/net.ts';
 
 const API = (process.env.NV_API_URL || '').replace(/\/$/, '');
@@ -54,6 +55,7 @@ async function runJob(job: { id: string; lease: string; spec: ProjectSpec }) {
     // map stored image references to local files
     for (const sc of spec.scenes) for (const p of sc.panels) {
       const ref = p.image || '';
+      if (/^doodle:[A-Za-z]{3,40}$/.test(ref)) { p.image = join(ROOT, 'assets/doodles', ref.slice(7) + '.svg'); continue; }
       if (ref.startsWith('r2:')) {
         const file = join(dir, 'img', ref.split('/').pop()!);
         writeFileSync(file, Buffer.from(await (await call('/api/runner/asset?key=' + encodeURIComponent(ref.slice(3)))).arrayBuffer()));
@@ -83,6 +85,12 @@ async function runJob(job: { id: string; lease: string; spec: ProjectSpec }) {
     phase = 'uploading'; message = 'Lưu MP4 và phụ đề'; progress = 95; await report();
     await call(`/api/runner/jobs/${job.id}/video`, { method: 'PUT', headers: { 'content-type': 'video/mp4' }, body: readFileSync(r.out) });
     await call(`/api/runner/jobs/${job.id}/srt`, { method: 'PUT', headers: { 'content-type': 'text/plain' }, body: readFileSync(r.srt) });
+    // a frame for the video list (optional: a failure here never fails the video)
+    try {
+      const thumb = join(dir, 'thumb.jpg');
+      const x = spawnSync('ffmpeg', ['-v', 'error', '-y', '-ss', String(Math.min(2, Math.max(0.3, r.duration / 3))), '-i', r.out, '-frames:v', '1', '-vf', 'scale=360:-2', '-q:v', '5', thumb]);
+      if (x.status === 0) await call(`/api/runner/jobs/${job.id}/thumb`, { method: 'PUT', headers: { 'content-type': 'image/jpeg' }, body: readFileSync(thumb) });
+    } catch (e: any) { console.error('Bỏ ảnh xem trước:', e.message); }
     await post(`/api/runner/jobs/${job.id}/done`, { seconds: Math.round(r.seconds), duration: Math.round(r.duration), voice: r.voice, chars: spec.scenes.reduce((n, sc) => n + sc.lines.join(' ').length, 0) });
     console.log(`Xong ${job.id}: ${r.duration.toFixed(1)}s video trong ${r.seconds.toFixed(1)}s`);
     return true;

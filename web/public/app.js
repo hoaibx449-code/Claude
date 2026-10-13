@@ -120,7 +120,7 @@ function debounce(fn, ms) {
   d.flush = () => { if (t !== null) { clearTimeout(t); t = null; return fn(); } };
   return d;
 }
-const imageUrl = (ref) => (ref?.startsWith('r2:') ? '/api/assets/' + ref.slice(3) : '');
+const imageUrl = (ref) => (ref?.startsWith('r2:') ? '/api/assets/' + ref.slice(3) : ref?.startsWith('doodle:') ? '/assets/doodles/' + ref.slice(7) + '.svg' : '');
 // an empty page stands in for a picture that has not been drawn yet
 const BLANK = '/blank.svg';
 const fmtDate = (ms) => new Date(ms).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
@@ -171,11 +171,40 @@ async function boot() {
 function paintHeader() {
   const acc = document.getElementById('account');
   document.getElementById('loginBtn').hidden = !!me;
-  document.getElementById('logout').hidden = !me;
   acc.hidden = !me;
-  if (me) { acc.textContent = (me.user.name || me.user.email || '?').trim().charAt(0).toUpperCase(); document.getElementById('whoEmail').textContent = me.user.email; }
-  document.getElementById('adminLink').hidden = !me?.admin;
+  if (me) acc.textContent = (me.user.name || me.user.email || '?').trim().charAt(0).toUpperCase();
+  closeMenu();
 }
+// everything about the account lives in one menu behind the avatar
+function closeMenu() { const m = document.getElementById('userMenu'); if (m) m.hidden = true; document.getElementById('account')?.setAttribute('aria-expanded', 'false'); }
+async function openMenu() {
+  const m = document.getElementById('userMenu'), acc = document.getElementById('account');
+  if (!me) return;
+  const lim = me.limits || {}, used = me.used || {}, left = (k) => Math.max(0, (lim[k] || 0) - (used[k] || 0));
+  const item = (href, label, ev) => h('a', { href, role: 'menuitem', 'data-ev': ev, onclick: closeMenu }, label);
+  const credits = h('span', { class: 'muted' }, '…');
+  m.replaceChildren(
+    h('div', { class: 'menu-head' }, h('b', {}, me.user.name || me.user.email.split('@')[0]), h('span', { class: 'muted' }, me.user.email)),
+    h('dl', { class: 'menu-stats' },
+      h('dt', {}, 'Gói'), h('dd', {}, (me.plan?.name || 'Miễn phí') + (me.plan?.expires ? ` · đến ${new Date(me.plan.expires).toLocaleDateString('vi-VN')}` : '')),
+      h('dt', {}, 'Hôm nay còn'), h('dd', {}, `${left('render')} lượt dựng` + (me.ai?.gemini || me.ai?.openai ? ` · ${left('script')} lượt AI viết` : '')),
+      V('look:doc') !== 'hidden' ? h('dt', {}, 'Phim tài liệu') : null, V('look:doc') !== 'hidden' ? h('dd', {}, credits) : null),
+    h('nav', { class: 'menu-links' },
+      item('#/video', 'Video của tôi', 'menu-videos'), item('#/tai-khoan', 'Tài khoản và dữ liệu', 'menu-account'),
+      V('feature:plans') === 'on' ? item('#/goi', 'Gói cước và credit', 'menu-plans') : null,
+      ui.zalo?.enabled ? item('#/zalo', me.zaloLinked ? 'Zalo: đã kết nối' : 'Kết nối Zalo', 'menu-zalo') : null,
+      me.admin ? item('#/admin', T('admin'), 'menu-admin') : null,
+      h('button', { type: 'button', role: 'menuitem', class: 'menu-out', onclick: () => document.getElementById('logout').click() }, T('logout'))));
+  m.hidden = false; acc.setAttribute('aria-expanded', 'true');
+  m.querySelector('a, button')?.focus();
+  if (V('look:doc') !== 'hidden') api('/api/credits').then((c) => { credits.textContent = c.monthlyLeft ? `${c.monthlyLeft} video trong gói tháng này · ${c.balance} credit` : `${c.balance} credit`; }).catch(() => { credits.textContent = '—'; });
+}
+document.addEventListener('click', (e) => {
+  const acc = document.getElementById('account'), m = document.getElementById('userMenu');
+  if (acc && e.target.closest('#account')) { m.hidden ? openMenu() : closeMenu(); return; }
+  if (m && !m.hidden && !e.target.closest('#userMenu')) closeMenu();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
 function markNav(name) {
   for (const a of document.querySelectorAll('[data-route]')) a.classList.toggle('on', a.dataset.route === name);
 }
@@ -205,7 +234,7 @@ function route() {
     : hash === '#/dieu-khoan' ? showLegal('terms')
     : hash === '#/bao-mat' ? showLegal('privacy')
     : hash === '#/hoan-tien' ? showLegal('refund')
-    : me ? showStudio() : showLanding();
+    : showLanding();
   go.catch(fatal);
 }
 function fatal(e) {
@@ -217,9 +246,12 @@ function resume(after) {
   if (after.create) { location.hash = '#/tao'; setTimeout(() => createProject(after.create), 300); }
 }
 const footer = () => h('footer', { class: 'site' },
-  h('span', {}, '© ' + new Date().getFullYear() + ' ' + (ui.legal?.company || ui.brand.name)),
-  h('a', { href: '#/dieu-khoan' }, 'Điều khoản sử dụng'), h('a', { href: '#/bao-mat' }, 'Chính sách bảo mật'), V('feature:plans') === 'on' ? h('a', { href: '#/hoan-tien' }, 'Hoàn tiền') : null,
-  ui.legal?.email ? h('a', { href: 'mailto:' + ui.legal.email }, ui.legal.email) : null);
+  h('div', { class: 'operator' }, h('b', {}, ui.legal?.company || ui.brand.name),
+    ui.legal?.address ? h('span', {}, ui.legal.address) : null, ui.legal?.taxId ? h('span', {}, 'Mã số thuế ' + ui.legal.taxId) : null,
+    ui.legal?.email ? h('span', {}, 'Hỗ trợ: ', h('a', { href: 'mailto:' + ui.legal.email }, ui.legal.email)) : null),
+  h('nav', { class: 'policies', 'aria-label': 'Chính sách' }, h('a', { href: '#/dieu-khoan' }, 'Điều khoản sử dụng'), h('a', { href: '#/bao-mat' }, 'Chính sách bảo mật'),
+    V('feature:plans') === 'on' ? h('a', { href: '#/hoan-tien' }, 'Hoàn tiền') : null),
+  h('small', { class: 'muted' }, '© ' + new Date().getFullYear() + ' ' + (ui.legal?.company || ui.brand.name)));
 
 // ---------- live demo videos (the real engine, playing in the page)
 let demoSet = null, demoRuns = [], demoObserver = null;
@@ -260,71 +292,80 @@ const STYLE_SHOW = ['sunset', 'cosmos', 'manim', 'bold', 'neon', 'comic', 'paste
 async function showLanding() {
   viewed('landing');
   const demos = await getDemos();
-  const site = ui.site || {}, beta = ui.beta;
-  const tryBox = h('textarea', { rows: 4, maxlength: 6000, placeholder: 'Dán vài câu kịch bản của bạn vào đây…', 'aria-label': 'Kịch bản thử' });
-  const tryBtn = h('button', { type: 'button', class: 'big', 'data-ev': 'landing-try', onclick: () => startTry(tryBox.value, tryBtn, { look: ui.defaults?.look }) }, 'Xem thử ngay');
-  // hero: the admin's picture/video, or the real engine drawing in a phone
+  const site = ui.site || {}, beta = ui.beta, free = ui.free || {}, selling = V('feature:plans') === 'on' && ui.plans?.length;
+  // hero media: the admin's own video (with sound) or the real engine drawing in a phone
+  const heroCanvas = h('canvas', { 'aria-label': 'Video mẫu' });
+  const heroDemo = demos.find((d) => d.look === (ui.defaults?.look || 'kinetic')) || demos[0];
   let heroRun = null;
-  const heroCanvas = h('canvas', { 'aria-label': 'Video minh hoạ' });
+  const isVideo = /\.(mp4|webm)$/i.test(site.heroMedia || '');
   const heroMedia = site.heroMedia
-    ? (/\.(mp4|webm)$/i.test(site.heroMedia) ? siteVideo(site.heroMedia, site.heroPoster, 'Video giới thiệu', true) : h('img', { src: siteUrl(site.heroMedia), alt: site.heroTitle || '', loading: 'eager' }))
+    ? (isVideo ? siteVideo(site.heroMedia, site.heroPoster, 'Video mẫu có tiếng', true) : h('img', { src: siteUrl(site.heroMedia), alt: site.heroTitle || '', loading: 'eager' }))
     : heroCanvas;
-  // sample videos: uploaded ones first; otherwise one live demo per video kind (all different)
-  const showcase = site.showcase?.length
+  const pause = h('button', { type: 'button', class: 'demo-toggle', 'aria-label': 'Tạm dừng video mẫu', onclick: () => { if (!heroRun) return; heroRun.visible = !heroRun.visible; if (heroRun.visible) { heroRun.last = 0; heroRun.raf = requestAnimationFrame(heroRun.loop); } pause.textContent = heroRun.visible ? '❚❚' : '▶'; pause.setAttribute('aria-label', heroRun.visible ? 'Tạm dừng video mẫu' : 'Phát video mẫu'); } }, '❚❚');
+  const limitText = beta
+    ? `Bản ${beta.label || 'Beta'}: miễn phí ${free.render || 0} video mỗi ngày, mỗi video tối đa ${Math.round((free.maxSeconds || 90) / 60 * 10) / 10} phút.`
+    : selling ? `Miễn phí ${free.render || 0} video mỗi ngày. Gói trả phí từ ${money(Math.min(...ui.plans.filter((p) => p.price > 0).map((p) => p.price)))}.` : `Miễn phí ${free.render || 0} video mỗi ngày.`;
+  const check = (t) => h('li', {}, h('span', { class: 'tick', 'aria-hidden': 'true' }, '✓'), t);
+  const samples = site.showcase?.length
     ? site.showcase.map((m, i) => h('figure', { class: 'sample', 'data-ev': 'sample-' + i },
       m.video ? siteVideo(m.video, m.poster, m.title || 'Video mẫu') : h('img', { src: siteUrl(m.poster), alt: m.title || '', loading: 'lazy' }),
-      h('figcaption', {}, h('b', {}, m.title), m.caption ? h('span', {}, m.caption) : null)))
-    : looksOn().map((k) => demos.find((x) => x.look === k)).filter(Boolean).map((d) => {
-      const c = h('canvas', { 'aria-label': L('looks', d.look) });
+      h('figcaption', { class: 'cap' }, h('b', {}, m.title), m.caption ? h('span', {}, m.caption) : null)))
+    : [...looksOn(), 'classic'].map((k) => demos.find((x) => x.look === k)).filter(Boolean).map((d) => {
+      const c = h('canvas', { 'aria-label': d.look === 'classic' ? 'Bàn tay vẽ' : L('looks', d.look) });
       setTimeout(() => playDemo(c, d.spec, { dpr: 0.45 }), 0);
-      return h('a', { class: 'sample', href: '#/mau', 'data-ev': 'sample-' + d.look, onclick: () => sessionStorage.setItem('nv_look', d.look) }, c, h('span', { class: 'cap' }, h('b', {}, L('looks', d.look)), h('span', {}, L('lookNotes', d.look))));
+      return h('a', { class: 'sample', href: '#/tao', 'data-ev': 'sample-' + d.look, onclick: () => sessionStorage.setItem('nv_look', d.look) }, c,
+        h('span', { class: 'cap' }, h('b', {}, d.look === 'classic' ? 'Bàn tay vẽ' : L('looks', d.look)), h('span', {}, d.look === 'classic' ? 'Tranh line-art lộ dần theo nét bút, phụ đề viết tay.' : L('lookNotes', d.look))));
     });
   const steps = [
-    ['Viết hoặc dán kịch bản', 'Dùng kịch bản có sẵn, chọn mẫu, hoặc để AI viết từ một chủ đề có câu mở đầu giữ chân người xem.'],
-    ['Chọn định dạng video', 'Mỗi định dạng có nhịp kể, bố cục và hiệu ứng riêng. Xem trước ngay trên trang trước khi dựng.'],
-    ['Nhận MP4 và phụ đề', 'Video có giọng đọc tiếng Việt khớp từng câu, khung dọc 9:16 hoặc ngang 16:9. Tải về hoặc nhận qua Zalo.'],
+    ['Nhập nội dung', 'Dán kịch bản của bạn, chọn kịch bản mẫu, hoặc gõ một chủ đề để AI viết.'],
+    ['Chọn cách kể', 'Chữ bùng nổ, hai bên đối lập, tin nhắn, bàn tay vẽ… Xem trước ngay, sửa từng cảnh.'],
+    ['Nhận video', 'MP4 có giọng đọc và phụ đề, khung dọc hoặc ngang. Tải về hoặc nhận qua Zalo.'],
   ];
   const faq = [
-    ['Có cần biết vẽ hay dựng phim không?', 'Không. Bạn chỉ cần kịch bản; hình, chuyển động, giọng đọc, phụ đề và khớp nhịp đều tự động.'],
-    ['Video có dùng cho kênh của tôi được không?', 'Được. Hình nét vẽ, biểu tượng và phông chữ trong video đều có giấy phép dùng thương mại.'],
-    ['Không có AI thì có dùng được không?', 'Được. Chế độ "Kịch bản của tôi + tự minh hoạ" và giọng đọc cơ bản chạy mà không cần AI.'],
-    ['Dữ liệu của tôi có an toàn không?', 'Chúng tôi chỉ nhận tên và email khi bạn đăng nhập Google, không đăng bài thay bạn. Bạn có thể tải hoặc xoá toàn bộ dữ liệu bất cứ lúc nào.'],
+    ['Có cần biết vẽ hay dựng phim không?', 'Không. Bạn chỉ cần nội dung; hình, chuyển động, giọng đọc, phụ đề và khớp nhịp đều tự động.'],
+    ['Video có dùng cho kênh của tôi được không?', 'Được. Tranh vẽ, biểu tượng và phông chữ trong video đều có giấy phép dùng thương mại.'],
+    ['Miễn phí gồm những gì?', `${free.render || 0} video mỗi ngày với giọng đọc cơ bản và mọi định dạng trừ Phim tài liệu AI (dùng ảnh AI nên tính credit riêng).`],
+    ['Dữ liệu của tôi được xử lý thế nào?', 'Chỉ nhận tên, email và ảnh đại diện từ Google khi bạn đăng nhập; không đăng bài thay bạn. Bạn tải hoặc xoá toàn bộ dữ liệu trong trang Tài khoản.'],
     beta ? ['Bản Beta nghĩa là gì?', beta.note || 'Tính năng và giao diện có thể thay đổi trong thời gian thử nghiệm.'] : null,
   ].filter(Boolean);
+  const cta = me ? [h('a', { class: 'btn big', href: '#/tao', 'data-ev': 'hero-create' }, 'Tạo video'), h('a', { class: 'btn ghost big', href: '#/video', 'data-ev': 'hero-videos' }, 'Video của tôi')]
+    : [h('a', { class: 'btn big', href: '#/tao', 'data-ev': 'hero-create' }, 'Tạo video thử'), selling ? h('a', { class: 'btn ghost big', href: '#/goi', 'data-ev': 'hero-plans' }, 'Xem bảng giá') : h('a', { class: 'btn ghost big', href: '#mau-video', 'data-ev': 'hero-samples', onclick: (e) => { e.preventDefault(); document.getElementById('mau-video')?.scrollIntoView({ behavior: 'smooth' }); } }, 'Xem video mẫu')];
   show(
+    ui.notice ? h('div', { class: 'notice' }, ui.notice) : null,
     h('section', { class: 'hero' },
       h('div', { class: 'hero-copy' },
-        beta ? h('span', { class: 'eyebrow' }, h('i', { class: 'dot' }), `Bản ${beta.label || 'Beta'} · đang thử nghiệm`) : null,
-        h('h1', {}, site.heroTitle || 'Biến ý tưởng thành video giải thích cuốn hút'),
+        beta ? h('span', { class: 'eyebrow' }, h('i', { class: 'dot' }), `Bản ${beta.label || 'Beta'}`) : null,
+        h('h1', {}, site.heroTitle || 'Tạo video giải thích có giọng đọc tiếng Việt'),
         h('p', { class: 'lead' }, site.heroText || ui.brand.tagline),
-        h('div', { class: 'cta' },
-          h('a', { class: 'btn big', href: '#/tao', 'data-ev': 'hero-create' }, 'Tạo video'),
-          h('a', { class: 'btn ghost big', href: '#mau-video', 'data-ev': 'hero-samples', onclick: (e) => { e.preventDefault(); document.getElementById('mau-video')?.scrollIntoView({ behavior: 'smooth' }); } }, 'Xem video mẫu')),
-        h('ul', { class: 'facts' },
-          h('li', {}, h('b', {}, 'Tiếng Việt'), h('span', {}, 'giọng đọc tự nhiên')),
-          h('li', {}, h('b', {}, '9:16 · 16:9'), h('span', {}, 'TikTok, Reels, YouTube')),
-          h('li', {}, h('b', {}, 'MP4 + SRT'), h('span', {}, 'phụ đề kèm theo')))),
-      h('div', { class: 'hero-media' }, heroMedia === heroCanvas ? iphone(heroCanvas) : h('div', { class: 'media-frame' }, heroMedia))),
-    h('section', { class: 'section', id: 'mau-video' },
-      h('header', { class: 'head' }, h('span', { class: 'kicker' }, 'Video mẫu'), h('h2', {}, 'Xem trước khi bắt đầu'), h('p', {}, site.showcase?.length ? 'Một vài video được dựng hoàn toàn từ kịch bản.' : 'Mỗi định dạng có cách kể riêng. Các video dưới đây được vẽ trực tiếp trong trình duyệt từ kịch bản.')),
-      h('div', { class: 'samples' }, showcase)),
+        h('ul', { class: 'benefits' }, check('MP4 1080p có giọng đọc tiếng Việt'), check('Phụ đề trên hình và tệp SRT'), check('Khung dọc 9:16 và ngang 16:9')),
+        h('p', { class: 'limit' }, limitText),
+        h('div', { class: 'cta' }, ...cta)),
+      h('div', { class: 'hero-media' }, heroMedia === heroCanvas ? h('div', { class: 'phone-wrap' }, iphone(heroCanvas), pause) : h('div', { class: 'media-frame' }, heroMedia))),
     h('section', { class: 'section' },
-      h('header', { class: 'head' }, h('span', { class: 'kicker' }, 'Cách hoạt động'), h('h2', {}, 'Ba bước, không cần kỹ năng dựng phim')),
-      h('ol', { class: 'steps3' }, steps.map(([t, d], i) => h('li', { class: 'card' }, h('span', { class: 'num' }, String(i + 1)), h('h3', {}, t), h('p', {}, d))))),
+      h('header', { class: 'head' }, h('span', { class: 'kicker' }, 'Bắt đầu'), h('h2', {}, 'Ba bước, không cần kỹ năng dựng phim')),
+      h('div', { class: 'guide' + (site.tutorial ? ' has-video' : '') },
+        site.tutorial ? h('div', { class: 'guide-video' }, siteVideo(site.tutorial, '', 'Video hướng dẫn')) : null,
+        h('ol', { class: 'steps3' }, steps.map(([t, d], i) => h('li', { class: 'card' }, h('span', { class: 'num' }, String(i + 1)), h('h3', {}, t), h('p', {}, d)))))),
+    h('section', { class: 'section', id: 'mau-video' },
+      h('header', { class: 'head' }, h('span', { class: 'kicker' }, 'Video mẫu'), h('h2', {}, 'Chọn cách kể cho nội dung của bạn'), h('p', {}, 'Mỗi cách kể có nhịp, bố cục và âm thanh riêng. Bấm một mẫu để bắt đầu với cách kể đó.')),
+      h('div', { class: 'samples' }, samples)),
+    h('section', { class: 'section offer' },
+      h('div', {}, h('span', { class: 'kicker' }, beta ? 'Bản thử nghiệm' : 'Chi phí'), h('h2', {}, beta ? 'Dùng miễn phí trong thời gian thử nghiệm' : 'Biết trước chi phí cho mỗi video'),
+        h('p', { class: 'muted' }, beta ? 'Mọi tính năng đều mở để bạn thử. Giới hạn mỗi ngày giúp chúng tôi giữ máy dựng ổn định cho tất cả mọi người.' : 'Giá hiển thị đủ trước khi dựng. Không giới hạn tính năng không có nghĩa là không giới hạn số video: hạn mức từng gói ghi rõ bên dưới.')),
+      h('dl', { class: 'offer-list' },
+        h('dt', {}, 'Video mỗi ngày'), h('dd', {}, `${free.render || 0} video, mỗi video tối đa ${Math.round((free.maxSeconds || 90) / 60 * 10) / 10} phút`),
+        h('dt', {}, 'Giọng đọc'), h('dd', {}, 'Giọng cơ bản miễn phí; giọng tự nhiên theo gói'),
+        h('dt', {}, 'Định dạng'), h('dd', {}, '7 cách kể và bàn tay vẽ'),
+        h('dt', {}, 'Phim tài liệu AI'), h('dd', {}, `${ui.doc?.perVideo || 1} credit một video (ảnh AI cho từng cảnh)`)),
+      selling ? h('a', { class: 'btn', href: '#/goi' }, 'Xem bảng giá') : null),
     h('section', { class: 'section try' },
-      h('div', {}, h('span', { class: 'kicker' }, 'Thử ngay'), h('h2', {}, 'Dán kịch bản, xem bố cục trong vài giây'), h('p', { class: 'muted' }, 'Không cần đăng nhập. Hệ thống nhận ra dạng nội dung (danh sách, so sánh, số liệu, kể chuyện…) và dựng bố cục phù hợp.')),
-      h('div', { class: 'try-box' }, tryBox, tryBtn)),
+      h('div', {}, h('span', { class: 'kicker' }, 'Thử ngay'), h('h2', {}, 'Dán kịch bản, xem bố cục trong vài giây'), h('p', { class: 'muted' }, 'Không cần đăng nhập. Hệ thống nhận ra dạng nội dung và dựng bản xem trước ngay trên trang.')),
+      (() => { const box = h('textarea', { rows: 4, maxlength: 6000, placeholder: 'Dán vài câu kịch bản của bạn vào đây…', 'aria-label': 'Kịch bản thử' }), btn = h('button', { type: 'button', class: 'big', 'data-ev': 'landing-try', onclick: () => startTry(box.value, btn, { look: ui.defaults?.look }) }, 'Xem thử ngay'); return h('div', { class: 'try-box' }, box, btn); })()),
     h('section', { class: 'section' },
       h('header', { class: 'head' }, h('span', { class: 'kicker' }, 'Câu hỏi thường gặp'), h('h2', {}, 'Giải đáp nhanh')),
       h('div', { class: 'faq' }, faq.map(([q, a]) => h('details', {}, h('summary', {}, q), h('p', {}, a))))),
-    h('section', { class: 'cta-band' },
-      h('h2', {}, beta ? 'Cùng chúng tôi hoàn thiện công cụ' : 'Video đầu tiên chỉ cách một kịch bản'),
-      h('p', {}, beta ? 'Dùng thử, gửi góp ý: mỗi phản hồi giúp video đẹp và cuốn hút hơn.' : 'Bắt đầu với một chủ đề hoặc kịch bản bạn đã có.'),
-      h('a', { class: 'btn big', href: '#/tao', 'data-ev': 'band-create' }, 'Tạo video')),
     footer());
-  const heroDemo = demos.find((d) => d.look === (ui.defaults?.look || 'kinetic')) || demos[0];
   if (heroMedia === heroCanvas && heroDemo) heroRun = playDemo(heroCanvas, heroDemo.spec, { dpr: 0.75 });
-  return heroRun;
 }
 /** Home page media: uploaded files ("site:abc.mp4") or full https addresses. */
 const siteUrl = (v) => (String(v || '').startsWith('site:') ? '/api/site/' + String(v).slice(5) : String(v || ''));
@@ -474,6 +515,13 @@ function openLogin(reason, after) {
   const next = '/' + (after?.hash || location.hash || '#/');
   const slot = h('div', { class: 'gslot' });
   const close = () => { bg.remove(); };
+  // say why at the moment of asking: what the sign-in is for, and that the work is kept
+  const why = reason === 'create' ? (after?.create?.source === 'topic' ? ['Đăng nhập để AI viết và lưu kịch bản', 'Chủ đề bạn vừa nhập được giữ nguyên; AI bắt đầu viết ngay sau khi đăng nhập.']
+      : ['Đăng nhập để lưu và nhận video', 'Kịch bản và lựa chọn của bạn được giữ nguyên; video bắt đầu tạo ngay sau khi đăng nhập.'])
+    : reason === 'buy' ? ['Đăng nhập để nạp vào tài khoản', 'Gói hoặc credit được gắn với tài khoản Google của bạn; bạn quay lại đúng trang bảng giá.']
+    : reason === 'like' ? ['Đăng nhập để thích và lưu video', 'Bạn quay lại đúng trang Cộng đồng sau khi đăng nhập.']
+    : reason === 'route' ? ['Đăng nhập để mở trang này', 'Bạn được đưa tới đúng trang vừa chọn sau khi đăng nhập.']
+    : ['Đăng nhập hoặc tạo tài khoản', 'Một chạm với Google, không cần mật khẩu. Tài khoản mới được tạo tự động.'];
   // one tap on our own button: the whole page goes to Google and comes back signed in
   const gBtn = h('a', { class: 'gbtn', href: '/api/auth/google/start?next=' + encodeURIComponent(next), 'data-ev': 'login-google',
     onclick: () => { track('login_go', { how: 'redirect' }); flush(); gBtn.classList.add('busy'); gBtn.replaceChildren(h('i', { class: 'spin' }), 'Đang mở Google…'); } }, GOOGLE_G(), 'Tiếp tục với Google');
@@ -482,19 +530,19 @@ function openLogin(reason, after) {
     h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Đăng nhập' },
       h('div', { class: 'side' },
         h('span', { class: 'brand', style: 'color:#fff' }, h('span', { class: 'logo', style: 'background:rgba(255,255,255,.2)' }, '✎'), ui.brand.name + ' ' + (ui.brand.accent || '')),
-        h('h2', { style: 'color:#fff;font-size:1.6rem' }, reason === 'create' ? 'Còn một bước để nhận video' : 'Chào mừng bạn'),
+        h('h2', { style: 'color:#fff' }, reason === 'create' ? 'Còn một bước để nhận video' : 'Chào mừng bạn'),
         h('ul', {}, h('li', {}, 'Lưu và sửa video bất cứ lúc nào'), h('li', {}, 'Giọng đọc tiếng Việt, khớp nhịp từng câu'), h('li', {}, 'Tải MP4 hoặc nhận qua Zalo'), ui.beta ? h('li', {}, `Bản ${ui.beta.label || 'Beta'}: góp ý của bạn được ghi nhận`) : h('li', {}, 'Miễn phí dùng thử, không cần thẻ')),
-        h('p', { class: 'mini' }, '🔒 Kết nối mã hoá · Chỉ nhận tên và email · Không đăng bài thay bạn')),
+        h('p', { class: 'mini' }, 'Kết nối mã hoá HTTPS. Phiên đăng nhập lưu bằng cookie bảo mật, không lưu mật khẩu.')),
       h('div', { class: 'main', style: 'position:relative' },
         h('button', { type: 'button', class: 'ghost small close', 'aria-label': 'Đóng', onclick: close }, '✕'),
-        h('h2', {}, 'Đăng nhập / Đăng ký'),
-        h('p', { class: 'muted' }, 'Một chạm với tài khoản Google, không cần mật khẩu. Tài khoản mới được tạo tự động.'),
+        h('h2', {}, why[0]),
+        h('p', { class: 'muted' }, why[1]),
         cfg?.clientId ? (redirect ? gBtn : slot) : h('p', { class: 'error' }, 'Chủ trang chưa cấu hình đăng nhập Google.'),
         devBtn,
         h('p', { class: 'agree' }, 'Bằng việc tiếp tục, bạn đồng ý với ', h('a', { href: '#/dieu-khoan', target: '_blank' }, 'Điều khoản sử dụng'), ' và ', h('a', { href: '#/bao-mat', target: '_blank' }, 'Chính sách bảo mật'), '.'),
         ui.zalo?.enabled && ui.zalo.botLink ? h('div', { class: 'or' }, 'hoặc') : null,
         ui.zalo?.enabled && ui.zalo.botLink ? h('a', { class: 'btn ghost', href: ui.zalo.botLink, target: '_blank', rel: 'noopener', 'data-ev': 'login-zalo' }, 'Tạo video ngay trong Zalo') : null,
-        h('div', { class: 'secure' }, h('span', {}, '🛡️'), h('span', {}, 'Bạn có thể tải hoặc xoá toàn bộ dữ liệu của mình trong trang Tài khoản bất cứ lúc nào.')))));
+        h('div', { class: 'secure' }, h('span', {}, h('b', {}, 'Google chỉ chia sẻ tên, email và ảnh đại diện. '), 'Chúng tôi không nhận mật khẩu, không đọc Gmail hay Drive, không đăng bài thay bạn. Bạn tải hoặc xoá toàn bộ dữ liệu trong trang Tài khoản.')))));
   document.body.append(bg);
   if (cfg?.clientId && !redirect) {
     // ordinary browsers: Google's own button (popup); the redirect button is the fallback if it does not load
@@ -573,10 +621,10 @@ function lookPicker(current, onPick, demos) {
     box.replaceChildren(...[...looksOn(), 'classic'].map((k) => {
       const dev = k !== 'classic' && V('look:' + k) === 'dev', d = demos.find((x) => x.look === k), c = h('canvas', { 'aria-hidden': 'true' });
       if (d) setTimeout(() => playDemo(c, d.spec, { dpr: 0.32 }), 0);
-      const name = k === 'classic' ? 'Vẽ tay cổ điển' : L('looks', k), note = k === 'classic' ? 'Bàn tay vẽ trên bảng với 17 phong cách màu như trước.' : L('lookNotes', k);
+      const name = k === 'classic' ? 'Bàn tay vẽ' : L('looks', k), note = k === 'classic' ? 'Bàn tay vẽ tranh line-art lộ dần theo nét bút, phụ đề viết tay. Hợp kể chuyện, bài giảng, review sách.' : L('lookNotes', k);
       return h('button', { type: 'button', class: 'look' + (k === cur ? ' on' : ''), role: 'radio', 'aria-checked': String(k === cur), disabled: dev, 'data-ev': 'look-' + k, 'data-k': k,
         onclick: () => { onPick(k); mark(k); } },
-        k === 'classic' ? h('div', { class: 'look-thumb classic' }, '✍️') : c,
+        d ? c : h('div', { class: 'look-thumb classic' }, '✍️'),
         h('b', {}, name + (dev ? DEV : '')), k === 'doc' ? h('span', { class: 'credit-tag' }, 'Tính credit') : null, h('small', {}, note));
     }));
   };
@@ -673,17 +721,6 @@ function decorate(spec, o) {
   return s;
 }
 
-function planBar() {
-  if (!me) return null;
-  const lim = me.limits || {}, used = me.used || {};
-  const left = (k) => Math.max(0, (lim[k] || 0) - (used[k] || 0));
-  const bits = [`Gói ${me.plan?.name || ''}`, `còn ${left('render')} lượt dựng`, me.ai?.gemini || me.ai?.openai ? `${left('script')} lượt AI viết` : null].filter(Boolean);
-  return h('div', { class: 'planbar' }, h('span', {}, bits.join(' · ') + ' hôm nay'),
-    me.plan?.expires ? h('small', {}, ' · hết hạn ' + fmtDate(me.plan.expires)) : null,
-    V('feature:plans') === 'on' && ui.plans?.some((p) => p.price > 0) ? h('a', { href: '#/goi', class: 'pill', 'data-ev': 'planbar-upgrade' }, me.plan?.id === 'free' ? 'Nâng cấp' : 'Gói cước') : null,
-    ui.zalo?.enabled ? h('a', { href: '#/zalo', class: 'pill', 'data-ev': 'planbar-zalo' }, me.zaloLinked ? 'Zalo: đã kết nối' : 'Tạo video qua Zalo') : null);
-}
-
 /** Make the video (signs in first when needed, then continues by itself). */
 async function createProject(body, btn) {
   if (!me) return openLogin('create', { create: body });
@@ -701,49 +738,57 @@ async function createProject(body, btn) {
   });
 }
 
-async function showStudio() {
-  viewed('studio');
-  const name = (me.user.name || '').split(' ').pop() || 'bạn';
-  const list = h('div', {}, skeleton(3));
-  const tips = store.get('nv_tips') ? null : h('div', { class: 'card tips' },
-    h('h2', {}, 'Bắt đầu trong 3 bước'),
-    h('ol', {}, h('li', {}, 'Dán kịch bản, chọn kịch bản mẫu, hoặc để AI viết từ chủ đề.'), h('li', {}, 'Chọn kiểu video: bàn tay vẽ, motion graphics, toán học hay chữ chuyển động.'),
-      h('li', {}, 'Bấm "Dựng video" để nhận MP4 có giọng đọc' + (ui.zalo?.enabled ? ', hoặc nhận qua Zalo.' : '.'))),
-    h('button', { type: 'button', class: 'ghost small', onclick: (e) => { store.set('nv_tips', '1'); e.target.closest('.tips').remove(); } }, 'Đã hiểu'));
-  const quick = (href, icon, title, sub, ev, before) => h('a', { class: 'quick', href, 'data-ev': ev, onclick: before }, h('span', { class: 'qi' }, icon), h('b', {}, title), h('small', {}, sub));
-  show(
-    h('div', { class: 'hello' }, h('h1', { style: 'color:#fff' }, `Chào ${name} 👋`), h('p', {}, 'Hôm nay mình làm video gì nào?'), planBar(),
-      h('div', { class: 'row' }, h('a', { class: 'btn', href: '#/tao', style: 'background:#fff;color:#6d28d9' }, '+ Tạo video mới'), h('a', { class: 'btn ghost', href: '#/mau' }, 'Xem phong cách'))),
-    ui.notice ? h('div', { class: 'notice' }, ui.notice) : null, tips,
-    h('div', { class: 'quicks' },
-      quick('#/tao', '✍️', 'Kịch bản của tôi', 'Dán kịch bản, tự minh hoạ', 'quick-mine', () => sessionStorage.setItem('nv_src', 'mine-free')),
-      ui.enabledSources.includes('topic') ? quick('#/tao', '🤖', 'AI viết từ chủ đề', 'Một câu chủ đề là đủ', 'quick-topic', () => sessionStorage.setItem('nv_src', 'topic')) : null,
-      ui.templates?.length && V('feature:templates') === 'on' ? quick('#/tao', '📚', 'Kịch bản mẫu', 'Chọn mẫu có sẵn', 'quick-template', () => sessionStorage.setItem('nv_src', 'template')) : null,
-      V('feature:community') === 'on' ? quick('#/cong-dong', '🌏', 'Cộng đồng', 'Xem video mọi người làm', 'quick-community') : null),
-    h('div', { class: 'row', style: 'justify-content:space-between' }, h('h2', {}, T('myVideos')), h('a', { href: '#/video' }, 'Xem tất cả →')),
-    list);
-  const { projects } = await api('/api/projects');
-  list.replaceChildren(projectList(projects.slice(0, 6)));
-}
 const MODE_ICON = Object.fromEntries(MODES.map(([k, i]) => [k, i]));
+/** Grid of the user's videos: finished ones show the real video (plays on hover), drafts a frame of their preview. */
 function projectList(projects) {
-  return projects.length
-    ? h('div', { class: 'projects' }, projects.map((p) => h('div', { class: 'proj' + (p.ratio === '16:9' ? ' wide' : '') },
-        h('a', { class: 'thumb', href: p.done_job ? `#/xem/${p.id}/${p.done_job}` : '#/p/' + p.id, 'data-ev': p.done_job ? 'watch' : 'open-project' },
-          h('span', { class: 'mi' }, MODE_ICON[p.mode || 'hand'] || '✍️'), p.done_job ? h('span', { class: 'play' }, '▶') : null,
-          h('small', {}, L('styles', p.style || '') || '')),
-        h('a', { class: 'pinfo', href: '#/p/' + p.id, 'data-ev': 'open-project' }, h('strong', {}, p.title), h('small', {}, 'Sửa lần cuối ' + fmtDate(p.updated_at))),
-        h('div', { class: 'row' }, p.last_job ? h('span', { class: 'pill ' + p.last_job }, JOB_TEXT[p.last_job] || p.last_job) : h('span', { class: 'pill' }, 'Bản nháp'),
-          p.shared ? h('span', { class: 'pill done' }, '🌏 Đã chia sẻ') : null,
-          p.done_job ? h('a', { class: 'btn small', href: `#/xem/${p.id}/${p.done_job}` }, '▶ Xem') : h('a', { class: 'btn ghost small', href: '#/p/' + p.id }, 'Sửa')))))
-    : h('div', { class: 'card empty' }, h('span', { class: 'big-emoji' }, '🎬'), h('p', { class: 'muted' }, T('noVideos')), h('a', { class: 'btn', href: '#/tao' }, '+ Tạo video đầu tiên'));
+  if (!projects.length) return h('div', { class: 'card empty' }, h('h2', {}, 'Chưa có video nào'), h('p', { class: 'muted' }, T('noVideos')), h('a', { class: 'btn', href: '#/tao' }, 'Tạo video đầu tiên'));
+  const io = new IntersectionObserver((entries) => entries.forEach((en) => { if (en.isIntersecting) { io.unobserve(en.target); en.target._draw?.(); } }), { rootMargin: '200px' });
+  return h('div', { class: 'vgrid' }, projects.map((p) => {
+    const href = p.done_job ? `#/xem/${p.id}/${p.done_job}` : '#/p/' + p.id;
+    let media;
+    if (p.done_job) {
+      // the frame the render machine saved shows at once; the video only loads when hovered
+      media = h('video', { preload: 'none', muted: true, playsinline: true, loop: true, 'aria-label': p.title });
+      media.dataset.src = `/api/jobs/${p.done_job}/video?inline=1`;
+      // older videos have no saved frame: take one from the video itself
+      media._thumb = h('img', { class: 'vposter', src: `/api/jobs/${p.done_job}/thumb`, alt: '', loading: 'lazy', onerror: (e) => { e.target.remove(); media.preload = 'metadata'; media.src = media.dataset.src + '#t=1'; } });
+      media.muted = true;
+    } else {
+      media = h('canvas', { 'aria-label': 'Bản xem trước: ' + p.title });
+      media._draw = async () => {
+        try {
+          const { spec } = await api('/api/projects/' + p.id);
+          const dpr = 0.4, model = await previewModel(spec, dpr), { W, H } = NV.logicalSize(spec.ratio);
+          media.width = Math.round(W * dpr); media.height = Math.round(H * dpr);
+          const T0 = model.timeline.scenes[0];
+          NV.renderFrame(media.getContext('2d'), model, Math.max(0.5, Math.min(model.timeline.duration - 0.2, T0.end - 0.5)), { hand: false });
+        } catch {}
+      };
+      io.observe(media);
+    }
+    const tile = h('a', { class: 'vtile' + (p.ratio === '16:9' ? ' wide' : ''), href, 'data-ev': p.done_job ? 'watch' : 'open-project',
+      onmouseenter: () => { if (media.dataset?.src && !media.src) media.src = media.dataset.src; media.play?.().then(() => media._thumb?.classList.add('gone')).catch(() => {}); }, onmouseleave: () => { if (media.pause) { media.pause(); media._thumb?.classList.remove('gone'); try { media.currentTime = 1; } catch {} } } },
+      media, media._thumb || null, p.done_job ? h('span', { class: 'vplay', 'aria-hidden': 'true' }, '▶') : h('span', { class: 'vdraft' }, 'Bản nháp'));
+    return h('article', { class: 'vcard2' }, tile,
+      h('div', { class: 'vmeta' }, h('a', { href: '#/p/' + p.id, class: 'vtitle' }, p.title),
+        h('span', { class: 'muted' }, (p.last_job ? (JOB_TEXT[p.last_job] || p.last_job) + ' · ' : '') + fmtDate(p.updated_at))),
+      h('div', { class: 'vactions' }, p.done_job ? h('a', { class: 'btn small', href }, 'Xem') : null, h('a', { class: 'btn ghost small', href: '#/p/' + p.id }, 'Sửa')));
+  }));
 }
 async function showVideos() {
   viewed('videos');
   const box = h('div', {}, skeleton(6));
-  show(h('div', { class: 'row', style: 'justify-content:space-between' }, h('h1', {}, T('myVideos')), h('a', { class: 'btn', href: '#/tao' }, '+ Tạo video')), box);
+  const tabs = h('div', { class: 'chips', role: 'tablist' });
+  show(h('header', { class: 'pagehead' }, h('div', {}, h('h1', {}, 'Video của tôi'), h('p', { class: 'muted' }, 'Rê chuột lên video để xem nhanh, bấm để mở.')), h('a', { class: 'btn', href: '#/tao' }, 'Tạo video')), tabs, box);
   const { projects } = await api('/api/projects');
-  box.replaceChildren(projectList(projects));
+  let cur = 'all';
+  const paint = () => {
+    const list = cur === 'done' ? projects.filter((p) => p.done_job) : cur === 'draft' ? projects.filter((p) => !p.done_job) : projects;
+    tabs.replaceChildren(...[['all', `Tất cả (${projects.length})`], ['done', `Đã xong (${projects.filter((p) => p.done_job).length})`], ['draft', `Bản nháp (${projects.filter((p) => !p.done_job).length})`]]
+      .map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === cur), class: 'chip' + (k === cur ? ' on' : ''), onclick: () => { cur = k; paint(); } }, l)));
+    box.replaceChildren(projectList(list));
+  };
+  paint();
 }
 
 function templatesCard(onPick) {
@@ -784,7 +829,8 @@ async function showCreate() {
     channel: h('input', { id: 'f-channel', maxlength: 40, value: D.channel || '', placeholder: T('channel') }),
     episode: h('input', { id: 'f-episode', maxlength: 30, placeholder: T('episodeHint') }),
     tone: h('input', { id: 'f-tone', maxlength: 200, value: D.tone || '', placeholder: T('toneHint') }),
-    visual: h('select', { id: 'f-visual' }, options(Object.entries(ui.labels.visual).map(([k, v]) => [k, v, 'visual:' + k]), D.visual || 'sketch')),
+    // hand drawing uses the picture library by default (no repeated stick figures)
+    visual: h('select', { id: 'f-visual' }, options(Object.entries(ui.labels.visual).map(([k, v]) => [k, v, 'visual:' + k]), V('visual:doodle') === 'on' ? 'doodle' : D.visual || 'sketch')),
     format: h('select', { id: 'f-format' }, options(Object.entries(FORMAT_LABELS), 'auto')),
     transition: h('select', { id: 'f-transition' }, options([['auto', 'Tự động, đa dạng'], ['fade', 'Mờ dần'], ['slide', 'Trượt ngang'], ['wipe', 'Bàn tay xoá bảng'], ['zoom', 'Phóng to']], 'auto')),
     affOn: h('input', { type: 'checkbox' }),
@@ -857,27 +903,45 @@ async function showCreate() {
       mode: x.mode, intro: x.intro, character: x.character, affiliate: x.affiliate };
   };
   const feat = (k) => V('feature:' + k) !== 'hidden';
-  const form = h('form', { class: 'card', onsubmit: (e) => { e.preventDefault(); createProject(body(), go).then(sync); } },
-    h('h2', {}, T('newVideo')),
-    h('div', { class: 'grid' }, h('label', {}, T('source'), f.source), h('label', {}, 'Dạng video', f.format)),
-    tplBox,
-    h('label', { for: 'f-topic' }, topicLabel, f.topic), detect,
-    h('div', {}, h('span', { class: 'plabel' }, 'Định dạng video'), lookPicker(look, (k) => { look = k; skin = ''; track('look', { look: k }); sync(); }, demos)),
-    creditNote,
-    only.looked = h('div', { class: 'grid wide-2' }, skinBox, h('label', {}, 'Nhạc nền', f.music)),
-    only.mode = h('div', {}, h('span', { class: 'plabel' }, 'Kiểu vẽ tay'), modePicker(mode, (k) => { mode = k; track('mode', { mode: k }); })),
-    h('div', { class: 'grid' },
-      only.seconds = h('label', {}, T('duration'), f.seconds), h('label', {}, T('ratio'), f.ratio),
-      only.visual = h('label', {}, T('visual'), f.visual), only.style = h('label', {}, T('style'), f.style), h('label', {}, T('voice'), f.voice), only.tone = h('label', {}, T('tone'), f.tone),
-      only.transition = h('label', {}, 'Chuyển cảnh', f.transition), h('label', {}, T('channel'), f.channel), h('label', {}, T('episode'), f.episode)),
-    h('div', { class: 'toggles' },
-      feat('intro') ? h('label', { class: 'check' }, f.intro, h('span', {}, h('b', {}, 'Mở đầu là ảnh bìa thu hút'), h('small', { class: 'muted' }, ' — khung đầu tiên là thumbnail: tiêu đề lớn, nhãn nổi bật, kích thích bấm xem.'))) : null,
-      only.subs = h('label', { class: 'check' }, f.subtitles, T('subsOnPicture')),
-      feat('affiliate') ? h('label', { class: 'check' }, f.affOn, h('span', {}, h('b', {}, 'Video tiếp thị liên kết'), h('small', { class: 'muted' }, ' — thêm cảnh cuối có ảnh sản phẩm, giá và mã QR tới link của bạn.'))) : null),
-    only.aff = h('div', { class: 'card inner' }, h('div', { class: 'grid' }, h('label', {}, 'Link tiếp thị', f.affLink), h('label', {}, 'Sản phẩm', f.affProduct), h('label', {}, 'Giá', f.affPrice)), product),
-    feat('character') ? h('details', { class: 'inner' }, h('summary', {}, '🧑 Nhân vật tham chiếu (ảnh thật)'), character) : null,
-    h('div', { class: 'row' }, go, tryBtn),
-    me ? null : h('small', { class: 'muted' }, 'Bạn chỉ cần đăng nhập khi bấm tạo video.'));
+  // what the user gets and what it takes, updated as they choose
+  const summary = h('dl', { class: 'summary' });
+  const paintSummary = () => {
+    const lim = me?.limits || {}, used = me?.used || {}, left = Math.max(0, (lim.render || ui.free?.render || 0) - (used.render || 0));
+    const mine = f.source.value !== 'topic', secs = mine ? Math.round(f.topic.value.trim().length / 14) : Number(f.seconds.value);
+    const voice = (ui.voices || []).find((v) => v.code === f.voice.value);
+    summary.replaceChildren(
+      h('dt', {}, 'Bạn nhận'), h('dd', {}, `MP4 ${f.ratio.value === '16:9' ? 'ngang 16:9' : 'dọc 9:16'}${secs ? `, khoảng ${Math.max(10, secs)} giây` : ''}, phụ đề SRT`),
+      h('dt', {}, 'Cách kể'), h('dd', {}, look === 'classic' ? 'Bàn tay vẽ' : L('looks', look)),
+      h('dt', {}, 'Giọng đọc'), h('dd', {}, voice?.label || '—'),
+      h('dt', {}, 'Chi phí'), h('dd', {}, (look === 'doc' ? `${ui.doc?.perVideo || 1} credit phim tài liệu + ` : '') + `1 lượt dựng` + (me ? ` (hôm nay còn ${left})` : ` (miễn phí ${ui.free?.render || 0} lượt mỗi ngày)`)
+        + (f.source.value === 'topic' || f.source.value === 'mine-ai' ? ' + 1 lượt AI viết' : '')));
+  };
+  for (const el of [f.source, f.topic, f.seconds, f.ratio, f.voice]) el.addEventListener('change', paintSummary);
+  f.topic.addEventListener('input', debounce(paintSummary, 400));
+  const step = (n, title, sub, ...kids) => h('section', { class: 'step' }, h('header', {}, h('span', { class: 'stepno' }, String(n)), h('div', {}, h('h2', {}, title), sub ? h('p', { class: 'muted' }, sub) : null)), ...kids);
+  const form = h('form', { class: 'create', onsubmit: (e) => { e.preventDefault(); createProject(body(), go).then(sync); } },
+    step(1, 'Nội dung', 'Bạn muốn nói gì? Dán kịch bản, chọn mẫu hoặc gõ chủ đề.',
+      h('div', { class: 'grid wide-2' }, h('label', {}, T('source'), f.source), h('label', {}, 'Dạng nội dung', f.format)),
+      tplBox, h('label', { for: 'f-topic' }, topicLabel, f.topic), detect),
+    step(2, 'Cách kể', 'Video trông thế nào? Mỗi cách kể có nhịp, bố cục và âm thanh riêng.',
+      lookPicker(look, (k) => { look = k; skin = ''; track('look', { look: k }); sync(); paintSummary(); }, demos),
+      creditNote,
+      only.looked = h('div', { class: 'grid wide-2' }, skinBox, h('label', {}, 'Nhạc nền', f.music))),
+    step(3, 'Xuất video', 'Kiểm tra thông số và chi phí trước khi dựng.',
+      h('div', { class: 'grid wide-2' }, h('label', {}, T('ratio'), f.ratio), h('label', {}, T('voice'), f.voice), only.seconds = h('label', {}, T('duration'), f.seconds)),
+      summary,
+      h('details', { class: 'advanced' }, h('summary', {}, 'Nâng cao'),
+        h('div', { class: 'grid wide-2' }, h('label', {}, T('channel'), f.channel), h('label', {}, T('episode'), f.episode), only.tone = h('label', {}, T('tone'), f.tone),
+          only.visual = h('label', {}, T('visual'), f.visual), only.style = h('label', {}, T('style'), f.style), only.transition = h('label', {}, 'Chuyển cảnh', f.transition)),
+        only.mode = h('div', {}, h('span', { class: 'plabel' }, 'Kiểu vẽ tay'), modePicker(mode, (k) => { mode = k; track('mode', { mode: k }); })),
+        h('div', { class: 'toggles' },
+          feat('intro') ? h('label', { class: 'check' }, f.intro, h('span', {}, h('b', {}, 'Mở đầu là ảnh bìa'), h('small', { class: 'muted' }, ' khung đầu tiên làm thumbnail: tiêu đề lớn, nhãn nổi bật.'))) : null,
+          only.subs = h('label', { class: 'check' }, f.subtitles, T('subsOnPicture')),
+          feat('affiliate') ? h('label', { class: 'check' }, f.affOn, h('span', {}, h('b', {}, 'Video tiếp thị liên kết'), h('small', { class: 'muted' }, ' thêm cảnh cuối có ảnh sản phẩm, giá và mã QR.'))) : null),
+        only.aff = h('div', { class: 'card inner' }, h('div', { class: 'grid' }, h('label', {}, 'Link tiếp thị', f.affLink), h('label', {}, 'Sản phẩm', f.affProduct), h('label', {}, 'Giá', f.affPrice)), product),
+        feat('character') ? h('div', { class: 'inner' }, character) : null),
+      h('div', { class: 'row' }, go, tryBtn),
+      me ? null : h('p', { class: 'muted' }, 'Bạn chỉ cần đăng nhập ở bước cuối; nội dung đã nhập được giữ nguyên.')));
   async function pick(t) {
     try {
       const { template } = await api('/api/templates/' + t.id);
@@ -886,8 +950,8 @@ async function showCreate() {
       track('template', { id: t.id });
     } catch (e) { fail(e); }
   }
-  sync();
-  show(h('h1', {}, 'Tạo video'), planBar(), form);
+  sync(); paintSummary();
+  show(h('header', { class: 'pagehead' }, h('div', {}, h('h1', {}, 'Tạo video'), h('p', { class: 'muted' }, 'Ba bước: nội dung, cách kể, xuất video. Thiết lập đề xuất có sẵn, bạn chỉ cần nhập nội dung.'))), form);
   const tpl = sessionStorage.getItem('nv_tpl'); sessionStorage.removeItem('nv_tpl');
   if (tpl) { f.source.value = 'template'; sync(); pick({ id: tpl }); }
 }
@@ -895,58 +959,84 @@ async function showCreate() {
 // ---------- account
 async function showAccount() {
   viewed('account');
-  const del = h('input', { placeholder: 'Gõ XOA để xác nhận', maxlength: 4, style: 'max-width:200px' });
-  show(h('h1', {}, 'Tài khoản'),
-    h('div', { class: 'card' }, h('div', { class: 'row' }, h('span', { class: 'avatar', style: 'width:48px;height:48px;font-size:1.2rem' }, (me.user.name || me.user.email).charAt(0).toUpperCase()),
-      h('div', {}, h('b', {}, me.user.name || ''), h('div', { class: 'muted' }, me.user.email))), planBar()),
-    h('div', { class: 'card' }, h('h2', {}, 'Kết nối & gói'), h('div', { class: 'row' },
-      ui.zalo?.enabled ? h('a', { class: 'btn ghost', href: '#/zalo' }, me.zaloLinked ? 'Zalo: đã kết nối' : 'Kết nối Zalo') : null,
-      V('feature:plans') === 'on' ? h('a', { class: 'btn ghost', href: '#/goi' }, 'Gói cước') : null,
-      me.admin ? h('a', { class: 'btn ghost', href: '#/admin' }, T('admin')) : null)),
-    h('div', { class: 'card' }, h('h2', {}, 'Quyền riêng tư'),
-      h('p', { class: 'muted' }, 'Bạn có quyền nhận bản sao và xoá toàn bộ dữ liệu cá nhân của mình.'),
-      h('div', { class: 'row' }, h('a', { class: 'btn ghost', href: '/api/account/export', 'data-ev': 'export-data' }, 'Tải dữ liệu của tôi (JSON)'),
-        h('a', { href: '#/dieu-khoan' }, 'Điều khoản'), h('a', { href: '#/bao-mat' }, 'Chính sách bảo mật')),
-      h('h3', {}, 'Xoá tài khoản'), h('p', { class: 'muted' }, 'Xoá vĩnh viễn video, kịch bản, ảnh, liên kết Zalo và thông tin đăng nhập. Chứng từ thanh toán được giữ ẩn danh theo luật kế toán.'),
+  const del = h('input', { placeholder: 'Gõ XOA để xác nhận', maxlength: 4, 'aria-label': 'Gõ XOA để xác nhận xoá tài khoản' });
+  const lim = me.limits || {}, used = me.used || {}, left = (k) => Math.max(0, (lim[k] || 0) - (used[k] || 0));
+  const credits = h('dd', {}, '…');
+  const row = (title, value, action) => h('div', { class: 'setrow' }, h('div', {}, h('b', {}, title), value ? h('p', { class: 'muted' }, value) : null), action || null);
+  show(h('header', { class: 'pagehead' }, h('div', {}, h('h1', {}, 'Tài khoản'), h('p', { class: 'muted' }, 'Thông tin, gói đang dùng và dữ liệu của bạn.'))),
+    h('section', { class: 'card setgroup' }, h('h2', {}, 'Thông tin'),
+      h('div', { class: 'profile' }, h('span', { class: 'avatar big' }, (me.user.name || me.user.email).charAt(0).toUpperCase()), h('div', {}, h('b', {}, me.user.name || me.user.email.split('@')[0]), h('p', { class: 'muted' }, me.user.email + ' · đăng nhập bằng Google')))),
+    h('section', { class: 'card setgroup' }, h('h2', {}, 'Gói và lượt dùng'),
+      h('dl', { class: 'summary' },
+        h('dt', {}, 'Gói'), h('dd', {}, (me.plan?.name || 'Miễn phí') + (me.plan?.expires ? ` · đến ${fmtDate(me.plan.expires)}` : '')),
+        h('dt', {}, 'Hôm nay còn'), h('dd', {}, `${left('render')}/${lim.render || 0} lượt dựng` + (me.ai?.gemini || me.ai?.openai ? ` · ${left('script')}/${lim.script || 0} lượt AI viết` : '')),
+        V('look:doc') !== 'hidden' ? h('dt', {}, 'Phim tài liệu') : null, V('look:doc') !== 'hidden' ? credits : null),
+      V('feature:plans') === 'on' ? h('a', { class: 'btn ghost', href: '#/goi' }, 'Xem bảng giá') : null),
+    ui.zalo?.enabled ? h('section', { class: 'card setgroup' }, h('h2', {}, 'Zalo'), row(me.zaloLinked ? 'Đã kết nối' : 'Chưa kết nối', 'Nhận video và tạo video ngay trong Zalo.', h('a', { class: 'btn ghost small', href: '#/zalo' }, me.zaloLinked ? 'Quản lý' : 'Kết nối'))) : null,
+    h('section', { class: 'card setgroup' }, h('h2', {}, 'Dữ liệu và quyền riêng tư'),
+      row('Tải dữ liệu của tôi', 'Bản sao toàn bộ dữ liệu (JSON): kịch bản, video, đơn hàng, nhật ký.', h('a', { class: 'btn ghost small', href: '/api/account/export', 'data-ev': 'export-data' }, 'Tải về')),
+      row('Chính sách', null, h('div', { class: 'row' }, h('a', { href: '#/dieu-khoan' }, 'Điều khoản sử dụng'), h('a', { href: '#/bao-mat' }, 'Chính sách bảo mật')))),
+    h('section', { class: 'card setgroup danger-zone' }, h('h2', {}, 'Xoá tài khoản'),
+      h('p', { class: 'muted' }, 'Xoá vĩnh viễn video, kịch bản, ảnh, liên kết Zalo và thông tin đăng nhập. Chứng từ thanh toán được giữ ẩn danh theo luật kế toán.'),
       h('div', { class: 'row' }, del, h('button', { type: 'button', class: 'danger', 'data-ev': 'delete-account', onclick: async () => {
         if (del.value.trim().toUpperCase() !== 'XOA') return toast('Gõ XOA để xác nhận.');
         try { await api('/api/account/delete', { method: 'POST', body: { confirm: 'XOA' } }); toast('Đã xoá tài khoản.'); setTimeout(() => { location.hash = '#/'; location.reload(); }, 1200); } catch (e) { fail(e); }
       } }, 'Xoá vĩnh viễn'))),
-    h('button', { type: 'button', class: 'ghost', onclick: () => document.getElementById('logout').click() }, T('logout')),
     footer());
-}
-
-function planCards(current, onBuy) {
-  return h('div', { class: 'plans' }, ui.plans.map((p) => h('div', { class: 'plan' + (p.highlight ? ' hot' : '') + (p.id === current ? ' current' : '') },
-    h('h2', {}, p.name), h('div', { class: 'price' }, p.price ? money(p.price) : '0đ', p.price && p.days ? h('small', {}, ` / ${p.days} ngày`) : null),
-    h('p', { class: 'muted' }, p.desc),
-    h('ul', {}, ...p.features.map((x) => h('li', {}, x)), h('li', {}, `${p.limits.render} video, ${p.limits.script} lượt AI viết mỗi ngày`)),
-    p.id === current ? h('span', { class: 'pill done' }, 'Gói hiện tại')
-      : p.price ? h('button', { type: 'button', 'data-ev': 'buy', onclick: (e) => (me ? onBuy?.(p, e.currentTarget) : openLogin('buy', { hash: '#/goi' })) }, 'Chọn gói này')
-      : h('a', { class: 'btn ghost', href: '#/tao' }, 'Dùng miễn phí'))));
+  if (V('look:doc') !== 'hidden') api('/api/credits').then((c) => { credits.textContent = (c.monthlyLeft ? `${c.monthlyLeft} video trong gói tháng này · ` : '') + `${c.balance} credit`; }).catch(() => { credits.textContent = '—'; });
 }
 
 // ---------- plans & payment
+/** Pricing like a checkout: choose on the left, the order on the right updates at once (what you get, until when, total). */
 async function showPlans() {
   viewed('plans');
-  if (V('feature:plans') !== 'on') { show(h('a', { href: '#/' }, T('allVideos')), h('p', { class: 'muted' }, 'Gói cước chưa mở.')); return; }
-  if (!me) { show(h('div', { class: 'section' }, h('div', { class: 'head' }, h('h1', {}, 'Bảng giá'), h('p', {}, 'Bắt đầu miễn phí, nâng cấp khi cần nhiều video hơn.'))), planCards(null), footer()); return; }
-  const r = await api('/api/plans');
-  async function buy(plan, btn) {
+  if (V('feature:plans') !== 'on') { show(h('header', { class: 'pagehead' }, h('h1', {}, 'Bảng giá')), h('p', { class: 'muted' }, ui.beta ? `Bản ${ui.beta.label || 'Beta'}: chưa bán gói, mọi người dùng miễn phí trong giới hạn mỗi ngày.` : 'Gói cước chưa mở.')); return; }
+  const r = me ? await api('/api/plans') : { current: { id: 'free' }, orders: [], payment: null };
+  const paid = ui.plans.filter((p) => p.price > 0), packs = ui.doc?.packs || [];
+  const items = [...paid.map((p) => ({ kind: 'plan', id: p.id, name: p.name, price: p.price, p })), ...packs.map((k) => ({ kind: 'pack', id: 'credit:' + k.id, name: k.name, price: k.price, k }))];
+  let sel = items.find((x) => x.p?.highlight) || items[0];
+  const order = h('aside', { class: 'order card', 'aria-live': 'polite' });
+  const list = h('div', { class: 'choose' });
+  const paint = () => {
+    list.querySelectorAll('.opt').forEach((b) => b.classList.toggle('on', b.dataset.id === sel?.id));
+    if (!sel) { order.replaceChildren(h('p', { class: 'muted' }, 'Chưa có gói để bán.')); return; }
+    const until = sel.kind === 'plan' && sel.p.days ? new Date(Date.now() + sel.p.days * 86_400_000).toLocaleDateString('vi-VN') : null;
+    const perDay = sel.kind === 'plan' && sel.p.days ? Math.round(sel.price / sel.p.days) : null;
+    const videos = sel.kind === 'plan' ? sel.p.limits.render * (sel.p.days || 30) : sel.k.credits;
+    order.replaceChildren(h('h2', {}, 'Đơn hàng'),
+      h('dl', { class: 'summary' },
+        h('dt', {}, 'Bạn chọn'), h('dd', {}, sel.name),
+        sel.kind === 'plan' ? h('dt', {}, 'Thời hạn') : null, sel.kind === 'plan' ? h('dd', {}, `${sel.p.days} ngày${until ? ` (đến ${until})` : ''}`) : null,
+        h('dt', {}, 'Dùng được'), h('dd', {}, sel.kind === 'plan' ? `tối đa ${sel.p.limits.render} video mỗi ngày (khoảng ${videos} video trong kỳ), mỗi video tới ${Math.round(sel.p.maxSeconds / 60)} phút` : `${sel.k.credits} phim tài liệu AI (mỗi video ${ui.doc?.perVideo || 1} credit)`),
+        h('dt', {}, 'Ví dụ'), h('dd', {}, sel.kind === 'plan' ? `Video 45 giây kiểu Chữ bùng nổ dùng 1 lượt dựng${sel.p.docPerMonth ? `; kèm ${sel.p.docPerMonth} phim tài liệu mỗi tháng` : ''}.` : 'Một phim tài liệu 45–60 giây (khoảng 10 ảnh AI, vẽ lại được) dùng 1 credit.'),
+        perDay ? h('dt', {}, 'Bình quân') : null, perDay ? h('dd', {}, money(perDay) + ' / ngày') : null),
+      h('div', { class: 'total' }, h('span', {}, 'Tổng thanh toán'), h('b', {}, money(sel.price))),
+      h('button', { type: 'button', class: 'big', 'data-ev': 'buy', onclick: (e) => (me ? buy(sel, e.currentTarget) : openLogin('buy', { hash: '#/goi' })) }, me ? 'Thanh toán bằng VietQR' : 'Đăng nhập để thanh toán'),
+      h('p', { class: 'muted' }, 'Chuyển khoản qua mã VietQR; hệ thống tự kích hoạt khi nhận được tiền (thường 1–2 phút). Không lưu thông tin thẻ hay tài khoản ngân hàng của bạn.'));
+  };
+  async function buy(item, btn) {
     if (!r.payment) return toast('Thanh toán đang tạm đóng. Liên hệ quản trị viên.');
     await busy(btn, 'Đang tạo đơn…', async () => {
-      try { const { order } = await api('/api/orders', { method: 'POST', body: { plan: plan.id } }); payModal(order, plan); track('pay_open', { plan: plan.id }); } catch (e) { fail(e); }
+      try { const { order: o } = await api('/api/orders', { method: 'POST', body: { plan: item.id } }); payModal(o, { id: item.id, name: item.name }); track('pay_open', { plan: item.id }); } catch (e) { fail(e); }
     });
   }
-  show(h('h1', {}, 'Gói cước'),
-    h('p', {}, 'Bạn đang dùng gói ', h('b', {}, r.current.name), r.current.expires ? ` (đến ${fmtDate(r.current.expires)})` : '', '.'),
-    planCards(r.current.id, buy),
+  const opt = (x) => h('button', { type: 'button', class: 'opt', 'data-id': x.id, onclick: () => { sel = x; paint(); } },
+    h('span', { class: 'opt-name' }, x.name, x.p?.highlight ? h('span', { class: 'badge' }, 'Phổ biến') : null, x.p?.id === r.current.id ? h('span', { class: 'pill done' }, 'Đang dùng') : null),
+    h('span', { class: 'opt-price' }, money(x.price), x.p?.days ? h('small', {}, ` / ${x.p.days} ngày`) : null),
+    h('small', { class: 'muted' }, x.kind === 'plan' ? (x.p.desc || `${x.p.limits.render} video mỗi ngày`) : `${x.k.credits} credit phim tài liệu`));
+  list.replaceChildren(
+    paid.length ? h('h2', {}, 'Gói theo tháng') : null, ...items.filter((x) => x.kind === 'plan').map(opt),
+    packs.length ? h('h2', {}, 'Credit phim tài liệu') : null, ...items.filter((x) => x.kind === 'pack').map(opt),
+    h('p', { class: 'muted' }, `Miễn phí: ${ui.free?.render || 0} video mỗi ngày, không cần thẻ. Không giới hạn tính năng không có nghĩa là không giới hạn số video: hạn mức ghi rõ ở từng gói.`));
+  show(h('header', { class: 'pagehead' }, h('div', {}, h('h1', {}, 'Bảng giá'), h('p', { class: 'muted' }, me ? `Bạn đang dùng gói ${r.current.name || 'Miễn phí'}${r.current.expires ? ` (đến ${fmtDate(r.current.expires)})` : ''}.` : 'Chọn gói ở bên trái, kiểm tra đơn hàng ở bên phải.'))),
+    h('div', { class: 'checkout' }, list, order),
     r.orders.length ? h('div', { class: 'card' }, h('h2', {}, 'Đơn của bạn'), ...r.orders.map((o) => h('div', { class: 'row' },
       h('code', {}, o.code), money(o.amount), h('span', { class: 'pill ' + (o.status === 'paid' ? 'done' : o.status === 'pending' ? 'queued' : 'failed') }, { pending: 'Chờ thanh toán', paid: 'Đã thanh toán', cancelled: 'Đã huỷ', expired: 'Hết hạn' }[o.status] || o.status),
       h('small', { class: 'muted' }, fmtDate(o.created_at)),
-      o.status === 'pending' ? h('button', { type: 'button', class: 'small', onclick: (e) => buy(ui.plans.find((p) => p.id === o.plan) || { id: o.plan, name: o.plan }, e.currentTarget) }, 'Thanh toán') : null,
+      o.status === 'pending' ? h('button', { type: 'button', class: 'small', onclick: (e) => buy(items.find((x) => x.id === o.plan) || { id: o.plan, name: o.plan }, e.currentTarget) }, 'Thanh toán') : null,
       o.status === 'pending' ? h('button', { type: 'button', class: 'ghost small', onclick: async () => { await api(`/api/orders/${o.code}/cancel`, { method: 'POST' }).catch(fail); showPlans(); } }, 'Huỷ') : null))) : null,
     footer());
+  paint();
 }
 
 /** Payment window: VietQR, bank with its logo, copy buttons, countdown, and it notices the money by itself. */
@@ -1336,7 +1426,7 @@ async function showEditor(id) {
   const drawAllBtn = h('button', { type: 'button', class: 'ghost', 'data-ev': 'draw-all', onclick: async () => { if (await drawAll()) toast('Mọi cảnh đã có hình.'); } }, T('drawAll'));
   async function drawAll() {
     const todo = [];
-    spec.scenes.forEach((sc, si) => sc.panels.forEach((p, pi) => { if (!sc.diagram && !p.image?.startsWith('r2:')) todo.push([si, pi]); }));
+    spec.scenes.forEach((sc, si) => sc.panels.forEach((p, pi) => { if (!sc.diagram && !p.image?.startsWith('r2:') && !p.image?.startsWith('doodle:')) todo.push([si, pi]); }));
     if (!todo.length) return true;
     if (!imgProvider.options.length || !imageAI) {
       // no image AI: turn picture scenes into hand-drawn boards instead of blocking the render
@@ -1355,7 +1445,7 @@ async function showEditor(id) {
   }
   function drawScenes() {
     panelImgs.clear();
-    drawAllBtn.hidden = !imageAI || (spec.look && spec.look !== 'doc') || !spec.scenes.some((sc) => !sc.diagram);
+    drawAllBtn.hidden = !imageAI || (spec.look && spec.look !== 'doc') || !spec.scenes.some((sc) => !sc.diagram && sc.panels.some((p) => !p.image?.startsWith('r2:') && !p.image?.startsWith('doodle:')));
     const move = (si, d) => { const j = si + d; [spec.scenes[si], spec.scenes[j]] = [spec.scenes[j], spec.scenes[si]]; drawScenes(); changed(); };
     scenesBox.replaceChildren(...spec.scenes.map((sc, si) => h('div', { class: 'scene' },
       h('div', { class: 'row', style: 'justify-content:space-between' }, h('h3', {}, `Cảnh ${si + 1}`),
@@ -1374,9 +1464,13 @@ async function showEditor(id) {
       spec.look && spec.look !== 'doc' ? lookEditor(sc) : sc.diagram ? diagramEditor(sc) : h('div', { class: 'panels' }, sc.panels.map((p, pi) => {
         const img = h('img', { src: imageUrl(p.image) || BLANK, alt: p.prompt || 'Chưa có tranh' });
         panelImgs.set(`${si}:${pi}`, img);
-        const btn = h('button', { type: 'button', class: 'small', onclick: () => drawPanel(si, pi, btn) }, p.image?.startsWith('r2:') ? 'Vẽ lại bằng AI' : 'Vẽ bằng AI');
-        return h('div', { class: 'panel' }, img,
-          h('span', { class: 'tag' }, p.image?.startsWith('r2:') ? 'Tranh AI' : 'Chưa có tranh — bấm Vẽ bằng AI'),
+        const btn = h('button', { type: 'button', class: 'small', hidden: !imageAI, onclick: () => drawPanel(si, pi, btn) }, p.image?.startsWith('r2:') ? 'Vẽ lại bằng AI' : 'Vẽ bằng AI');
+        // the free picture library (Open Doodles): pick another without any AI
+        const pickDoodle = (ui.doodles || []).length ? h('label', {}, 'Đổi tranh (thư viện miễn phí)', h('select', { onchange: (e) => { p.image = 'doodle:' + e.target.value; img.src = imageUrl(p.image); changed(); } },
+          options([...(p.image?.startsWith('doodle:') ? [] : [['', '— chọn tranh —']]), ...ui.doodles.map((n) => [n, n.replace(/Doodle$/, '').replace(/([a-z])([A-Z])/g, '$1 $2')])], p.image?.startsWith('doodle:') ? p.image.slice(7) : ''))) : null;
+        if (p.image?.startsWith('doodle:')) return h('div', { class: 'panel' }, img, h('span', { class: 'tag' }, 'Tranh vẽ tay · hiện khi đọc câu ' + ((p.line ?? pi) + 1)), pickDoodle, btn);
+        return h('div', { class: 'panel' }, img, pickDoodle,
+          h('span', { class: 'tag' }, p.image?.startsWith('r2:') ? 'Tranh AI' : 'Chưa có tranh: chọn trong thư viện hoặc vẽ bằng AI'),
           h('label', {}, spec.look === 'doc' ? 'Mô tả ảnh (tiếng Anh: bối cảnh, ánh sáng, góc máy)' : 'Mô tả hình (tiếng Anh cho AI vẽ)', h('textarea', { rows: 2, maxlength: 400, value: p.prompt,
             oninput: (e) => { p.prompt = e.target.value; save(); } })),
           btn);

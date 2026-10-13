@@ -3,6 +3,7 @@
 import { HttpError } from './util.ts';
 import { composeScene } from './compose.ts';
 import { detectIntent, FORMATS, NICHES } from './intent.ts';
+import { isDoodle } from './doodles.ts';
 
 export const STYLES = ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'pencil', 'blueprint', 'ricepaper', 'neon', 'pastel', 'newspaper', 'comic', 'darkboard', 'sunset', 'cosmos', 'manim', 'bold'] as const;
 export const MODES = ['hand', 'motion', 'math', 'kinetic'] as const;
@@ -22,7 +23,7 @@ export const VOICE_PROVIDERS = ['everai', 'google', 'elevenlabs', 'free', 'mock'
 export const DIAGRAM_KINDS = ['bars', 'compare', 'steps', 'flow', 'number', 'statement', 'stick', 'sketch', 'plot'] as const;
 const PLOT_FNS = ['linear', 'exp', 'log', 'sin', 'square', 'sqrt', 'down', 'wave'] as const;
 export const ACTIONS = ['idle', 'walk', 'run', 'wave', 'think', 'cheer', 'sad', 'point', 'shrug', 'jump'] as const;
-export const VISUAL_MODES = ['sketch', 'diagram', 'mix', 'images'] as const;
+export const VISUAL_MODES = ['doodle', 'sketch', 'diagram', 'mix', 'images'] as const;
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max) : '');
 const pick = <T extends string>(v: unknown, list: readonly T[], def: T): T => (list.includes(v as T) ? (v as T) : def);
 const num = (v: unknown, lo: number, hi: number, def: number) => (typeof v === 'number' && isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def);
@@ -221,8 +222,10 @@ export function cleanSpec(input: any, userId: string) {
     const panels = (Array.isArray(sc?.panels) ? sc.panels : []).slice(0, 2).map((p: any, k: number) => {
       const prompt = str(p?.prompt, 400);
       const image = str(p?.image, 120);
-      // only the user's own AI drawings; anything else means "not drawn yet"
-      return { image: ownImage.test(image) ? image : '', prompt };
+      // only the user's own AI drawings or a bundled Open Doodle; anything else means "not drawn yet"
+      const out: any = { image: ownImage.test(image) || isDoodle(image) ? image : '', prompt };
+      if (Number.isInteger(p?.line) && p.line >= 0 && p.line < 3) out.line = p.line;
+      return out;
     });
     return { lines, panels };
   }).filter((sc: any) => sc.lines.length && (look || sc.panels.length || sc.diagram));

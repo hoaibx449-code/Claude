@@ -37,11 +37,14 @@
     <a href="#/video" data-route="video">Video của tôi</a>
   </nav>
   <div class="who">
+    <button class="ghost small" id="loginBtn" type="button" hidden>Đăng nhập</button>
+    <a class="btn small" id="createBtn" href="#/tao" data-ev="header-create">Tạo video</a>
+    <div class="usermenu">
+      <button id="account" class="avatar" type="button" hidden aria-haspopup="menu" aria-expanded="false" aria-controls="userMenu" aria-label="Tài khoản và gói"></button>
+      <div id="userMenu" class="menu" role="menu" hidden></div>
+    </div>
+    <button id="logout" type="button" hidden>Đăng xuất</button>
     <a id="adminLink" href="#/admin" hidden>Quản trị</a>
-    <span id="whoEmail"></span>
-    <a id="account" class="avatar" href="#/tai-khoan" hidden aria-label="Tài khoản"></a>
-    <button class="small" id="loginBtn" type="button" hidden>Đăng nhập</button>
-    <button class="ghost small" id="logout" type="button" hidden>Đăng xuất</button>
   </div>
 </header>
 
