@@ -233,6 +233,8 @@ export function defaultConfig(env: Env): Config {
 }
 
 // ---- validation: stored config is always complete and well-formed
+/** multi-line text: keeps line breaks, drops other control characters */
+const lines = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').trim().slice(0, max) : '');
 const str = (v: unknown, max: number, def: string) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max) : def);
 const int = (v: unknown, lo: number, hi: number, def: number) => (Number.isFinite(Number(v)) && v !== '' && v !== null ? Math.round(Math.min(hi, Math.max(lo, Number(v)))) : def);
 const pick = (v: unknown, list: readonly string[], def: string) => (list.includes(v as string) ? (v as string) : def);
@@ -291,10 +293,10 @@ export function cleanConfig(input: any, base: Config): Config {
     },
     limits: { script: int(lim.script, 0, 1000, base.limits.script), image: int(lim.image, 0, 5000, base.limits.image), render: int(lim.render, 0, 500, base.limits.render), maxSeconds: int(lim.maxSeconds, 30, 1800, base.limits.maxSeconds) },
     promptExtra: str(i.promptExtra, 1500, base.promptExtra),
-    briefs: Object.fromEntries(LOOK_KEYS.map((k) => [k, str(i.briefs?.[k], 4000, '')]).filter(([, v]) => v)),
+    briefs: Object.fromEntries(LOOK_KEYS.map((k) => [k, lines(i.briefs?.[k], 4000)]).filter(([, v]) => v)),
     formats: (Array.isArray(i.formats) ? i.formats : []).slice(0, 30).map((f: any) => ({
       id: /^[a-z0-9-]{2,24}$/.test(String(f?.id || '')) ? String(f.id) : '', name: str(f?.name, 40, ''), base: (LOOK_KEYS as readonly string[]).includes(f?.base) && f.base !== 'doc' ? f.base : 'act',
-      brief: str(f?.brief, 3000, ''), note: str(f?.note, 1500, ''), stage: ['idea', 'test', 'live'].includes(f?.stage) ? f.stage : 'idea', created: Number(f?.created) || Date.now(),
+      brief: lines(f?.brief, 3000), note: lines(f?.note, 1500), stage: ['idea', 'test', 'live'].includes(f?.stage) ? f.stage : 'idea', created: Number(f?.created) || Date.now(),
     })).filter((f: CustomFormat) => f.id && f.name),
     costs: (() => {
       const c = i.costs || {}, b = base.costs, n = (v: unknown, d: number) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : d);
