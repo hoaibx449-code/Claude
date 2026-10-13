@@ -5,7 +5,7 @@
 //  · check progress, list recent videos, pick frame/style/voice, mute notifications.
 // The webhook is verified with the secret token header Zalo sends back on every call.
 import type { User } from './auth.ts';
-import { vis, type Config } from './settings.ts';
+import { LOOK_KEYS, vis, type Config } from './settings.ts';
 import { body, type Env, HttpError, json, randomId, sha256, timingSafeEqual, useQuota } from './util.ts';
 import { createProject, queueRender, type Rc, type XEnv } from './worker.ts';
 
@@ -213,13 +213,15 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
       await savePrefs(prefs);
       return reply(`Đã chọn khung ${prefs.ratio === '16:9' ? 'ngang 16:9 (YouTube)' : 'dọc 9:16 (TikTok, Reels)'}.`);
     }
-    case 'PHONGCACH': case 'PC': {
-      const styles = env.config.enabledStyles;
+    case 'DINHDANG': case 'DD': case 'PHONGCACH': case 'PC': {
+      // video formats; the documentary needs pictures drawn on the web first, so it is not offered here
+      const looks = LOOK_KEYS.filter((k) => k !== 'doc' && vis(env.config, 'look:' + k) === 'on');
       const n = Number(rest[0]);
-      if (!rest.length) return reply('Chọn phong cách (gõ PHONGCACH + số):\n0. Tự chọn theo nội dung\n' + styles.map((k, i) => `${i + 1}. ${env.config.labels.styles[k]}`).join('\n'));
-      prefs.style = n === 0 ? 'auto' : styles[n - 1] || styles.find((k) => fold(env.config.labels.styles[k]).toLowerCase().includes(fold(rest.join(' ')).toLowerCase())) || 'auto';
+      if (!rest.length) return reply('Chọn định dạng video (gõ DINHDANG + số):\n0. Mặc định của web\n' + looks.map((k, i) => `${i + 1}. ${env.config.labels.looks[k]} — ${env.config.labels.lookNotes[k]}`).join('\n'));
+      const want = fold(rest.join(' ')).toLowerCase();
+      prefs.look = n === 0 ? undefined : looks[n - 1] || looks.find((k) => fold(env.config.labels.looks[k]).toLowerCase().includes(want));
       await savePrefs(prefs);
-      return reply('Đã chọn phong cách: ' + (prefs.style === 'auto' ? 'tự chọn theo nội dung' : env.config.labels.styles[prefs.style]));
+      return reply('Đã chọn định dạng: ' + (prefs.look ? env.config.labels.looks[prefs.look] : 'mặc định của web'));
     }
     case 'GIONG': {
       const voices = env.config.voices.filter((v) => vis(env.config, 'voice:' + v.code) === 'on');
@@ -267,7 +269,7 @@ async function makeVideo(env: XEnv, rc: Rc, user: User, chatId: string, source: 
     if (checkpoint?.job_id) return send(env, chatId, 'Video này đã vào hàng chờ. Gõ TT để xem tiến độ.', messageId);
     await send(env, chatId, 'Đã nhận, mình đang chuẩn bị kịch bản và hình…', messageId);
     const existing = checkpoint?.project_id ? await env.DB.prepare('SELECT id, spec FROM projects WHERE id = ? AND user_id = ?').bind(checkpoint.project_id, user.id).first<any>() : null;
-    const p = existing ? { id: existing.id, spec: JSON.parse(existing.spec), note: '' } : await createProject(env, rc, user, { source, topic: text, ratio: prefs.ratio, style: prefs.style || 'auto', voiceId: prefs.voice, visual: 'sketch', channel: '' });
+    const p = existing ? { id: existing.id, spec: JSON.parse(existing.spec), note: '' } : await createProject(env, rc, user, { source, topic: text, ratio: prefs.ratio, style: prefs.style || 'auto', voiceId: prefs.voice, visual: 'sketch', channel: '', look: prefs.look && prefs.look !== 'doc' ? prefs.look : undefined });
     await env.DB.prepare('UPDATE zalo_messages SET project_id = ? WHERE id = ?').bind(p.id, messageId).run();
     if (!env.config.zalo.autoRender) return send(env, chatId, `Kịch bản "${p.spec.title}" đã sẵn sàng (${p.spec.scenes.length} cảnh). Mở web để xem và dựng: ${origin(env)}/#/p/${p.id}`, messageId);
     const queued = await env.DB.prepare("SELECT id FROM jobs WHERE project_id = ? AND user_id = ? AND status IN ('queued','running','done') ORDER BY created_at DESC LIMIT 1").bind(p.id, user.id).first<any>();

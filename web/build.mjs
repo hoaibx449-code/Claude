@@ -33,5 +33,23 @@ const make = ([id, style, mode], intro) => {
   return { id, title: t.title, style, mode: mode || 'hand', spec };
 };
 const demos = [...picks.map((p, i) => make(p, i === 0)), ...genres.slice(1).map((g) => make(g))];
+// one demo per video format, in the niches the site is made for: finance, philosophy, life skills, motivation
+const { composeLook } = await import('./src/compose.ts');
+const LOOK_DEMOS = {
+  kinetic: ['Đừng chờ có động lực mới bắt đầu.', 'Bắt đầu đi, động lực sẽ tới sau.', 'Mỗi ngày chỉ cần 1% tốt hơn.', 'Một năm sau, bạn giỏi gấp 37 lần.'],
+  split: ['Người nghèo nhận lương là đi mua sắm.', 'Người giàu nhận lương là cất 20% trước.', 'Người nghèo hết tiền thì vay.', 'Người giàu có quỹ dự phòng 6 tháng.'],
+  chat: ['Anh ơi lương về chưa?', 'Về rồi em, 15 triệu.', 'Sao tài khoản giờ còn 2 triệu?', 'Trà sữa với Shopee chắc 4 triệu.', 'Mẹo: nhận lương là cất 20% trước nhé.'],
+  story: ['Sáng thứ Hai, Nam tới công ty, lương vừa về.', 'Trưa ra quán, một ly trà sữa, rồi thêm một ly.', 'Cuối tháng ra ngân hàng, số dư còn 2 triệu.', 'Từ tháng sau, Nam cất 20% ngay khi nhận lương.'],
+  data: ['Lương mỗi tháng 15 triệu.', 'Nhà 5 triệu, ăn uống 4 triệu, mua sắm 4 triệu, còn lại 2 triệu.', 'Cất 20% mỗi tháng, một năm có 36 triệu.'],
+  quiz: ['Lương 15 triệu, mỗi tháng nên cất bao nhiêu?', 'Đáp án là 20%, tức 3 triệu: đủ để tích luỹ mà vẫn sống thoải mái.', 'Bạn đang cất được bao nhiêu? Bình luận nhé.'],
+  doc: ['Gần hai nghìn năm trước, Seneca viết: ta khổ trong tưởng tượng nhiều hơn ngoài đời thật.', 'Đến hôm nay, câu ấy vẫn đúng với mỗi đêm mất ngủ vì lo âu.'],
+};
+const lookDemos = Object.entries(LOOK_DEMOS).map(([look, lines]) => {
+  const scenes = look === 'chat' || look === 'quiz' ? lines.map((l) => [l]) : lines.reduce((a, l, i) => (i % 2 ? a[a.length - 1].push(l) : a.push([l]), a), []);
+  const c = composeLook({ look, scenes: scenes.map((ls) => ({ lines: ls })) });
+  const spec = cleanSpec({ title: lines[0].slice(0, 70), visual: 'sketch', ratio: '9:16', look, channel: 'Nét Vẽ', scenes: c.scenes, sides: c.sides, chatName: c.chatName }, 'demo');
+  return { id: 'look-' + look, title: lines[0], look, spec };
+});
+demos.push(...lookDemos);
 writeFileSync(join(pub, 'demos.json'), JSON.stringify(demos));
 console.log('web/public built');

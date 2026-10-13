@@ -262,7 +262,7 @@ async function showLanding() {
   const demos = await getDemos();
   const site = ui.site || {}, beta = ui.beta;
   const tryBox = h('textarea', { rows: 4, maxlength: 6000, placeholder: 'Dán vài câu kịch bản của bạn vào đây…', 'aria-label': 'Kịch bản thử' });
-  const tryBtn = h('button', { type: 'button', class: 'big', 'data-ev': 'landing-try', onclick: () => startTry(tryBox.value, tryBtn) }, 'Xem thử ngay');
+  const tryBtn = h('button', { type: 'button', class: 'big', 'data-ev': 'landing-try', onclick: () => startTry(tryBox.value, tryBtn, { look: ui.defaults?.look }) }, 'Xem thử ngay');
   // hero: the admin's picture/video, or the real engine drawing in a phone
   let heroRun = null;
   const heroCanvas = h('canvas', { 'aria-label': 'Video minh hoạ' });
@@ -274,10 +274,10 @@ async function showLanding() {
     ? site.showcase.map((m, i) => h('figure', { class: 'sample', 'data-ev': 'sample-' + i },
       m.video ? siteVideo(m.video, m.poster, m.title || 'Video mẫu') : h('img', { src: siteUrl(m.poster), alt: m.title || '', loading: 'lazy' }),
       h('figcaption', {}, h('b', {}, m.title), m.caption ? h('span', {}, m.caption) : null)))
-    : MODES.filter(([k]) => V('mode:' + k) !== 'hidden').map(([k, icon, desc]) => {
-      const d = demos.find((x) => x.mode === k) || (k === 'hand' ? demos[0] : null), c = h('canvas', { 'aria-label': L('modes', k) });
-      if (d) setTimeout(() => playDemo(c, d.spec, { dpr: 0.45 }), 0);
-      return h('figure', { class: 'sample' }, c, h('figcaption', {}, h('b', {}, L('modes', k)), h('span', {}, desc)));
+    : looksOn().map((k) => demos.find((x) => x.look === k)).filter(Boolean).map((d) => {
+      const c = h('canvas', { 'aria-label': L('looks', d.look) });
+      setTimeout(() => playDemo(c, d.spec, { dpr: 0.45 }), 0);
+      return h('a', { class: 'sample', href: '#/mau', 'data-ev': 'sample-' + d.look, onclick: () => sessionStorage.setItem('nv_look', d.look) }, c, h('span', { class: 'cap' }, h('b', {}, L('looks', d.look)), h('span', {}, L('lookNotes', d.look))));
     });
   const steps = [
     ['Viết hoặc dán kịch bản', 'Dùng kịch bản có sẵn, chọn mẫu, hoặc để AI viết từ một chủ đề có câu mở đầu giữ chân người xem.'],
@@ -322,7 +322,8 @@ async function showLanding() {
       h('p', {}, beta ? 'Dùng thử, gửi góp ý: mỗi phản hồi giúp video đẹp và cuốn hút hơn.' : 'Bắt đầu với một chủ đề hoặc kịch bản bạn đã có.'),
       h('a', { class: 'btn big', href: '#/tao', 'data-ev': 'band-create' }, 'Tạo video')),
     footer());
-  if (heroMedia === heroCanvas && demos[0]) heroRun = playDemo(heroCanvas, demos[0].spec, { dpr: 0.75 });
+  const heroDemo = demos.find((d) => d.look === (ui.defaults?.look || 'kinetic')) || demos[0];
+  if (heroMedia === heroCanvas && heroDemo) heroRun = playDemo(heroCanvas, heroDemo.spec, { dpr: 0.75 });
   return heroRun;
 }
 /** Home page media: uploaded files ("site:abc.mp4") or full https addresses. */
@@ -394,18 +395,20 @@ async function showTry() {
   if (!t) { location.hash = '#/tao'; return; }
   const canvas = h('canvas', { 'aria-label': 'Xem thử video' });
   const run = playDemo(canvas, t.spec, { dpr: 0.75 });
-  let style = t.spec.style;
-  const picker = stylePicker(t.spec, style, (k) => { style = k; run.restyle(k); });
+  let style = t.spec.style, skin = t.spec.skin;
+  const picker = t.spec.look
+    ? skinChips(t.spec.look, skin, async (n) => { skin = n; run.spec = { ...run.spec, skin: n }; run.t = 0; await run.build(); })
+    : stylePicker(t.spec, style, (k) => { style = k; run.restyle(k); });
   show(h('a', { href: '#/tao' }, '← Sửa kịch bản'),
     h('div', { class: 'editor' },
       h('div', { class: 'preview' }, platformFrame(iphone(canvas), t.spec)),
       h('div', { class: 'scenes' },
         h('div', { class: 'card' }, h('span', { class: 'badge' }, 'Bản xem thử'), h('h2', {}, t.spec.title),
-          h('p', { class: 'muted' }, `Nhận diện: ${t.formatName} · ${t.nicheName} · ${t.spec.scenes.length} cảnh. Video thật có giọng đọc và khớp nhịp từng câu.`),
-          h('button', { type: 'button', class: 'big', 'data-ev': 'try-create', onclick: (e) => createProject({ source: 'mine-free', topic: t.text, style, ratio: t.spec.ratio, format: t.spec.format,
+          h('p', { class: 'muted' }, `Nhận diện: ${t.formatName} · ${t.nicheName} · ${t.spec.scenes.length} cảnh. Video thật có giọng đọc khớp nhịp từng câu${t.spec.look ? ', tiếng hiệu ứng và nhạc nền' : ''}.`),
+          h('button', { type: 'button', class: 'big', 'data-ev': 'try-create', onclick: (e) => createProject({ source: 'mine-free', topic: t.text, style, ratio: t.spec.ratio, format: t.spec.format, look: t.spec.look || '', skin,
             mode: t.opts?.mode, intro: t.opts?.intro, character: t.opts?.character, affiliate: t.opts?.affiliate }, e.currentTarget) }, 'Tạo video này'),
           h('small', { class: 'muted' }, me ? 'Video sẽ được lưu vào "Video của tôi".' : 'Bạn sẽ đăng nhập nhanh bằng Google để lưu và nhận video.')),
-        h('div', { class: 'card' }, h('h3', {}, 'Đổi phong cách'), picker))));
+        h('div', { class: 'card' }, h('h3', {}, t.spec.look ? `${L('looks', t.spec.look)}: đổi bộ màu` : 'Đổi phong cách'), picker))));
 }
 /** Grid of small live-styled thumbnails (first scene of `spec`). */
 function stylePicker(spec, current, onPick) {
@@ -426,18 +429,30 @@ function stylePicker(spec, current, onPick) {
 async function showStyles() {
   viewed('styles');
   const demos = await getDemos();
-  const base = demos[0]?.spec;
-  const canvas = h('canvas');
-  const run = base ? playDemo(canvas, base, { dpr: 0.75 }) : null;
-  let style = base?.style || 'sunset';
-  show(h('div', { class: 'section' }, h('div', { class: 'head' }, h('h1', {}, h('span', { class: 'grad-text' }, ui.enabledStyles.length + ' phong cách'), ' cho mọi kiểu video'), h('p', {}, 'Bấm một phong cách để xem video minh hoạ đổi theo. Mỗi phong cách có bút, màu mực và nền riêng.'))),
+  const looks = looksOn().map((k) => demos.find((d) => d.look === k)).filter(Boolean);
+  let cur = looks[0]?.look, skin = '';
+  const canvas = h('canvas', { 'aria-label': 'Video minh hoạ định dạng' });
+  const run = looks[0] ? playDemo(canvas, looks[0].spec, { dpr: 0.75 }) : null;
+  const title = h('h2', {}), note = h('p', { class: 'muted' }), skins = h('div');
+  const select = async (k) => {
+    cur = k; skin = '';
+    const d = looks.find((x) => x.look === k);
+    title.textContent = L('looks', k); note.textContent = L('lookNotes', k);
+    skins.replaceChildren(h('span', { class: 'plabel' }, 'Bộ màu'), skinChips(k, '', async (n) => { skin = n; run.spec = { ...run.spec, skin: n }; run.t = 0; await run.build(); }));
+    if (run && d) { run.spec = d.spec; run.t = 0; await run.build(); }
+    list.querySelectorAll('.look').forEach((b) => b.classList.toggle('on', b.dataset.k === k));
+  };
+  const list = h('div', { class: 'looks' }, looks.map((d) => {
+    const c = h('canvas', { 'aria-hidden': 'true' }); setTimeout(() => playDemo(c, d.spec, { dpr: 0.32 }), 0);
+    return h('button', { type: 'button', class: 'look', 'data-k': d.look, onclick: () => select(d.look) }, c, h('b', {}, L('looks', d.look)), d.look === 'doc' ? h('span', { class: 'credit-tag' }, 'Tính credit') : null, h('small', {}, L('lookNotes', d.look)));
+  }));
+  show(h('section', { class: 'section', style: 'margin-top:8px' }, h('header', { class: 'head' }, h('span', { class: 'kicker' }, 'Định dạng video'), h('h1', {}, looks.length + ' cách kể cho cùng một kịch bản'), h('p', {}, 'Mỗi định dạng có nhịp kể, bố cục, tiếng hiệu ứng và bộ màu riêng. Bấm để xem video mẫu đổi theo.'))),
     h('div', { class: 'editor' },
       h('div', { class: 'preview' }, iphone(canvas),
-        h('a', { class: 'btn big', href: '#/tao', 'data-ev': 'styles-create', onclick: () => sessionStorage.setItem('nv_style', style) }, 'Dùng phong cách này')),
-      h('div', { class: 'card' }, base ? stylePicker(base, style, (k) => { style = k; run?.restyle(k); }) : null)),
-    h('section', { class: 'section' }, h('div', { class: 'head' }, h('h2', {}, 'Video mẫu theo từng dạng')),
-      h('div', { class: 'demos' }, demos.map((d) => { const c = h('canvas'); setTimeout(() => playDemo(c, d.spec, { dpr: 0.45 }), 0); return h('div', { class: 'demo' }, c, h('b', {}, d.title), h('small', {}, L('styles', d.style))); }))),
+        h('a', { class: 'btn big', href: '#/tao', 'data-ev': 'styles-create', onclick: () => sessionStorage.setItem('nv_look', cur) }, 'Dùng định dạng này')),
+      h('div', { class: 'card' }, title, note, skins, list)),
     footer());
+  if (cur) select(cur);
 }
 
 // ---------- login sheet
@@ -546,6 +561,40 @@ const MODES = [
   ['kinetic', '🔤', 'Chữ phóng to, đổi màu theo nhịp giọng đọc', 'bold'],
 ];
 const MODE_STYLE = Object.fromEntries(MODES.map(([k, , , st]) => [k, st]));
+// ---------- video formats (looks)
+const LOOK_KEYS = ['kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'];
+const SKIN_NAMES = { dem: 'Đêm', sang: 'Sáng', tim: 'Tím', 'do-xanh': 'Đỏ – xanh', 'tim-vang': 'Tím – vàng', toi: 'Tối', hong: 'Hồng', giay: 'Giấy', 'bang-den': 'Bảng đen', xanh: 'Xanh', 'xanh-la': 'Xanh lá', cam: 'Cam', 'dien-anh': 'Điện ảnh', 'trang-den': 'Trắng đen', lanh: 'Lạnh' };
+const looksOn = () => LOOK_KEYS.filter((k) => V('look:' + k) !== 'hidden');
+/** Cards with a live preview of each format; `classic` = the old hand-drawn board. */
+function lookPicker(current, onPick, demos) {
+  const box = h('div', { class: 'looks', role: 'radiogroup', 'aria-label': 'Định dạng video' });
+  const mark = (cur) => box.querySelectorAll('.look').forEach((b) => { b.classList.toggle('on', b.dataset.k === cur); b.setAttribute('aria-checked', String(b.dataset.k === cur)); });
+  const paint = (cur) => {
+    box.replaceChildren(...[...looksOn(), 'classic'].map((k) => {
+      const dev = k !== 'classic' && V('look:' + k) === 'dev', d = demos.find((x) => x.look === k), c = h('canvas', { 'aria-hidden': 'true' });
+      if (d) setTimeout(() => playDemo(c, d.spec, { dpr: 0.32 }), 0);
+      const name = k === 'classic' ? 'Vẽ tay cổ điển' : L('looks', k), note = k === 'classic' ? 'Bàn tay vẽ trên bảng với 17 phong cách màu như trước.' : L('lookNotes', k);
+      return h('button', { type: 'button', class: 'look' + (k === cur ? ' on' : ''), role: 'radio', 'aria-checked': String(k === cur), disabled: dev, 'data-ev': 'look-' + k, 'data-k': k,
+        onclick: () => { onPick(k); mark(k); } },
+        k === 'classic' ? h('div', { class: 'look-thumb classic' }, '✍️') : c,
+        h('b', {}, name + (dev ? DEV : '')), k === 'doc' ? h('span', { class: 'credit-tag' }, 'Tính credit') : null, h('small', {}, note));
+    }));
+  };
+  paint(current);
+  return box;
+}
+function skinChips(look, current, onPick) {
+  const names = (NV.SKINS?.[look] || []).map((s) => s.name);
+  const box = h('div', { class: 'chips', role: 'radiogroup', 'aria-label': 'Bộ màu' });
+  const paint = (cur) => box.replaceChildren(...names.map((n) => {
+    const sk = NV.SKINS[look].find((s) => s.name === n), sw = h('i', { class: 'swatch' });
+    sw.style.background = `linear-gradient(135deg, ${sk.bg[0][0]} 0 60%, ${sk.hl} 60% 100%)`;
+    return h('button', { type: 'button', class: 'chip' + (n === cur ? ' on' : ''), role: 'radio', 'aria-checked': String(n === cur), onclick: () => { onPick(n); paint(n); } }, sw, SKIN_NAMES[n] || n);
+  }));
+  paint(current || names[0]);
+  return box;
+}
+
 function modePicker(current, onPick) {
   const box = h('div', { class: 'modes' });
   for (const [k, icon, desc] of MODES) {
@@ -717,6 +766,10 @@ async function showCreate() {
   const wantSrc = sessionStorage.getItem('nv_src'); sessionStorage.removeItem('nv_src');
   const startSrc = sources.some(([k]) => k === wantSrc) ? wantSrc : ui.enabledSources.includes(D.source) ? D.source : ui.enabledSources[0];
   const wantMode = sessionStorage.getItem('nv_mode'); sessionStorage.removeItem('nv_mode');
+  const wantLook = sessionStorage.getItem('nv_look'); sessionStorage.removeItem('nv_look');
+  let look = wantMode && !wantLook ? 'classic' : [wantLook, D.look].find((k) => k && (k === 'classic' || (LOOK_KEYS.includes(k) && V('look:' + k) === 'on'))) || looksOn().find((k) => V('look:' + k) === 'on') || 'classic';
+  let skin = '';
+  const demos = await getDemos();
   let mode = V('mode:' + (wantMode || D.mode || 'hand')) === 'on' ? wantMode || D.mode || 'hand' : 'hand';
   const hasAI = !!(cfg?.ai?.gemini || cfg?.ai?.openai || me?.ai?.gemini || me?.ai?.openai);
   const f = {
@@ -738,6 +791,20 @@ async function showCreate() {
     affLink: h('input', { type: 'url', maxlength: 300, placeholder: 'https://shope.ee/... (link tiếp thị của bạn)' }),
     affProduct: h('input', { maxlength: 80, placeholder: 'Tên sản phẩm' }),
     affPrice: h('input', { maxlength: 30, placeholder: 'Giá, vd 199.000đ' }),
+    music: h('select', { id: 'f-music' }, options([['auto', 'Tự chọn'], ['none', 'Không nhạc'], ...(ui.music || []).map((m) => [m.id, m.title])], ui.defaults?.music || 'auto')),
+  };
+  const skinBox = h('div');
+  const creditNote = h('p', { class: 'notice', hidden: true });
+  const showCredits = async () => {
+    if (look !== 'doc') { creditNote.hidden = true; return; }
+    creditNote.hidden = false;
+    if (!me) { creditNote.textContent = `Phim tài liệu AI dùng ảnh AI cho từng cảnh nên tính riêng: ${ui.doc?.perVideo || 1} credit mỗi video. Đăng nhập để xem số credit của bạn.`; return; }
+    try {
+      const c = await api('/api/credits');
+      creditNote.replaceChildren(`Phim tài liệu AI: ${c.perVideo} credit mỗi video, kèm ${c.images} lượt vẽ ảnh. `,
+        h('b', {}, c.monthlyLeft ? `Gói của bạn còn ${c.monthlyLeft} video tháng này.` : `Bạn còn ${c.balance} credit.`),
+        !c.monthlyLeft && c.balance < c.perVideo ? (c.packs.length ? h('a', { href: '#/goi' }, ' Mua credit') : ' Bản Beta: liên hệ quản trị để được cấp credit.') : '');
+    } catch (e) { creditNote.textContent = e.message; }
   };
   const character = photoField('Ảnh nhân vật', 'Ảnh chân dung hoặc linh vật của kênh: thay cho người que trong mọi cảnh.');
   const product = photoField('Ảnh sản phẩm', 'Hiện ở cảnh cuối cùng mã QR mua hàng.');
@@ -745,7 +812,7 @@ async function showCreate() {
   const detect = h('div', { class: 'detect' });
   const only = {};
   const go = h('button', { type: 'submit', class: 'big', 'data-ev': 'create' }, T('write'));
-  const tryBtn = h('button', { type: 'button', class: 'ghost big', 'data-ev': 'create-try', onclick: () => startTry(f.topic.value, tryBtn, { ratio: f.ratio.value, style: f.style.value === 'auto' ? undefined : f.style.value, format: f.format.value }, extras()) }, '✨ Xem thử');
+  const tryBtn = h('button', { type: 'button', class: 'ghost big', 'data-ev': 'create-try', onclick: () => startTry(f.topic.value, tryBtn, { ratio: f.ratio.value, style: f.style.value === 'auto' ? undefined : f.style.value, format: f.format.value, look: look === 'classic' || look === 'doc' ? undefined : look, skin: skin || undefined }, extras()) }, '✨ Xem thử');
   const tplBox = h('div', { class: 'tplpick' });
   const sync = () => {
     const src = f.source.value, mine = src !== 'topic';
@@ -760,6 +827,13 @@ async function showCreate() {
     go.disabled = src !== 'mine-free' && src !== 'template' && !hasAI;
     if (go.disabled) go.textContent = 'AI chưa sẵn sàng — chọn "Kịch bản của tôi"';
     only.aff.hidden = !f.affOn.checked;
+    // format videos: the format sets the look; the classic board keeps its own options
+    const classic = look === 'classic';
+    for (const el of [only.mode, only.style, only.visual2, only.transition]) if (el) el.hidden = !classic;
+    if (only.visual) only.visual.hidden = only.visual.hidden || !classic;
+    only.looked.hidden = classic;
+    if (!classic) skinBox.replaceChildren(h('span', { class: 'plabel' }, 'Bộ màu'), skinChips(look, skin, (n) => { skin = n; }));
+    showCredits();
   };
   const guess = debounce(async () => {
     const text = f.topic.value.trim();
@@ -777,7 +851,8 @@ async function showCreate() {
     affiliate: f.affOn.checked && f.affLink.value.trim() ? { link: f.affLink.value.trim(), product: f.affProduct.value.trim(), price: f.affPrice.value.trim(), image: product.get() || undefined } : undefined });
   const body = () => {
     const x = extras();
-    return { source: f.source.value === 'template' ? 'mine-free' : f.source.value, subtitles: f.subtitles.checked, topic: f.topic.value, seconds: Number(f.seconds.value), ratio: f.ratio.value, style: f.style.value,
+    return { look: look === 'classic' ? '' : look, skin: skin || undefined, music: f.music.value,
+      source: f.source.value === 'template' ? 'mine-free' : f.source.value, subtitles: f.subtitles.checked, topic: f.topic.value, seconds: Number(f.seconds.value), ratio: f.ratio.value, style: f.style.value,
       voiceId: f.voice.value, channel: f.channel.value, episode: f.episode.value, tone: f.tone.value, visual: f.visual.value, format: f.format.value, transition: f.transition.value,
       mode: x.mode, intro: x.intro, character: x.character, affiliate: x.affiliate };
   };
@@ -787,11 +862,14 @@ async function showCreate() {
     h('div', { class: 'grid' }, h('label', {}, T('source'), f.source), h('label', {}, 'Dạng video', f.format)),
     tplBox,
     h('label', { for: 'f-topic' }, topicLabel, f.topic), detect,
-    h('div', {}, h('span', { class: 'plabel' }, 'Kiểu video'), modePicker(mode, (k) => { mode = k; track('mode', { mode: k }); })),
+    h('div', {}, h('span', { class: 'plabel' }, 'Định dạng video'), lookPicker(look, (k) => { look = k; skin = ''; track('look', { look: k }); sync(); }, demos)),
+    creditNote,
+    only.looked = h('div', { class: 'grid wide-2' }, skinBox, h('label', {}, 'Nhạc nền', f.music)),
+    only.mode = h('div', {}, h('span', { class: 'plabel' }, 'Kiểu vẽ tay'), modePicker(mode, (k) => { mode = k; track('mode', { mode: k }); })),
     h('div', { class: 'grid' },
       only.seconds = h('label', {}, T('duration'), f.seconds), h('label', {}, T('ratio'), f.ratio),
-      only.visual = h('label', {}, T('visual'), f.visual), h('label', {}, T('style'), f.style), h('label', {}, T('voice'), f.voice), only.tone = h('label', {}, T('tone'), f.tone),
-      h('label', {}, 'Chuyển cảnh', f.transition), h('label', {}, T('channel'), f.channel), h('label', {}, T('episode'), f.episode)),
+      only.visual = h('label', {}, T('visual'), f.visual), only.style = h('label', {}, T('style'), f.style), h('label', {}, T('voice'), f.voice), only.tone = h('label', {}, T('tone'), f.tone),
+      only.transition = h('label', {}, 'Chuyển cảnh', f.transition), h('label', {}, T('channel'), f.channel), h('label', {}, T('episode'), f.episode)),
     h('div', { class: 'toggles' },
       feat('intro') ? h('label', { class: 'check' }, f.intro, h('span', {}, h('b', {}, 'Mở đầu là ảnh bìa thu hút'), h('small', { class: 'muted' }, ' — khung đầu tiên là thumbnail: tiêu đề lớn, nhãn nổi bật, kích thích bấm xem.'))) : null,
       only.subs = h('label', { class: 'check' }, f.subtitles, T('subsOnPicture')),
@@ -1096,9 +1174,24 @@ async function showEditor(id) {
       changed();
     } catch (e) { fail(e); }
   });
+  // format videos: switch format (the server rebuilds the scene data), colour set, music, sound
+  const switchLook = async (k) => {
+    try { await save.flush(); const r = await api('/api/projects/' + id, { method: 'PUT', body: { spec: { ...spec, look: k } } }); Object.keys(spec).forEach((x) => delete spec[x]); Object.assign(spec, r.spec); showEditor(id); }
+    catch (e) { fail(e); }
+  };
+  const lookBox = !spec.look ? null : h('div', { class: 'grid wide-2' },
+    spec.look === 'doc' ? h('p', { class: 'muted' }, h('b', {}, L('looks', 'doc')), ' (đã trả credit). Muốn định dạng khác, hãy tạo video mới.')
+      : h('label', {}, 'Định dạng video', h('select', { onchange: (e) => switchLook(e.target.value) }, options(looksOn().filter((k) => k !== 'doc').map((k) => [k, L('looks', k), 'look:' + k]), spec.look))),
+    h('div', {}, h('span', { class: 'plabel' }, 'Bộ màu'), skinChips(spec.look, spec.skin, (n) => { spec.skin = n; changed(); })),
+    spec.look === 'split' ? field('Tên bên A (sai / nghèo / trước)', spec.sides?.a, (v) => { (spec.sides ||= { a: '', b: '' }).a = v; changed(); }, { max: 24 }) : null,
+    spec.look === 'split' ? field('Tên bên B (đúng / giàu / sau)', spec.sides?.b, (v) => { (spec.sides ||= { a: '', b: '' }).b = v; changed(); }, { max: 24 }) : null,
+    spec.look === 'chat' ? field('Tên người nhắn tin', spec.chatName, (v) => { spec.chatName = v; changed(); }, { max: 30 }) : null,
+    (ui.music || []).length ? h('label', {}, 'Nhạc nền', h('select', { onchange: (e) => { const m = e.target.value; spec.music = m === 'none' ? undefined : spec.music; if (m !== 'none' && m !== 'keep') toast('Nhạc mới áp dụng khi tạo video mới.'); save(); } }, options([['keep', spec.music ? 'Giữ bản nhạc đã chọn' : 'Không nhạc'], ['none', 'Tắt nhạc']], 'keep'))) : null,
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: spec.sfx !== false, onchange: (e) => { spec.sfx = e.target.checked; save(); } }), 'Tiếng hiệu ứng (vút, bụp, ting…)'));
   const settings = h('div', { class: 'card' },
     h('label', {}, 'Tiêu đề', h('input', { value: spec.title, maxlength: 100, oninput: (e) => { spec.title = e.target.value; save(); } })),
-    h('div', {}, h('span', { class: 'plabel' }, 'Kiểu video'), modePicker(spec.mode || 'hand', (k) => {
+    lookBox,
+    spec.look ? null : h('div', {}, h('span', { class: 'plabel' }, 'Kiểu video'), modePicker(spec.mode || 'hand', (k) => {
       spec.mode = k;
       if (MODE_STYLE[k] && k !== 'hand' && ui.enabledStyles.includes(MODE_STYLE[k]) && ['sunset', 'cosmos', 'manim', 'bold'].includes(spec.style)) spec.style = MODE_STYLE[k];
       changed();
@@ -1110,17 +1203,17 @@ async function showEditor(id) {
     introBox, charField,
     spec.format ? h('p', { class: 'muted' }, 'Dạng video: ', h('b', {}, FORMAT_LABELS[spec.format] || spec.format)) : null,
     h('div', { class: 'grid' },
-      h('label', {}, 'Phong cách', h('select', { onchange: (e) => { spec.style = e.target.value; delete spec.tool; changed(); } }, options(styleOptions().concat(styleOptions().some(([k]) => k === spec.style) ? [] : [[spec.style, L('styles', spec.style)]]), spec.style))),
-      h('label', {}, 'Dụng cụ vẽ', h('select', { onchange: (e) => { if (e.target.value) spec.tool = e.target.value; else delete spec.tool; changed(); } },
+      spec.look ? null : h('label', {}, 'Phong cách', h('select', { onchange: (e) => { spec.style = e.target.value; delete spec.tool; changed(); } }, options(styleOptions().concat(styleOptions().some(([k]) => k === spec.style) ? [] : [[spec.style, L('styles', spec.style)]]), spec.style))),
+      spec.look ? null : h('label', {}, 'Dụng cụ vẽ', h('select', { onchange: (e) => { if (e.target.value) spec.tool = e.target.value; else delete spec.tool; changed(); } },
         options([['', 'Theo phong cách'], ...Object.entries(ui.labels.tools).map(([k, v]) => [k, v, 'tool:' + k])], spec.tool || ''))),
       h('label', {}, 'Khung hình', h('select', { onchange: (e) => { spec.ratio = e.target.value; changed(); } }, options(ratioOptions(false), spec.ratio))),
-      h('label', {}, 'Chuyển cảnh', h('select', { onchange: (e) => { spec.transition = e.target.value; changed(); } }, options([['auto', 'Tự động, đa dạng'], ['fade', 'Mờ dần'], ['slide', 'Trượt ngang'], ['wipe', 'Bàn tay xoá bảng'], ['zoom', 'Phóng to']], spec.transition || 'auto'))),
+      spec.look ? null : h('label', {}, 'Chuyển cảnh', h('select', { onchange: (e) => { spec.transition = e.target.value; changed(); } }, options([['auto', 'Tự động, đa dạng'], ['fade', 'Mờ dần'], ['slide', 'Trượt ngang'], ['wipe', 'Bàn tay xoá bảng'], ['zoom', 'Phóng to']], spec.transition || 'auto'))),
       h('label', {}, T('voice'), h('select', { onchange: (e) => { spec.voice.voiceId = e.target.value; save(); } }, options(voiceOptions(), spec.voice?.voiceId || ui.defaults.voice))),
       V('feature:speed') === 'hidden' ? null : h('label', {}, 'Tốc độ đọc', h('select', { disabled: V('feature:speed') === 'dev', onchange: (e) => { spec.voice.speed = Number(e.target.value); save(); } },
         options([['0.9', 'Chậm'], ['1', 'Vừa'], ['1.1', 'Hơi nhanh'], ['1.2', 'Nhanh']], String(spec.voice?.speed ?? 1)))),
       h('label', {}, 'Tên kênh', h('input', { value: spec.channel || '', maxlength: 40, oninput: (e) => { spec.channel = e.target.value; changed(); } })),
       h('label', {}, 'Số tập', h('input', { value: spec.episode || '', maxlength: 30, oninput: (e) => { spec.episode = e.target.value; changed(); } })),
-      V('feature:subtitles') === 'hidden' ? null : h('label', { class: 'check' }, h('input', { type: 'checkbox', disabled: V('feature:subtitles') === 'dev', checked: !!spec.subtitles, onchange: (e) => { spec.subtitles = e.target.checked; changed(); } }), T('subsOnPicture'))));
+      V('feature:subtitles') === 'hidden' ? null : h('label', { class: 'check' }, h('input', { type: 'checkbox', disabled: V('feature:subtitles') === 'dev', checked: spec.look ? spec.subtitles !== false : !!spec.subtitles, onchange: (e) => { spec.subtitles = e.target.checked; changed(); } }), T('subsOnPicture'))));
 
   const scenesBox = h('div', { class: 'scenes' });
   const DIAGRAM_KINDS = Object.entries(ui.labels.kinds).map(([k, v]) => [k, v, 'kind:' + k]);
@@ -1156,6 +1249,48 @@ async function showEditor(id) {
     }[d.kind] || [];
     return h('div', { class: 'panel' }, h('span', { class: 'tag' }, 'Bàn tay vẽ từng nét'),
       h('div', { class: 'grid' }, h('label', {}, 'Kiểu hình', kind), d.kind === 'sketch' ? null : field('Tiêu đề (không bắt buộc)', d.title, (v) => set('title', v), { max: 60 })), ...fields);
+  }
+  /** Fields of one scene's format data; anything left empty is filled from the words when the scene is redesigned. */
+  function lookEditor(sc) {
+    const x = (sc.x ||= {}), set = (k, v) => { if (v === '' || v == null) delete x[k]; else x[k] = v; changed(); };
+    const icon = (label, k) => field(label + ' (tên hình tiếng Anh, vd pig-money)', x[k], (v) => set(k, v.trim().toLowerCase() || undefined), { max: 40 });
+    const actions = (label, k) => h('label', {}, label, h('select', { onchange: (e) => set(k, e.target.value || undefined) }, options([['', 'Tự chọn'], ...Object.entries(ui.labels.actions)], x[k] || '')));
+    const f = [];
+    if (spec.look === 'kinetic') f.push(icon('Hình chính', 'icon'), field('Từ cần nhấn (cách nhau bởi dấu phẩy)', (x.keys || []).join(', '), (v) => set('keys', v.split(',').map((t) => t.trim()).filter(Boolean)), { max: 120 }));
+    if (spec.look === 'split') f.push(field('Bên A làm gì', x.a, (v) => set('a', v), { max: 60 }), field('Bên B làm gì', x.b, (v) => set('b', v), { max: 60 }),
+      field('Kết quả bên A (vd 0đ)', x.aValue, (v) => set('aValue', v), { max: 18 }), field('Kết quả bên B (vd 36 triệu)', x.bValue, (v) => set('bValue', v), { max: 18 }),
+      icon('Hình bên A', 'aIcon'), icon('Hình bên B', 'bIcon'), actions('Động tác bên A', 'aAction'), actions('Động tác bên B', 'bAction'));
+    if (spec.look === 'chat') {
+      const msgs = x.chat?.length ? x.chat : sc.lines.map((t, i) => ({ who: i % 2 ? 'b' : 'a', text: t }));
+      f.push(...msgs.map((m, i) => h('label', {}, `Tin ${i + 1}: ai gửi`, h('select', { onchange: (e) => { msgs[i].who = e.target.value; set('chat', msgs.map((q) => ({ ...q }))); } }, options([['a', spec.chatName || 'Người kia'], ['b', 'Mình']], m.who)))),
+        field('Thẻ bài học (để trống = không có)', x.card, (v) => set('card', v), { max: 160 }));
+    }
+    if (spec.look === 'story') f.push(field('Nơi chốn', x.place?.label, (v) => set('place', v ? { icon: x.place?.icon || 'home', label: v } : undefined), { max: 16 }),
+      field('Hình biển hiệu (vd briefcase, coffee, building-bank)', x.place?.icon, (v) => set('place', { label: x.place?.label || 'Nơi này', icon: v.trim().toLowerCase() || 'home' }), { max: 40 }),
+      actions('Động tác', 'action'), field('Nhân vật nói', x.say, (v) => set('say', v), { max: 60 }),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!x.money, onchange: (e) => set('money', e.target.checked || undefined) }), 'Tiền bay khỏi ví'));
+    if (spec.look === 'data') {
+      const st = x.stat || { value: 0, unit: '', label: '' };
+      const put = () => set('stat', st.value || st.parts?.length ? { ...st } : undefined);
+      f.push(field('Con số chính', st.value || '', (v) => { st.value = Number(String(v).replace(/\./g, '').replace(',', '.')) || 0; put(); }, { max: 18 }),
+        field('Đơn vị (đ, triệu, %…)', st.unit, (v) => { st.unit = v; put(); }, { max: 10 }), field('Con số này là gì', st.label, (v) => { st.label = v; put(); }, { max: 40 }),
+        field('Chia phần (mỗi dòng "tên: số")', (st.parts || []).map((p) => `${p.label}: ${p.value}`).join('\n'), (v) => {
+          st.parts = v.split('\n').map((l) => l.split(':')).filter((p) => p.length === 2 && p[0].trim()).map(([a, b]) => ({ label: a.trim(), value: Number(b.replace(/\./g, '').replace(',', '.')) || 0 })).slice(0, 5);
+          if (st.parts.length < 2) delete st.parts; put();
+        }, { area: true, max: 300 }));
+    }
+    if (spec.look === 'quiz' && !x.quiz) f.push(h('button', { type: 'button', class: 'ghost small', onclick: () => { x.quiz = { q: sc.lines[0] || '', options: [], answer: 0 }; sc.pause = 3; drawScenes(); changed(); } }, 'Biến cảnh này thành câu đố'));
+    if (spec.look === 'quiz' && x.quiz) {
+      const q = x.quiz;
+      const put = () => set('quiz', q.q ? { ...q } : undefined);
+      f.push(field('Câu hỏi', q.q, (v) => { q.q = v; put(); }, { max: 160 }),
+        field('Các đáp án (cách nhau bởi dấu phẩy)', q.options.join(', '), (v) => { q.options = v.split(',').map((t) => t.trim()).filter(Boolean).slice(0, 4); put(); }, { max: 200 }),
+        h('label', {}, 'Đáp án đúng', h('select', { onchange: (e) => { q.answer = Number(e.target.value); put(); } }, options(q.options.map((o, i) => [String(i), o]), String(q.answer)))),
+        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!q.reveal, onchange: (e) => { q.reveal = e.target.checked || undefined; put(); } }), 'Đây là cảnh lật đáp án'),
+        h('label', {}, 'Đếm ngược sau câu hỏi', h('select', { onchange: (e) => { sc.pause = Number(e.target.value) || undefined; changed(); } }, options([['0', 'Không'], ['3', '3 giây']], String(sc.pause ? 3 : 0)))));
+    }
+    return h('div', { class: 'panel' }, h('span', { class: 'tag' }, L('looks', spec.look)), h('div', { class: 'grid wide-2' }, ...f),
+      h('div', { class: 'row' }, h('button', { type: 'button', class: 'ghost small', 'data-ev': 'redesign', onclick: () => { delete sc.x; redesign(sc); } }, 'Tự điền lại theo lời (miễn phí)')));
   }
   // free redesign of one scene's board from its current lines (rules on the server, no AI cost)
   async function redesign(sc) {
@@ -1220,12 +1355,12 @@ async function showEditor(id) {
   }
   function drawScenes() {
     panelImgs.clear();
-    drawAllBtn.hidden = !imageAI || !spec.scenes.some((sc) => !sc.diagram);
+    drawAllBtn.hidden = !imageAI || (spec.look && spec.look !== 'doc') || !spec.scenes.some((sc) => !sc.diagram);
     const move = (si, d) => { const j = si + d; [spec.scenes[si], spec.scenes[j]] = [spec.scenes[j], spec.scenes[si]]; drawScenes(); changed(); };
     scenesBox.replaceChildren(...spec.scenes.map((sc, si) => h('div', { class: 'scene' },
       h('div', { class: 'row', style: 'justify-content:space-between' }, h('h3', {}, `Cảnh ${si + 1}`),
         h('div', { class: 'row' },
-          imageAI || !sc.diagram ? h('button', { type: 'button', class: 'ghost small', onclick: () => {
+          !spec.look && (imageAI || !sc.diagram) ? h('button', { type: 'button', class: 'ghost small', onclick: () => {
             if (sc.diagram) { delete sc.diagram; sc.panels = [{ prompt: 'a simple illustration of: ' + (sc.lines[0] || ''), image: '' }]; }
             else return redesign(sc);
             drawScenes(); changed();
@@ -1236,18 +1371,19 @@ async function showEditor(id) {
       sc.lines.map((line, li) => h('label', {}, `Câu ${li + 1}`, h('textarea', { class: 'line', rows: 2, maxlength: 160, value: line,
         oninput: (e) => { sc.lines[li] = e.target.value; changed(); } }))),
       sc.lines.length < 3 ? h('button', { type: 'button', class: 'ghost small', onclick: () => { sc.lines.push('Câu mới.'); drawScenes(); changed(); } }, '+ Thêm câu') : null,
-      sc.diagram ? diagramEditor(sc) : h('div', { class: 'panels' }, sc.panels.map((p, pi) => {
+      spec.look && spec.look !== 'doc' ? lookEditor(sc) : sc.diagram ? diagramEditor(sc) : h('div', { class: 'panels' }, sc.panels.map((p, pi) => {
         const img = h('img', { src: imageUrl(p.image) || BLANK, alt: p.prompt || 'Chưa có tranh' });
         panelImgs.set(`${si}:${pi}`, img);
         const btn = h('button', { type: 'button', class: 'small', onclick: () => drawPanel(si, pi, btn) }, p.image?.startsWith('r2:') ? 'Vẽ lại bằng AI' : 'Vẽ bằng AI');
         return h('div', { class: 'panel' }, img,
           h('span', { class: 'tag' }, p.image?.startsWith('r2:') ? 'Tranh AI' : 'Chưa có tranh — bấm Vẽ bằng AI'),
-          h('label', {}, 'Mô tả hình (tiếng Anh cho AI vẽ)', h('textarea', { rows: 2, maxlength: 400, value: p.prompt,
+          h('label', {}, spec.look === 'doc' ? 'Mô tả ảnh (tiếng Anh: bối cảnh, ánh sáng, góc máy)' : 'Mô tả hình (tiếng Anh cho AI vẽ)', h('textarea', { rows: 2, maxlength: 400, value: p.prompt,
             oninput: (e) => { p.prompt = e.target.value; save(); } })),
           btn);
       })))),
       h('div', { class: 'row' },
         h('button', { type: 'button', class: 'ghost', 'data-ev': 'add-scene', onclick: () => {
+          if (spec.look) { spec.scenes.push({ lines: ['Câu thoại mới.'], panels: spec.look === 'doc' ? [{ prompt: '', image: '' }] : [] }); drawScenes(); changed(); return; }
           spec.scenes.push({ lines: ['Câu thoại mới.'], panels: [], diagram: { kind: 'statement', text: 'Câu chốt' } }); drawScenes(); changed();
           redesign(spec.scenes[spec.scenes.length - 1]);
         } }, '+ Thêm cảnh'),

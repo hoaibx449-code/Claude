@@ -9,6 +9,7 @@ import { plansAdmin } from './plans.ts';
 import { communityAdmin, uploadSite } from './media.ts';
 import { queueRender } from './worker.ts';
 import { budgetState } from './budget.ts';
+import { creditsAdmin } from './credits.ts';
 
 const DAY = 86_400_000, TZ = 7 * 3_600_000; // days are counted in Vietnam time
 
@@ -148,6 +149,7 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
          (SELECT COALESCE(SUM(n), 0) FROM usage g WHERE g.user_id = u.id AND g.day = ? AND g.kind IN ('script','image','render')) AS today,
          (SELECT ROUND(COALESCE(SUM(CASE WHEN cost > 0 THEN cost END), 0)) FROM events e WHERE e.user_id = u.id) AS cost,
          (SELECT plan FROM user_plans up WHERE up.user_id = u.id AND up.expires_at > ?) AS plan,
+         (SELECT balance FROM credits cr WHERE cr.user_id = u.id) AS credits,
          EXISTS (SELECT 1 FROM blocked_users b WHERE b.user_id = u.id) AS blocked,
          EXISTS (SELECT 1 FROM zalo_links z WHERE z.user_id = u.id) AS zalo
        FROM users u ORDER BY u.created_at DESC LIMIT 1000`,
@@ -170,6 +172,8 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
     ]);
     return json({ user, projects: projects.results, jobs: jobs.results, events: events.results, usage: usage.results, totals: money, plan });
   }
+  const cr = sub.match(/^users\/([A-Za-z0-9_-]{1,80})\/credits$/);
+  if (cr && method === 'POST') return creditsAdmin(req, env, rc, cr[1]);
   const b = sub.match(/^users\/([A-Za-z0-9_-]{1,80})\/block$/);
   if (b && method === 'POST') {
     const on = !!(await body<any>(req, 1_000)).blocked;

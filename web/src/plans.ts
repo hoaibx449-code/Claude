@@ -77,6 +77,8 @@ async function confirmOrder(env: XEnv, rc: Rc, code: string, paid: number, ref: 
   const o = await env.DB.prepare("SELECT * FROM orders WHERE code = ? AND status = 'pending' AND amount <= ? AND created_at > ?")
     .bind(code, paid, cutoff).first<any>();
   if (!o) return null;
+  // a pack of documentary credits
+  if (String(o.plan).startsWith('credit:')) return confirmCredits(env, rc, o, paid, ref, via, now, cutoff);
   const plan = env.config.plans.find((p) => p.id === o.plan);
   if (!plan) return null;
   // D1 batch is transactional: credit and mark paid together, and serialize retries.
@@ -104,6 +106,29 @@ async function confirmOrder(env: XEnv, rc: Rc, code: string, paid: number, ref: 
   return o;
 }
 
+async function confirmCredits(env: XEnv, rc: Rc, o: any, paid: number, ref: string, via: string, now: number, cutoff: number) {
+  const pack = env.config.doc.packs.find((p) => 'credit:' + p.id === o.plan);
+  if (!pack) return null;
+  const receipt = via === 'admin' ? 'admin:' + o.code : 'sepay:' + ref.slice(0, 80);
+  const results = await env.DB.batch([
+    env.DB.prepare(`INSERT INTO payment_receipts (ref, order_code, received_at)
+      SELECT ?, code, ? FROM orders WHERE code = ? AND status = 'pending' AND amount <= ? AND created_at > ?
+      ON CONFLICT(ref) DO NOTHING`).bind(receipt, now, o.code, paid, cutoff),
+    env.DB.prepare(`INSERT INTO credits (user_id, balance, updated_at)
+      SELECT user_id, ?, ? FROM orders WHERE code = ? AND status = 'pending' AND EXISTS (SELECT 1 FROM payment_receipts WHERE ref = ? AND order_code = orders.code)
+      ON CONFLICT(user_id) DO UPDATE SET balance = credits.balance + excluded.balance, updated_at = excluded.updated_at`).bind(pack.credits, now, o.code, receipt),
+    env.DB.prepare(`INSERT INTO credit_log (user_id, delta, reason, ref, ts)
+      SELECT user_id, ?, 'order', code, ? FROM orders WHERE code = ? AND status = 'pending' AND EXISTS (SELECT 1 FROM payment_receipts WHERE ref = ? AND order_code = orders.code)`).bind(pack.credits, now, o.code, receipt),
+    env.DB.prepare(`UPDATE orders SET status = 'paid', paid_at = ?, ref = ?, via = ? WHERE code = ? AND status = 'pending'
+      AND EXISTS (SELECT 1 FROM payment_receipts WHERE ref = ? AND order_code = orders.code)`).bind(now, ref.slice(0, 80), via, o.code, receipt),
+  ]);
+  if (!results[3].meta.changes) return null;
+  rc.userId = o.user_id;
+  rc.log('order.paid', { data: { code: o.code, pack: pack.id, credits: pack.credits, amount: o.amount, via } });
+  await notifyOwner(env, 'order', `Đã nhận ${o.amount.toLocaleString('vi-VN')}đ cho đơn ${o.code} (${pack.name}).`);
+  return o;
+}
+
 // ---------------------------------------------------------------- user
 export async function planRoutes(req: Request, env: XEnv, rc: Rc, user: User, path: string, method: string): Promise<Response> {
   if (path === '/api/plans' && method === 'GET') {
@@ -115,7 +140,8 @@ export async function planRoutes(req: Request, env: XEnv, rc: Rc, user: User, pa
     const p = env.config.payment;
     if (!p.enabled || !p.account) throw new HttpError(503, 'Thanh toán đang tạm đóng. Liên hệ quản trị viên.');
     const want = String((await body<any>(req, 500)).plan);
-    const plan = env.config.plans.find((x) => x.id === want && x.visible && x.price > 0);
+    const pack = want.startsWith('credit:') ? env.config.doc.packs.find((x) => 'credit:' + x.id === want) : null;
+    const plan = pack ? { id: want, name: pack.name, price: pack.price } : env.config.plans.find((x) => x.id === want && x.visible && x.price > 0);
     if (!plan) throw new HttpError(400, 'Gói không hợp lệ.');
     // reuse a pending order for the same plan instead of piling up new ones
     let o = await env.DB.prepare("SELECT * FROM orders WHERE user_id = ? AND plan = ? AND status = 'pending' AND created_at > ?").bind(user.id, plan.id, Date.now() - p.expiryDays * DAY).first<any>();

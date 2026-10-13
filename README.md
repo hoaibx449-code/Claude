@@ -117,7 +117,23 @@ assets/       font Pangolin (OFL), hình Open Doodles (CC0), ảnh tay
 
 **Trần chi phí** (`web/src/budget.ts`, Quản trị → Cài đặt): trần ngày/tháng (VND, tính từ `events.cost`) và mức tối đa một video. Chạm trần thì AI viết/vẽ tạm dừng có thông báo, "kịch bản của tôi + AI minh hoạ" chuyển sang tự minh hoạ, giọng trả phí chuyển sang giọng cơ bản cho lượt dựng đó. Trang quản trị hiện mức đã tiêu và loại tốn nhiều nhất 30 ngày.
 
-**Đề xuất định dạng video**: [`docs/de-xuat-dinh-dang-video.html`](docs/de-xuat-dinh-dang-video.html) (rà soát phong cách hiện tại, 7 định dạng có demo, chi phí, phiếu chọn).
+**Định dạng video** (`src/engine/looks.ts`, đã chốt theo phiếu chọn trong [`docs/de-xuat-dinh-dang-video.html`](docs/de-xuat-dinh-dang-video.html)): video mới chọn một trong 7 định dạng thay cho 17 phong cách × 4 kiểu vẽ (vẫn giữ "Vẽ tay cổ điển" cho video cũ và ai cần):
+
+| Định dạng | `look` | Dữ liệu mỗi cảnh (`x`) | Bộ màu |
+|---|---|---|---|
+| Chữ bùng nổ | `kinetic` | `icon`, `keys` | dem · sang · tim |
+| Hai bên đối lập | `split` | `a`, `b`, `aIcon`, `bIcon`, `aValue`, `bValue` (+ `sides` ở gốc) | do-xanh · sang · tim-vang |
+| Tin nhắn drama | `chat` | `chat[{who,text}]`, `card` (+ `chatName`) | sang · toi · hong |
+| Kể chuyện người que | `story` | `place{icon,label}`, `action`, `say`, `money`, `icons` | giay · bang-den · xanh |
+| Con số biết nói | `data` | `stat{value,unit,label,parts}` | dem · sang · xanh-la |
+| Đố vui đếm ngược | `quiz` | `quiz{q,options,answer,reveal}`, `pause` (đếm ngược) | tim · xanh · cam |
+| Phim tài liệu AI | `doc` | `panels[0].prompt` (ảnh AI điện ảnh) | dien-anh · trang-den · lanh |
+
+- Mọi định dạng: cảnh đầu có chữ ngay khung đầu tiên, chuyển cảnh có nhịp phóng và chớp sáng, phụ đề karaoke tô từ đang đọc (bật mặc định), thanh tiến độ, tiếng hiệu ứng tự tổng hợp (`src/node/sfx.ts`: vút, bụp, ting, tích tắc, chuông) và nhạc nền tự hạ khi có giọng đọc (quản trị tải nhạc có quyền dùng ở Nội dung → Nhạc nền).
+- Dữ liệu `x` do AI viết (lời dặn riêng từng định dạng, `LOOK_BRIEF` trong `web/src/ai.ts`) hoặc tự điền miễn phí theo luật (`composeLook` trong `web/src/compose.ts`); mọi trường được kiểm tra trong `cleanLook` (`web/src/spec.ts`).
+- Bật/tắt/đổi tên từng định dạng: Quản trị → Hiển thị (`look:*`) và Nội dung → Đổi tên. Bot Zalo: lệnh `DINHDANG` (phim tài liệu chỉ làm trên web).
+
+**Phim tài liệu AI tính credit** (`web/src/credits.ts`, bảng `credits`, `credit_log`, `doc_projects`): trừ trước khi gọi AI, theo thứ tự lượt kèm gói VIP mỗi tháng (`docPerMonth` của gói) rồi tới credit. Mỗi video kèm `imagesPerVideo` lượt vẽ ảnh (cả vẽ lại), không dùng hạn mức ảnh hằng ngày; hoàn credit nếu AI viết lỗi hoặc xoá dự án trước khi vẽ ảnh nào. Gói credit bán lẻ cấu hình ở Quản trị → Gói cước (mua qua mã đơn `credit:<gói>`, SePay xác nhận như gói thường); trong Beta không hiện cho khách, quản trị cấp credit ở trang Người dùng. Giá vốn ước tính hiện ngay trên thẻ cài đặt để đặt giá không lỗ.
 
 **Gói cước & thanh toán** (`web/src/plans.ts`): giới hạn theo ngày, phong cách/giọng/cách tạo theo gói, mã VietQR, SePay báo tiền về `/api/sepay/webhook` (API key) để kích hoạt tự động.
 

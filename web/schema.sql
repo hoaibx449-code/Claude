@@ -179,3 +179,9 @@ CREATE TABLE IF NOT EXISTS community_likes (
   user_id TEXT NOT NULL,
   PRIMARY KEY (job_id, user_id)
 );
+
+-- Documentary credits (web/src/credits.ts)
+CREATE TABLE IF NOT EXISTS credits (user_id TEXT PRIMARY KEY, balance INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS credit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, delta INTEGER NOT NULL, reason TEXT NOT NULL, ref TEXT, ts INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS credit_log_user ON credit_log (user_id, ts);
+CREATE TABLE IF NOT EXISTS doc_projects (project_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, charge_ref TEXT NOT NULL, images_left INTEGER NOT NULL, images_total INTEGER NOT NULL, created_at INTEGER NOT NULL);

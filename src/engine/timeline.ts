@@ -16,7 +16,7 @@ export function buildTimeline(scenes: SceneSpec[], voice: { lines: Span[]; durat
     const v = voice[i];
     const audioStart = t + LEAD_IN;
     const lines = v.lines.map((l) => ({ start: audioStart + l.start, end: audioStart + l.end }));
-    const end = audioStart + v.duration + SCENE_GAP;
+    const end = audioStart + v.duration + SCENE_GAP + Math.max(0, Math.min(6, sc.pause || 0));
     const panels = sc.panels.map((p, k) => {
       const li = Math.min(p.line ?? k, lines.length - 1);
       const line = lines[li];
