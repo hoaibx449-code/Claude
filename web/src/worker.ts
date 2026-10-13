@@ -657,6 +657,8 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     if (text.length < 5) throw new HttpError(400, source === 'topic' ? 'Nhập chủ đề (ít nhất vài chữ).' : 'Dán kịch bản của bạn vào ô (ít nhất một câu).');
     // options the admin hid or marked "in development" are never used, whatever the page sent
     const on = (k: string) => vis(env.config, k) === 'on';
+    // "tự động đa dạng": the words choose how the video is drawn, never the user's last way twice
+    if (b.look === 'auto') b = { ...b, ...(await autoLook(env, user, text, on)) };
     const visual = ['doodle', 'sketch', 'images', 'diagram', 'mix'].includes(b.visual) && on('visual:' + b.visual) ? b.visual : D.visual;
     const ratio = (b.ratio === '16:9' || b.ratio === '9:16') && on('ratio:' + b.ratio) ? b.ratio : D.ratio;
     // which AI writes and draws is the admin's choice (Quản trị → Cài đặt), not the visitor's
@@ -747,6 +749,25 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     rc.log('project.create', { projectId: id, data: { look, source, format, niche, style: spec.style, mode, intro: !!spec.intro, character: !!spec.character, affiliate: !!spec.affiliate, ratio, visual, scenes: spec.scenes.length, chars: text.length, via: rc.channel, note: note || undefined } });
   return { id, spec, note };
     } catch (e) { if (chargeRef) await refundDoc(env, rc, user.id, chargeRef); throw e; }
+}
+
+/**
+ * How a video is told when the user leaves it to us: dialogue → characters acting, figures →
+ * hand-drawn charts, otherwise a sketchnote or doodle pictures; the way of the user's previous
+ * video is skipped when another one fits, so a channel does not look the same every time.
+ */
+export async function autoLook(env: XEnv, user: User, text: string, on: (k: string) => boolean): Promise<{ look: string; visual?: string }> {
+  const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  const talk = lines.filter((l) => /^[-–—•]\s|^[\p{L} ]{2,16}:\s|^[“"]/u.test(l)).length;
+  const figures = (text.match(/\d+([.,]\d+)?\s*(%|phần trăm|triệu|nghìn|tỷ|đ\b|k\b|lần)/giu) || []).length;
+  const ways: { look: string; visual?: string }[] = [];
+  if (talk >= 2 && on('look:act')) ways.push({ look: 'act' });
+  if (figures >= 3 && on('visual:diagram')) ways.push({ look: '', visual: 'diagram' });
+  for (const w of [{ look: '', visual: 'sketch' }, { look: '', visual: 'doodle' }, ...(on('look:act') ? [{ look: 'act' }] : [])]) if ((w.look !== '' || on('visual:' + w.visual)) && !ways.some((x) => x.look === w.look && x.visual === w.visual)) ways.push(w);
+  const last = await env.DB.prepare('SELECT spec FROM projects WHERE user_id = ? ORDER BY created_at DESC LIMIT 1').bind(user.id).first<any>().catch(() => null);
+  let prev: any = null; try { prev = last ? JSON.parse(last.spec) : null; } catch {}
+  const same = (w: { look: string; visual?: string }) => prev && (w.look ? prev.look === w.look : !prev.look && prev.visual === w.visual);
+  return ways.find((w) => !same(w)) || ways[0] || { look: '' };
 }
 
 const hashText = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) >>> 0; return h; };

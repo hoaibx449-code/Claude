@@ -99,3 +99,13 @@ test('hand drawing picks Open Doodles or the acting person from the words and ne
   const spec: any = cleanSpec({ title: 'x', visual: 'doodle', scenes: [{ lines: ['một hai'], panels: [{ image: 'doodle:ReadingDoodle', line: 0 }, { image: 'doodle:Nope' }] }] }, 'u1');
   assert.equal(spec.scenes[0].panels[0].image, 'doodle:ReadingDoodle'); assert.equal(spec.scenes[0].panels[1].image, '');
 });
+
+test('"tự động đa dạng" picks the way from the words and does not repeat the last video', async () => {
+  const { autoLook } = await import('../web/src/worker.ts');
+  const envWith = (prev: any) => ({ DB: { prepare: () => ({ bind: () => ({ first: async () => (prev ? { spec: JSON.stringify(prev) } : null) }) }) } }) as any;
+  const on = () => true, u = { id: 'u1' } as any;
+  assert.deepEqual(await autoLook(envWith(null), u, '- Chào bạn!\n- Ờ... chào.\nHai người bắt chuyện.', on), { look: 'act' });
+  assert.deepEqual(await autoLook(envWith(null), u, 'Lương 15 triệu. Nhà 5 triệu, ăn 4 triệu, cất 20%.', on), { look: '', visual: 'diagram' });
+  assert.deepEqual(await autoLook(envWith({ look: 'act' }), u, '- Chào!\n- Chào.', on), { look: '', visual: 'sketch' });
+  assert.deepEqual(await autoLook(envWith({ visual: 'sketch' }), u, 'Đọc sách mỗi ngày giúp bạn bình tĩnh.', on), { look: '', visual: 'doodle' });
+});

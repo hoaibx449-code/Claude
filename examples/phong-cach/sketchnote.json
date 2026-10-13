@@ -1,0 +1,245 @@
+{
+ "title": "Lương mãi không đủ tiêu",
+ "channel": "Nét Vẽ",
+ "episode": "Tập 3",
+ "ratio": "9:16",
+ "style": "notebook",
+ "visual": "sketch",
+ "subtitles": false,
+ "scenes": [
+  {
+   "lines": [
+    "Lương mười lăm triệu, vậy mà ngày mười đã hết tiền."
+   ],
+   "panels": [],
+   "diagram": {
+    "kind": "sketch",
+    "items": [
+     {
+      "id": "cal",
+      "t": "icon",
+      "name": "calendar",
+      "x": 22,
+      "y": 14,
+      "w": 22,
+      "label": "ngày 10"
+     },
+     {
+      "id": "w",
+      "t": "icon",
+      "name": "wallet",
+      "x": 74,
+      "y": 14,
+      "w": 24,
+      "color": "accent",
+      "label": "0 đồng"
+     },
+     {
+      "t": "arrow",
+      "from": "cal",
+      "to": "w",
+      "curve": -0.4
+     },
+     {
+      "id": "p",
+      "t": "person",
+      "action": "sad",
+      "x": 50,
+      "y": 62,
+      "h": 46,
+      "bubble": "Lại hết tiền!"
+     }
+    ]
+   }
+  },
+  {
+   "lines": [
+    "Cà phê, trà sữa, đi chơi cuối tuần, cứ thế tiền bay đi."
+   ],
+   "panels": [],
+   "diagram": {
+    "kind": "sketch",
+    "items": [
+     {
+      "id": "p",
+      "t": "person",
+      "action": "walk",
+      "x": 50,
+      "y": 66,
+      "h": 44
+     },
+     {
+      "id": "a",
+      "t": "icon",
+      "name": "coffee",
+      "x": 16,
+      "y": 14,
+      "w": 18,
+      "label": "cà phê"
+     },
+     {
+      "id": "b",
+      "t": "icon",
+      "name": "shopping-cart",
+      "x": 50,
+      "y": 10,
+      "w": 18,
+      "label": "mua sắm"
+     },
+     {
+      "id": "c",
+      "t": "icon",
+      "name": "bus",
+      "x": 84,
+      "y": 14,
+      "w": 18,
+      "label": "đi chơi"
+     },
+     {
+      "t": "arrow",
+      "from": "p",
+      "to": "a"
+     },
+     {
+      "t": "arrow",
+      "from": "p",
+      "to": "b"
+     },
+     {
+      "t": "arrow",
+      "from": "p",
+      "to": "c"
+     }
+    ]
+   }
+  },
+  {
+   "lines": [
+    "Lướt điện thoại, thấy gì đẹp là mua."
+   ],
+   "panels": [],
+   "diagram": {
+    "kind": "sketch",
+    "items": [
+     {
+      "id": "ph",
+      "t": "icon",
+      "name": "device-mobile",
+      "x": 78,
+      "y": 16,
+      "w": 24,
+      "color": "accent2"
+     },
+     {
+      "id": "r",
+      "t": "icon",
+      "name": "receipt",
+      "x": 78,
+      "y": 62,
+      "w": 22,
+      "label": "đơn thứ 7"
+     },
+     {
+      "t": "arrow",
+      "from": "ph",
+      "to": "r",
+      "color": "accent"
+     },
+     {
+      "t": "person",
+      "action": "think",
+      "x": 30,
+      "y": 66,
+      "h": 46,
+      "bubble": "Rẻ mà!"
+     }
+    ]
+   }
+  },
+  {
+   "lines": [
+    "Bí quyết: nhận lương là trích hai mươi phần trăm cất đi trước."
+   ],
+   "panels": [],
+   "diagram": {
+    "kind": "sketch",
+    "items": [
+     {
+      "id": "t",
+      "t": "text",
+      "text": "Trả cho mình trước",
+      "x": 50,
+      "y": 8,
+      "size": "xl",
+      "color": "accent"
+     },
+     {
+      "id": "pg",
+      "t": "icon",
+      "name": "pig-money",
+      "x": 72,
+      "y": 50,
+      "w": 30,
+      "label": "20%"
+     },
+     {
+      "id": "p",
+      "t": "person",
+      "action": "point",
+      "x": 28,
+      "y": 64,
+      "h": 46
+     },
+     {
+      "t": "underline",
+      "on": "t"
+     },
+     {
+      "t": "circle",
+      "on": "pg",
+      "color": "accent"
+     }
+    ]
+   }
+  },
+  {
+   "lines": [
+    "Sáu tháng sau, bạn có quỹ dự phòng và thấy nhẹ nhõm."
+   ],
+   "panels": [],
+   "diagram": {
+    "kind": "sketch",
+    "items": [
+     {
+      "id": "s",
+      "t": "icon",
+      "name": "shield-check",
+      "x": 26,
+      "y": 16,
+      "w": 24,
+      "color": "good",
+      "label": "18 triệu"
+     },
+     {
+      "id": "u",
+      "t": "icon",
+      "name": "trending-up",
+      "x": 74,
+      "y": 16,
+      "w": 24,
+      "color": "accent",
+      "label": "an tâm"
+     },
+     {
+      "t": "person",
+      "action": "cheer",
+      "x": 50,
+      "y": 64,
+      "h": 46,
+      "bubble": "Nhẹ cả người!"
+     }
+    ]
+   }
+  }
+ ]
+}

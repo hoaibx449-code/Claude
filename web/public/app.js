@@ -345,7 +345,7 @@ async function showLanding() {
     ? site.showcase.map((m, i) => h('figure', { class: 'sample', 'data-ev': 'sample-' + i },
       m.video ? siteVideo(m.video, m.poster, m.title || 'Video mẫu') : h('img', { src: siteUrl(m.poster), alt: m.title || '', loading: 'lazy' }),
       h('figcaption', { class: 'cap' }, h('b', {}, m.title), m.caption ? h('span', {}, m.caption) : null)))
-    : LOOK_GROUPS.flatMap(([, keys]) => keys).filter((k) => k === 'classic' || looksOn().includes(k)).map((k) => demos.find((x) => x.look === k)).filter(Boolean).map((d) => {
+    : LOOK_GROUPS.flatMap(([, keys]) => keys).filter((k) => isClassic(k) || looksOn().includes(k)).map((k) => demos.find((x) => x.look === k)).filter(Boolean).map((d) => {
       const c = h('canvas', { 'aria-label': lookName(d.look) });
       setTimeout(() => playDemo(c, d.spec, { dpr: 0.45 }), 0);
       return h('a', { class: 'sample', href: '#/tao', 'data-ev': 'sample-' + d.look, onclick: () => sessionStorage.setItem('nv_look', d.look) }, c,
@@ -646,29 +646,54 @@ const MODE_STYLE = Object.fromEntries(MODES.map(([k, , , st]) => [k, st]));
 const LOOK_KEYS = ['act', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'];
 const SKIN_NAMES = { dem: 'Đêm', sang: 'Sáng', tim: 'Tím', 'do-xanh': 'Đỏ – xanh', 'tim-vang': 'Tím – vàng', toi: 'Tối', hong: 'Hồng', giay: 'Giấy', 'bang-den': 'Bảng đen', xanh: 'Xanh', 'xanh-la': 'Xanh lá', cam: 'Cam', 'dien-anh': 'Điện ảnh', 'trang-den': 'Trắng đen', lanh: 'Lạnh' };
 const looksOn = () => LOOK_KEYS.filter((k) => V('look:' + k) !== 'hidden');
-/** Cards with a live preview of each format; `classic` = the old hand-drawn board. */
-const LOOK_GROUPS = [['Vẽ tay', ['act', 'classic']], ['Đồ hoạ chuyển động', ['kinetic', 'split', 'chat', 'data', 'quiz', 'story']], ['Điện ảnh', ['doc']]];
+/**
+ * How the video is told: one dropdown, the chosen way playing beside it. `auto` (the default)
+ * picks per video from the words and does not repeat the channel's last one; `classic*` are the
+ * hand-drawn boards (sketchnote, hand-drawn charts, doodle pictures).
+ */
+const LOOK_GROUPS = [['Vẽ tay', ['auto', 'act', 'classic-sketch', 'classic-diagram', 'classic']], ['Đồ hoạ chuyển động', ['kinetic', 'split', 'chat', 'data', 'quiz', 'story']], ['Điện ảnh', ['doc']]];
+const HAND = { auto: ['Tự động đa dạng', 'Mỗi video một cách vẽ hợp với nội dung: có số liệu thì vẽ biểu đồ, có đối thoại thì nhân vật diễn, còn lại sketchnote hoặc tranh lớn. Không lặp kiểu của video trước.'],
+  'classic-sketch': ['Sketchnote theo lời', 'Vẽ đúng thứ đang được nói: nhân vật đổi tư thế theo động từ, đồ vật của câu thoại, mũi tên và bóng thoại.'],
+  'classic-diagram': ['Biểu đồ vẽ tay', 'Biểu đồ tròn, đường xu hướng, cột số liệu được tay vẽ từng nét, khoanh đỏ chỗ quan trọng.'],
+  classic: ['Tranh doodle', 'Mỗi câu một bức tranh lớn vẽ tay, xen nhân vật chính đóng đúng hành động, không có chữ dưới hình.'] };
+const isClassic = (k) => String(k).startsWith('classic');
 const customOf = (k) => (String(k).startsWith('f:') ? (ui.formats || []).find((f) => f.id === k) : null);
-const lookName = (k) => (k === 'classic' ? 'Tranh vẽ tay' : customOf(k)?.name || L('looks', k));
-const lookNote = (k) => (k === 'classic' ? 'Bàn tay vẽ tranh line-art từng nét theo lời đọc, phụ đề viết tay.' : customOf(k) ? customOf(k).note || L('lookNotes', customOf(k).base) : L('lookNotes', k));
+const lookName = (k) => HAND[k]?.[0] || customOf(k)?.name || L('looks', k);
+const lookNote = (k) => HAND[k]?.[1] || (customOf(k) ? customOf(k).note || L('lookNotes', customOf(k).base) : L('lookNotes', k));
 function lookPicker(current, onPick, demos) {
-  const box = h('div', { class: 'lookgroups', role: 'radiogroup', 'aria-label': 'Định dạng video' });
-  const mark = (cur) => box.querySelectorAll('.look').forEach((b) => { b.classList.toggle('on', b.dataset.k === cur); b.setAttribute('aria-checked', String(b.dataset.k === cur)); });
-  const on = new Set([...looksOn(), 'classic', ...(ui.formats || []).map((f) => f.id)]);
+  const on = new Set([...looksOn(), 'auto', 'classic', 'classic-sketch', 'classic-diagram', ...(ui.formats || []).map((f) => f.id)]);
   const groups = (ui.formats || []).length ? [LOOK_GROUPS[0], ['Định dạng riêng', ui.formats.map((f) => f.id)], ...LOOK_GROUPS.slice(1)] : LOOK_GROUPS;
-  box.replaceChildren(...groups.map(([title, keys]) => {
-    const list = keys.filter((k) => on.has(k));
-    if (!list.length) return null;
-    return h('section', { class: 'lookgroup' }, h('h3', {}, title), h('div', { class: 'looks' }, list.map((k) => {
-      const dev = k !== 'classic' && !customOf(k) && V('look:' + k) === 'dev', d = demos.find((x) => x.look === (customOf(k)?.base || k)), c = h('canvas', { 'aria-hidden': 'true' });
-      if (d) setTimeout(() => playDemo(c, d.spec, { dpr: 0.32 }), 0);
-      return h('button', { type: 'button', class: 'look' + (k === current ? ' on' : ''), role: 'radio', 'aria-checked': String(k === current), disabled: dev, 'data-ev': 'look-' + k, 'data-k': k,
-        onclick: () => { onPick(k); mark(k); } },
-        d ? c : h('div', { class: 'look-thumb classic' }, '✍️'),
-        h('b', {}, lookName(k)), k === 'doc' ? h('span', { class: 'credit-tag' }, 'Tính credit') : null, h('small', {}, lookNote(k)));
-    })));
+  const sel = h('select', { id: 'f-look', 'aria-label': 'Cách kể' }, ...groups.map(([title, keys]) => {
+    const list = keys.filter((k) => on.has(k) && (k !== 'act' || on.has('act')));
+    return list.length ? h('optgroup', { label: title }, list.map((k) => {
+      const dev = !HAND[k] && !customOf(k) && V('look:' + k) === 'dev';
+      return h('option', { value: k, disabled: dev, selected: k === current }, lookName(k) + (k === 'doc' ? ' · tính credit' : '') + (dev ? DEV : ''));
+    })) : null;
   }).filter(Boolean));
-  return box;
+  const note = h('p', { class: 'look-note' }), cap = h('span', { class: 'look-cap' });
+  const cv = h('canvas', { 'aria-label': 'Video mẫu của cách kể đang chọn' });
+  const demoOf = (k) => demos.find((x) => x.id === k) || demos.find((x) => x.look === (customOf(k)?.base || k));
+  // auto: the demo pane shows the hand-drawn ways in turn
+  const tour = ['look-act', 'classic-sketch', 'classic-diagram', 'classic'].map((id) => demos.find((x) => x.id === id)).filter(Boolean);
+  let run = null, timer = 0, at = 0;
+  const play = (d) => {
+    cap.textContent = d ? (d.look === 'act' ? lookName('act') : lookName(d.id) || lookName(d.look)) : '';
+    if (!d) return;
+    if (!run) run = playDemo(cv, d.spec, { dpr: 0.5 });
+    else { run.spec = d.spec; run.t = 0; run.build().catch(() => {}); }
+  };
+  const paint = (k) => {
+    clearInterval(timer); note.textContent = lookNote(k);
+    if (k === 'auto' && tour.length) {
+      at = 0; play(tour[0]);
+      timer = setInterval(() => { if (!cv.isConnected) { clearInterval(timer); return; } play(tour[(at = (at + 1) % tour.length)]); }, 9000);
+    } else play(demoOf(k));
+  };
+  sel.addEventListener('change', () => { onPick(sel.value); paint(sel.value); });
+  setTimeout(() => paint(sel.value || current), 0);
+  return h('div', { class: 'lookpick' },
+    h('div', { class: 'lookpick-side' }, h('label', { for: 'f-look' }, 'Cách kể'), sel, note),
+    h('figure', { class: 'look-demo' }, cv, h('figcaption', {}, cap)));
 }
 function skinChips(look, current, onPick) {
   const names = (NV.SKINS?.[look] || []).map((s) => s.name);
@@ -851,7 +876,7 @@ async function showCreate() {
   const startSrc = sources.some(([k]) => k === wantSrc) ? wantSrc : ui.enabledSources.includes(D.source) ? D.source : ui.enabledSources[0];
   const wantMode = sessionStorage.getItem('nv_mode'); sessionStorage.removeItem('nv_mode');
   const wantLook = sessionStorage.getItem('nv_look'); sessionStorage.removeItem('nv_look');
-  let look = wantMode && !wantLook ? 'classic' : [wantLook, D.look].find((k) => k && (k === 'classic' || (LOOK_KEYS.includes(k) && V('look:' + k) === 'on'))) || looksOn().find((k) => V('look:' + k) === 'on') || 'classic';
+  let look = wantMode && !wantLook ? 'classic' : [wantLook].find((k) => k && (HAND[k] || (LOOK_KEYS.includes(k) && V('look:' + k) === 'on'))) || 'auto';
   let skin = '';
   const demos = await getDemos();
   let mode = V('mode:' + (wantMode || D.mode || 'hand')) === 'on' ? wantMode || D.mode || 'hand' : 'hand';
@@ -897,7 +922,7 @@ async function showCreate() {
   const detect = h('div', { class: 'detect' });
   const only = {};
   const go = h('button', { type: 'submit', class: 'big', 'data-ev': 'create' }, T('write'));
-  const tryBtn = h('button', { type: 'button', class: 'ghost big', 'data-ev': 'create-try', onclick: () => startTry(f.topic.value, tryBtn, { ratio: f.ratio.value, style: f.style.value === 'auto' ? undefined : f.style.value, format: f.format.value, look: look === 'classic' || look === 'doc' ? undefined : look, skin: skin || undefined }, extras()) }, '✨ Xem thử');
+  const tryBtn = h('button', { type: 'button', class: 'ghost big', 'data-ev': 'create-try', onclick: () => startTry(f.topic.value, tryBtn, { ratio: f.ratio.value, style: f.style.value === 'auto' ? undefined : f.style.value, format: f.format.value, look: isClassic(look) || look === 'doc' || look === 'auto' ? undefined : look, skin: skin || undefined }, extras()) }, '✨ Xem thử');
   const tplBox = h('div', { class: 'tplpick' });
   const sync = () => {
     const src = f.source.value, mine = src !== 'topic';
@@ -913,10 +938,11 @@ async function showCreate() {
     if (go.disabled) go.textContent = 'AI chưa sẵn sàng — chọn "Kịch bản của tôi"';
     only.aff.hidden = !f.affOn.checked;
     // format videos: the format sets the look; the classic board keeps its own options
-    const classic = look === 'classic';
+    const classic = isClassic(look), auto = look === 'auto';
     for (const el of [only.mode, only.style, only.visual2, only.transition]) if (el) el.hidden = !classic;
     if (only.visual) only.visual.hidden = only.visual.hidden || !classic;
-    only.looked.hidden = classic;
+    only.looked.hidden = classic || auto;
+    if (isClassic(look)) f.visual.value = look === 'classic-sketch' ? 'sketch' : look === 'classic-diagram' ? 'diagram' : 'doodle';
     if (!classic && (NV.SKINS?.[look] || []).length > 1) skinBox.replaceChildren(h('span', { class: 'plabel' }, 'Bộ màu'), skinChips(look, skin, (n) => { skin = n; })); else skinBox.replaceChildren();
     showCredits();
   };
@@ -936,7 +962,7 @@ async function showCreate() {
     affiliate: f.affOn.checked && f.affLink.value.trim() ? { link: f.affLink.value.trim(), product: f.affProduct.value.trim(), price: f.affPrice.value.trim(), image: product.get() || undefined } : undefined });
   const body = () => {
     const x = extras();
-    return { look: look === 'classic' ? '' : look, skin: skin || undefined, music: f.music.value,
+    return { look: isClassic(look) ? '' : look, skin: skin || undefined, music: f.music.value,
       source: f.source.value === 'template' ? 'mine-free' : f.source.value, subtitles: f.subtitles.checked, topic: f.topic.value, seconds: Number(f.seconds.value), ratio: f.ratio.value, style: f.style.value,
       voiceId: f.voice.value, channel: f.channel.value, episode: f.episode.value, tone: f.tone.value, visual: f.visual.value, format: f.format.value, transition: f.transition.value,
       mode: x.mode, intro: x.intro, character: x.character, affiliate: x.affiliate };
@@ -950,7 +976,7 @@ async function showCreate() {
     const voice = (ui.voices || []).find((v) => v.code === f.voice.value);
     summary.replaceChildren(
       h('dt', {}, 'Bạn nhận'), h('dd', {}, `MP4 ${f.ratio.value === '16:9' ? 'ngang 16:9' : 'dọc 9:16'}${secs ? `, khoảng ${Math.max(10, secs)} giây` : ''}, phụ đề SRT`),
-      h('dt', {}, 'Cách kể'), h('dd', {}, look === 'classic' ? 'Bàn tay vẽ' : L('looks', look)),
+      h('dt', {}, 'Cách kể'), h('dd', {}, lookName(look)),
       h('dt', {}, 'Giọng đọc'), h('dd', {}, voice?.label || '—'),
       h('dt', {}, 'Chi phí'), h('dd', {}, (look === 'doc' ? `${ui.doc?.perVideo || 1} credit phim tài liệu + ` : '') + `1 lượt dựng` + (me ? ` (hôm nay còn ${left})` : ` (miễn phí ${ui.free?.render || 0} lượt mỗi ngày)`)
         + (f.source.value === 'topic' || f.source.value === 'mine-ai' ? ' + 1 lượt AI viết' : '')));
