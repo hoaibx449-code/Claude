@@ -636,8 +636,8 @@ function drawBig(c: Ctx, m: ActModel, tx: Txt, t: number, task?: HandTask) {
   const total = b.lines.reduce((s, l) => s + l.length, 0) || 1;
   c.save(); c.globalAlpha = fade;
   // a soft card so the words read over the drawing
-  const h = b.lines.length * b.lh + 30;
-  c.fillStyle = 'rgba(251,250,246,0.92)'; rrect(c, b.x - b.w / 2 - 14, b.y - b.size - 4, b.w + 28, h, 16); c.fill();
+  const h = b.lines.length * b.lh + 44;
+  c.fillStyle = 'rgba(251,250,246,0.97)'; rrect(c, b.x - b.w / 2 - 18, b.y - b.size - 14, b.w + 36, h, 18); c.fill();
   c.font = `${b.size}px ${m.hand2}`; c.fillStyle = '#22252b'; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
   let done = q * total;
   b.lines.forEach((l, i) => {
