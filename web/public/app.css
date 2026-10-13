@@ -786,3 +786,13 @@ details.brief textarea { margin: 8px 0; font-size: var(--fs-sm); }
   .kv { grid-template-columns: 1fr; gap: 2px; }
   .kv dd { margin-bottom: 8px; }
 }
+
+/* readability floor: labels ≥ 13px, badges legible; header never overflows (200% text zoom) */
+.tabbar a, .tabbar a span { font-size: var(--fs-xs); }
+.vdraft, .vtile .vdraft, .vthumb .vdraft { font-size: var(--fs-xs); }
+.brand .beta { font-size: var(--fs-xs); }
+.top { flex-wrap: nowrap; min-width: 0; }
+.brand { min-width: 0; flex: 1 1 auto; overflow: hidden; }
+.brand > span:not(.logo) { overflow: hidden; text-overflow: ellipsis; }
+.who { flex: none; }
+@media (max-width: 420px) { .brand #brandAccent { display: none; } }
