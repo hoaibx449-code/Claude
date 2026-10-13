@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import type { Span } from '../engine/types.ts';
 import { estimateVoice } from '../engine/timeline.ts';
+import { genderOf, standIn } from '../engine/voices.ts';
 
 export interface VoiceResult { file: string; lines: Span[]; duration: number }
 export interface TTS { name: string; synth(lines: string[], outBase: string): Promise<VoiceResult> }
@@ -105,7 +106,7 @@ async function gcpToken(): Promise<{ token: string; project: string } | null> {
   } catch { return null; }
 }
 
-export function googleTTS(voiceName?: string, languageCode = 'vi-VN', auth?: { token: string; project: string }): TTS {
+export function googleTTS(voiceName?: string, languageCode = 'vi-VN', auth?: { token: string; project: string }, tune: { pitch?: number; rate?: number } = {}): TTS {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return {
     name: 'google',
@@ -119,7 +120,7 @@ export function googleTTS(voiceName?: string, languageCode = 'vi-VN', auth?: { t
         body: JSON.stringify({
           input: { ssml },
           voice: { languageCode, name: voiceName || process.env.GOOGLE_TTS_VOICE || 'vi-VN-Neural2-A' },
-          audioConfig: { audioEncoding: 'MP3' },
+          audioConfig: { audioEncoding: 'MP3', ...(tune.pitch ? { pitch: tune.pitch } : {}), ...(tune.rate && tune.rate !== 1 ? { speakingRate: tune.rate } : {}) },
           enableTimePointing: ['SSML_MARK'],
         }),
       });
@@ -137,16 +138,19 @@ export function googleTTS(voiceName?: string, languageCode = 'vi-VN', auth?: { t
   };
 }
 
-/** Offline fallback: speak the paragraph once to retain sentence context. */
-export const espeakTTS: TTS = {
-  name: 'espeak',
-  async synth(lines, outBase) {
-    const file = outBase + '-e.wav';
-    execFileSync('espeak-ng', ['-v', 'vi', '-s', '170', '-w', file, '--stdin'], { input: lines.join(' ') });
-    const duration = audioDuration(file);
-    return { file, lines: fitVoice(lines, duration), duration };
-  },
-};
+/** Offline fallback: speak the paragraph once to retain sentence context (male or female voice). */
+export function espeakFor(voiceId?: string): TTS {
+  return {
+    name: 'espeak',
+    async synth(lines, outBase) {
+      const file = outBase + '-e.wav';
+      execFileSync('espeak-ng', ['-v', genderOf(voiceId) === 'nam' ? 'vi+m3' : 'vi+f3', '-s', '170', '-w', file, '--stdin'], { input: lines.join(' ') });
+      const duration = audioDuration(file);
+      return { file, lines: fitVoice(lines, duration), duration };
+    },
+  };
+}
+export const espeakTTS = espeakFor();
 
 /**
  * Free voice (no API key): Google Neural2 through the render machine's own Google account
@@ -158,10 +162,11 @@ export function freeTTS(voiceId?: string): TTS {
     async synth(lines, outBase) {
       const auth = await gcpToken();
       if (auth) {
-        const voice = voiceId === 'free-male' ? 'vi-VN-Neural2-D' : /^vi-VN-/.test(voiceId || '') ? voiceId : 'vi-VN-Neural2-A';
-        try { return await googleTTS(voice, 'vi-VN', auth).synth(lines, outBase); } catch (e) { console.error('Giọng Google miễn phí lỗi, dùng giọng máy:', (e as Error).message); }
+        // the stand-in keeps the chosen voice's gender (a male voice never comes out female)
+        const v = standIn(voiceId);
+        try { return await googleTTS(v.name, 'vi-VN', auth, v).synth(lines, outBase); } catch (e) { console.error('Giọng Google miễn phí lỗi, dùng giọng máy:', (e as Error).message); }
       }
-      return espeakTTS.synth(lines, outBase);
+      return espeakFor(voiceId).synth(lines, outBase);
     },
   };
 }

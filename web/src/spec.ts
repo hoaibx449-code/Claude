@@ -8,8 +8,9 @@ import { isDoodle } from './doodles.ts';
 export const STYLES = ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'pencil', 'blueprint', 'ricepaper', 'neon', 'pastel', 'newspaper', 'comic', 'darkboard', 'sunset', 'cosmos', 'manim', 'bold'] as const;
 export const MODES = ['hand', 'motion', 'math', 'kinetic'] as const;
 /** video formats (src/engine/looks.ts) */
-export const LOOKS = ['kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
+export const LOOKS = ['act', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
 export const SKIN_NAMES: Record<string, string[]> = {
+  act: ['giay'],
   kinetic: ['dem', 'sang', 'tim'], split: ['do-xanh', 'sang', 'tim-vang'], chat: ['sang', 'toi', 'hong'], story: ['giay', 'bang-den', 'xanh'],
   data: ['dem', 'sang', 'xanh-la'], quiz: ['tim', 'xanh', 'cam'], doc: ['dien-anh', 'trang-den', 'lanh'],
 };
@@ -24,6 +25,8 @@ export const DIAGRAM_KINDS = ['bars', 'compare', 'steps', 'flow', 'number', 'sta
 const PLOT_FNS = ['linear', 'exp', 'log', 'sin', 'square', 'sqrt', 'down', 'wave'] as const;
 export const ACTIONS = ['idle', 'walk', 'run', 'wave', 'think', 'cheer', 'sad', 'point', 'shrug', 'jump'] as const;
 export const VISUAL_MODES = ['doodle', 'sketch', 'diagram', 'mix', 'images'] as const;
+import { cleanAct, cleanCast } from './act.ts';
+
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max) : '');
 const pick = <T extends string>(v: unknown, list: readonly T[], def: T): T => (list.includes(v as T) ? (v as T) : def);
 const num = (v: unknown, lo: number, hi: number, def: number) => (typeof v === 'number' && isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def);
@@ -202,12 +205,15 @@ export function cleanSpec(input: any, userId: string) {
   for (const [k, v] of Object.entries(input.media && typeof input.media === 'object' ? input.media : {}).slice(0, 12)) if (/^[a-z0-9]{1,20}$/.test(k) && own.test(String(v))) media[k] = String(v);
   const mk = Object.keys(media);
   const look = LOOKS.includes(input.look) ? input.look : undefined;
+  const cast = look === 'act' ? cleanCast(input.cast) : [];
+  const castIds = cast.map((c) => c.id);
   const scenes = input.scenes.slice(0, MAX_SCENES).map((sc: any, si: number) => {
     const lines = (Array.isArray(sc?.lines) ? sc.lines : []).map((l: unknown) => str(l, 160)).filter(Boolean).slice(0, 3);
     if (look) {
       // format videos: the words carry the picture; only the documentary needs a picture per scene
       const out: any = { lines, panels: [] };
       const x = cleanLook(sc?.x, look); if (x) out.x = x;
+      if (look === 'act') { const a = cleanAct(sc?.act, castIds); if (a) out.act = a; }
       const pause = Number(sc?.pause); if (pause > 0) out.pause = Math.min(6, pause);
       if (look === 'doc') {
         const p = Array.isArray(sc?.panels) ? sc.panels[0] : null, image = str(p?.image, 120);
@@ -247,7 +253,9 @@ export function cleanSpec(input: any, userId: string) {
       chatName: look === 'chat' ? str(input.chatName, 30) || 'Bạn thân' : undefined,
       music: /^site:[a-f0-9]{24}\.(mp3|m4a)$/.test(String(input.music || '')) ? input.music : undefined,
       sfx: input.sfx !== false,
+      ...(look === 'act' ? { cast, subtitles: input.subtitles === true } : {}),
     } : {}),
+    audio: cleanAudio(input.audio),
     transition: pick(input.transition, TRANSITIONS, 'auto'),
     style: pick(input.style, STYLES, 'notebook'),
     mode: pick(input.mode, MODES, 'hand'),
@@ -268,4 +276,14 @@ export function cleanSpec(input: any, userId: string) {
     },
     scenes,
   };
+}
+
+/** Sound layers: where the narration comes from and the level of each layer. */
+export function cleanAudio(a: any) {
+  if (!a || typeof a !== 'object') return undefined;
+  const lv = (v: unknown, def: number) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(1.5, n)) : def; };
+  const voice = a.voice === 'upload' || a.voice === 'none' ? a.voice : 'tts';
+  const file = /^r2:voice\/[\w-]{1,40}\/[a-f0-9]{24}\.(mp3|m4a|wav)$/.test(String(a.voiceFile || '')) ? String(a.voiceFile) : undefined;
+  return { voice: voice === 'upload' && !file ? 'tts' : voice, voiceFile: file, voiceVolume: lv(a.voiceVolume, 1), musicVolume: lv(a.musicVolume, 0.2), sfxVolume: lv(a.sfxVolume, 1),
+    mood: ['warm', 'curious', 'calm', 'upbeat', 'none'].includes(a.mood) ? a.mood : undefined };
 }

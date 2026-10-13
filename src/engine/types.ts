@@ -1,3 +1,5 @@
+import type { ActCast, ActScene } from './act/spec.ts';
+
 // Shared types. The engine only uses the Canvas 2D API, so the same code draws
 // the browser preview and the server-side MP4.
 
@@ -7,8 +9,8 @@ export type StyleKey = 'notebook' | 'whiteboard' | 'chalkboard' | 'kraft' | 'oly
 /** How the board comes alive: a hand drawing, motion graphics, maths animation, kinetic typography. */
 export type Mode = 'hand' | 'motion' | 'math' | 'kinetic';
 /** Video formats (each its own storytelling grammar, pacing and sound); replaces style × mode for new videos. */
-export type Look = 'kinetic' | 'split' | 'chat' | 'story' | 'data' | 'quiz' | 'doc';
-export const LOOKS: Look[] = ['kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'];
+export type Look = 'act' | 'kinetic' | 'split' | 'chat' | 'story' | 'data' | 'quiz' | 'doc';
+export const LOOKS: Look[] = ['act', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'];
 
 /** Per-scene data a format uses (all optional: missing parts are derived from the lines). */
 export interface LookData {
@@ -84,6 +86,8 @@ export interface SceneSpec {
   x?: LookData;
   /** silence after the narration, seconds (quiz countdown) */
   pause?: number;
+  /** story animation: what happens in this scene, as timed animation events */
+  act?: ActScene;
 }
 
 export interface ProjectSpec {
@@ -124,6 +128,10 @@ export interface ProjectSpec {
   character?: string;
   /** affiliate product shown at the end (the editor builds that scene from it) */
   affiliate?: { link: string; product?: string; price?: string; image?: string };
+  /** story animation: the people of the story (same look in every scene) */
+  cast?: ActCast[];
+  /** sound layers, kept separate: narration source, levels of each layer */
+  audio?: { voice?: 'tts' | 'upload' | 'none'; voiceFile?: string; voiceVolume?: number; musicVolume?: number; sfxVolume?: number; mood?: 'warm' | 'curious' | 'calm' | 'upbeat' | 'none' };
   scenes: SceneSpec[];
 }
 

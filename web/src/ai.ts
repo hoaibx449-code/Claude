@@ -1,3 +1,4 @@
+import { ACT_BRIEF } from './act.ts';
 // Script writing (OpenAI or Gemini, chosen per request) and line-art images.
 // Model output is treated as data: it goes through cleanSpec() before use.
 import { Buffer } from 'node:buffer';
@@ -21,6 +22,7 @@ export const PHOTO_STYLE =
 const ICON_HINT = 'Tên icon là tên bộ Tabler Icons tiếng Anh, viết thường, gạch nối (vd cash, pig-money, wallet, brain, clock, home, briefcase, coffee, shopping-cart, building-bank, trending-up, trending-down, heart, target-arrow, bulb, mood-sad, mood-happy, school, book).';
 /** What each format needs from the writer, and the per-scene "x" data it reads. */
 export const LOOK_BRIEF: Record<string, string> = {
+  act: ACT_BRIEF,
   kinetic: 'ĐỊNH DẠNG: CHỮ BÙNG NỔ. Câu ngắn, mạnh, có con số cụ thể; mỗi câu ≤ 14 chữ. Mỗi cảnh có "x":{"icon":"icon chính","keys":["1-3 từ cần nhấn, đúng như trong câu"]}.',
   split: 'ĐỊNH DẠNG: HAI BÊN ĐỐI LẬP. Ở gốc JSON có "sides":{"a":"tên bên sai/nghèo/trước (≤ 20 ký tự)","b":"tên bên đúng/giàu/sau"}. Mỗi cảnh thân bài có đúng 2 câu: câu 1 nói bên A làm gì, câu 2 nói bên B làm gì, và "x":{"a":"bên A làm gì (≤ 40 ký tự)","b":"bên B làm gì","aIcon":"icon","bIcon":"icon","aValue":"(tuỳ chọn) kết quả bên A, vd 0đ","bValue":"(tuỳ chọn) kết quả bên B"}. Cảnh mở và kết chỉ cần "lines".',
   chat: 'ĐỊNH DẠNG: TIN NHẮN DRAMA. Kể câu chuyện bằng tin nhắn giữa "mình" và một người thân. Ở gốc JSON có "chatName":"tên người kia (vd Vợ yêu, Sếp, Mẹ, Bạn thân)". Mỗi câu thoại là một tin nhắn ngắn, văn nói; "x":{"chat":[{"who":"a hoặc b","text":"đúng nguyên câu thoại"}]} với a là người kia, b là mình. Cảnh cuối thêm "x":{"card":"câu bài học, là một trong các câu thoại của cảnh"}.',
@@ -38,6 +40,8 @@ export interface ScriptRequest {
   format?: string; niche?: string;
   /** video format (src/engine/looks.ts): asks for its scene data instead of drawings */
   look?: string;
+  /** the format's brief as set on the training page (replaces the built-in one) */
+  brief?: string;
 }
 
 const ICON_VOCAB = 'user, users, user-check, user-x, user-heart, user-star, friends, man, woman, baby-carriage, old, mood-happy, mood-sad, mood-cry, mood-angry, mood-confuzed, mood-sick, mood-nervous, mood-smile-beam, heart, heart-broken, heart-handshake, hearts, brain, bulb, bulb-off, message, message-circle, messages, speakerphone, microphone, thumb-up, thumb-down, hand-stop, hand-click, pointer, eye, eye-off, ear, search, zoom-question, question-mark, exclamation-mark, alert-triangle, alert-circle, info-circle, check, x, circle-check, circle-x, ban, lock, lock-open, key, shield, shield-check, fingerprint, home, building, building-skyscraper, building-bank, building-store, building-hospital, building-factory, school, briefcase, tent, cash, coin, coins, currency-dollar, pig-money, wallet, credit-card, receipt, receipt-tax, report-money, moneybag, basket, shopping-cart, shopping-bag, gift, tag, discount, percentage, calculator, chart-bar, chart-line, chart-pie, chart-arrows-vertical, trending-up, trending-down, arrow-up-right, arrow-down-right, scale, scale-outline, clock, alarm, hourglass, calendar, calendar-event, calendar-time, stopwatch, history, hourglass-high, device-mobile, device-laptop, device-desktop, device-tv, device-gamepad-2, wifi, world, cloud, database, server, robot, cpu, code, mail, phone, camera, photo, video, movie, music, headphones, car, bus, bike, plane, rocket, ship, truck, map, map-pin, route, road-sign, compass, globe, sun, moon, cloud-rain, snowflake, bolt, flame, droplet, leaf, plant, tree, seedling, mountain, beach, coffee, cup, tools-kitchen-2, pizza, apple, salad, bottle, beer, cake, candy, egg, fish, meat, milk, bed, zzz, run, walk, swimming, yoga, barbell, stretching, heartbeat, activity, pill, vaccine, stethoscope, first-aid-kit, virus, book, book-2, books, notebook, pencil, writing, certificate, award, trophy, medal, crown, star, stars, flag, target, target-arrow, puzzle, chess, chess-knight, dice-5, ladder, stairs-up, stairs-down, battery, battery-1, battery-4, plug, lamp, bell, bell-ringing, hammer, tool, tools, settings, adjustments, box, package, link, anchor, magnet, umbrella, paperclip, sparkles, confetti, balloon, mask, mood-crazy-happy, ghost, skull, bomb, fire-extinguisher, arrows-split, arrows-join, refresh, repeat, infinity, recycle, arrow-loop-right, arrows-exchange';
@@ -95,12 +99,13 @@ function systemPrompt(r: ScriptRequest) {
     r.tone ? `Giọng văn: ${r.tone}.` : '',
     r.format ? 'DẠNG VIDEO (đã nhận diện, giữ đúng): ' + (FORMAT_NAMES as any)[r.format] + ' — ' + (FORMAT_BRIEF as any)[r.format] : '',
     r.niche && r.niche !== 'general' ? 'Ngách: ' + (NICHE_NAMES as any)[r.niche] + '. Dùng ví dụ, từ ngữ, ẩn dụ đúng ngách này.' : '',
-    r.look ? LOOK_BRIEF[r.look] + ' ' + ICON_HINT : 'HÌNH: ' + visual,
+    r.look ? (r.brief || LOOK_BRIEF[r.look]) + ' ' + ICON_HINT : 'HÌNH: ' + visual,
     r.extra ? 'YÊU CẦU THÊM CỦA CHỦ TRANG: ' + r.extra : '',
     r.look || r.visual === 'doodle' ? '' : '"panels": [{"prompt":"TIẾNG ANH, 1 hình minh hoạ đơn giản: chủ thể, hành động, đồ vật ẩn dụ; không chữ trong hình"}].',
     r.look || r.visual === 'doodle' ? '' : DIAGRAM_SCHEMA + '. Chữ trong diagram là tiếng Việt, rất ngắn, khớp ý câu thoại của cảnh.',
     !r.look && r.visual === 'sketch' ? sketchSchema(r.ratio) : '',
-    r.look ? 'Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#... 5-8 thẻ"], (các trường gốc của định dạng nếu có), "scenes":[{"lines":["câu 1","câu 2"],"x":{...}}]}' : '',
+    r.look === 'act' ? 'Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#... 5-8 thẻ"],"cast":[...],"scenes":[{"lines":["câu 1","câu 2"],"act":{...}}]}'
+      : r.look ? 'Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#... 5-8 thẻ"], (các trường gốc của định dạng nếu có), "scenes":[{"lines":["câu 1","câu 2"],"x":{...}}]}' : '',
     r.look ? '' : 'Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption đăng bài ≤ 150 ký tự, kết bằng một câu hỏi mời bình luận","hashtags":["#tiengvietkhongdau", "... 5-8 thẻ"],"scenes":[{"lines":["câu 1","câu 2"],"panels":[...]} hoặc {"lines":[...],"diagram":{...}}]}',
   ].filter(Boolean).join('\n');
 }
@@ -109,9 +114,10 @@ function systemPrompt(r: ScriptRequest) {
 function illustratePrompt(r: ScriptRequest) {
   if (r.look) return [
     'Người dùng đã có kịch bản tiếng Việt, chia sẵn thành cảnh. GIỮ NGUYÊN lời thoại, KHÔNG viết lại; chỉ thêm dữ liệu hình cho từng cảnh, đúng thứ tự, đúng số cảnh.',
-    LOOK_BRIEF[r.look] + ' ' + ICON_HINT,
+    (r.brief || LOOK_BRIEF[r.look]) + ' ' + ICON_HINT,
     r.extra ? 'YÊU CẦU THÊM CỦA CHỦ TRANG: ' + r.extra : '',
-    `Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#..."], (các trường gốc của định dạng nếu có), "scenes":[{"x":{...}}, ... đúng ${r.scenes!.length} cảnh, cảnh đố vui có thêm "pause"]}`,
+    r.look === 'act' ? `Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#..."],"cast":[...],"scenes":[{"act":{...}}, ... đúng ${r.scenes!.length} cảnh, "at" dùng L0/L1 theo câu của cảnh]}`
+      : `Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#..."], (các trường gốc của định dạng nếu có), "scenes":[{"x":{...}}, ... đúng ${r.scenes!.length} cảnh, cảnh đố vui có thêm "pause"]}`,
   ].filter(Boolean).join('\n');
   return [
     'Bạn là hoạ sĩ minh hoạ video "bàn tay vẽ" tiếng Việt. Người dùng đã có kịch bản, chia sẵn thành cảnh. GIỮ NGUYÊN lời thoại, KHÔNG viết lại; chỉ thiết kế hình cho từng cảnh, đúng thứ tự, đúng số cảnh.',
@@ -235,4 +241,46 @@ export async function drawImage(env: Env, provider: ImageProvider, prompt: strin
   const part = (((await res.json()) as any).candidates?.[0]?.content?.parts || []).find((p: any) => p.inlineData?.data);
   if (!part) throw new HttpError(502, 'Gemini không trả về ảnh (mô tả có thể bị bộ lọc an toàn chặn).');
   return { bytes: new Uint8Array(Buffer.from(part.inlineData.data, 'base64')), type: 'image/png', ext: 'png' };
+}
+
+// ---------------------------------------------------------------- training page: learn a format from a sample
+export interface FormatProposal { name: string; summary: string; base: string; structure: string[]; pacing: string; visuals: string; audio: string; brief: string; stages: string[] }
+
+/**
+ * Look at a sample video (a few frames the admin's browser took from it, plus notes) and propose
+ * a new format: what makes it work, which built-in format it builds on, and the brief to add.
+ */
+export async function analyzeSample(env: Env, frames: string[], notes: string): Promise<FormatProposal & { _usage: { provider: string; tokensIn: number; tokensOut: number } }> {
+  const looks = Object.entries(LOOK_BRIEF).map(([k, v]) => `- ${k}: ${v.slice(0, 160)}`).join('\n');
+  const sys = [
+    'Bạn là đạo diễn video ngắn (TikTok, Reels, Shorts) và nhà thiết kế hệ thống dựng video tự động.',
+    'Phân tích video mẫu (các khung hình theo thứ tự thời gian và ghi chú của chủ trang) để đề xuất MỘT định dạng video mới cho máy dựng tự động tiếng Việt.',
+    'Máy dựng có các định dạng gốc:\n' + looks,
+    'Chọn định dạng gốc gần nhất làm nền ("base"), rồi viết "brief": lời dặn thêm cho AI biên kịch để video ra giống mẫu (nhịp, bố cục, cách kể, hành động nhân vật, chữ trên hình, âm thanh). Viết tiếng Việt, cụ thể, có thể làm được với định dạng gốc; không đòi hỏi thứ máy dựng không có.',
+    'Trả DUY NHẤT JSON: {"name":"tên định dạng ≤ 30 ký tự","summary":"vì sao mẫu này giữ chân người xem (2-3 câu)","base":"một mã định dạng gốc","structure":["các phần của video theo thứ tự"],"pacing":"nhịp: độ dài cảnh, khi nào có bước ngoặt","visuals":"hình ảnh, nhân vật, bố cục, chữ","audio":"giọng, nhạc, hiệu ứng","brief":"lời dặn cho AI (≤ 1200 ký tự)","stages":["các bước triển khai từ thử nghiệm tới phát hành"]}',
+  ].join('\n');
+  const text = 'GHI CHÚ CỦA CHỦ TRANG: ' + (notes || '(không có)') + (frames.length ? `\nCó ${frames.length} khung hình đính kèm theo thứ tự.` : '\nKhông có khung hình, chỉ dựa vào ghi chú.');
+  const imgs = frames.slice(0, 6).map((d) => { const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(d); return m ? { mime: m[1], data: m[2] } : null; }).filter(Boolean) as { mime: string; data: string }[];
+  let out: any = null, usage = { provider: '', tokensIn: 0, tokensOut: 0 };
+  if (env.GEMINI_API_KEY) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_TEXT_MODEL || 'gemini-2.5-flash'}:generateContent`, {
+      method: 'POST', headers: { 'x-goog-api-key': env.GEMINI_API_KEY, 'content-type': 'application/json' },
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text }, ...imgs.map((i) => ({ inlineData: { mimeType: i.mime, data: i.data } }))] }],
+        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 4096 } }),
+    });
+    if (res.ok) { const j: any = await res.json(); out = parseJson((j.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || '').join('')); usage = { provider: 'gemini', tokensIn: j.usageMetadata?.promptTokenCount || 0, tokensOut: j.usageMetadata?.candidatesTokenCount || 0 }; }
+  }
+  if (!out && env.OPENAI_API_KEY) {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST', headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: env.OPENAI_TEXT_MODEL || 'gpt-4o-mini', response_format: { type: 'json_object' }, messages: [{ role: 'system', content: sys },
+        { role: 'user', content: [{ type: 'text', text }, ...imgs.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.data}`, detail: 'low' } }))] }] }),
+    });
+    if (res.ok) { const j: any = await res.json(); out = parseJson(j.choices?.[0]?.message?.content || ''); usage = { provider: 'openai', tokensIn: j.usage?.prompt_tokens || 0, tokensOut: j.usage?.completion_tokens || 0 }; }
+  }
+  if (!out) throw new HttpError(env.GEMINI_API_KEY || env.OPENAI_API_KEY ? 502 : 503, env.GEMINI_API_KEY || env.OPENAI_API_KEY ? 'AI chưa phân tích được mẫu, thử lại sau ít phút.' : 'Cần khoá Gemini hoặc OpenAI để phân tích mẫu.');
+  const s = (v: unknown, n: number) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+  const arr = (v: unknown) => (Array.isArray(v) ? v.map((x) => s(x, 200)).filter(Boolean).slice(0, 10) : []);
+  return { name: s(out.name, 40) || 'Định dạng mới', summary: s(out.summary, 600), base: Object.keys(LOOK_BRIEF).includes(out.base) && out.base !== 'doc' ? out.base : 'act',
+    structure: arr(out.structure), pacing: s(out.pacing, 500), visuals: s(out.visuals, 600), audio: s(out.audio, 400), brief: s(out.brief, 3000), stages: arr(out.stages), _usage: usage };
 }

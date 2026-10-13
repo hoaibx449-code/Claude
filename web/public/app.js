@@ -6,8 +6,10 @@ let ui = { brand: {}, labels: { styles: {}, tools: {}, kinds: {}, visual: {}, ac
 const T = (k) => ui.texts?.[k] ?? k;
 const L = (group, k) => ui.labels?.[group]?.[k] ?? k;
 /** Visibility the admin chose for an option: on · dev (greyed, "đang phát triển") · hidden. */
-const V = (key) => ui.visibility?.[key] || 'on';
-const DEV = ' (đang phát triển)';
+// options still being built are shown only to admins (as 'dev'); everyone else simply does not see them
+const V = (key) => { const v = ui.visibility?.[key] || 'on'; return v === 'dev' && !isAdminUser() ? 'hidden' : v; };
+const isAdminUser = () => !!(typeof me !== 'undefined' && me?.admin);
+const DEV = ' · chỉ quản trị thấy';
 const view = document.getElementById('view');
 /** Replace the page content; null/false entries (optional sections) are skipped. */
 const show = (...nodes) => { view.replaceChildren(...nodes.flat().filter((n) => n != null && n !== false)); view.classList.remove('enter'); void view.offsetWidth; view.classList.add('enter'); };
@@ -66,6 +68,39 @@ function applyUI(next) {
 }
 const styleOptions = () => Object.keys(ui.labels.styles).map((k) => [k, L('styles', k), 'style:' + k]).filter(([k]) => ui.enabledStyles.includes(k) || V('style:' + k) === 'dev');
 const voiceOptions = () => ui.voices.map((v) => [v.code, v.label, 'voice:' + v.code]);
+const previewUrl = (code) => '/api/voices/preview?code=' + encodeURIComponent(code);
+/** A voice dropdown with a ▶ on every voice and a "listen" button for the chosen one. */
+function voiceField(select) {
+  select.dataset.preview = '/api/voices/preview?code={v}';
+  const btn = h('button', { type: 'button', class: 'ghost listen', 'aria-label': 'Nghe thử giọng đã chọn', onclick: () => window.nvPlayPreview?.(previewUrl(select.value), btn) }, '▶ Nghe thử');
+  return h('div', { class: 'voice-field' }, select, btn);
+}
+const MOODS = [['', 'Theo nội dung'], ['warm', 'Ấm áp'], ['curious', 'Tò mò'], ['calm', 'Nhẹ nhàng'], ['upbeat', 'Sôi động'], ['none', 'Không nhạc']];
+/** Sound layers of a video: where the narration comes from, music mood, levels of music and effects. */
+function audioBox(spec, save) {
+  const a = (spec.audio ||= { voice: 'tts' });
+  const note = h('small', { class: 'muted' });
+  const file = h('input', { type: 'file', accept: 'audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,.mp3,.m4a,.wav', hidden: true, onchange: async () => {
+    const f = file.files[0]; if (!f) return;
+    if (f.size > 25e6) { note.textContent = 'Tệp tối đa 25 MB.'; return; }
+    note.textContent = 'Đang tải lên…';
+    try {
+      const r = await fetch('/api/voice-upload', { method: 'POST', headers: { 'content-type': f.type || 'audio/mpeg', 'x-nv': '1' }, body: f });
+      const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Không tải lên được.');
+      a.voice = 'upload'; a.voiceFile = j.ref; save(); paint(); note.textContent = 'Đã nhận: ' + f.name + '. Lời đọc sẽ được chia theo từng cảnh.';
+    } catch (e) { note.textContent = e.message; }
+  } });
+  const seg = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Nguồn lời đọc' });
+  const paint = () => seg.replaceChildren(...[['tts', 'Giọng đọc AI'], ['upload', 'Giọng của tôi'], ['none', 'Không lời']].map(([k, t]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(a.voice === k), class: a.voice === k ? 'on' : '',
+    onclick: () => { if (k === 'upload' && !a.voiceFile) { file.click(); return; } a.voice = k; save(); paint(); } }, t)));
+  paint();
+  const level = (key, label, def) => h('label', { class: 'slider' }, `${label}`, h('input', { type: 'range', min: 0, max: 1.5, step: 0.05, value: a[key] ?? def, 'aria-label': label, oninput: (e) => { a[key] = Number(e.target.value); save(); } }));
+  return h('div', { class: 'card flat audio' }, h('h4', {}, 'Âm thanh'),
+    h('div', { class: 'row' }, seg, a.voiceFile ? h('button', { type: 'button', class: 'ghost small', onclick: () => file.click() }, 'Đổi tệp giọng') : null), file, note,
+    h('div', { class: 'grid wide-2' },
+      h('label', {}, 'Nhạc nền', h('select', { onchange: (e) => { a.mood = e.target.value || undefined; save(); } }, options(MOODS, a.mood || ''))),
+      level('musicVolume', 'Âm lượng nhạc', 0.2), level('sfxVolume', 'Hiệu ứng (tiếng bút, bước chân…)', 1)));
+}
 const ratioOptions = (long) => [['9:16', long ? 'Dọc 9:16 (TikTok, Shorts, Reels)' : 'Dọc 9:16', 'ratio:9:16'], ['16:9', long ? 'Ngang 16:9 (YouTube)' : 'Ngang 16:9', 'ratio:16:9']];
 
 // ---------- visitor id + activity tracking (what was clicked, viewed, broke)
@@ -248,7 +283,7 @@ function resume(after) {
 const footer = () => h('footer', { class: 'site' },
   h('div', { class: 'operator' }, h('b', {}, ui.legal?.company || ui.brand.name),
     ui.legal?.address ? h('span', {}, ui.legal.address) : null, ui.legal?.taxId ? h('span', {}, 'Mã số thuế ' + ui.legal.taxId) : null,
-    ui.legal?.email ? h('span', {}, 'Hỗ trợ: ', h('a', { href: 'mailto:' + ui.legal.email }, ui.legal.email)) : null),
+    ui.legal?.email && !/example\.(com|org)$/i.test(ui.legal.email) ? h('span', {}, 'Hỗ trợ: ', h('a', { href: 'mailto:' + ui.legal.email }, ui.legal.email)) : null),
   h('nav', { class: 'policies', 'aria-label': 'Chính sách' }, h('a', { href: '#/dieu-khoan' }, 'Điều khoản sử dụng'), h('a', { href: '#/bao-mat' }, 'Chính sách bảo mật'),
     V('feature:plans') === 'on' ? h('a', { href: '#/hoan-tien' }, 'Hoàn tiền') : null),
   h('small', { class: 'muted' }, '© ' + new Date().getFullYear() + ' ' + (ui.legal?.company || ui.brand.name)));
@@ -295,30 +330,30 @@ async function showLanding() {
   const site = ui.site || {}, beta = ui.beta, free = ui.free || {}, selling = V('feature:plans') === 'on' && ui.plans?.length;
   // hero media: the admin's own video (with sound) or the real engine drawing in a phone
   const heroCanvas = h('canvas', { 'aria-label': 'Video mẫu' });
-  const heroDemo = demos.find((d) => d.look === (ui.defaults?.look || 'kinetic')) || demos[0];
+  const heroDemo = demos.find((d) => d.look === 'act') || demos.find((d) => d.look === (ui.defaults?.look || 'kinetic')) || demos[0];
   let heroRun = null;
   const isVideo = /\.(mp4|webm)$/i.test(site.heroMedia || '');
   const heroMedia = site.heroMedia
     ? (isVideo ? siteVideo(site.heroMedia, site.heroPoster, 'Video mẫu có tiếng', true) : h('img', { src: siteUrl(site.heroMedia), alt: site.heroTitle || '', loading: 'eager' }))
     : heroCanvas;
   const pause = h('button', { type: 'button', class: 'demo-toggle', 'aria-label': 'Tạm dừng video mẫu', onclick: () => { if (!heroRun) return; heroRun.visible = !heroRun.visible; if (heroRun.visible) { heroRun.last = 0; heroRun.raf = requestAnimationFrame(heroRun.loop); } pause.textContent = heroRun.visible ? '❚❚' : '▶'; pause.setAttribute('aria-label', heroRun.visible ? 'Tạm dừng video mẫu' : 'Phát video mẫu'); } }, '❚❚');
-  const limitText = beta
-    ? `Bản ${beta.label || 'Beta'}: miễn phí ${free.render || 0} video mỗi ngày, mỗi video tối đa ${Math.round((free.maxSeconds || 90) / 60 * 10) / 10} phút.`
+  const perDay = `Miễn phí ${free.render || 0} video mỗi ngày, mỗi video tối đa ${String(Math.round((free.maxSeconds || 90) / 60 * 10) / 10).replace('.', ',')} phút.`;
+  const limitText = beta ? perDay
     : selling ? `Miễn phí ${free.render || 0} video mỗi ngày. Gói trả phí từ ${money(Math.min(...ui.plans.filter((p) => p.price > 0).map((p) => p.price)))}.` : `Miễn phí ${free.render || 0} video mỗi ngày.`;
   const check = (t) => h('li', {}, h('span', { class: 'tick', 'aria-hidden': 'true' }, '✓'), t);
   const samples = site.showcase?.length
     ? site.showcase.map((m, i) => h('figure', { class: 'sample', 'data-ev': 'sample-' + i },
       m.video ? siteVideo(m.video, m.poster, m.title || 'Video mẫu') : h('img', { src: siteUrl(m.poster), alt: m.title || '', loading: 'lazy' }),
       h('figcaption', { class: 'cap' }, h('b', {}, m.title), m.caption ? h('span', {}, m.caption) : null)))
-    : [...looksOn(), 'classic'].map((k) => demos.find((x) => x.look === k)).filter(Boolean).map((d) => {
-      const c = h('canvas', { 'aria-label': d.look === 'classic' ? 'Bàn tay vẽ' : L('looks', d.look) });
+    : LOOK_GROUPS.flatMap(([, keys]) => keys).filter((k) => k === 'classic' || looksOn().includes(k)).map((k) => demos.find((x) => x.look === k)).filter(Boolean).map((d) => {
+      const c = h('canvas', { 'aria-label': lookName(d.look) });
       setTimeout(() => playDemo(c, d.spec, { dpr: 0.45 }), 0);
       return h('a', { class: 'sample', href: '#/tao', 'data-ev': 'sample-' + d.look, onclick: () => sessionStorage.setItem('nv_look', d.look) }, c,
-        h('span', { class: 'cap' }, h('b', {}, d.look === 'classic' ? 'Bàn tay vẽ' : L('looks', d.look)), h('span', {}, d.look === 'classic' ? 'Bàn tay vẽ tranh line-art từng nét, phụ đề viết tay.' : L('lookNotes', d.look))));
+        h('span', { class: 'cap' }, h('b', {}, lookName(d.look)), h('span', {}, lookNote(d.look))));
     });
   const steps = [
     ['Nhập nội dung', 'Dán kịch bản của bạn, chọn kịch bản mẫu, hoặc gõ một chủ đề để AI viết.'],
-    ['Chọn cách kể', 'Chữ bùng nổ, hai bên đối lập, tin nhắn, bàn tay vẽ… Xem trước ngay, sửa từng cảnh.'],
+    ['Chọn cách kể', 'Hoạt hình vẽ tay có nhân vật, chữ bùng nổ, tin nhắn, đố vui… Xem trước ngay, sửa từng cảnh.'],
     ['Nhận video', 'MP4 có giọng đọc và phụ đề, khung dọc hoặc ngang. Tải về hoặc nhận qua Zalo.'],
   ];
   const faq = [
@@ -326,7 +361,6 @@ async function showLanding() {
     ['Video có dùng cho kênh của tôi được không?', 'Được. Tranh vẽ, biểu tượng và phông chữ trong video đều có giấy phép dùng thương mại.'],
     ['Miễn phí gồm những gì?', `${free.render || 0} video mỗi ngày với giọng đọc cơ bản và mọi định dạng trừ Phim tài liệu AI (dùng ảnh AI nên tính credit riêng).`],
     ['Dữ liệu của tôi được xử lý thế nào?', 'Chỉ nhận tên, email và ảnh đại diện từ Google khi bạn đăng nhập; không đăng bài thay bạn. Bạn tải hoặc xoá toàn bộ dữ liệu trong trang Tài khoản.'],
-    beta ? ['Bản Beta nghĩa là gì?', beta.note || 'Tính năng và giao diện có thể thay đổi trong thời gian thử nghiệm.'] : null,
   ].filter(Boolean);
   const cta = me ? [h('a', { class: 'btn big', href: '#/tao', 'data-ev': 'hero-create' }, 'Tạo video'), h('a', { class: 'btn ghost big', href: '#/video', 'data-ev': 'hero-videos' }, 'Video của tôi')]
     : [h('a', { class: 'btn big', href: '#/tao', 'data-ev': 'hero-create' }, 'Tạo video thử'), selling ? h('a', { class: 'btn ghost big', href: '#/goi', 'data-ev': 'hero-plans' }, 'Xem bảng giá') : h('a', { class: 'btn ghost big', href: '#mau-video', 'data-ev': 'hero-samples', onclick: (e) => { e.preventDefault(); document.getElementById('mau-video')?.scrollIntoView({ behavior: 'smooth' }); } }, 'Xem video mẫu')];
@@ -334,7 +368,6 @@ async function showLanding() {
     ui.notice ? h('div', { class: 'notice' }, ui.notice) : null,
     h('section', { class: 'hero' },
       h('div', { class: 'hero-copy' },
-        beta ? h('span', { class: 'eyebrow' }, h('i', { class: 'dot' }), `Bản ${beta.label || 'Beta'}`) : null,
         h('h1', {}, site.heroTitle || 'Tạo video giải thích có giọng đọc tiếng Việt'),
         h('p', { class: 'lead' }, site.heroText || ui.brand.tagline),
         h('ul', { class: 'benefits' }, check('MP4 1080p có giọng đọc tiếng Việt'), check('Phụ đề trên hình và tệp SRT'), check('Khung dọc 9:16 và ngang 16:9')),
@@ -350,12 +383,12 @@ async function showLanding() {
       h('header', { class: 'head' }, h('span', { class: 'kicker' }, 'Video mẫu'), h('h2', {}, 'Chọn cách kể cho nội dung của bạn'), h('p', {}, 'Mỗi cách kể có nhịp, bố cục và âm thanh riêng. Bấm một mẫu để bắt đầu với cách kể đó.')),
       h('div', { class: 'samples' }, samples)),
     h('section', { class: 'section offer' },
-      h('div', {}, h('span', { class: 'kicker' }, beta ? 'Bản thử nghiệm' : 'Chi phí'), h('h2', {}, beta ? 'Dùng miễn phí trong thời gian thử nghiệm' : 'Biết trước chi phí cho mỗi video'),
-        h('p', { class: 'muted' }, beta ? 'Mọi tính năng đều mở để bạn thử. Giới hạn mỗi ngày giúp chúng tôi giữ máy dựng ổn định cho tất cả mọi người.' : 'Giá hiển thị đủ trước khi dựng. Không giới hạn tính năng không có nghĩa là không giới hạn số video: hạn mức từng gói ghi rõ bên dưới.')),
+      h('div', {}, h('span', { class: 'kicker' }, 'Chi phí'), h('h2', {}, beta ? 'Dùng miễn phí mỗi ngày' : 'Biết trước chi phí cho mỗi video'),
+        h('p', { class: 'muted' }, beta ? 'Mọi định dạng đều mở. Hạn mức mỗi ngày giữ máy dựng nhanh cho tất cả mọi người.' : 'Giá hiển thị đủ trước khi dựng; hạn mức từng gói ghi rõ bên dưới.')),
       h('dl', { class: 'offer-list' },
         h('dt', {}, 'Video mỗi ngày'), h('dd', {}, `${free.render || 0} video, mỗi video tối đa ${Math.round((free.maxSeconds || 90) / 60 * 10) / 10} phút`),
         h('dt', {}, 'Giọng đọc'), h('dd', {}, 'Giọng cơ bản miễn phí; giọng tự nhiên theo gói'),
-        h('dt', {}, 'Định dạng'), h('dd', {}, '7 cách kể và bàn tay vẽ'),
+        h('dt', {}, 'Định dạng'), h('dd', {}, `${looksOn().filter((k) => k !== 'doc').length + 1} cách kể, gồm hoạt hình vẽ tay`),
         h('dt', {}, 'Phim tài liệu AI'), h('dd', {}, `${ui.doc?.perVideo || 1} credit một video (ảnh AI cho từng cảnh)`)),
       selling ? h('a', { class: 'btn', href: '#/goi' }, 'Xem bảng giá') : null),
     h('section', { class: 'section try' },
@@ -531,7 +564,7 @@ function openLogin(reason, after) {
       h('div', { class: 'side' },
         h('span', { class: 'brand', style: 'color:#fff' }, h('span', { class: 'logo', style: 'background:rgba(255,255,255,.2)' }, '✎'), ui.brand.name + ' ' + (ui.brand.accent || '')),
         h('h2', { style: 'color:#fff' }, reason === 'create' ? 'Còn một bước để nhận video' : 'Chào mừng bạn'),
-        h('ul', {}, h('li', {}, 'Lưu và sửa video bất cứ lúc nào'), h('li', {}, 'Giọng đọc tiếng Việt, khớp nhịp từng câu'), h('li', {}, 'Tải MP4 hoặc nhận qua Zalo'), ui.beta ? h('li', {}, `Bản ${ui.beta.label || 'Beta'}: góp ý của bạn được ghi nhận`) : h('li', {}, 'Miễn phí dùng thử, không cần thẻ')),
+        h('ul', {}, h('li', {}, 'Lưu và sửa video bất cứ lúc nào'), h('li', {}, 'Giọng đọc tiếng Việt, khớp nhịp từng câu'), h('li', {}, 'Tải MP4 hoặc nhận qua Zalo'), h('li', {}, 'Miễn phí mỗi ngày, không cần thẻ')),
         h('p', { class: 'mini' }, 'Kết nối mã hoá HTTPS. Phiên đăng nhập lưu bằng cookie bảo mật, không lưu mật khẩu.')),
       h('div', { class: 'main', style: 'position:relative' },
         h('button', { type: 'button', class: 'ghost small close', 'aria-label': 'Đóng', onclick: close }, '✕'),
@@ -610,25 +643,31 @@ const MODES = [
 ];
 const MODE_STYLE = Object.fromEntries(MODES.map(([k, , , st]) => [k, st]));
 // ---------- video formats (looks)
-const LOOK_KEYS = ['kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'];
+const LOOK_KEYS = ['act', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'];
 const SKIN_NAMES = { dem: 'Đêm', sang: 'Sáng', tim: 'Tím', 'do-xanh': 'Đỏ – xanh', 'tim-vang': 'Tím – vàng', toi: 'Tối', hong: 'Hồng', giay: 'Giấy', 'bang-den': 'Bảng đen', xanh: 'Xanh', 'xanh-la': 'Xanh lá', cam: 'Cam', 'dien-anh': 'Điện ảnh', 'trang-den': 'Trắng đen', lanh: 'Lạnh' };
 const looksOn = () => LOOK_KEYS.filter((k) => V('look:' + k) !== 'hidden');
 /** Cards with a live preview of each format; `classic` = the old hand-drawn board. */
+const LOOK_GROUPS = [['Vẽ tay', ['act', 'classic']], ['Đồ hoạ chuyển động', ['kinetic', 'split', 'chat', 'data', 'quiz', 'story']], ['Điện ảnh', ['doc']]];
+const customOf = (k) => (String(k).startsWith('f:') ? (ui.formats || []).find((f) => f.id === k) : null);
+const lookName = (k) => (k === 'classic' ? 'Tranh vẽ tay' : customOf(k)?.name || L('looks', k));
+const lookNote = (k) => (k === 'classic' ? 'Bàn tay vẽ tranh line-art từng nét theo lời đọc, phụ đề viết tay.' : customOf(k) ? customOf(k).note || L('lookNotes', customOf(k).base) : L('lookNotes', k));
 function lookPicker(current, onPick, demos) {
-  const box = h('div', { class: 'looks', role: 'radiogroup', 'aria-label': 'Định dạng video' });
+  const box = h('div', { class: 'lookgroups', role: 'radiogroup', 'aria-label': 'Định dạng video' });
   const mark = (cur) => box.querySelectorAll('.look').forEach((b) => { b.classList.toggle('on', b.dataset.k === cur); b.setAttribute('aria-checked', String(b.dataset.k === cur)); });
-  const paint = (cur) => {
-    box.replaceChildren(...[...looksOn(), 'classic'].map((k) => {
-      const dev = k !== 'classic' && V('look:' + k) === 'dev', d = demos.find((x) => x.look === k), c = h('canvas', { 'aria-hidden': 'true' });
+  const on = new Set([...looksOn(), 'classic', ...(ui.formats || []).map((f) => f.id)]);
+  const groups = (ui.formats || []).length ? [LOOK_GROUPS[0], ['Định dạng riêng', ui.formats.map((f) => f.id)], ...LOOK_GROUPS.slice(1)] : LOOK_GROUPS;
+  box.replaceChildren(...groups.map(([title, keys]) => {
+    const list = keys.filter((k) => on.has(k));
+    if (!list.length) return null;
+    return h('section', { class: 'lookgroup' }, h('h3', {}, title), h('div', { class: 'looks' }, list.map((k) => {
+      const dev = k !== 'classic' && !customOf(k) && V('look:' + k) === 'dev', d = demos.find((x) => x.look === (customOf(k)?.base || k)), c = h('canvas', { 'aria-hidden': 'true' });
       if (d) setTimeout(() => playDemo(c, d.spec, { dpr: 0.32 }), 0);
-      const name = k === 'classic' ? 'Bàn tay vẽ' : L('looks', k), note = k === 'classic' ? 'Bàn tay vẽ tranh line-art từng nét theo lời đọc, phụ đề viết tay. Hợp kể chuyện, bài giảng, review sách.' : L('lookNotes', k);
-      return h('button', { type: 'button', class: 'look' + (k === cur ? ' on' : ''), role: 'radio', 'aria-checked': String(k === cur), disabled: dev, 'data-ev': 'look-' + k, 'data-k': k,
+      return h('button', { type: 'button', class: 'look' + (k === current ? ' on' : ''), role: 'radio', 'aria-checked': String(k === current), disabled: dev, 'data-ev': 'look-' + k, 'data-k': k,
         onclick: () => { onPick(k); mark(k); } },
         d ? c : h('div', { class: 'look-thumb classic' }, '✍️'),
-        h('b', {}, name + (dev ? DEV : '')), k === 'doc' ? h('span', { class: 'credit-tag' }, 'Tính credit') : null, h('small', {}, note));
-    }));
-  };
-  paint(current);
+        h('b', {}, lookName(k)), k === 'doc' ? h('span', { class: 'credit-tag' }, 'Tính credit') : null, h('small', {}, lookNote(k)));
+    })));
+  }).filter(Boolean));
   return box;
 }
 function skinChips(look, current, onPick) {
@@ -849,7 +888,7 @@ async function showCreate() {
       const c = await api('/api/credits');
       creditNote.replaceChildren(`Phim tài liệu AI: ${c.perVideo} credit mỗi video, kèm ${c.images} lượt vẽ ảnh. `,
         h('b', {}, c.monthlyLeft ? `Gói của bạn còn ${c.monthlyLeft} video tháng này.` : `Bạn còn ${c.balance} credit.`),
-        !c.monthlyLeft && c.balance < c.perVideo ? (c.packs.length ? h('a', { href: '#/goi' }, ' Mua credit') : ' Bản Beta: liên hệ quản trị để được cấp credit.') : '');
+        !c.monthlyLeft && c.balance < c.perVideo ? (c.packs.length ? h('a', { href: '#/goi' }, ' Mua credit') : ' Liên hệ quản trị để được cấp credit.') : '');
     } catch (e) { creditNote.textContent = e.message; }
   };
   const character = photoField('Ảnh nhân vật', 'Ảnh chân dung hoặc linh vật của kênh: thay cho người que trong mọi cảnh.');
@@ -878,7 +917,7 @@ async function showCreate() {
     for (const el of [only.mode, only.style, only.visual2, only.transition]) if (el) el.hidden = !classic;
     if (only.visual) only.visual.hidden = only.visual.hidden || !classic;
     only.looked.hidden = classic;
-    if (!classic) skinBox.replaceChildren(h('span', { class: 'plabel' }, 'Bộ màu'), skinChips(look, skin, (n) => { skin = n; }));
+    if (!classic && (NV.SKINS?.[look] || []).length > 1) skinBox.replaceChildren(h('span', { class: 'plabel' }, 'Bộ màu'), skinChips(look, skin, (n) => { skin = n; })); else skinBox.replaceChildren();
     showCredits();
   };
   const guess = debounce(async () => {
@@ -928,7 +967,7 @@ async function showCreate() {
       creditNote,
       only.looked = h('div', { class: 'grid wide-2' }, skinBox, h('label', {}, 'Nhạc nền', f.music))),
     step(3, 'Xuất video', 'Kiểm tra thông số và chi phí trước khi dựng.',
-      h('div', { class: 'grid wide-2' }, h('label', {}, T('ratio'), f.ratio), h('label', {}, T('voice'), f.voice), only.seconds = h('label', {}, T('duration'), f.seconds)),
+      h('div', { class: 'grid wide-2' }, h('label', {}, T('ratio'), f.ratio), h('label', {}, T('voice'), voiceField(f.voice)), only.seconds = h('label', {}, T('duration'), f.seconds)),
       summary,
       h('details', { class: 'advanced' }, h('summary', {}, 'Nâng cao'),
         h('div', { class: 'grid wide-2' }, h('label', {}, T('channel'), f.channel), h('label', {}, T('episode'), f.episode), only.tone = h('label', {}, T('tone'), f.tone),
@@ -990,7 +1029,7 @@ async function showAccount() {
 /** Pricing like a checkout: choose on the left, the order on the right updates at once (what you get, until when, total). */
 async function showPlans() {
   viewed('plans');
-  if (V('feature:plans') !== 'on') { show(h('header', { class: 'pagehead' }, h('h1', {}, 'Bảng giá')), h('p', { class: 'muted' }, ui.beta ? `Bản ${ui.beta.label || 'Beta'}: chưa bán gói, mọi người dùng miễn phí trong giới hạn mỗi ngày.` : 'Gói cước chưa mở.')); return; }
+  if (V('feature:plans') !== 'on') { show(h('header', { class: 'pagehead' }, h('h1', {}, 'Bảng giá')), h('p', { class: 'muted' }, 'Hiện mọi người dùng miễn phí trong hạn mức mỗi ngày.')); return; }
   const r = me ? await api('/api/plans') : { current: { id: 'free' }, orders: [], payment: null };
   const paid = ui.plans.filter((p) => p.price > 0), packs = ui.doc?.packs || [];
   const items = [...paid.map((p) => ({ kind: 'plan', id: p.id, name: p.name, price: p.price, p })), ...packs.map((k) => ({ kind: 'pack', id: 'credit:' + k.id, name: k.name, price: k.price, k }))];
@@ -1272,7 +1311,7 @@ async function showEditor(id) {
   const lookBox = !spec.look ? null : h('div', { class: 'grid wide-2' },
     spec.look === 'doc' ? h('p', { class: 'muted' }, h('b', {}, L('looks', 'doc')), ' (đã trả credit). Muốn định dạng khác, hãy tạo video mới.')
       : h('label', {}, 'Định dạng video', h('select', { onchange: (e) => switchLook(e.target.value) }, options(looksOn().filter((k) => k !== 'doc').map((k) => [k, L('looks', k), 'look:' + k]), spec.look))),
-    h('div', {}, h('span', { class: 'plabel' }, 'Bộ màu'), skinChips(spec.look, spec.skin, (n) => { spec.skin = n; changed(); })),
+    (NV.SKINS?.[spec.look] || []).length > 1 ? h('div', {}, h('span', { class: 'plabel' }, 'Bộ màu'), skinChips(spec.look, spec.skin, (n) => { spec.skin = n; changed(); })) : null,
     spec.look === 'split' ? field('Tên bên A (sai / nghèo / trước)', spec.sides?.a, (v) => { (spec.sides ||= { a: '', b: '' }).a = v; changed(); }, { max: 24 }) : null,
     spec.look === 'split' ? field('Tên bên B (đúng / giàu / sau)', spec.sides?.b, (v) => { (spec.sides ||= { a: '', b: '' }).b = v; changed(); }, { max: 24 }) : null,
     spec.look === 'chat' ? field('Tên người nhắn tin', spec.chatName, (v) => { spec.chatName = v; changed(); }, { max: 30 }) : null,
@@ -1286,11 +1325,11 @@ async function showEditor(id) {
       if (MODE_STYLE[k] && k !== 'hand' && ui.enabledStyles.includes(MODE_STYLE[k]) && ['sunset', 'cosmos', 'manim', 'bold'].includes(spec.style)) spec.style = MODE_STYLE[k];
       changed();
     })),
-    V('feature:intro') === 'hidden' ? null : h('label', { class: 'check' }, h('input', { type: 'checkbox', disabled: V('feature:intro') === 'dev', checked: !!spec.intro, onchange: (e) => {
+    V('feature:intro') === 'hidden' || spec.look === 'act' ? null : h('label', { class: 'check' }, h('input', { type: 'checkbox', disabled: V('feature:intro') === 'dev', checked: !!spec.intro, onchange: (e) => {
       spec.intro = e.target.checked ? { title: spec.title, badge: BADGES[spec.format] || 'MỚI', icon: spec.scenes.flatMap((sc) => sc.diagram?.items || []).find((it) => it.t === 'icon')?.name } : null;
       paintIntro(); changed();
     } }), h('span', {}, h('b', {}, 'Mở đầu là ảnh bìa thu hút'), h('small', { class: 'muted' }, ' (cũng là ảnh thumbnail)'))),
-    introBox, charField,
+    spec.look === 'act' ? null : introBox, spec.look === 'act' ? null : charField,
     spec.format ? h('p', { class: 'muted' }, 'Dạng video: ', h('b', {}, FORMAT_LABELS[spec.format] || spec.format)) : null,
     h('div', { class: 'grid' },
       spec.look ? null : h('label', {}, 'Phong cách', h('select', { onchange: (e) => { spec.style = e.target.value; delete spec.tool; changed(); } }, options(styleOptions().concat(styleOptions().some(([k]) => k === spec.style) ? [] : [[spec.style, L('styles', spec.style)]]), spec.style))),
@@ -1298,7 +1337,8 @@ async function showEditor(id) {
         options([['', 'Theo phong cách'], ...Object.entries(ui.labels.tools).map(([k, v]) => [k, v, 'tool:' + k])], spec.tool || ''))),
       h('label', {}, 'Khung hình', h('select', { onchange: (e) => { spec.ratio = e.target.value; changed(); } }, options(ratioOptions(false), spec.ratio))),
       spec.look ? null : h('label', {}, 'Chuyển cảnh', h('select', { onchange: (e) => { spec.transition = e.target.value; changed(); } }, options([['auto', 'Tự động, đa dạng'], ['fade', 'Mờ dần'], ['slide', 'Trượt ngang'], ['wipe', 'Bàn tay xoá bảng'], ['zoom', 'Phóng to']], spec.transition || 'auto'))),
-      h('label', {}, T('voice'), h('select', { onchange: (e) => { spec.voice.voiceId = e.target.value; save(); } }, options(voiceOptions(), spec.voice?.voiceId || ui.defaults.voice))),
+      h('label', {}, T('voice'), voiceField(h('select', { onchange: (e) => { spec.voice.voiceId = e.target.value; save(); } }, options(voiceOptions(), spec.voice?.voiceId || ui.defaults.voice)))),
+      audioBox(spec, save),
       V('feature:speed') === 'hidden' ? null : h('label', {}, 'Tốc độ đọc', h('select', { disabled: V('feature:speed') === 'dev', onchange: (e) => { spec.voice.speed = Number(e.target.value); save(); } },
         options([['0.9', 'Chậm'], ['1', 'Vừa'], ['1.1', 'Hơi nhanh'], ['1.2', 'Nhanh']], String(spec.voice?.speed ?? 1)))),
       h('label', {}, 'Tên kênh', h('input', { value: spec.channel || '', maxlength: 40, oninput: (e) => { spec.channel = e.target.value; changed(); } })),
@@ -1581,7 +1621,7 @@ async function previewModel(spec, dpr) {
     document.fonts.load('29px Pangolin').catch(() => {}), loadSans(),
   ]);
   const media = Object.fromEntries(entries.map(([k], i) => [k, pics[i]]).filter(([, v]) => v));
-  const timeline = NV.buildTimeline(spec.scenes, spec.scenes.map((s) => NV.estimateVoice(s.lines)), { intro: !!spec.intro?.title });
+  const timeline = NV.buildTimeline(spec.scenes, spec.scenes.map((s) => NV.estimateVoice(s.lines)), { intro: !!spec.intro?.title && spec.look !== 'act' });
   const env = { createCanvas: (w, hgt) => { const c = document.createElement('canvas'); c.width = w; c.height = hgt; return c; } };
   return NV.prepare({ env, project: spec, timeline, images, hand, dpr, icons, media });
 }

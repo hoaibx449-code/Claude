@@ -1,15 +1,16 @@
 // Full render pipeline shared by the CLI and the queue runner:
 // images -> narration -> timeline -> frames (Skia) -> FFmpeg (H.264 + AAC) + SRT.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas';
 import { buildTimeline } from '../engine/timeline.ts';
-import { logicalSize, prepare, renderFrame, SANS } from '../engine/render.ts';
+import { cuesOf, logicalSize, prepare, renderFrame, SANS } from '../engine/render.ts';
 import type { HandMeta, ProjectSpec, Timeline } from '../engine/types.ts';
-import { pickTTS, withFallback } from './tts.ts';
+import { audioDuration, fitVoice, mockTTS, pickTTS, withFallback, type VoiceResult } from './tts.ts';
+import { moodOf, writeMusic, type Mood } from './music.ts';
 import { cachedImage, pickImages } from './images.ts';
 import { writeSfxTrack } from './sfx.ts';
 import { existsSync } from 'node:fs';
@@ -76,17 +77,31 @@ export async function renderProject(o: RenderOptions) {
     }
     const images = await Promise.all(imagePaths.map((r) => Promise.all(r.map((p) => loadImage(p)))));
 
-    // 2. voice
+    // 2. voice: generated (TTS), the user's own recording, or none (layout only)
+    const mode = project.audio?.voice || 'tts';
     const name = o.tts ?? project.voice?.provider;
-    // a paid voice that fails (no key, quota, outage) is replaced by the free voice instead of failing the video
-    const tts = name && name !== 'mock' && name !== 'free' ? withFallback(await pickTTS(name, project.voice).catch(() => pickTTS('free', project.voice)), project.voice?.voiceId) : await pickTTS(name, project.voice);
-    const voice = [];
-    for (let i = 0; i < project.scenes.length; i++) {
-      await o.onStage?.('voice', `Chuẩn bị lời đọc: cảnh ${i + 1}/${project.scenes.length}`);
-      o.signal?.throwIfAborted();
-      voice.push(await tts.synth(project.scenes[i].lines, join(work, `scene${i}`)));
+    let tts = { name: 'none' } as { name: string };
+    let voice: VoiceResult[] = [];
+    let continuous = false;
+    if (mode === 'upload' && project.audio?.voiceFile && existsSync(resolve(projDir, project.audio.voiceFile))) {
+      await o.onStage?.('voice', 'Khớp lời đọc tải lên với các cảnh');
+      voice = splitUploaded(project, resolve(projDir, project.audio.voiceFile));
+      continuous = true; tts = { name: 'upload' };
+    } else if (mode === 'none') {
+      for (let i = 0; i < project.scenes.length; i++) voice.push(await mockTTS.synth(project.scenes[i].lines, join(work, `scene${i}`)));
+      tts = { name: 'none' };
+    } else {
+      // a paid voice that fails (no key, quota, outage) is replaced by the free voice instead of failing the video
+      const engine = name && name !== 'mock' && name !== 'free' ? withFallback(await pickTTS(name, project.voice).catch(() => pickTTS('free', project.voice)), project.voice?.voiceId) : await pickTTS(name, project.voice);
+      for (let i = 0; i < project.scenes.length; i++) {
+        await o.onStage?.('voice', `Chuẩn bị lời đọc: cảnh ${i + 1}/${project.scenes.length}`);
+        o.signal?.throwIfAborted();
+        voice.push(await engine.synth(project.scenes[i].lines, join(work, `scene${i}`)));
+      }
+      tts = engine;
     }
-    const timeline = buildTimeline(project.scenes, voice, { intro: !!project.intro?.title });
+    // story animation opens on an action, not a title card
+    const timeline = buildTimeline(project.scenes, voice, { intro: !!project.intro?.title && project.look !== 'act', continuous });
 
     // 3. hand
     const handDir = resolve(project.hand ? resolve(projDir, project.hand) : join(ROOT, 'assets/hands/default'));
@@ -106,28 +121,56 @@ export async function renderProject(o: RenderOptions) {
     const model = prepare({ env, project, timeline, images, hand, dpr, icons, media });
     const canvas = createCanvas(PW, PH), ctx = canvas.getContext('2d');
 
-    const audioArgs: string[] = [], delays: string[] = [];
-    voice.forEach((v, i) => {
-      audioArgs.push('-i', v.file);
-      const ms = Math.round((timeline.scenes[i].start + 0.3) * 1000);
-      delays.push(`[${i + 1}:a]aresample=44100,adelay=${ms}:all=1[a${i}]`);
-    });
-    // format videos: sound effects on their cues, and music that ducks under the voice
-    let next = voice.length + 1;
-    const sfxFile = join(work, 'sfx.wav');
-    const sfx = model.look && project.sfx !== false && writeSfxTrack(model.look.cues, timeline.duration, sfxFile) ? next++ : 0;
-    if (sfx) audioArgs.push('-i', sfxFile);
-    const musicFile = project.music ? resolve(projDir, project.music) : '';
-    const music = musicFile && existsSync(musicFile) ? next++ : 0;
-    if (music) audioArgs.push('-stream_loop', '-1', '-i', musicFile);
-    let mix = `${delays.join(';')};${voice.map((_, i) => `[a${i}]`).join('')}amix=inputs=${voice.length}:normalize=0[vo]`;
-    const layers = ['[vo]'];
-    if (music) {
-      mix += `;[vo]asplit=2[vo1][vo2];[${music}:a]aresample=44100,aformat=channel_layouts=stereo,volume=0.2[mu];[mu][vo2]sidechaincompress=threshold=0.02:ratio=10:attack=15:release=400[mud]`;
-      layers[0] = '[vo1]'; layers.push('[mud]');
+    // sound layers stay separate (voice, music, effects), each with its own level, and are also
+    // written as stems next to the video so they can be replaced or remixed later
+    const lv = { voice: project.audio?.voiceVolume ?? 1, music: project.audio?.musicVolume ?? 0.2, sfx: project.audio?.sfxVolume ?? 1 };
+    const audioArgs: string[] = [];
+    let next = 1;
+    let mix = '';
+    const layers: string[] = [];
+    const hasVoice = tts.name !== 'none' && voice.length > 0;
+    if (hasVoice) {
+      if (continuous) {
+        audioArgs.push('-i', voice[0].file);
+        const ms = Math.round((timeline.scenes[0].start + 0.3) * 1000);
+        mix += `[${next}:a]aresample=44100,adelay=${ms}:all=1,volume=${lv.voice}[vo]`; next++;
+      } else {
+        const delays: string[] = [];
+        voice.forEach((v, i) => {
+          audioArgs.push('-i', v.file);
+          const ms = Math.round((timeline.scenes[i].start + 0.3) * 1000);
+          delays.push(`[${next + i}:a]aresample=44100,adelay=${ms}:all=1[a${i}]`);
+        });
+        next += voice.length;
+        mix += `${delays.join(';')};${voice.map((_, i) => `[a${i}]`).join('')}amix=inputs=${voice.length}:normalize=0,volume=${lv.voice}[vo]`;
+      }
+      layers.push('[vo]');
     }
-    if (sfx) { mix += `;[${sfx}:a]aresample=44100[fx]`; layers.push('[fx]'); }
-    mix += layers.length > 1 ? `;${layers.join('')}amix=inputs=${layers.length}:normalize=0:duration=longest,alimiter=limit=0.95[aout]` : `;[vo]anull[aout]`;
+    // effects on their cues
+    const sfxFile = join(work, 'sfx.wav');
+    const cues = cuesOf(model);
+    const sfx = cues.length && project.sfx !== false && lv.sfx > 0 && writeSfxTrack(cues, timeline.duration, sfxFile, lv.sfx) ? next++ : 0;
+    if (sfx) audioArgs.push('-i', sfxFile);
+    // music: the chosen track, else (story animation) a piece written for the mood of the script
+    let musicFile = project.music ? resolve(projDir, project.music) : '';
+    const mood = project.audio?.mood;
+    if ((!musicFile || !existsSync(musicFile)) && mood !== 'none' && (mood || project.look === 'act')) {
+      musicFile = join(work, 'music.wav');
+      writeMusic((mood as Mood) || moodOf(project.scenes.map((s) => s.lines.join(' ')).join(' ')), timeline.duration, musicFile);
+    }
+    const music = musicFile && existsSync(musicFile) && lv.music > 0 ? next++ : 0;
+    if (music) audioArgs.push('-stream_loop', '-1', '-i', musicFile);
+    if (music) {
+      if (hasVoice) {
+        mix += `;[vo]asplit=2[vo1][vo2];[${music}:a]aresample=44100,aformat=channel_layouts=stereo,volume=${lv.music}[mu];[mu][vo2]sidechaincompress=threshold=0.02:ratio=10:attack=15:release=400[mud]`;
+        layers[0] = '[vo1]';
+      } else mix += `${mix ? ';' : ''}[${music}:a]aresample=44100,aformat=channel_layouts=stereo,volume=${lv.music}[mud]`;
+      layers.push('[mud]');
+    }
+    if (sfx) { mix += `${mix ? ';' : ''}[${sfx}:a]aresample=44100[fx]`; layers.push('[fx]'); }
+    if (!layers.length) { mix = `anullsrc=r=44100:cl=stereo[aout]`; }
+    else mix += layers.length > 1 ? `;${layers.join('')}amix=inputs=${layers.length}:normalize=0:duration=longest,alimiter=limit=0.95[aout]` : `;${layers[0]}anull[aout]`;
+    const stems = { sfx: sfx ? sfxFile : '', music: music ? musicFile : '', voice: hasVoice ? (continuous ? voice[0].file : '') : '' };
     const ff = spawn('ffmpeg', [
       '-v', 'error', '-y',
       '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${PW}x${PH}`, '-r', String(fps), '-i', 'pipe:0',
@@ -161,7 +204,32 @@ export async function renderProject(o: RenderOptions) {
       ff.stdin.destroy(); ff.kill(); await done.catch(() => {}); throw error;
     }
     writeFileSync(out.replace(/\.mp4$/i, '.srt'), toSrt(project, timeline));
+    writeStems(out, stems, timeline.duration);
     return { out, srt: out.replace(/\.mp4$/i, '.srt'), duration: timeline.duration, frames, width: PW, height: PH, seconds: (Date.now() - t0) / 1000, voice: tts.name };
   } finally { rmSync(work, { recursive: true, force: true }); }
 }
 
+
+/** The user's recording, split across scenes in proportion to their text (one continuous file). */
+export function splitUploaded(project: ProjectSpec, file: string): VoiceResult[] {
+  const D = audioDuration(file), all = project.scenes.flatMap((s) => s.lines);
+  const spans = fitVoice(all, D);
+  const out: VoiceResult[] = [];
+  let k = 0;
+  project.scenes.forEach((sc, i) => {
+    const first = spans[k].start, mine = spans.slice(k, k + sc.lines.length);
+    k += sc.lines.length;
+    const end = i === project.scenes.length - 1 ? D : spans[k].start;
+    out.push({ file, lines: mine.map((s) => ({ start: s.start - first, end: s.end - first })), duration: end - first });
+  });
+  return out;
+}
+
+/** Effects and music as separate files next to the video (voice too when it is one file). */
+function writeStems(out: string, stems: { sfx: string; music: string; voice: string }, duration: number) {
+  const base = out.replace(/\.mp4$/i, '');
+  for (const [k, f] of Object.entries(stems)) {
+    if (!f || !existsSync(f)) continue;
+    try { spawnSync('ffmpeg', ['-v', 'error', '-y', '-i', f, '-t', duration.toFixed(2), '-c:a', 'aac', '-b:a', '128k', `${base}.${k}.m4a`]); } catch { /* stems are optional */ }
+  }
+}

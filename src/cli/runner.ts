@@ -75,6 +75,12 @@ async function runJob(job: { id: string; lease: string; spec: ProjectSpec }) {
       try { writeFileSync(file, Buffer.from(await (await call('/api/site/' + spec.music.slice(5))).arrayBuffer())); spec.music = file; }
       catch (e: any) { console.error('Bỏ nhạc nền:', e.message); delete spec.music; }
     } else delete spec.music;
+    // the user's own narration recording
+    if (spec.audio?.voice === 'upload' && spec.audio.voiceFile?.startsWith('r2:')) {
+      const file = join(dir, 'voice.' + spec.audio.voiceFile.split('.').pop());
+      try { writeFileSync(file, Buffer.from(await (await call('/api/runner/asset?key=' + encodeURIComponent(spec.audio.voiceFile.slice(3)))).arrayBuffer())); spec.audio.voiceFile = file; }
+      catch (e: any) { console.error('Không tải được giọng đọc tải lên, dùng giọng máy:', e.message); spec.audio.voice = 'tts'; }
+    }
     let last = 0;
     const r = await renderProject({
       project: spec, projDir: dir, out: join(dir, 'video.mp4'), tts: process.env.RUNNER_TTS || spec.voice?.provider, size: 1080,
@@ -117,7 +123,9 @@ async function loadKeys() {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 for (;;) {
   let job = null;
-  try { job = (await (await post('/api/runner/claim', { runner: hostname() })).json() as any).job; }
+  // tell the site which voice services this machine can use, so it offers only voices that really work
+  const caps = { everai: !!process.env.EVERAI_API_KEY, google: !!process.env.GOOGLE_TTS_API_KEY, eleven: !!process.env.ELEVENLABS_API_KEY };
+  try { job = (await (await post('/api/runner/claim', { runner: hostname(), caps })).json() as any).job; }
   catch (e: any) { console.error(e.message); if (once || drain) { process.exitCode = 1; break; } }
   if (job) { await loadKeys(); if (!(await runJob(job))) process.exitCode = 1; if (once) break; }
   else if (once || drain) break;

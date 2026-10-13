@@ -51,12 +51,17 @@ test('a list item gets its own number, other scenes do not', () => {
 test('settings: visibility, free voices and plans are always well formed', () => {
   const base = defaultConfig(env);
   const c = cleanConfig({ visibility: { 'style:kraft': 'hidden', 'style:oly': 'dev', 'bad key': 'hidden', 'feature:zalo': 'nope' }, voices: [{ provider: 'everai', code: 'vi_x_y', label: 'X' }], plans: [{ id: 'pro', name: 'Pro', price: 100 }] }, base);
-  assert.deepEqual(Object.keys(c.visibility).sort(), ['style:kraft', 'style:oly']);
+  // settings saved before the story animation existed hide the old stick-figure story once
+  assert.deepEqual(Object.keys(c.visibility).sort(), ['look:story', 'style:kraft', 'style:oly']);
+  assert.equal(c.defaults.look, 'act');
+  const again = cleanConfig({ ...c, visibility: { 'style:kraft': 'hidden' }, defaults: { ...c.defaults, look: 'kinetic' } }, base);
+  assert.deepEqual(Object.keys(again.visibility), ['style:kraft'], 'an admin who shows it again keeps it shown');
+  assert.equal(again.defaults.look, 'kinetic');
   assert.ok(!c.enabledStyles.includes('kraft') && !c.enabledStyles.includes('oly'));
   assert.ok(c.voices.some((v) => v.provider === 'free'), 'free voice always available');
   assert.equal(c.plans[0].price, 0, 'a free plan always exists');
   const pub = publicConfig(c) as any;
-  assert.ok(!('costs' in pub) && !('admins' in pub) && !('promptExtra' in pub), 'internal settings stay private');
+  assert.ok(!('costs' in pub) && !('admins' in pub) && !('promptExtra' in pub) && !('briefs' in pub), 'internal settings stay private');
 });
 
 test('logs never keep secrets or images', () => {
@@ -84,4 +89,16 @@ test('a project keeps only its owner\'s pictures, valid QR links and its genre',
   assert.equal(spec.mode, 'motion');
   assert.equal(spec.intro.title, 'Tiêu đề');
   assert.deepEqual(spec.scenes[0].diagram.items.map((i: any) => i.t), ['image', 'qr', 'chart']);
+});
+
+test('custom formats from the training page: cleaned, and only released ones are public', () => {
+  const base = defaultConfig(env);
+  const c = cleanConfig({ rev: 2, briefs: { act: 'Riêng cho act', nope: 'x' }, formats: [
+    { id: 'ke-sach', name: 'Kể sách', base: 'act', brief: 'Kể như review sách', stage: 'live', note: 'Dòng đầu\nchi tiết' },
+    { id: 'thu', name: 'Thử', base: 'doc', stage: 'test' }, { id: 'BAD ID', name: 'x' }, { id: 'y', name: '' },
+  ] }, base);
+  assert.deepEqual(Object.keys(c.briefs), ['act']);
+  assert.deepEqual(c.formats.map((f) => [f.id, f.base, f.stage]), [['ke-sach', 'act', 'live'], ['thu', 'act', 'test']]);
+  const pub = publicConfig(c) as any;
+  assert.deepEqual(pub.formats, [{ id: 'f:ke-sach', name: 'Kể sách', base: 'act', note: 'Dòng đầu' }]);
 });

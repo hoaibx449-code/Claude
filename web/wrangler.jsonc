@@ -14,7 +14,7 @@
   "d1_databases": [
     { "binding": "DB", "database_name": "net-ve-studio", "database_id": "00000000-0000-0000-0000-000000000000" }
   ],
-  "triggers": { "crons": ["*/10 * * * *"] },
+  "triggers": { "crons": ["* * * * *"] },
   "r2_buckets": [
     { "binding": "BUCKET", "bucket_name": "net-ve-studio" }
   ],

@@ -3,6 +3,8 @@ import { consumeNonce, currentUser, endSession, newNonce, startSession, type Use
 import { drawImage, type ImageProvider, type TextProvider, writeScript } from './ai.ts';
 import { startRunner } from './gcp.ts';
 import { cleanSpec, LOOKS, STYLES } from './spec.ts';
+import { LOOK_BRIEF } from './ai.ts';
+import { recordRunnerCaps, recordVoiceFallback, voicePreview, voicesWithStatus, voiceUpload } from './voices.ts';
 import { composeLook, composeScene, splitScript } from './compose.ts';
 import { doodlePanels } from './doodles.ts';
 import { chargeDoc, closeDocProject, creditRoutes, giveBackDocImage, openDocProject, refundDoc, useDocImage } from './credits.ts';
@@ -12,7 +14,7 @@ import { aiCost, clientIp, imageCost, logEvent, routeName, summarize, voiceCost,
 import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, vis } from './settings.ts';
 import { adminRoutes } from './admin.ts';
 import { budgetState, fitVoiceToBudget, requireBudget } from './budget.ts';
-import { checkShare, notifyJob, rememberOrigin, resumeZalo, zaloUser, zaloWebhook } from './zalo.ts';
+import { checkShare, notifyJob, rememberOrigin, resumeZalo, zaloUser, zaloWebhook, pollZalo, receiveMode } from './zalo.ts';
 import { checkAllowed, checkSource, expireOrders, limitsFor, planOf, planRoutes, sepayWebhook } from './plans.ts';
 import { affiliateScene, communityPublic, deleteVideo, introFor, serveObject, shareToCommunity, siteType, storedVideoKey, upload, videoKey } from './media.ts';
 import { body, type Env, HttpError, json, randomId, refundQuota, sha256, timingSafeEqual, today, useQuota } from './util.ts';
@@ -59,7 +61,16 @@ export default {
     return res;
   },
   // Safety net: if videos wait in the queue (e.g. a start request was lost), start the render machine.
-  async scheduled(_e: ScheduledController, env: Env, ctx: ExecutionContext) {
+  async scheduled(e: ScheduledController, env: Env, ctx: ExecutionContext) {
+    const xenvZ = await effectiveEnv(env);
+    // Zalo without a webhook: every minute, ask for new messages (see pollZalo)
+    if (xenvZ.config.zalo.enabled && (xenvZ as any).ZALO_BOT_TOKEN && (await receiveMode(xenvZ)) === 'poll') {
+      const prc: Rc = { userId: null, visitor: null, ip: '', ua: null, channel: 'zalo', quiet: true,
+        log(type, extra = {}) { ctx.waitUntil(logEvent(env, { type, channel: 'zalo', ...extra })); }, wait(p) { ctx.waitUntil(p); } };
+      ctx.waitUntil(pollZalo(xenvZ, prc).catch((err) => console.error('pollZalo', err)));
+    }
+    // the rest runs every 10 minutes
+    if (new Date(e.scheduledTime).getUTCMinutes() % 10 !== 0) return;
     // keep the activity log to the configured number of days
     const { config } = await load(env);
     ctx.waitUntil(env.DB.prepare('DELETE FROM events WHERE ts < ?').bind(Date.now() - config.logDays * 86_400_000).run().then(() => {}, (e) => console.error(e)));
@@ -95,6 +106,8 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
   // home page pictures and sample videos (public, content-addressed so cached for a year)
   const site = path.match(/^\/api\/site\/([a-f0-9]{24})\.(png|jpg|webp|mp4|webm|mp3|m4a)$/);
   if (site && (method === 'GET' || method === 'HEAD')) { rc.quiet = true; return serveObject(env, req, `site/${site[1]}.${site[2]}`, siteType(site[2]), { 'cache-control': 'public, max-age=31536000, immutable' }); }
+  // listen to a voice before choosing it (public; samples are cached)
+  if (path === '/api/voices/preview' && method === 'GET') return voicePreview(req, env, rc);
   const sh = path.match(/^\/api\/share\/([a-f0-9]{24})$/);
   if (sh && method === 'GET') return shareVideo(env, rc, sh[1], url);
 
@@ -119,7 +132,7 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
 
   // ---- sign-in
   if (path === '/api/auth/config' && method === 'GET') {
-    return json({ clientId: env.GOOGLE_CLIENT_ID || null, nonce: env.GOOGLE_CLIENT_ID ? await newNonce(env) : null, dev: devAllowed, ui: publicConfig(env.config), ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY } });
+    return json({ clientId: env.GOOGLE_CLIENT_ID || null, nonce: env.GOOGLE_CLIENT_ID ? await newNonce(env) : null, dev: devAllowed, ui: { ...publicConfig(env.config), voices: (await voicesWithStatus(env)).filter((v) => v.ready) }, ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY } });
   }
   if (path === '/api/auth/google' && method === 'POST') {
     if (!env.GOOGLE_CLIENT_ID) throw new HttpError(503, 'Chủ trang chưa cấu hình đăng nhập Google.');
@@ -244,7 +257,7 @@ async function tryPreview(req: Request, env: XEnv, rc: Rc) {
   const composed = look ? composeLook({ look, scenes: scenes.map((lines) => ({ lines })) }) : null;
   const spec = cleanSpec({ title: scenes[0][0].replace(/[.!?…]+$/, '').slice(0, 70), scenes: composed ? composed.scenes : scenes.map((lines) => ({ lines })), visual: 'sketch', format, niche: it.niche,
     ratio: b.ratio === '16:9' ? '16:9' : '9:16', style: env.config.enabledStyles.includes(style) ? style : env.config.defaults.style, channel: env.config.brand.name,
-    look, skin: b.skin, sides: composed?.sides, chatName: composed?.chatName }, 'guest');
+    look, skin: b.skin, sides: composed?.sides, chatName: composed?.chatName, cast: composed?.cast }, 'guest');
   rc.log('try.preview', { data: { format, niche: it.niche, style: spec.style, scenes: spec.scenes.length, chars: text.length } });
   return json({ spec, formatName: FORMAT_NAMES[format as keyof typeof FORMAT_NAMES], nicheName: NICHE_NAMES[it.niche] });
 }
@@ -319,9 +332,10 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
     const zalo = env.config.zalo.enabled ? await env.DB.prepare('SELECT notify FROM zalo_links WHERE user_id = ?').bind(user.id).first<any>() : null;
     const consent = await env.DB.prepare('SELECT 1 FROM consents WHERE user_id = ? AND version = ?').bind(user.id, env.config.legal.version).first();
     return json({ user, needConsent: !consent, limits: plan.limits, plan: { id: plan.id, name: plan.name, expires, maxSeconds: plan.maxSeconds }, zaloLinked: !!zalo, used: Object.fromEntries(used.results.map((r) => [r.kind, r.n])), ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY },
-      ui: publicConfig(env.config), admin: await isAdmin(env, env.config, user) });
+      ui: { ...publicConfig(env.config), voices: (await voicesWithStatus(env)).filter((v) => v.ready) }, admin: await isAdmin(env, env.config, user) });
   }
 
+  if (path === '/api/voice-upload' && method === 'POST') return voiceUpload(req, env, rc, user);
   if (path === '/api/account/export' && method === 'GET') return exportAccount(env, rc, user);
   if (path === '/api/account/delete' && method === 'POST') {
     if ((await body<any>(req, 200)).confirm !== 'XOA') throw new HttpError(400, 'Gõ XOA để xác nhận.');
@@ -372,7 +386,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       if (input?.look && input.look !== p.spec.look && LOOKS.includes(input.look)) {
         if (vis(env.config, 'look:' + input.look) !== 'on') throw new HttpError(403, 'Định dạng này đang tắt.');
         const c = composeLook({ look: input.look, scenes: (input.scenes || []).map((sc: any) => ({ lines: sc.lines || [] })), sides: undefined, chatName: undefined });
-        input = { ...input, scenes: c.scenes, sides: c.sides, chatName: c.chatName, skin: undefined };
+        input = { ...input, scenes: c.scenes, sides: c.sides, chatName: c.chatName, cast: c.cast, skin: undefined };
       }
       const spec = cleanSpec(input, user.id);
       await saveSpec(env, user, id, spec);
@@ -405,7 +419,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       if (!sc) throw new HttpError(400, 'Không tìm thấy cảnh.');
       if (p.spec.look) {
         // format videos: rebuild this scene's format data from its words
-        const c = composeLook({ look: p.spec.look, scenes: p.spec.scenes.map((x: any, k: number) => (k === si ? { lines: x.lines, panels: x.panels } : x)), sides: p.spec.sides, chatName: p.spec.chatName });
+        const c = composeLook({ look: p.spec.look, scenes: p.spec.scenes.map((x: any, k: number) => (k === si ? { lines: x.lines, panels: x.panels } : x)), sides: p.spec.sides, chatName: p.spec.chatName, cast: p.spec.cast });
         p.spec.scenes[si] = c.scenes[si] || sc;
         const spec = cleanSpec(p.spec, user.id);
         await saveSpec(env, user, id, spec);
@@ -519,7 +533,9 @@ export async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Prom
   // voice keys entered on the admin page (sent only to the render machine, over HTTPS, with its token)
   if (sub === 'config' && req.method === 'GET') return json({ env: await runnerSecrets(env) });
   if (sub === 'claim' && req.method === 'POST') {
-    const name = String((await body(req, 1_000)).runner || 'runner').slice(0, 60);
+    const cb = await body<any>(req, 1_000);
+    const name = String(cb.runner || 'runner').slice(0, 60);
+    if (cb.caps) await recordRunnerCaps(env, cb.caps);
     const lease = 'lease-' + randomId(16);
     await env.DB.prepare("UPDATE jobs SET status = 'queued', runner = NULL WHERE status = 'running' AND started_at < ?").bind(now - STALE_JOB_MS).run();
     const job = await env.DB.prepare(
@@ -534,7 +550,7 @@ export async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Prom
   }
   if (sub === 'asset' && req.method === 'GET') {
     const key = new URL(req.url).searchParams.get('key') || '';
-    if (!/^(img|up)\/[^/]+\/[a-f0-9]{24}\.(png|jpg|webp)$/.test(key)) throw new HttpError(400, 'Khoá tệp không hợp lệ.');
+    if (!/^((img|up)\/[^/]+\/[a-f0-9]{24}\.(png|jpg|webp)|voice\/[\w-]+\/[a-f0-9]{24}\.(mp3|m4a|wav))$/.test(key)) throw new HttpError(400, 'Khoá tệp không hợp lệ.');
     const obj = await env.BUCKET.get(key);
     if (!obj) throw new HttpError(404, 'Không tìm thấy.');
     return new Response(obj.body);
@@ -578,6 +594,8 @@ export async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Prom
     // the runner reports how long the render took and how much was read aloud
     const r = await body<any>(req, 5_000).catch(() => ({}));
     const spec = JSON.parse(job.spec), provider = String(r.voice || spec.voice?.provider || '');
+    // a chosen voice that could not be used was read by its stand-in: tell the admin page
+    if (provider.includes('→')) await recordVoiceFallback(env, provider, String(r.voiceError || ''));
     const chars = Number(r.chars) || spec.scenes.reduce((n: number, sc: any) => n + sc.lines.join(' ').length, 0);
     rc.log('render.done', { projectId: job.project_id, ms: (Number(r.seconds) || 0) * 1000, cost: r.cachedVoice ? 0 : voiceCost(env.config, provider, chars),
       data: { job: job.id, videoSec: r.duration, renderSec: r.seconds, totalSec: Math.round((now - job.created_at) / 1000), voice: provider, chars, cachedVoice: !!r.cachedVoice } });
@@ -623,6 +641,15 @@ function voiceFor(config: Config, voiceId: unknown, speed: unknown) {
 /** New project from a topic or the user's own script (web and Zalo share this). */
 export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAllowed = false) {
     const D = env.config.defaults;
+    // a format made on the training page: its built-in base plus the extra brief (test stage: admins only)
+    let brief: string | undefined;
+    if (typeof b.look === 'string' && b.look.startsWith('f:')) {
+      const f = env.config.formats.find((x) => 'f:' + x.id === b.look);
+      if (!f || f.stage === 'idea' || (f.stage === 'test' && !(await isAdmin(env, env.config, user)))) throw new HttpError(403, 'Định dạng này chưa mở.');
+      b = { ...b, look: f.base };
+      brief = (env.config.briefs[f.base] || LOOK_BRIEF[f.base]) + `\nĐỊNH DẠNG RIÊNG "${f.name}": ${f.brief}`;
+    }
+    if (!brief && typeof b.look === 'string' && env.config.briefs[b.look]) brief = env.config.briefs[b.look];
     const source = ['topic', 'mine-ai', 'mine-free'].includes(b.source) ? b.source : D.source;
     if (!env.config.enabledSources.includes(source)) throw new HttpError(403, vis(env.config, 'source:' + source) === 'dev' ? 'Cách tạo này đang phát triển, sắp ra mắt.' : 'Cách tạo video này đang tắt.');
     await checkSource(env, user, source);
@@ -666,10 +693,10 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
         const provider = b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (D.textAI as TextProvider);
         await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
         try {
-          const out = await writeScript(env, provider, { topic: '', seconds: 0, tone: '', ratio, visual: 'sketch', extra: env.config.promptExtra, scenes, format, niche, look });
+          const out = await writeScript(env, provider, { topic: '', seconds: 0, tone: '', ratio, visual: 'sketch', extra: env.config.promptExtra, scenes, format, niche, look, brief });
           usage = out._usage;
           // the narration always stays the user's own words
-          raw = { ...out, title: out.title || raw.title, scenes: scenes.map((lines, i) => ({ lines, diagram: out.scenes?.[i]?.diagram, x: out.scenes?.[i]?.x, pause: out.scenes?.[i]?.pause, panels: out.scenes?.[i]?.panels })) };
+          raw = { ...out, title: out.title || raw.title, scenes: scenes.map((lines, i) => ({ lines, diagram: out.scenes?.[i]?.diagram, x: out.scenes?.[i]?.x, act: out.scenes?.[i]?.act, pause: out.scenes?.[i]?.pause, panels: out.scenes?.[i]?.panels })) };
         } catch (e: any) {
           await refundQuota(env, user.id, 'script');
           note = 'AI đang bận nên hình được tự thiết kế (miễn phí). Bạn vẫn sửa được từng cảnh.';
@@ -684,7 +711,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
         await requireBudget(env, 'AI viết kịch bản');
         await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
         try {
-          raw = await writeScript(env, provider, { topic: text, seconds, tone: String(b.tone || '').slice(0, 200), ratio, visual, extra: env.config.promptExtra + affiliateBrief(aff), format: aff ? 'sales' : format, niche, look });
+          raw = await writeScript(env, provider, { topic: text, seconds, tone: String(b.tone || '').slice(0, 200), ratio, visual, extra: env.config.promptExtra + affiliateBrief(aff), format: aff ? 'sales' : format, niche, look, brief });
           usage = raw._usage;
         } catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
       }
@@ -703,8 +730,8 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     }
     if (look) {
       // fill what the AI (or nobody) gave: free rules per format
-      const c = composeLook({ look, scenes: (raw.scenes || []).map((sc: any) => ({ lines: sc.lines || [], x: sc.x, pause: sc.pause, panels: sc.panels })), sides: raw.sides, chatName: raw.chatName });
-      raw = { ...raw, scenes: c.scenes, sides: c.sides, chatName: c.chatName };
+      const c = composeLook({ look, scenes: (raw.scenes || []).map((sc: any) => ({ lines: sc.lines || [], x: sc.x, pause: sc.pause, panels: sc.panels, act: sc.act })), sides: raw.sides, chatName: raw.chatName, cast: raw.cast });
+      raw = { ...raw, scenes: c.scenes, sides: c.sides, chatName: c.chatName, cast: c.cast };
     }
     const music = b.music === 'none' ? undefined : (env.config.music.find((m) => m.id === b.music) || (b.music === undefined || b.music === 'auto'
       ? (D.music === 'none' ? undefined : env.config.music.find((m) => m.id === D.music) || env.config.music[hashText(text) % Math.max(1, env.config.music.length)]) : undefined))?.file;
