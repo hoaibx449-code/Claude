@@ -462,6 +462,7 @@ function siteCard(c) {
       h('label', {}, 'Tiêu đề lớn', input(c.site.heroTitle, (v) => { c.site.heroTitle = v; }, { maxlength: 120 })),
       h('label', {}, 'Đoạn giới thiệu', input(c.site.heroText, (v) => { c.site.heroText = v; }, { maxlength: 300 }))),
     h('div', { class: 'grid wide' }, mediaField('Ảnh hoặc video cạnh tiêu đề', c.site.heroMedia, (v) => { c.site.heroMedia = v; }), mediaField('Ảnh chờ cho video (poster)', c.site.heroPoster, (v) => { c.site.heroPoster = v; }, 'image/png,image/jpeg,image/webp')),
+    h('div', { class: 'grid wide' }, mediaField('Video hướng dẫn ngắn (cạnh 3 bước bắt đầu)', c.site.tutorial, (v) => { c.site.tutorial = v; }, 'video/mp4,video/webm')),
     h('h3', {}, 'Video mẫu'), list,
     h('button', { type: 'button', class: 'ghost small', onclick: () => { if (c.site.showcase.length >= 12) return toast('Tối đa 12 video.'); c.site.showcase.push({ title: '', caption: '', video: '', poster: '' }); draw(); } }, '+ Thêm video mẫu'));
 }

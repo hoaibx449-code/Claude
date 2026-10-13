@@ -12,7 +12,7 @@ await build({
   outfile: join(pub, 'engine.js'),
 });
 mkdirSync(join(pub, 'assets'), { recursive: true });
-for (const dir of ['fonts', 'hands/default', 'icons']) cpSync(join(root, 'assets', dir), join(pub, 'assets', dir), { recursive: true });
+for (const dir of ['fonts', 'hands/default', 'icons', 'doodles']) cpSync(join(root, 'assets', dir), join(pub, 'assets', dir), { recursive: true });
 
 // app icons (PNG for phones that do not take SVG)
 const { createCanvas, loadImage } = await import('@napi-rs/canvas');
@@ -51,5 +51,11 @@ const lookDemos = Object.entries(LOOK_DEMOS).map(([look, lines]) => {
   return { id: 'look-' + look, title: lines[0], look, spec };
 });
 demos.push(...lookDemos);
+// classic hand drawing, as in the proposal: Open Doodles revealed by the hand, handwritten subtitles
+const { doodlePanels } = await import('./src/doodles.ts');
+const classicLines = [['Bạn có biết vì sao đọc sách mỗi ngày lại thay đổi cuộc đời?'], ['Mỗi sáng một tách cà phê, mười lăm phút đọc, không cần nhiều hơn.'], ['Một năm sau, kiến thức ấy lớn dần như một cái cây.']];
+const classicPanels = doodlePanels(classicLines);
+demos.push({ id: 'classic', title: classicLines[0][0], look: 'classic', spec: cleanSpec({ title: 'Đọc sách mỗi ngày', visual: 'doodle', ratio: '9:16', style: 'notebook', mode: 'hand', subtitles: true, channel: 'Nét Vẽ', episode: 'Tập 1',
+  scenes: classicLines.map((lines, i) => ({ lines, panels: classicPanels[i] })) }, 'demo') });
 writeFileSync(join(pub, 'demos.json'), JSON.stringify(demos));
 console.log('web/public built');

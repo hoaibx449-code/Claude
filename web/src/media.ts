@@ -21,7 +21,7 @@ export async function storedVideoKey(env: Env, userId: string, jobId: string, ex
 }
 
 export async function deleteVideo(env: Env, userId: string, jobId: string) {
-  await env.BUCKET.delete([videoKey(userId, jobId, 'mp4'), videoKey(userId, jobId, 'srt')]);
+  await env.BUCKET.delete([videoKey(userId, jobId, 'mp4'), videoKey(userId, jobId, 'srt'), `thumb/${userId}/${jobId}.jpg`]);
   let cursor: string | undefined;
   do {
     const result = await env.BUCKET.list({ prefix: `video/${userId}/${jobId}/`, cursor });

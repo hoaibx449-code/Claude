@@ -18,7 +18,9 @@ interface Box { x: number; y: number; w: number; h: number }
 
 export function panelBoxes(ratio: Ratio, n: number): Box[] {
   if (ratio === '9:16') {
-    if (n <= 1) return [{ x: 40, y: 120, w: 460, h: 345 }];
+    // one picture fills the space above the subtitles; two are stacked (one per spoken line)
+    if (n <= 1) return [{ x: 30, y: 112, w: 480, h: 540 }];
+    if (n === 2) return [{ x: 70, y: 104, w: 400, h: 286 }, { x: 70, y: 398, w: 400, h: 286 }];
     const row = (y: number): Box[] => [{ x: 22, y, w: 244, h: 183 }, { x: 274, y, w: 244, h: 183 }];
     return [...row(128), ...row(326)].slice(0, n);
   }
