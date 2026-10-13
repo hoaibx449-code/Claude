@@ -34,7 +34,7 @@ interface Actor {
   talks: { t0: number; t1: number }[]; holds: { t: number; kind: string | null }[];
 }
 interface PropS { id: string; kind: string; prims: Prim[]; appear: number; draw?: { start: number; end: number; plan: DrawPlan }; gone?: number; morph?: { t0: number; t1: number; to: Prim[] } }
-interface HandTask { start: number; end: number; space: 'world' | 'screen'; pen(q: number): { x: number; y: number; lift: number } }
+export interface HandTask { start: number; end: number; space: 'world' | 'screen'; pen(q: number): { x: number; y: number; lift: number } }
 interface CamKey { t: number; dur: number; x: number; y: number; z: number; from?: { x: number; y: number; z: number } }
 interface Bubble { who: string; t0: number; t1: number; text: string; think: boolean }
 interface Mark { who: string; t0: number; t1: number; kind: string }

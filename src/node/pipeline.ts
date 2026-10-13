@@ -16,6 +16,16 @@ import { cachedImage, pickImages } from './images.ts';
 import { writeSfxTrack } from './sfx.ts';
 import { existsSync } from 'node:fs';
 
+/** The photographed poses of adaptive hand positioning (assets/hands/poses, see tools/hands-build.py). */
+export async function loadPoses(dir: string) {
+  if (!existsSync(join(dir, 'poses.json'))) return undefined;
+  const out: Record<string, any> = {};
+  for (const pm of JSON.parse(readFileSync(join(dir, 'poses.json'), 'utf8'))) {
+    out[pm.id] = { meta: pm, img: await loadImage(join(dir, `hand-${pm.id}.webp`)), fingers: await loadImage(join(dir, `fingers-${pm.id}.webp`)), arm: await loadImage(join(dir, `arm-${pm.id}.png`)) };
+  }
+  return out;
+}
+
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 export function srtTime(s: number) {
@@ -108,7 +118,8 @@ export async function renderProject(o: RenderOptions) {
     // 3. hand
     const handDir = resolve(project.hand ? resolve(projDir, project.hand) : join(ROOT, 'assets/hands/default'));
     const meta: HandMeta = JSON.parse(readFileSync(join(handDir, 'hand.json'), 'utf8'));
-    const hand = { img: await loadImage(join(handDir, 'hand.webp')), fingers: await loadImage(join(handDir, 'fingers.webp')), meta };
+    const hand: any = { img: await loadImage(join(handDir, 'hand.webp')), fingers: await loadImage(join(handDir, 'fingers.webp')), meta };
+    hand.poses = await loadPoses(join(ROOT, 'assets/hands/poses'));
 
     // 4. frames -> ffmpeg
     await o.onStage?.('rendering', 'Dựng các khung hình và âm thanh');

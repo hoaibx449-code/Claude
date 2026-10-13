@@ -1287,6 +1287,12 @@ async function getHand() {
     const [img, fingers, meta] = await Promise.all([loadImg('/assets/hands/default/hand.webp'), loadImg('/assets/hands/default/fingers.webp'),
       fetch('/assets/hands/default/hand.json').then((r) => r.json())]);
     handAsset = { img, fingers, meta };
+    // the photographed poses of adaptive positioning (the classic hand stays if they fail to load)
+    try {
+      const list = await fetch('/assets/hands/poses/poses.json').then((r) => r.json()), B = '/assets/hands/poses/';
+      const loaded = await Promise.all(list.map(async (pm) => [pm.id, { meta: pm, img: await loadImg(B + `hand-${pm.id}.webp`), fingers: await loadImg(B + `fingers-${pm.id}.webp`), arm: await loadImg(B + `arm-${pm.id}.png`) }]));
+      handAsset.poses = Object.fromEntries(loaded);
+    } catch {}
   }
   return handAsset;
 }
