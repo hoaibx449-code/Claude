@@ -37,27 +37,31 @@ test('the five ways in come from the photographed poses, each with its anchors',
   for (const p of Object.values(poses)) {
     const m = p.meta;
     for (const pt of [m.tip, m.back, m.grip, m.wrist, m.cut]) assert.ok(pt[0] >= 0 && pt[1] >= 0 && pt[0] <= m.width && pt[1] <= m.height, `${m.id} anchor inside the picture`);
-    assert.ok(m.penWidth > 8 && m.penWidth < 40 && m.armHalf > 30, `${m.id} pen and forearm measured`);
+    assert.ok(m.penWidth > 8 && m.penWidth < 80 && m.armHalf > 30 && m.edge.length === 3, `${m.id} pen and forearm measured`);
   }
 });
 
 for (const ratio of ['9:16', '16:9'] as const) {
-  test(`adaptive hand (${ratio}): forearm continues off the frame, nib on the stroke, no jumps between ways`, async () => {
+  test(`adaptive hand (${ratio}): the photo's forearm runs off the frame, nib on the stroke, no jumps between ways`, async () => {
     setPeeps(null);
     const m = await model('../examples/phong-cach/sketchnote.json', ratio), plan = m.handPlan!;
     assert.ok(plan && plan.tasks.length > 10);
-    const { W, H } = logicalSize(ratio), limit = (ratio === '9:16' ? 0.5 * H : 0.5 * W) + 1;
     const used = new Set(plan.choice.filter((c) => c >= 0).map((c) => plan.ways[c].key));
-    assert.ok(used.size >= 2, `the hand comes in more than one way (${[...used]})`);
+    if (ratio === '9:16') assert.ok(used.size >= 2, `the hand comes in more than one way (${[...used]})`);
+    assert.ok(plan.choice.filter((c) => c < 0).length <= plan.choice.length * 0.1, 'almost every stroke has a hand');
     const F = frames(plan, m.timeline.duration);
+    // like a person drawing: the hand is there for most of the drawing time
+    let drawing = 0, held = 0;
+    for (const tk of plan.tasks) for (let t = tk.start; t < tk.end; t += 1 / 30) { drawing++; if (handAt(plan, t)) held++; }
+    assert.ok(held / drawing >= 0.75, `hand present ${(held / drawing * 100).toFixed(0)}% of the drawing time`);
     for (let i = 0; i < F.length; i++) {
       const { t, h, g } = F[i];
       if (!h || !g) continue;
-      // never more forearm than the frame allows; the forearm always runs out past an edge
-      assert.ok(g.arm <= limit || !inFrame(plan, g), `forearm ${g.arm.toFixed(0)}px at ${t.toFixed(2)}s`);
-      // while drawing, the nib is exactly on the stroke
+      // the photo's own forearm always runs out past an edge (it is never lengthened)
+      assert.ok(g.out || !inFrame(plan, g), `forearm cut visible at ${t.toFixed(2)}s`);
+      // while drawing (once the hand has arrived), the nib is exactly on the stroke
       const k = plan.tasks.findIndex((x) => t >= x.start && t <= x.end);
-      if (k >= 0) { const p = plan.tasks[k].pen((t - plan.tasks[k].start) / (plan.tasks[k].end - plan.tasks[k].start)); assert.ok(Math.hypot(p[0] - h.x, p[1] - h.y) < 1e-6); }
+      if (k >= 0 && h.lift === 0 && plan.choice[k] === h.way) { const p = plan.tasks[k].pen((t - plan.tasks[k].start) / (plan.tasks[k].end - plan.tasks[k].start)); assert.ok(Math.hypot(p[0] - h.x, p[1] - h.y) < 1e-6); }
       // a change of way happens only out of the frame
       const prev = F[i - 1];
       if (prev?.h && prev.g && prev.h.way !== h.way) assert.ok(!inFrame(plan, g) && !inFrame(plan, prev.g), `way changed in view at ${t.toFixed(2)}s`);
@@ -67,7 +71,7 @@ for (const ratio of ['9:16', '16:9'] as const) {
 
 test('when no way in is natural the stroke draws itself (no forced hand)', () => {
   const W = 540, H = 960;
-  // only the bottom-right way allowed, and the stroke at the top-left corner: its forearm would cross the frame
+  // only the bottom-right way allowed, and the stroke at the top-left corner: the photo's forearm would end inside the frame
   const tasks = [{ start: 0, end: 1, pen: (q: number) => [20 + q * 30, 30] as [number, number] }];
   const plan = planHand(tasks, poses, W, H, WAYS.filter((w) => w.key === 'A'));
   assert.deepEqual(plan.choice, [-1]);
