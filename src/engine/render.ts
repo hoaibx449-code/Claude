@@ -7,7 +7,7 @@ import { buildKinetic } from './kinetic.ts';
 import { flatten } from './svgpath.ts';
 import { qrCells } from './qr.ts';
 import { wrapVi } from './textwrap.ts';
-import { extractStrokes, LINE_SHARE, pathStroke, penState, type StrokePlan } from './strokes.ts';
+import { extractStrokes, LINE_SHARE, pace, pathStroke, penState, strokeSpans, type StrokePlan } from './strokes.ts';
 import { buildLook, preparePhoto, renderLook, skinOf, type LookModel } from './looks.ts';
 import { buildAct, renderAct, type ActModel } from './act/director.ts';
 
@@ -77,7 +77,7 @@ export function inkify(env: Env, img: Img, w: number, h: number, ink: string) {
  * A picture on the board. Line art is drawn stroke by stroke along its centre lines (`plan`,
  * worked out on first use); anything else (a photo) falls back to the zigzag sweep.
  */
-interface Panel { canvas: any; box: Box; zig: Zig; plan?: StrokePlan | null }
+interface Panel { canvas: any; box: Box; zig: Zig; plan?: StrokePlan | null; share?: number; seconds?: number }
 
 /** Panel strokes, found once from the inked picture at about 1 working px per logical px. */
 function planOf(m: Model, P: Panel): StrokePlan | null {
@@ -85,7 +85,10 @@ function planOf(m: Model, P: Panel): StrokePlan | null {
   const s = Math.min(1.2, 560 / Math.max(P.box.w, P.box.h)), w = Math.max(8, Math.round(P.box.w * s)), h = Math.max(8, Math.round(P.box.h * s));
   const cv = m.env.createCanvas(w, h), x = cv.getContext('2d');
   x.drawImage(P.canvas, 0, 0, w, h);
-  P.plan = extractStrokes(x.getImageData(0, 0, w, h).data, w, h, s);
+  const full = extractStrokes(x.getImageData(0, 0, w, h).data, w, h, s);
+  // the pen keeps a hand's pace: what does not fit in the panel's time blooms in at the end
+  if (full && P.seconds) { const f = pace(full, P.seconds); P.plan = f.plan; P.share = f.share; }
+  else { P.plan = full; P.share = LINE_SHARE; }
   return P.plan;
 }
 
@@ -149,7 +152,8 @@ export function prepare(opts: {
     const boxes = panelBoxes(project.ratio, sc.panels.length);
     return sc.panels.map((_, k) => {
       const box = boxes[k];
-      return { canvas: inkify(env, images[si][k], Math.round(box.w * dpr), Math.round(box.h * dpr), style.ink), box, zig: zigzag(box.w, box.h, si * 3 + k) };
+      const T = timeline.scenes[si].panels[k];
+      return { canvas: inkify(env, images[si][k], Math.round(box.w * dpr), Math.round(box.h * dpr), style.ink), box, zig: zigzag(box.w, box.h, si * 3 + k), seconds: T ? T.end - T.start : undefined };
     });
   });
   const m: Model = { project, timeline, style, tool: project.tool ?? style.tool, W, H, dpr, background: bgc, panels, mask: new Map(), hand, env, units: [], mode, icons: opts.icons || {} };
@@ -217,7 +221,36 @@ function prepareAct(opts: Parameters<typeof prepare>[0]): Model {
 }
 
 /** Sound cues of the video (formats and story animation). */
-export const cuesOf = (m: Model) => m.act?.cues || m.look?.cues || [];
+export const cuesOf = (m: Model) => m.act?.cues || m.look?.cues || handCues(m);
+
+/** Spans [t0, t1] merged when the gap between them is too short to hear the pen lift. */
+export function penSpans(spans: [number, number][], gap = 0.06): [number, number][] {
+  const out: [number, number][] = [];
+  for (const [a, b] of spans.sort((x, y) => x[0] - y[0])) {
+    if (b - a <= 0.01) continue;
+    const last = out[out.length - 1];
+    if (last && a - last[1] < gap) last[1] = Math.max(last[1], b); else out.push([a, b]);
+  }
+  return out;
+}
+
+/** Hand-drawn board: the felt pen sounds while a stroke is drawn and is silent while lifted. */
+function handCues(m: Model) {
+  if (m.mode !== 'hand') return [];
+  const spans: [number, number][] = [];
+  m.project.scenes.forEach((sc, si) => {
+    if (!sc.diagram) {
+      m.panels[si].forEach((P, k) => {
+        const T = m.timeline.scenes[si].panels[k], plan = planOf(m, P);
+        if (!T) return;
+        const share = P.share ?? LINE_SHARE, dur = (T.end - T.start) * share;
+        if (!plan) { spans.push([T.start, T.start + dur]); return; }
+        for (const [a, b] of strokeSpans(plan)) spans.push([T.start + a * dur, T.start + b * dur]);
+      });
+    } else for (const u of m.units[si]) spans.push([u.start, u.end]);
+  });
+  return penSpans(spans).map(([a, b]) => ({ t: a, k: 'scribble' as const, d: b - a }));
+}
 
 export const TRANSITIONS = ['fade', 'slide', 'wipe', 'zoom'] as const;
 /** Transition into scene si: the project's choice, or a varied but fixed sequence ("auto"). */
@@ -345,7 +378,7 @@ function drawPanel(c: Ctx, m: Model, si: number, k: number, p: number, alpha: nu
  * nib. Over the last tenth, soft tones and specks too small to draw settle in.
  */
 function drawStrokes(c: Ctx, m: Model, P: Panel, plan: StrokePlan, p: number, alpha: number) {
-  const { box, canvas } = P, q = p / LINE_SHARE, st = penState(plan, q);
+  const share = P.share ?? LINE_SHARE, { box, canvas } = P, q = p / share, st = penState(plan, q);
   const key = `${canvas.width}x${canvas.height}`;
   let cache = m.mask.get('done:' + key), work = m.mask.get(key);
   if (!cache) { cache = { cv: m.env.createCanvas(canvas.width, canvas.height), owner: null, done: 0 }; m.mask.set('done:' + key, cache); }
@@ -363,13 +396,13 @@ function drawStrokes(c: Ctx, m: Model, P: Panel, plan: StrokePlan, p: number, al
   if (st.along > 0 && st.done < plan.strokes.length) { pen(x, st.done); pathStroke(x, plan, st.done, st.along); x.stroke(); }
   x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-in'; x.drawImage(canvas, 0, 0);
   c.drawImage(work, box.x, box.y, box.w, box.h);
-  if (p > LINE_SHARE) { c.globalAlpha = alpha * ease((p - LINE_SHARE) / (1 - LINE_SHARE)); c.drawImage(canvas, box.x, box.y, box.w, box.h); }
+  if (p > share) { c.globalAlpha = alpha * ease((p - share) / (1 - share)); c.drawImage(canvas, box.x, box.y, box.w, box.h); }
 }
 
 function penAt(m: Model, si: number, k: number, p: number): [number, number] | [number, number, number] {
   const P = m.panels[si][k], plan = planOf(m, P);
   if (plan) {
-    const st = penState(plan, p / LINE_SHARE);
+    const st = penState(plan, p / (P.share ?? LINE_SHARE));
     return [P.box.x + st.x, P.box.y + st.y, st.lift];
   }
   const [x, y] = along(P.zig, p);

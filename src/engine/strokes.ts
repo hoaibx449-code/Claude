@@ -18,15 +18,19 @@ export interface StrokePlan {
   total: number;
   /** cost of the travel move that precedes each stroke (0 when it continues the previous one) */
   travel: number[];
+  /** drawing cost per px of each stroke (details go faster than outlines) */
+  rates: number[];
   /** width of the reveal stroke, logical px, per stroke (thick filled shapes get wide ones) */
   widths: number[];
 }
 
 /** Share of the panel's time spent on the lines; the rest settles tones and tiny details. */
 export const LINE_SHARE = 0.9;
-const TRAVEL = 0.3; // the pen moves faster in the air than on the paper
-const LIFT = 7; // fixed cost (px of line) of lifting and placing the pen again
-const MIN_LEN = 3; // shorter bits are left to the final settle
+const TRAVEL = 0.45; // the pen moves faster in the air than on the paper
+const LIFT = 36; // cost (px of line) of lifting the pen and placing it again: an audible pause
+const MIN_LEN = 7; // shorter bits (specks, dots of a pattern) settle in at the end instead of being drawn
+/** Pen speed by stroke length: outlines at hand speed, small details quicker (cost per px). */
+export const rateOf = (len: number) => (len < 18 ? 0.4 : len < 45 ? 0.62 : len < 90 ? 0.85 : 1);
 
 /**
  * Thin binary image in place (1 = ink). Zhang & Suen, "A fast parallel algorithm for thinning
@@ -91,6 +95,9 @@ export function trace(b: Uint8Array, w: number, h: number): Pt[][] {
     seen[sy * w + sx] = 1;
     let x = sx, y = sy, dx = from ? sx - from[0] : 0, dy = from ? sy - from[1] : 0;
     for (;;) {
+      // at a crossing (X, +) the way through is the branch whose tangent continues the line,
+      // judged over a longer stretch so the crossing's own pixels do not bend it
+      if (degree(x, y) >= 3 && line.length > 3) { const far = line[Math.max(0, line.length - 10)]; dx = x - far[0]; dy = y - far[1]; }
       // keep going the way the line goes: the unvisited neighbour with the smallest turn
       let best = -1, bx = 0, by = 0, score = -9;
       for (let k = 0; k < 8; k++) {
@@ -184,17 +191,24 @@ export function order(lines: Pt[][]): { i: number; pts: Pt[] }[] {
 
 /** Time plan for ordered strokes (cost = line length + cheaper pen travel + a little per lift). */
 export function planStrokes(strokes: Pt[][], widths: number[]): StrokePlan {
-  const cums: number[][] = [], starts: number[] = [], travel: number[] = [];
+  const cums: number[][] = [], starts: number[] = [], travel: number[] = [], rates: number[] = [];
   let total = 0;
   strokes.forEach((s, i) => {
     const c = [0];
     for (let j = 1; j < s.length; j++) c.push(c[j - 1] + dist(s[j], s[j - 1]));
     cums.push(c);
+    const L = c[c.length - 1], rate = rateOf(L);
     const d = i ? dist(strokes[i - 1][strokes[i - 1].length - 1], s[0]) : 0;
-    const tr = i && d > 1.5 ? d * TRAVEL + LIFT : 0;
-    travel.push(tr); total += tr; starts.push(total); total += c[c.length - 1];
+    // hops between small details are quick flicks; real lifts cost a moment
+    const tr = i && d > 1.5 ? d * TRAVEL + LIFT * (rate < 1 && d < 30 ? 0.4 : 1) : 0;
+    rates.push(rate); travel.push(tr); total += tr; starts.push(total); total += L * rate;
   });
-  return { strokes, cums, starts, total, travel, widths };
+  return { strokes, cums, starts, total, travel, widths, rates };
+}
+
+/** When each stroke is drawn, as fractions of the drawing (for the pen sound: silent while lifted). */
+export function strokeSpans(P: StrokePlan): [number, number][] {
+  return P.strokes.map((s, i) => { const L = P.cums[i][P.cums[i].length - 1] * P.rates[i]; return [P.starts[i] / P.total, (P.starts[i] + L) / P.total]; });
 }
 
 /**
@@ -248,8 +262,8 @@ export function penState(P: StrokePlan, q: number): PenState {
     const d = dist(a, b);
     return { done: i, along: -1, x: a[0] + (b[0] - a[0]) * u, y: a[1] + (b[1] - a[1]) * u, lift: Math.sin(Math.PI * u) * Math.min(1, d / 70) };
   }
-  if (C >= P.starts[i] + L) { const e = s[s.length - 1]; return { done: i + 1, along: L, x: e[0], y: e[1], lift: 0 }; }
-  const l = C - P.starts[i];
+  if (C >= P.starts[i] + L * P.rates[i]) { const e = s[s.length - 1]; return { done: i + 1, along: L, x: e[0], y: e[1], lift: 0 }; }
+  const l = (C - P.starts[i]) / P.rates[i];
   let j = 1;
   while (j < cum.length - 1 && cum[j] < l) j++;
   const u = (l - cum[j - 1]) / (cum[j] - cum[j - 1] || 1);
@@ -267,4 +281,32 @@ export function pathStroke(c: { moveTo(x: number, y: number): void; lineTo(x: nu
     break;
   }
   if (s.length === 1 || upto >= cum[cum.length - 1]) c.lineTo(s[s.length - 1][0] + 0.01, s[s.length - 1][1]);
+}
+
+/** Fastest the pen draws an outline, logical px per second (a person drawing on a whiteboard). */
+export const HAND_SPEED = 800;
+
+/**
+ * Fit a picture to the time it has: the pen draws the most important strokes (the longest:
+ * outlines, main shapes) at no more than HAND_SPEED; the remaining small details are not traced
+ * but bloom in during the settle at the end. Returns the plan to draw and the share of the time
+ * spent drawing (the rest is the settle).
+ */
+export function pace(P: StrokePlan, seconds: number): { plan: StrokePlan; share: number; dropped: number } {
+  const lens = P.cums.map((c) => c[c.length - 1]);
+  const all = lens.reduce((a, b) => a + b, 0);
+  // everything the pen does costs time: lines at hand speed, lifts and travel included
+  const fits = (plan: StrokePlan, share: number) => plan.total <= Math.max(200, seconds * share * HAND_SPEED);
+  if (!P.strokes.length || fits(P, LINE_SHARE)) return { plan: P, share: LINE_SHARE, dropped: 0 };
+  const order = lens.map((L, i) => i).sort((a, b) => lens[b] - lens[a]);
+  const build = (n: number) => {
+    const keep = new Set(order.slice(0, n));
+    const idx = P.strokes.map((_, i) => i).filter((i) => keep.has(i));
+    const dropped = 1 - idx.reduce((a, i) => a + lens[i], 0) / all;
+    return { plan: planStrokes(idx.map((i) => P.strokes[i]), idx.map((i) => P.widths[i])), share: Math.max(0.75, LINE_SHARE - dropped * 0.25), dropped };
+  };
+  // the most strokes (longest first) that still fit
+  let lo = 1, hi = order.length;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; const b = build(mid); if (fits(b.plan, b.share)) lo = mid; else hi = mid - 1; }
+  return build(lo);
 }

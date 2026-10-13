@@ -11,6 +11,7 @@ import type { Ctx, Ratio, SceneSpec, Timeline } from '../types.ts';
 import { clamp, drawPlan, ease, easeBack, hash, lerp, paint, paintPlan, place, planAt, resample, seg, transform, type DrawPlan, type Prim, type Pt } from './geom.ts';
 import { actionPose, BODY_HEIGHT, characterPrims, emotionFace, emotionPosture, handPoint, headPoint, LOOKS, mixPose, type CharLook, type Emotion, type Pose } from './rig.ts';
 import { propPrims, SETS } from './props.ts';
+import { HAND_SPEED } from '../strokes.ts';
 import type { ActBeat, ActCast, ActScene, When } from './spec.ts';
 
 export type ActSfx = 'whoosh' | 'pop' | 'msg' | 'tick' | 'ding' | 'scribble' | 'step' | 'buzz' | 'swish' | 'tap';
@@ -218,11 +219,11 @@ export function buildAct(opts: { project: { ratio: Ratio; cast?: ActCast[]; scen
       const a = actors.get(id);
       if (a) {
         const st = bodyAt(a, ht), prims = place(characterPrims(a.look, st.pose, emotionFace(st.emo, ht, false, a.seed), st.f, st.yaw, a.seed), xAt(a, ht), 0, scale);
-        tasks.push({ id, plan: drawPlan(prims), speed: 1150, min: 1.4, max: 3.2, target: a });
+        tasks.push({ id, plan: drawPlan(prims), speed: HAND_SPEED, min: 1.4, max: 3.6, target: a });
         continue;
       }
       const ps = m.props.filter((p) => p.id === id);
-      if (ps.length) tasks.push({ id, plan: drawPlan(ps.flatMap((p) => p.prims)), speed: 1300, min: 0.5, max: 2.0, target: ps });
+      if (ps.length) tasks.push({ id, plan: drawPlan(ps.flatMap((p) => p.prims)), speed: HAND_SPEED * 1.1, min: 0.5, max: 2.2, target: ps });
     }
     let need = tasks.reduce((s, k) => s + clamp(k.plan.total / k.speed, k.min, k.max), 0);
     const room = Math.max(0.8, span * 0.65);
@@ -231,7 +232,13 @@ export function buildAct(opts: { project: { ratio: Ratio; cast?: ActCast[]; scen
       const d = clamp(k.plan.total / k.speed, k.min, k.max) * squeeze, start = ht, end = ht + d;
       const P = k.plan;
       m.hand.push({ start, end, space: 'world', pen: (q) => planAt(P, q) });
-      m.cues.push({ t: start, k: 'scribble', d });
+      // the pen sounds stroke by stroke, silent while it travels to the next one
+      let run: [number, number] | null = null;
+      P.prims.forEach((_, i) => {
+        const a = start + (P.starts[i] / P.total) * d, b = start + ((P.starts[i] + P.lens[i]) / P.total) * d;
+        if (run && a - run[1] < 0.06) run[1] = b; else { if (run) m.cues.push({ t: run[0], k: 'scribble', d: run[1] - run[0] }); run = [a, b]; }
+      });
+      if (run) m.cues.push({ t: run[0], k: 'scribble', d: (run as [number, number])[1] - (run as [number, number])[0] });
       if (Array.isArray(k.target)) for (const p of k.target) { p.draw = { start, end, plan: P }; p.appear = start; }
       else { k.target.draw = { start, end, plan: P }; k.target.visibleFrom = start; }
       ht = end + 0.12;
