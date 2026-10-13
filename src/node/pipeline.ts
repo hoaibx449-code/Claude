@@ -5,7 +5,8 @@ import { once } from 'node:events';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas';
+import { createCanvas, GlobalFonts, loadImage, Path2D } from '@napi-rs/canvas';
+import { setPeeps, hasPeeps } from '../engine/act/peeps.ts';
 import { buildTimeline } from '../engine/timeline.ts';
 import { cuesOf, logicalSize, prepare, renderFrame, SANS } from '../engine/render.ts';
 import type { HandMeta, ProjectSpec, Timeline } from '../engine/types.ts';
@@ -69,13 +70,14 @@ export async function renderProject(o: RenderOptions) {
     for (const sc of project.scenes) {
       const row: string[] = [];
       for (const p of sc.panels) {
-        if (p.image) row.push(resolve(projDir, p.image));
+        if (p.image?.startsWith('peep:')) row.push('');
+        else if (p.image) row.push(resolve(projDir, p.image));
         else if (p.prompt && gen) row.push(await cachedImage(gen, p.prompt, join(projDir, '.cache', gen.name)));
         else throw new Error('Khung hình thiếu "image" và chưa chọn nhà cung cấp ảnh (--images openai|gemini)');
       }
       imagePaths.push(row);
     }
-    const images = await Promise.all(imagePaths.map((r) => Promise.all(r.map((p) => loadImage(p)))));
+    const images = await Promise.all(imagePaths.map((r) => Promise.all(r.map((p) => (p ? loadImage(p) : createCanvas(4, 3) as any)))));
 
     // 2. voice: generated (TTS), the user's own recording, or none (layout only)
     const mode = project.audio?.voice || 'tts';
@@ -118,6 +120,10 @@ export async function renderProject(o: RenderOptions) {
     const icons = JSON.parse(readFileSync(join(ROOT, 'assets/icons/tabler.json'), 'utf8'));
     const media: Record<string, any> = {};
     for (const [k, f] of Object.entries(project.media || {})) media[k] = await loadImage(resolve(projDir, f)).catch(() => null);
+    if (project.figures !== 'rig' && !hasPeeps()) {
+      (globalThis as any).Path2D ||= Path2D;
+      setPeeps(JSON.parse(readFileSync(join(ROOT, 'assets/peeps/peeps.json'), 'utf8')));
+    }
     const model = prepare({ env, project, timeline, images, hand, dpr, icons, media });
     const canvas = createCanvas(PW, PH), ctx = canvas.getContext('2d');
 

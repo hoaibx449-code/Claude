@@ -657,6 +657,8 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     if (text.length < 5) throw new HttpError(400, source === 'topic' ? 'Nhập chủ đề (ít nhất vài chữ).' : 'Dán kịch bản của bạn vào ô (ít nhất một câu).');
     // options the admin hid or marked "in development" are never used, whatever the page sent
     const on = (k: string) => vis(env.config, k) === 'on';
+    // "tự động đa dạng": the words choose how the video is drawn, never the user's last way twice
+    if (b.look === 'auto') b = { ...b, ...(await autoLook(env, user, text, on)) };
     const visual = ['doodle', 'sketch', 'images', 'diagram', 'mix'].includes(b.visual) && on('visual:' + b.visual) ? b.visual : D.visual;
     const ratio = (b.ratio === '16:9' || b.ratio === '9:16') && on('ratio:' + b.ratio) ? b.ratio : D.ratio;
     // which AI writes and draws is the admin's choice (Quản trị → Cài đặt), not the visitor's
@@ -723,10 +725,9 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     const style = env.config.enabledStyles.includes(b.style) ? b.style : (b.style === 'auto' || !b.style) && env.config.enabledStyles.includes(auto) ? auto : D.style;
     if (aff && raw.scenes?.length && !look) raw.scenes = [...raw.scenes, affiliateScene(aff, ratio === '9:16')];
     if (!look && visual === 'doodle') {
-      // classic hand drawing, as in the product proposal: one Open Doodle per line, revealed by the hand, handwritten subtitles
+      // classic hand drawing: one picture per line (an Open Doodle or the video's hand-drawn person acting the words), revealed by the hand; no subtitles unless asked
       const panels = doodlePanels((raw.scenes || []).map((sc: any) => sc.lines || []));
       raw = { ...raw, scenes: (raw.scenes || []).map((sc: any, i: number) => ({ lines: sc.lines, panels: panels[i] })) };
-      if (typeof b.subtitles !== 'boolean') b.subtitles = true;
     }
     if (look) {
       // fill what the AI (or nobody) gave: free rules per format
@@ -750,11 +751,30 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     } catch (e) { if (chargeRef) await refundDoc(env, rc, user.id, chargeRef); throw e; }
 }
 
+/**
+ * How a video is told when the user leaves it to us: dialogue → characters acting, figures →
+ * hand-drawn charts, otherwise a sketchnote or doodle pictures; the way of the user's previous
+ * video is skipped when another one fits, so a channel does not look the same every time.
+ */
+export async function autoLook(env: XEnv, user: User, text: string, on: (k: string) => boolean): Promise<{ look: string; visual?: string }> {
+  const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  const talk = lines.filter((l) => /^[-–—•]\s|^[\p{L} ]{2,16}:\s|^[“"]/u.test(l)).length;
+  const figures = (text.match(/\d+([.,]\d+)?\s*(%|phần trăm|triệu|nghìn|tỷ|đ\b|k\b|lần)/giu) || []).length;
+  const ways: { look: string; visual?: string }[] = [];
+  if (talk >= 2 && on('look:act')) ways.push({ look: 'act' });
+  if (figures >= 3 && on('visual:diagram')) ways.push({ look: '', visual: 'diagram' });
+  for (const w of [{ look: '', visual: 'sketch' }, { look: '', visual: 'doodle' }, ...(on('look:act') ? [{ look: 'act' }] : [])]) if ((w.look !== '' || on('visual:' + w.visual)) && !ways.some((x) => x.look === w.look && x.visual === w.visual)) ways.push(w);
+  const last = await env.DB.prepare('SELECT spec FROM projects WHERE user_id = ? ORDER BY created_at DESC LIMIT 1').bind(user.id).first<any>().catch(() => null);
+  let prev: any = null; try { prev = last ? JSON.parse(last.spec) : null; } catch {}
+  const same = (w: { look: string; visual?: string }) => prev && (w.look ? prev.look === w.look : !prev.look && prev.visual === w.visual);
+  return ways.find((w) => !same(w)) || ways[0] || { look: '' };
+}
+
 const hashText = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) >>> 0; return h; };
 
 /** Put a project in the render queue and wake the render machine. */
 export async function queueRender(env: XEnv, rc: Rc, user: User, id: string, spec: any) {
-  const missing = spec.scenes.reduce((n: number, sc: any) => n + sc.panels.filter((x: any) => !String(x.image).startsWith('r2:') && !String(x.image).startsWith('doodle:')).length, 0);
+  const missing = spec.scenes.reduce((n: number, sc: any) => n + sc.panels.filter((x: any) => !/^(r2|doodle|peep):/.test(String(x.image))).length, 0);
   if (missing) throw new HttpError(409, `Còn ${missing} khung chưa có tranh AI. Bấm "Vẽ tất cả bằng AI" hoặc đổi cảnh đó sang bảng vẽ.`);
   await checkAllowed(env, user, spec);
   const active = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE user_id = ? AND status IN ('queued','running')").bind(user.id).first<any>();

@@ -56,6 +56,7 @@ async function runJob(job: { id: string; lease: string; spec: ProjectSpec }) {
     for (const sc of spec.scenes) for (const p of sc.panels) {
       const ref = p.image || '';
       if (/^doodle:[A-Za-z]{3,40}$/.test(ref)) { p.image = join(ROOT, 'assets/doodles', ref.slice(7) + '.svg'); continue; }
+      if (/^peep:[a-z.-]{3,40}$/.test(ref)) continue; // a hand-drawn person, drawn by the engine
       if (ref.startsWith('r2:')) {
         const file = join(dir, 'img', ref.split('/').pop()!);
         writeFileSync(file, Buffer.from(await (await call('/api/runner/asset?key=' + encodeURIComponent(ref.slice(3)))).arrayBuffer()));

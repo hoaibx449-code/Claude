@@ -7,9 +7,11 @@ import { buildKinetic } from './kinetic.ts';
 import { flatten } from './svgpath.ts';
 import { qrCells } from './qr.ts';
 import { wrapVi } from './textwrap.ts';
-import { extractStrokes, LINE_SHARE, pathStroke, penState, type StrokePlan } from './strokes.ts';
+import { extractStrokes, LINE_SHARE, pace, pathStroke, penState, strokeSpans, type StrokePlan } from './strokes.ts';
 import { buildLook, preparePhoto, renderLook, skinOf, type LookModel } from './looks.ts';
 import { buildAct, renderAct, type ActModel } from './act/director.ts';
+import { faceOf, hasPeeps, PEEP_LOOKS, peepPicture, poseOf } from './act/peeps.ts';
+import { drawReveal, makeReveal, revealPen } from './reveal.ts';
 
 /** Logical canvas size; the output size is a multiple of it (dpr). */
 export function logicalSize(ratio: Ratio) {
@@ -18,7 +20,13 @@ export function logicalSize(ratio: Ratio) {
 
 interface Box { x: number; y: number; w: number; h: number }
 
-export function panelBoxes(ratio: Ratio, n: number): Box[] {
+export function panelBoxes(ratio: Ratio, n: number, subtitles = true): Box[] {
+  if (ratio === '9:16' && !subtitles) {
+    // no subtitles: the picture has the whole page
+    if (n <= 1) return [{ x: 24, y: 120, w: 492, h: 720 }];
+    if (n === 2) return [{ x: 50, y: 104, w: 440, h: 370 }, { x: 50, y: 486, w: 440, h: 370 }];
+  }
+  if (ratio !== '9:16' && !subtitles && n <= 1) return [{ x: 200, y: 66, w: 560, h: 420 }];
   if (ratio === '9:16') {
     // one picture fills the space above the subtitles; two are stacked (one per spoken line)
     if (n <= 1) return [{ x: 30, y: 112, w: 480, h: 540 }];
@@ -77,7 +85,7 @@ export function inkify(env: Env, img: Img, w: number, h: number, ink: string) {
  * A picture on the board. Line art is drawn stroke by stroke along its centre lines (`plan`,
  * worked out on first use); anything else (a photo) falls back to the zigzag sweep.
  */
-interface Panel { canvas: any; box: Box; zig: Zig; plan?: StrokePlan | null }
+interface Panel { canvas: any; box: Box; zig: Zig; plan?: StrokePlan | null; share?: number; seconds?: number }
 
 /** Panel strokes, found once from the inked picture at about 1 working px per logical px. */
 function planOf(m: Model, P: Panel): StrokePlan | null {
@@ -85,7 +93,10 @@ function planOf(m: Model, P: Panel): StrokePlan | null {
   const s = Math.min(1.2, 560 / Math.max(P.box.w, P.box.h)), w = Math.max(8, Math.round(P.box.w * s)), h = Math.max(8, Math.round(P.box.h * s));
   const cv = m.env.createCanvas(w, h), x = cv.getContext('2d');
   x.drawImage(P.canvas, 0, 0, w, h);
-  P.plan = extractStrokes(x.getImageData(0, 0, w, h).data, w, h, s);
+  const full = extractStrokes(x.getImageData(0, 0, w, h).data, w, h, s);
+  // the pen keeps a hand's pace: what does not fit in the panel's time blooms in at the end
+  if (full && P.seconds) { const f = pace(full, P.seconds); P.plan = f.plan; P.share = f.share; }
+  else { P.plan = full; P.share = LINE_SHARE; }
   return P.plan;
 }
 
@@ -118,6 +129,46 @@ export const SANS = 'NVSans';
 /** `t` is the frame time: animated parts (stick figures) keep moving after they are drawn. */
 export interface Unit { start: number; end: number; draw(c: Ctx, p: number, alpha: number, t: number): void; pen(p: number): [number, number] | [number, number, number] }
 
+// stick figure actions → the person's pose and face
+const PEEP_ACT: Record<string, [string, string]> = { idle: ['idle', 'calm'], walk: ['walk', 'calm'], run: ['walk', 'happy'], wave: ['wave', 'happy'], think: ['think', 'thinking'],
+  cheer: ['celebrate', 'laugh'], jump: ['celebrate', 'happy'], sad: ['sad', 'sad'], point: ['point', 'confident'], shrug: ['shrug', 'awkward'] };
+/**
+ * Hand-drawn people for the boards: the channel keeps one main character (the same person in
+ * every video of the channel), a second person on the board is someone else.
+ */
+function peepMaker(env: Env, project: ProjectSpec, dpr: number, ink: string) {
+  const names = Object.keys(PEEP_LOOKS), key = project.channel || project.title || '';
+  let h = 7; for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  // chalk on a dark board: the picture has no white fills, every mark is ink
+  const hex = ink.replace('#', ''), light = parseInt(hex.slice(0, 2), 16) + parseInt(hex.slice(2, 4), 16) + parseInt(hex.slice(4, 6), 16) > 420;
+  return (action: string, hpx: number, i: number) => {
+    const look = PEEP_LOOKS[names[(h + i * 3) % names.length]], [act, emo] = PEEP_ACT[action] || PEEP_ACT.idle;
+    const [g, pose] = poseOf(act, look);
+    const pic = peepPicture(env, look, g, pose, faceOf(emo, false, 1, 0), hpx / 2700, dpr, ink);
+    if (!pic) return null;
+    const R = makeReveal(env, pic.canvas, pic.w, pic.h, dpr, 2.2, { dark: !light });
+    return { w: pic.w, h: pic.h, ax: pic.ax, draw: (c: Ctx, p: number, x: number, y: number) => drawReveal(c, env, R, p, x, y), pen: (p: number) => revealPen(R, p) };
+  };
+}
+
+/**
+ * A panel picture "peep:<person>.<action>.<emotion>" (e.g. peep:lan.think.thinking): a
+ * hand-drawn person on white, filling the panel, for the classic boards beside the doodles.
+ */
+export function peepPanel(env: Env, ref: string, w: number, h: number) {
+  if (!hasPeeps()) return null;
+  const [who, action = 'idle', emo = 'calm'] = ref.slice(5).split('.');
+  const look = PEEP_LOOKS[who] || PEEP_LOOKS.minh, [g, pose] = poseOf(action, look);
+  const probe = peepPicture(env, look, g, pose, faceOf(emo, false, 1, 0), 0.1, 1);
+  if (!probe) return null;
+  const k = Math.min(w / probe.w, h / probe.h) * 0.94 * 0.1;
+  const pic = peepPicture(env, look, g, pose, faceOf(emo, false, 1, 0), k, 1)!;
+  const cv = env.createCanvas(Math.round(w), Math.round(h)), c = cv.getContext('2d');
+  c.fillStyle = '#fff'; c.fillRect(0, 0, w, h);
+  c.drawImage(pic.canvas, (w - pic.w) / 2, (h - pic.h) / 2, pic.w, pic.h);
+  return cv;
+}
+
 /** Area a diagram may use (above the subtitles when they are shown on the picture). */
 export function diagramBox(ratio: Ratio, subtitles = false): Box {
   if (ratio === '9:16') return subtitles ? { x: 40, y: 112, w: 460, h: 540 } : { x: 40, y: 112, w: 460, h: 640 };
@@ -146,17 +197,20 @@ export function prepare(opts: {
   b.setTransform(dpr, 0, 0, dpr, 0, 0); style.bg(b, W, H);
   const panels = project.scenes.map((sc, si) => {
     if (sc.diagram) return [];
-    const boxes = panelBoxes(project.ratio, sc.panels.length);
+    const boxes = panelBoxes(project.ratio, sc.panels.length, subs);
     return sc.panels.map((_, k) => {
       const box = boxes[k];
-      return { canvas: inkify(env, images[si][k], Math.round(box.w * dpr), Math.round(box.h * dpr), style.ink), box, zig: zigzag(box.w, box.h, si * 3 + k) };
+      const T = timeline.scenes[si].panels[k];
+      const ref = sc.panels[k].image || '', src = ref.startsWith('peep:') ? peepPanel(env, ref, box.w * dpr, box.h * dpr) || images[si][k] : images[si][k];
+      return { canvas: inkify(env, src, Math.round(box.w * dpr), Math.round(box.h * dpr), style.ink), box, zig: zigzag(box.w, box.h, si * 3 + k), seconds: T ? T.end - T.start : undefined };
     });
   });
   const m: Model = { project, timeline, style, tool: project.tool ?? style.tool, W, H, dpr, background: bgc, panels, mask: new Map(), hand, env, units: [], mode, icons: opts.icons || {} };
   const measure = env.createCanvas(4, 4).getContext('2d');
   const colors = { ink: style.ink, accent: style.episode, accent2: style.accent2, good: style.good, fills: style.fills,
     font: mode === 'hand' ? 'Pangolin' : SANS, flat: mode === 'motion', images: opts.media || {}, qr: qrCells,
-    character: project.character ? opts.media?.[project.character] || undefined : undefined };
+    character: project.character ? opts.media?.[project.character] || undefined : undefined,
+    peep: mode === 'hand' && project.figures !== 'rig' && hasPeeps() ? peepMaker(env, project, dpr, style.ink) : undefined };
   // maths animation: crisp single strokes with a faint glow, no paper texture passes
   const pen: Pen = mode === 'math' ? { passes: [[0, 0, 0.22, 2.6], [0, 0, 1, 0.85]], width: style.width } : { passes: style.passes, brush: style.brush, width: style.width };
   m.units = project.scenes.map((sc, si) => {
@@ -211,13 +265,42 @@ function prepareLook(opts: Parameters<typeof prepare>[0]): Model {
 function prepareAct(opts: Parameters<typeof prepare>[0]): Model {
   const { env, project, timeline, hand, dpr } = opts;
   const { W, H } = logicalSize(project.ratio);
-  const act = buildAct({ project, timeline, font: SANS, hand: 'Pangolin', measure: env.createCanvas(4, 4).getContext('2d') });
+  const act = buildAct({ project, timeline, font: SANS, hand: 'Pangolin', measure: env.createCanvas(4, 4).getContext('2d'), env, dpr });
   return { project, timeline, style: STYLES.notebook, tool: 'marker', W, H, dpr, background: env.createCanvas(4, 4), panels: project.scenes.map(() => []), mask: new Map(), hand, env,
     units: project.scenes.map(() => []), mode: 'hand', icons: opts.icons || {}, act };
 }
 
 /** Sound cues of the video (formats and story animation). */
-export const cuesOf = (m: Model) => m.act?.cues || m.look?.cues || [];
+export const cuesOf = (m: Model) => m.act?.cues || m.look?.cues || handCues(m);
+
+/** Spans [t0, t1] merged when the gap between them is too short to hear the pen lift. */
+export function penSpans(spans: [number, number][], gap = 0.06): [number, number][] {
+  const out: [number, number][] = [];
+  for (const [a, b] of spans.sort((x, y) => x[0] - y[0])) {
+    if (b - a <= 0.01) continue;
+    const last = out[out.length - 1];
+    if (last && a - last[1] < gap) last[1] = Math.max(last[1], b); else out.push([a, b]);
+  }
+  return out;
+}
+
+/** Hand-drawn board: the felt pen sounds while a stroke is drawn and is silent while lifted. */
+function handCues(m: Model) {
+  if (m.mode !== 'hand') return [];
+  const spans: [number, number][] = [];
+  m.project.scenes.forEach((sc, si) => {
+    if (!sc.diagram) {
+      m.panels[si].forEach((P, k) => {
+        const T = m.timeline.scenes[si].panels[k], plan = planOf(m, P);
+        if (!T) return;
+        const share = P.share ?? LINE_SHARE, dur = (T.end - T.start) * share;
+        if (!plan) { spans.push([T.start, T.start + dur]); return; }
+        for (const [a, b] of strokeSpans(plan)) spans.push([T.start + a * dur, T.start + b * dur]);
+      });
+    } else for (const u of m.units[si]) spans.push([u.start, u.end]);
+  });
+  return penSpans(spans).map(([a, b]) => ({ t: a, k: 'scribble' as const, d: b - a }));
+}
 
 export const TRANSITIONS = ['fade', 'slide', 'wipe', 'zoom'] as const;
 /** Transition into scene si: the project's choice, or a varied but fixed sequence ("auto"). */
@@ -345,7 +428,7 @@ function drawPanel(c: Ctx, m: Model, si: number, k: number, p: number, alpha: nu
  * nib. Over the last tenth, soft tones and specks too small to draw settle in.
  */
 function drawStrokes(c: Ctx, m: Model, P: Panel, plan: StrokePlan, p: number, alpha: number) {
-  const { box, canvas } = P, q = p / LINE_SHARE, st = penState(plan, q);
+  const share = P.share ?? LINE_SHARE, { box, canvas } = P, q = p / share, st = penState(plan, q);
   const key = `${canvas.width}x${canvas.height}`;
   let cache = m.mask.get('done:' + key), work = m.mask.get(key);
   if (!cache) { cache = { cv: m.env.createCanvas(canvas.width, canvas.height), owner: null, done: 0 }; m.mask.set('done:' + key, cache); }
@@ -363,13 +446,13 @@ function drawStrokes(c: Ctx, m: Model, P: Panel, plan: StrokePlan, p: number, al
   if (st.along > 0 && st.done < plan.strokes.length) { pen(x, st.done); pathStroke(x, plan, st.done, st.along); x.stroke(); }
   x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-in'; x.drawImage(canvas, 0, 0);
   c.drawImage(work, box.x, box.y, box.w, box.h);
-  if (p > LINE_SHARE) { c.globalAlpha = alpha * ease((p - LINE_SHARE) / (1 - LINE_SHARE)); c.drawImage(canvas, box.x, box.y, box.w, box.h); }
+  if (p > share) { c.globalAlpha = alpha * ease((p - share) / (1 - share)); c.drawImage(canvas, box.x, box.y, box.w, box.h); }
 }
 
 function penAt(m: Model, si: number, k: number, p: number): [number, number] | [number, number, number] {
   const P = m.panels[si][k], plan = planOf(m, P);
   if (plan) {
-    const st = penState(plan, p / LINE_SHARE);
+    const st = penState(plan, p / (P.share ?? LINE_SHARE));
     return [P.box.x + st.x, P.box.y + st.y, st.lift];
   }
   const [x, y] = along(P.zig, p);

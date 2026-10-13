@@ -40,7 +40,7 @@ export interface ActBeat {
 export interface ActText {
   at?: When; dur?: number; text: string;
   /** stamp: keyword card · number: a figure · big: written by the hand (conclusion) · label: under an actor */
-  kind?: 'stamp' | 'number' | 'big' | 'label';
+  kind?: 'stamp' | 'number' | 'big' | 'label' | 'note';
   /** label: actor it belongs to */
   who?: string;
 }

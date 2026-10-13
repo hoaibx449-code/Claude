@@ -1,0 +1,205 @@
+{
+ "title": "Lương mãi không đủ tiêu",
+ "channel": "Nét Vẽ",
+ "episode": "Tập 3",
+ "ratio": "9:16",
+ "style": "whiteboard",
+ "visual": "diagram",
+ "subtitles": false,
+ "scenes": [
+  {
+   "lines": [
+    "Lương mười lăm triệu, vậy mà ngày mười đã hết tiền."
+   ],
+   "panels": [],
+   "diagram": {
+    "kind": "sketch",
+    "items": [
+     {
+      "id": "t",
+      "t": "text",
+      "text": "15 triệu đi đâu?",
+      "x": 50,
+      "y": 6,
+      "size": "xl"
+     },
+     {
+      "id": "p",
+      "t": "chart",
+      "kind": "pie",
+      "values": [
+       6,
+       4,
+       3,
+       2
+      ],
+      "labels": [
+       "Nhà",
+       "Ăn uống",
+       "Mua sắm",
+       "Đi lại"
+      ],
+      "x": 50,
+      "y": 46,
+      "w": 90,
+      "h": 55
+     },
+     {
+      "t": "person",
+      "action": "shrug",
+      "x": 80,
+      "y": 86,
+      "h": 26
+     },
+     {
+      "t": "circle",
+      "on": "t",
+      "color": "accent"
+     }
+    ]
+   }
+  },
+  {
+   "lines": [
+    "Lương tăng mỗi năm, nhưng chi tiêu tăng nhanh hơn."
+   ],
+   "panels": [],
+   "diagram": {
+    "kind": "sketch",
+    "items": [
+     {
+      "id": "t",
+      "t": "text",
+      "text": "Chi tiêu đuổi theo lương",
+      "x": 50,
+      "y": 6,
+      "size": "l"
+     },
+     {
+      "id": "c",
+      "t": "chart",
+      "kind": "plot",
+      "values": [
+       8,
+       9.5,
+       12,
+       14.8
+      ],
+      "xLabel": "năm",
+      "yLabel": "chi tiêu",
+      "caption": "luôn sát trần",
+      "x": 50,
+      "y": 50,
+      "w": 92,
+      "h": 60
+     },
+     {
+      "t": "underline",
+      "on": "t",
+      "color": "accent"
+     }
+    ]
+   }
+  },
+  {
+   "lines": [
+    "Mua sắm theo cảm hứng ăn hết phần dư mỗi tháng."
+   ],
+   "panels": [],
+   "diagram": {
+    "kind": "bars",
+    "title": "Phần dư mỗi tháng",
+    "values": [
+     3,
+     1.6,
+     0.4
+    ],
+    "labels": [
+     "Tháng 1",
+     "Tháng 2",
+     "Tháng 3"
+    ],
+    "unit": "tr",
+    "trend": false
+   }
+  },
+  {
+   "lines": [
+    "Bí quyết: nhận lương là trích hai mươi phần trăm cất đi trước."
+   ],
+   "panels": [],
+   "diagram": {
+    "kind": "sketch",
+    "items": [
+     {
+      "id": "a",
+      "t": "chart",
+      "kind": "pie",
+      "values": [
+       20,
+       80
+      ],
+      "labels": [
+       "Cất trước",
+       "Chi tiêu"
+      ],
+      "x": 50,
+      "y": 34,
+      "w": 80,
+      "h": 46
+     },
+     {
+      "id": "m",
+      "t": "person",
+      "action": "point",
+      "x": 24,
+      "y": 80,
+      "h": 30
+     },
+     {
+      "id": "k",
+      "t": "icon",
+      "name": "pig-money",
+      "x": 74,
+      "y": 80,
+      "w": 26,
+      "color": "accent",
+      "label": "3 triệu/tháng"
+     },
+     {
+      "t": "arrow",
+      "from": "a",
+      "to": "k",
+      "color": "accent"
+     }
+    ]
+   }
+  },
+  {
+   "lines": [
+    "Sáu tháng sau, bạn có mười tám triệu dự phòng."
+   ],
+   "panels": [],
+   "diagram": {
+    "kind": "bars",
+    "title": "Quỹ dự phòng",
+    "start": "0đ",
+    "values": [
+     3,
+     6,
+     9,
+     12,
+     18
+    ],
+    "labels": [
+     "T1",
+     "T2",
+     "T3",
+     "T4",
+     "T6"
+    ],
+    "unit": "tr"
+   }
+  }
+ ]
+}

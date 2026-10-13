@@ -12,7 +12,7 @@ await build({
   outfile: join(pub, 'engine.js'),
 });
 mkdirSync(join(pub, 'assets'), { recursive: true });
-for (const dir of ['fonts', 'hands/default', 'icons', 'doodles']) cpSync(join(root, 'assets', dir), join(pub, 'assets', dir), { recursive: true });
+for (const dir of ['fonts', 'hands/default', 'icons', 'doodles', 'peeps']) cpSync(join(root, 'assets', dir), join(pub, 'assets', dir), { recursive: true });
 
 // app icons (PNG for phones that do not take SVG)
 const { createCanvas, loadImage } = await import('@napi-rs/canvas');
@@ -56,11 +56,16 @@ demos.push(...lookDemos);
   const ex = JSON.parse(readFileSync(join(root, 'examples', 'giao-tiep-nguoi-la', 'project.json'), 'utf8'));
   demos.unshift({ id: 'look-act', title: ex.scenes[0].lines[0], look: 'act', spec: cleanSpec({ ...ex, visual: 'sketch', look: 'act' }, 'demo') });
 }
-// classic hand drawing, as in the proposal: Open Doodles revealed by the hand, handwritten subtitles
+// classic hand drawing: Open Doodles and the video's hand-drawn person, revealed by the hand, no subtitles
 const { doodlePanels } = await import('./src/doodles.ts');
-const classicLines = [['Bạn có biết vì sao đọc sách mỗi ngày lại thay đổi cuộc đời?'], ['Mỗi sáng một tách cà phê, mười lăm phút đọc, không cần nhiều hơn.'], ['Một năm sau, kiến thức ấy lớn dần như một cái cây.']];
+const classicLines = [['Bạn có biết vì sao đọc sách mỗi ngày lại thay đổi cuộc đời?'], ['Vì sao vậy? Mỗi trang sách là một người thầy.'], ['Mỗi sáng một tách cà phê, mười lăm phút đọc, không cần nhiều hơn.'], ['Bí quyết: đọc mỗi ngày một ít, đừng chờ có thời gian.']];
 const classicPanels = doodlePanels(classicLines);
-demos.push({ id: 'classic', title: classicLines[0][0], look: 'classic', spec: cleanSpec({ title: 'Đọc sách mỗi ngày', visual: 'doodle', ratio: '9:16', style: 'notebook', mode: 'hand', subtitles: true, channel: 'Nét Vẽ', episode: 'Tập 1',
+// the hand-drawn styles of the format picker: hand-drawn charts and boards drawn from the words
+for (const [id, file] of [['classic-diagram', 'charts'], ['classic-sketch', 'sketchnote']]) {
+  const ex = JSON.parse(readFileSync(join(root, 'examples', 'phong-cach', file + '.json'), 'utf8'));
+  demos.push({ id, title: ex.scenes[0].lines[0], look: id, spec: cleanSpec(ex, 'demo') });
+}
+demos.push({ id: 'classic', title: classicLines[0][0], look: 'classic', spec: cleanSpec({ title: 'Đọc sách mỗi ngày', visual: 'doodle', ratio: '9:16', style: 'notebook', mode: 'hand', subtitles: false, channel: 'Nét Vẽ', episode: 'Tập 1',
   scenes: classicLines.map((lines, i) => ({ lines, panels: classicPanels[i] })) }, 'demo') });
 writeFileSync(join(pub, 'demos.json'), JSON.stringify(demos));
 console.log('web/public built');

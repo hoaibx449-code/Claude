@@ -84,15 +84,28 @@ test('documentary credits: plan allowance first, then credits, refund when nothi
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('hand drawing picks Open Doodles from the words and never repeats one while others remain', async () => {
-  const { doodlePanels, isDoodle, DOODLE_NAMES } = await import('../web/src/doodles.ts');
+test('hand drawing picks Open Doodles or the acting person from the words and never repeats a picture', async () => {
+  const { doodlePanels, isDoodle, isPeep, DOODLE_NAMES } = await import('../web/src/doodles.ts');
   const scenes = Array.from({ length: 20 }, (_, i) => [`Câu thứ ${i} về cuộc sống.`]);
   scenes[0] = ['Mỗi ngày đọc sách mười lăm phút.']; scenes[1] = ['Mua sắm trên Shopee quá nhiều.'];
   const panels = doodlePanels(scenes);
   assert.equal(panels[0][0].image, 'doodle:ReadingDoodle'); assert.equal(panels[1][0].image, 'doodle:UnboxingDoodle');
-  const names = panels.map((p) => p[0].image);
-  assert.equal(new Set(names).size, names.length);
-  assert.ok(names.every(isDoodle)); assert.equal(isDoodle('doodle:../../etc'), false); assert.ok(DOODLE_NAMES.length >= 30);
+  const names = panels.map((p) => p[0].image), doodles = names.filter(isDoodle), people = names.filter(isPeep);
+  assert.equal(new Set(doodles).size, doodles.length);
+  assert.ok(people.length >= 4, 'the video\'s person plays some of the lines');
+  assert.equal(new Set(people.map((p) => p.split('.')[0])).size <= 2, true, 'one main character (and at most one other)');
+  assert.ok(names.every((n, i) => (isDoodle(n) || isPeep(n)) && n !== names[i - 1]));
+  assert.equal(isPeep('peep:minh.think.thinking'), true); assert.equal(isPeep('peep:../x.y.z'), false); assert.equal(isDoodle('doodle:../../etc'), false); assert.ok(DOODLE_NAMES.length >= 30);
   const spec: any = cleanSpec({ title: 'x', visual: 'doodle', scenes: [{ lines: ['một hai'], panels: [{ image: 'doodle:ReadingDoodle', line: 0 }, { image: 'doodle:Nope' }] }] }, 'u1');
   assert.equal(spec.scenes[0].panels[0].image, 'doodle:ReadingDoodle'); assert.equal(spec.scenes[0].panels[1].image, '');
+});
+
+test('"tự động đa dạng" picks the way from the words and does not repeat the last video', async () => {
+  const { autoLook } = await import('../web/src/worker.ts');
+  const envWith = (prev: any) => ({ DB: { prepare: () => ({ bind: () => ({ first: async () => (prev ? { spec: JSON.stringify(prev) } : null) }) }) } }) as any;
+  const on = () => true, u = { id: 'u1' } as any;
+  assert.deepEqual(await autoLook(envWith(null), u, '- Chào bạn!\n- Ờ... chào.\nHai người bắt chuyện.', on), { look: 'act' });
+  assert.deepEqual(await autoLook(envWith(null), u, 'Lương 15 triệu. Nhà 5 triệu, ăn 4 triệu, cất 20%.', on), { look: '', visual: 'diagram' });
+  assert.deepEqual(await autoLook(envWith({ look: 'act' }), u, '- Chào!\n- Chào.', on), { look: '', visual: 'sketch' });
+  assert.deepEqual(await autoLook(envWith({ visual: 'sketch' }), u, 'Đọc sách mỗi ngày giúp bạn bình tĩnh.', on), { look: '', visual: 'doodle' });
 });

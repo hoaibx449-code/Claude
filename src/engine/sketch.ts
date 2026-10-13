@@ -35,7 +35,7 @@ export function buildSketch(c: Ctx, items: SketchItem[], stage: Box, col: Colors
   const X = (v: number) => stage.x + (stage.w * Math.max(0, Math.min(100, v))) / 100;
   const Y = (v: number) => stage.y + (stage.h * Math.max(0, Math.min(100, v))) / 100;
   const color = (k?: InkColor) => (k === 'accent' ? col.accent : k === 'accent2' ? col.accent2 : k === 'good' ? col.good : col.ink);
-  let seed = 7;
+  let seed = 7, people = 0;
 
   // ---- element makers; each returns the elements and their bounding box
   const pathEl = (pts: P[], clr: string, width = 3.4, line?: number): Element => {
@@ -106,7 +106,8 @@ export function buildSketch(c: Ctx, items: SketchItem[], stage: Box, col: Colors
         const first = actorAt(actor, 0), len = lengthOf(first);
         const d = hpx * 0.78;
         // a reference character (real picture) plays the person; otherwise an animated stick figure
-        const els: Element[] = col.character
+        const pe = !col.character ? col.peep?.(action, hpx, people++) : null;
+        const els: Element[] = pe ? [{ kind: 'peep', peep: pe, x, y: ground, flip: facing, weight: 1.1, line }] : col.character
           ? [{ kind: 'image', img: col.character, x: x - d / 2, y: ground - d - 4, w: d, h: d, shape: 'circle', color: col.accent, weight: 0.7, line }]
           : [{ kind: 'actor', actor, first, len, color: col.ink, width: 3.6, weight: Math.max(0.6, len / 380), line }];
         const box: BBox = { x0: x - 45 * k, y0: ground - hpx, x1: x + 45 * k, y1: ground };

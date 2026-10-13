@@ -208,3 +208,25 @@ export function resample(d: Pt[], n: number, closed = false): Pt[] {
   for (let i = 0; i < n; i++) out.push(pointAt(d, closed ? i / n : i / Math.max(1, n - 1), closed));
   return out;
 }
+
+/**
+ * A hand-drawn line the way rough.js draws one: slightly bowed, ends that overshoot a little,
+ * drawn twice with different wobble. Deterministic for a seed (no boiling).
+ */
+export function roughLine(a: Pt, b: Pt, seed: number, amp = 1): Pt[][] {
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, nx = -(b[1] - a[1]) / len, ny = (b[0] - a[0]) / len;
+  const gain = Math.max(0.4, Math.min(1, 1.23 - 0.0017 * len)) * amp;
+  return [0, 1].map((pass) => {
+    const r = (k: number) => (hash(seed * 13 + pass * 7 + k) - 0.5) * 2;
+    const off = Math.min(len / 10, 3) * gain, bow = len * 0.025 * r(1) * gain;
+    const p0: Pt = [a[0] + r(2) * off, a[1] + r(3) * off], p1: Pt = [b[0] + r(4) * off, b[1] + r(5) * off];
+    const mid: Pt = [(p0[0] + p1[0]) / 2 + nx * bow, (p0[1] + p1[1]) / 2 + ny * bow];
+    return quad(p0, mid, p1, Math.max(6, Math.round(len / 12)));
+  });
+}
+/** A rough arrow from a to b (shaft drawn twice, open head). */
+export function roughArrow(a: Pt, b: Pt, seed: number, ink: string, w = 3): Prim[] {
+  const ang = Math.atan2(b[1] - a[1], b[0] - a[0]), hl = 14;
+  const h1: Pt = [b[0] - Math.cos(ang - 0.45) * hl, b[1] - Math.sin(ang - 0.45) * hl], h2: Pt = [b[0] - Math.cos(ang + 0.45) * hl, b[1] - Math.sin(ang + 0.45) * hl];
+  return [...roughLine(a, b, seed), ...roughLine(h1, b, seed + 1, 0.6), ...roughLine(h2, b, seed + 2, 0.6)].map((d, i) => ({ d, w: i % 2 ? w * 0.7 : w, ink, alpha: i % 2 ? 0.7 : 1 }));
+}

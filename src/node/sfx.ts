@@ -48,7 +48,7 @@ export function synth(kind: Sfx, dur = 1): Float32Array {
     }
     case 'scribble': {
       // felt tip on paper: band-limited noise, loud while a stroke moves, quieter between strokes
-      const out = len(Math.max(0.15, dur)), r = rand(11);
+      const out = len(Math.max(0.06, dur)), r = rand(11);
       let lp = 0, lp2 = 0, phase = 0, rate = 5;
       for (let i = 0; i < out.length; i++) {
         const t = i / RATE;

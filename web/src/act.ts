@@ -67,8 +67,8 @@ export function cleanAct(a: any, cast: string[]) {
   if (beats.length) o.beats = beats;
   const text = (Array.isArray(a.text) ? a.text : []).slice(0, 3).map((t: any) => {
     const s = str(t?.text, 48); if (!s) return null;
-    const kind = ['stamp', 'number', 'big', 'label'].includes(t?.kind) ? t.kind : 'stamp';
-    return { text: s, kind, at: when(t?.at), dur: num(t?.dur, 0.5, 10), who: kind === 'label' ? who(t?.who) : undefined };
+    const kind = ['stamp', 'number', 'big', 'label', 'note'].includes(t?.kind) ? t.kind : 'stamp';
+    return { text: s, kind, at: when(t?.at), dur: num(t?.dur, 0.5, 10), who: kind === 'label' || kind === 'note' ? who(t?.who) : undefined };
   }).filter(Boolean);
   if (text.length) o.text = text;
   if (a.badge === 'wrong' || a.badge === 'right') o.badge = a.badge;

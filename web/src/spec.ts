@@ -3,7 +3,7 @@
 import { HttpError } from './util.ts';
 import { composeScene } from './compose.ts';
 import { detectIntent, FORMATS, NICHES } from './intent.ts';
-import { isDoodle } from './doodles.ts';
+import { isDoodle, isPeep } from './doodles.ts';
 
 export const STYLES = ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'pencil', 'blueprint', 'ricepaper', 'neon', 'pastel', 'newspaper', 'comic', 'darkboard', 'sunset', 'cosmos', 'manim', 'bold'] as const;
 export const MODES = ['hand', 'motion', 'math', 'kinetic'] as const;
@@ -21,7 +21,7 @@ export const TRANSITIONS = ['auto', 'fade', 'slide', 'wipe', 'zoom'] as const;
 export const TOOLS = ['marker', 'chalk', 'fountain', 'colormarker', 'pencil', 'technical', 'brush'] as const;
 export const RATIOS = ['9:16', '16:9'] as const;
 export const VOICE_PROVIDERS = ['everai', 'google', 'elevenlabs', 'free', 'mock'] as const;
-export const DIAGRAM_KINDS = ['bars', 'compare', 'steps', 'flow', 'number', 'statement', 'stick', 'sketch', 'plot'] as const;
+export const DIAGRAM_KINDS = ['bars', 'compare', 'steps', 'flow', 'number', 'statement', 'stick', 'sketch', 'plot', 'pie'] as const;
 const PLOT_FNS = ['linear', 'exp', 'log', 'sin', 'square', 'sqrt', 'down', 'wave'] as const;
 export const ACTIONS = ['idle', 'walk', 'run', 'wave', 'think', 'cheer', 'sad', 'point', 'shrug', 'jump'] as const;
 export const VISUAL_MODES = ['doodle', 'sketch', 'diagram', 'mix', 'images'] as const;
@@ -67,7 +67,7 @@ function cleanSketch(items: unknown, lines: number, media: string[] = []) {
         break;
       case 'chart': {
         const d = cleanDiagram({ ...it, title: undefined });
-        if (!d || !['bars', 'flow', 'compare', 'steps', 'number', 'plot'].includes(d.kind)) continue;
+        if (!d || !['bars', 'flow', 'compare', 'steps', 'number', 'plot', 'pie'].includes(d.kind)) continue;
         at(); Object.assign(o, d, { t: 'chart', w: Math.max(30, pct(it.w, 80)), h: Math.max(15, Math.min(80, pct(it.h, 35))) });
         break;
       }
@@ -109,6 +109,12 @@ function cleanDiagram(d: any, lines = 3, media: string[] = []) {
       out.labels = strs(d.labels, 5, 16); out.unit = str(d.unit, 6);
       if (str(d.start, 10)) out.start = str(d.start, 10);
       if (d.trend === false) out.trend = false;
+      if (!out.values.length) return null;
+      break;
+    case 'pie':
+      out.values = (Array.isArray(d.values) ? d.values : []).map(Number).filter((v: number) => isFinite(v) && v > 0 && v < 1e12).slice(0, 5);
+      out.labels = strs(d.labels, 5, 16);
+      if (str(d.caption, 40)) out.caption = str(d.caption, 40);
       if (!out.values.length) return null;
       break;
     case 'compare':
@@ -229,7 +235,7 @@ export function cleanSpec(input: any, userId: string) {
       const prompt = str(p?.prompt, 400);
       const image = str(p?.image, 120);
       // only the user's own AI drawings or a bundled Open Doodle; anything else means "not drawn yet"
-      const out: any = { image: ownImage.test(image) || isDoodle(image) ? image : '', prompt };
+      const out: any = { image: ownImage.test(image) || isDoodle(image) || isPeep(image) ? image : '', prompt };
       if (Number.isInteger(p?.line) && p.line >= 0 && p.line < 3) out.line = p.line;
       return out;
     });
@@ -253,7 +259,7 @@ export function cleanSpec(input: any, userId: string) {
       chatName: look === 'chat' ? str(input.chatName, 30) || 'Bạn thân' : undefined,
       music: /^site:[a-f0-9]{24}\.(mp3|m4a)$/.test(String(input.music || '')) ? input.music : undefined,
       sfx: input.sfx !== false,
-      ...(look === 'act' ? { cast, subtitles: input.subtitles === true } : {}),
+      ...(look === 'act' ? { cast, subtitles: input.subtitles === true, figures: input.figures === 'rig' ? 'rig' : 'peeps' } : {}),
     } : {}),
     audio: cleanAudio(input.audio),
     transition: pick(input.transition, TRANSITIONS, 'auto'),
