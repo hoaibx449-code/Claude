@@ -22,7 +22,7 @@ export const KIND_KEYS = ['sketch', 'bars', 'flow', 'compare', 'steps', 'number'
 /** How the picture comes alive (the four genres of explainer video). */
 export const MODE_KEYS = ['hand', 'motion', 'math', 'kinetic'] as const;
 /** Video formats (src/engine/looks.ts). */
-export const LOOK_KEYS = ['kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
+export const LOOK_KEYS = ['act', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
 export const GOOGLE_MODES = ['auto', 'popup', 'redirect'] as const;
 export const VISUAL_KEYS = ['doodle', 'sketch', 'diagram', 'mix', 'images'] as const;
 export const SOURCE_KEYS = ['topic', 'mine-ai', 'mine-free'] as const;
@@ -143,8 +143,9 @@ export function defaultConfig(env: Env): Config {
       actions: { idle: 'Đứng', walk: 'Đi bộ', run: 'Chạy', wave: 'Vẫy tay', think: 'Suy nghĩ', cheer: 'Ăn mừng', sad: 'Buồn', point: 'Chỉ tay', shrug: 'Nhún vai', jump: 'Nhảy' },
       ai: { openai: 'OpenAI', gemini: 'Gemini' },
       modes: { hand: 'Bàn tay vẽ (whiteboard)', motion: 'Đồ hoạ chuyển động (motion graphics)', math: 'Toán học / học thuật (kiểu Manim)', kinetic: 'Chữ chuyển động (kinetic typography)' },
-      looks: { kinetic: 'Chữ bùng nổ', split: 'Hai bên đối lập', chat: 'Tin nhắn drama', story: 'Kể chuyện người que', data: 'Con số biết nói', quiz: 'Đố vui đếm ngược', doc: 'Phim tài liệu AI' },
+      looks: { act: 'Hoạt hình kể chuyện', kinetic: 'Chữ bùng nổ', split: 'Hai bên đối lập', chat: 'Tin nhắn drama', story: 'Kể chuyện người que', data: 'Con số biết nói', quiz: 'Đố vui đếm ngược', doc: 'Phim tài liệu AI' },
       lookNotes: {
+        act: 'Bàn tay vẽ nhân vật rồi nhân vật tự diễn: đi lại, trò chuyện, cảm xúc, ví dụ sai/đúng. Hợp kỹ năng sống, tâm lý, kể chuyện.',
         kinetic: 'Chữ to từng nhịp, từ khoá tô vàng. Hợp mẹo nhanh, động lực, câu mở đầu.', split: 'Màn hình chia đôi: sai và đúng, nghèo và giàu. Hợp tài chính, kỹ năng sống.',
         chat: 'Câu chuyện qua tin nhắn, chốt bằng bài học. Hợp gia đình, cảnh báo, tình huống.', story: 'Một nhân vật đi qua các bối cảnh. Hợp kể chuyện đời thường.',
         data: 'Số đếm chạy lên và biểu đồ chia phần. Hợp tài chính, so sánh giá.', quiz: 'Hỏi, đếm ngược 3-2-1 rồi lật đáp án. Kéo bình luận.',
@@ -154,7 +155,7 @@ export function defaultConfig(env: Env): Config {
     texts: { ...DEFAULT_TEXTS },
     enabledStyles: [...STYLE_KEYS],
     enabledSources: [...SOURCE_KEYS],
-    defaults: { source: 'topic', subtitles: false, textAI: 'gemini', imageAI: 'gemini', style: 'notebook', visual: 'doodle', ratio: '9:16', seconds: 45, voice: 'vi_female_thuytrang_mb', channel: '', tone: '', mode: 'hand', intro: true, look: 'kinetic', music: 'auto' },
+    defaults: { source: 'topic', subtitles: false, textAI: 'gemini', imageAI: 'gemini', style: 'notebook', visual: 'doodle', ratio: '9:16', seconds: 45, voice: 'vi_female_thuytrang_mb', channel: '', tone: '', mode: 'hand', intro: true, look: 'act', music: 'auto' },
     auth: { google: 'auto' },
     voices: [
       ['vi_female_thuytrang_mb', 'Thùy Trang · nữ Bắc · nói chuyện'], ['vi_male_minhtriet_mb', 'Minh Triết · nam Bắc · sách nói'],
@@ -182,7 +183,7 @@ export function defaultConfig(env: Env): Config {
       imageOpenai: 0.063, imageGemini: 0.039, everaiPer1000: 1000, googleTtsPerM: 16, elevenPer1000: 0.18,
     },
     logDays: 180,
-    visibility: { 'feature:music': 'dev' },
+    visibility: { 'feature:music': 'dev', 'look:story': 'hidden' },
     zalo: {
       enabled: false, botLink: '', allowGuests: true, scriptSource: 'mine-free', autoRender: true, ownerChat: '',
       notifyOwner: { signup: true, failed: true, order: true, daily: false },

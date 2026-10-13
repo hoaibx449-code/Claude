@@ -1,3 +1,4 @@
+import { ACT_BRIEF } from './act.ts';
 // Script writing (OpenAI or Gemini, chosen per request) and line-art images.
 // Model output is treated as data: it goes through cleanSpec() before use.
 import { Buffer } from 'node:buffer';
@@ -21,6 +22,7 @@ export const PHOTO_STYLE =
 const ICON_HINT = 'Tên icon là tên bộ Tabler Icons tiếng Anh, viết thường, gạch nối (vd cash, pig-money, wallet, brain, clock, home, briefcase, coffee, shopping-cart, building-bank, trending-up, trending-down, heart, target-arrow, bulb, mood-sad, mood-happy, school, book).';
 /** What each format needs from the writer, and the per-scene "x" data it reads. */
 export const LOOK_BRIEF: Record<string, string> = {
+  act: ACT_BRIEF,
   kinetic: 'ĐỊNH DẠNG: CHỮ BÙNG NỔ. Câu ngắn, mạnh, có con số cụ thể; mỗi câu ≤ 14 chữ. Mỗi cảnh có "x":{"icon":"icon chính","keys":["1-3 từ cần nhấn, đúng như trong câu"]}.',
   split: 'ĐỊNH DẠNG: HAI BÊN ĐỐI LẬP. Ở gốc JSON có "sides":{"a":"tên bên sai/nghèo/trước (≤ 20 ký tự)","b":"tên bên đúng/giàu/sau"}. Mỗi cảnh thân bài có đúng 2 câu: câu 1 nói bên A làm gì, câu 2 nói bên B làm gì, và "x":{"a":"bên A làm gì (≤ 40 ký tự)","b":"bên B làm gì","aIcon":"icon","bIcon":"icon","aValue":"(tuỳ chọn) kết quả bên A, vd 0đ","bValue":"(tuỳ chọn) kết quả bên B"}. Cảnh mở và kết chỉ cần "lines".',
   chat: 'ĐỊNH DẠNG: TIN NHẮN DRAMA. Kể câu chuyện bằng tin nhắn giữa "mình" và một người thân. Ở gốc JSON có "chatName":"tên người kia (vd Vợ yêu, Sếp, Mẹ, Bạn thân)". Mỗi câu thoại là một tin nhắn ngắn, văn nói; "x":{"chat":[{"who":"a hoặc b","text":"đúng nguyên câu thoại"}]} với a là người kia, b là mình. Cảnh cuối thêm "x":{"card":"câu bài học, là một trong các câu thoại của cảnh"}.',
@@ -100,7 +102,8 @@ function systemPrompt(r: ScriptRequest) {
     r.look || r.visual === 'doodle' ? '' : '"panels": [{"prompt":"TIẾNG ANH, 1 hình minh hoạ đơn giản: chủ thể, hành động, đồ vật ẩn dụ; không chữ trong hình"}].',
     r.look || r.visual === 'doodle' ? '' : DIAGRAM_SCHEMA + '. Chữ trong diagram là tiếng Việt, rất ngắn, khớp ý câu thoại của cảnh.',
     !r.look && r.visual === 'sketch' ? sketchSchema(r.ratio) : '',
-    r.look ? 'Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#... 5-8 thẻ"], (các trường gốc của định dạng nếu có), "scenes":[{"lines":["câu 1","câu 2"],"x":{...}}]}' : '',
+    r.look === 'act' ? 'Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#... 5-8 thẻ"],"cast":[...],"scenes":[{"lines":["câu 1","câu 2"],"act":{...}}]}'
+      : r.look ? 'Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#... 5-8 thẻ"], (các trường gốc của định dạng nếu có), "scenes":[{"lines":["câu 1","câu 2"],"x":{...}}]}' : '',
     r.look ? '' : 'Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption đăng bài ≤ 150 ký tự, kết bằng một câu hỏi mời bình luận","hashtags":["#tiengvietkhongdau", "... 5-8 thẻ"],"scenes":[{"lines":["câu 1","câu 2"],"panels":[...]} hoặc {"lines":[...],"diagram":{...}}]}',
   ].filter(Boolean).join('\n');
 }
@@ -111,7 +114,8 @@ function illustratePrompt(r: ScriptRequest) {
     'Người dùng đã có kịch bản tiếng Việt, chia sẵn thành cảnh. GIỮ NGUYÊN lời thoại, KHÔNG viết lại; chỉ thêm dữ liệu hình cho từng cảnh, đúng thứ tự, đúng số cảnh.',
     LOOK_BRIEF[r.look] + ' ' + ICON_HINT,
     r.extra ? 'YÊU CẦU THÊM CỦA CHỦ TRANG: ' + r.extra : '',
-    `Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#..."], (các trường gốc của định dạng nếu có), "scenes":[{"x":{...}}, ... đúng ${r.scenes!.length} cảnh, cảnh đố vui có thêm "pause"]}`,
+    r.look === 'act' ? `Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#..."],"cast":[...],"scenes":[{"act":{...}}, ... đúng ${r.scenes!.length} cảnh, "at" dùng L0/L1 theo câu của cảnh]}`
+      : `Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#..."], (các trường gốc của định dạng nếu có), "scenes":[{"x":{...}}, ... đúng ${r.scenes!.length} cảnh, cảnh đố vui có thêm "pause"]}`,
   ].filter(Boolean).join('\n');
   return [
     'Bạn là hoạ sĩ minh hoạ video "bàn tay vẽ" tiếng Việt. Người dùng đã có kịch bản, chia sẵn thành cảnh. GIỮ NGUYÊN lời thoại, KHÔNG viết lại; chỉ thiết kế hình cho từng cảnh, đúng thứ tự, đúng số cảnh.',

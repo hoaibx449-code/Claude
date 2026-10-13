@@ -9,14 +9,19 @@ export const LEAD_IN = 0.3; // hand moves in before the first line
  */
 export const INTRO = 1.8; // opening title card (thumbnail), seconds
 
-export function buildTimeline(scenes: SceneSpec[], voice: { lines: Span[]; duration: number }[], opts: { intro?: boolean } = {}): Timeline {
+/**
+ * `continuous`: the narration is one recording (uploaded voice), so scenes follow it with no
+ * extra lead-in or pause between them, or picture and voice would drift apart.
+ */
+export function buildTimeline(scenes: SceneSpec[], voice: { lines: Span[]; duration: number }[], opts: { intro?: boolean; continuous?: boolean } = {}): Timeline {
   const out: SceneTiming[] = [];
   let t = opts.intro ? INTRO : 0;
   scenes.forEach((sc, i) => {
     const v = voice[i];
-    const audioStart = t + LEAD_IN;
+    const cont = !!opts.continuous;
+    const audioStart = t + (cont && i > 0 ? 0 : LEAD_IN);
     const lines = v.lines.map((l) => ({ start: audioStart + l.start, end: audioStart + l.end }));
-    const end = audioStart + v.duration + SCENE_GAP + Math.max(0, Math.min(6, sc.pause || 0));
+    const end = audioStart + v.duration + (cont ? 0 : SCENE_GAP + Math.max(0, Math.min(6, sc.pause || 0)));
     const panels = sc.panels.map((p, k) => {
       const li = Math.min(p.line ?? k, lines.length - 1);
       const line = lines[li];
@@ -36,7 +41,7 @@ export function buildTimeline(scenes: SceneSpec[], voice: { lines: Span[]; durat
         panels[k].end = panels[k].start + len;
       }
     }
-    const sceneEnd = Math.max(end, ...panels.map((p) => p.end + 0.4));
+    const sceneEnd = cont ? end : Math.max(end, ...panels.map((p) => p.end + 0.4));
     out.push({ start: t, end: sceneEnd, lines, panels });
     t = sceneEnd;
   });

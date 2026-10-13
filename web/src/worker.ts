@@ -244,7 +244,7 @@ async function tryPreview(req: Request, env: XEnv, rc: Rc) {
   const composed = look ? composeLook({ look, scenes: scenes.map((lines) => ({ lines })) }) : null;
   const spec = cleanSpec({ title: scenes[0][0].replace(/[.!?…]+$/, '').slice(0, 70), scenes: composed ? composed.scenes : scenes.map((lines) => ({ lines })), visual: 'sketch', format, niche: it.niche,
     ratio: b.ratio === '16:9' ? '16:9' : '9:16', style: env.config.enabledStyles.includes(style) ? style : env.config.defaults.style, channel: env.config.brand.name,
-    look, skin: b.skin, sides: composed?.sides, chatName: composed?.chatName }, 'guest');
+    look, skin: b.skin, sides: composed?.sides, chatName: composed?.chatName, cast: composed?.cast }, 'guest');
   rc.log('try.preview', { data: { format, niche: it.niche, style: spec.style, scenes: spec.scenes.length, chars: text.length } });
   return json({ spec, formatName: FORMAT_NAMES[format as keyof typeof FORMAT_NAMES], nicheName: NICHE_NAMES[it.niche] });
 }
@@ -372,7 +372,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       if (input?.look && input.look !== p.spec.look && LOOKS.includes(input.look)) {
         if (vis(env.config, 'look:' + input.look) !== 'on') throw new HttpError(403, 'Định dạng này đang tắt.');
         const c = composeLook({ look: input.look, scenes: (input.scenes || []).map((sc: any) => ({ lines: sc.lines || [] })), sides: undefined, chatName: undefined });
-        input = { ...input, scenes: c.scenes, sides: c.sides, chatName: c.chatName, skin: undefined };
+        input = { ...input, scenes: c.scenes, sides: c.sides, chatName: c.chatName, cast: c.cast, skin: undefined };
       }
       const spec = cleanSpec(input, user.id);
       await saveSpec(env, user, id, spec);
@@ -405,7 +405,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       if (!sc) throw new HttpError(400, 'Không tìm thấy cảnh.');
       if (p.spec.look) {
         // format videos: rebuild this scene's format data from its words
-        const c = composeLook({ look: p.spec.look, scenes: p.spec.scenes.map((x: any, k: number) => (k === si ? { lines: x.lines, panels: x.panels } : x)), sides: p.spec.sides, chatName: p.spec.chatName });
+        const c = composeLook({ look: p.spec.look, scenes: p.spec.scenes.map((x: any, k: number) => (k === si ? { lines: x.lines, panels: x.panels } : x)), sides: p.spec.sides, chatName: p.spec.chatName, cast: p.spec.cast });
         p.spec.scenes[si] = c.scenes[si] || sc;
         const spec = cleanSpec(p.spec, user.id);
         await saveSpec(env, user, id, spec);
@@ -669,7 +669,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
           const out = await writeScript(env, provider, { topic: '', seconds: 0, tone: '', ratio, visual: 'sketch', extra: env.config.promptExtra, scenes, format, niche, look });
           usage = out._usage;
           // the narration always stays the user's own words
-          raw = { ...out, title: out.title || raw.title, scenes: scenes.map((lines, i) => ({ lines, diagram: out.scenes?.[i]?.diagram, x: out.scenes?.[i]?.x, pause: out.scenes?.[i]?.pause, panels: out.scenes?.[i]?.panels })) };
+          raw = { ...out, title: out.title || raw.title, scenes: scenes.map((lines, i) => ({ lines, diagram: out.scenes?.[i]?.diagram, x: out.scenes?.[i]?.x, act: out.scenes?.[i]?.act, pause: out.scenes?.[i]?.pause, panels: out.scenes?.[i]?.panels })) };
         } catch (e: any) {
           await refundQuota(env, user.id, 'script');
           note = 'AI đang bận nên hình được tự thiết kế (miễn phí). Bạn vẫn sửa được từng cảnh.';
@@ -703,8 +703,8 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     }
     if (look) {
       // fill what the AI (or nobody) gave: free rules per format
-      const c = composeLook({ look, scenes: (raw.scenes || []).map((sc: any) => ({ lines: sc.lines || [], x: sc.x, pause: sc.pause, panels: sc.panels })), sides: raw.sides, chatName: raw.chatName });
-      raw = { ...raw, scenes: c.scenes, sides: c.sides, chatName: c.chatName };
+      const c = composeLook({ look, scenes: (raw.scenes || []).map((sc: any) => ({ lines: sc.lines || [], x: sc.x, pause: sc.pause, panels: sc.panels, act: sc.act })), sides: raw.sides, chatName: raw.chatName, cast: raw.cast });
+      raw = { ...raw, scenes: c.scenes, sides: c.sides, chatName: c.chatName, cast: c.cast };
     }
     const music = b.music === 'none' ? undefined : (env.config.music.find((m) => m.id === b.music) || (b.music === undefined || b.music === 'auto'
       ? (D.music === 'none' ? undefined : env.config.music.find((m) => m.id === D.music) || env.config.music[hashText(text) % Math.max(1, env.config.music.length)]) : undefined))?.file;

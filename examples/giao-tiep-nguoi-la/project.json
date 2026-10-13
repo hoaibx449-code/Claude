@@ -1,0 +1,348 @@
+{
+ "title": "Bắt chuyện với người lạ",
+ "channel": "Nét Vẽ",
+ "episode": "Tập 7",
+ "ratio": "9:16",
+ "style": "notebook",
+ "look": "act",
+ "voice": {
+  "provider": "mock"
+ },
+ "audio": {
+  "voice": "tts",
+  "mood": "warm",
+  "musicVolume": 0.18
+ },
+ "cast": [
+  {
+   "id": "minh",
+   "name": "Minh",
+   "look": "minh"
+  },
+  {
+   "id": "lan",
+   "name": "Lan",
+   "look": "lan"
+  }
+ ],
+ "scenes": [
+  {
+   "lines": [
+    "Bạn muốn bắt chuyện với người lạ,",
+    "nhưng chân cứ như dính chặt xuống đất?"
+   ],
+   "panels": [],
+   "act": {
+    "set": "party",
+    "draw": [
+     "minh"
+    ],
+    "cast": [
+     {
+      "id": "minh",
+      "x": -120,
+      "face": 1,
+      "emo": "nervous"
+     },
+     {
+      "id": "lan",
+      "x": 135,
+      "face": 1,
+      "do": "phone"
+     }
+    ],
+    "beats": [
+     {
+      "who": "lan",
+      "hold": "phone",
+      "at": 0
+     },
+     {
+      "who": "minh",
+      "do": "nervous",
+      "emo": "nervous",
+      "think": "Nói gì bây giờ…?",
+      "at": 0
+     },
+     {
+      "who": "lan",
+      "do": "idle",
+      "at": "L1",
+      "face": -1
+     },
+     {
+      "who": "minh",
+      "do": "shy",
+      "at": "L1+0.6",
+      "emo": "shy",
+      "mark": "question"
+     }
+    ],
+    "text": [
+     {
+      "text": "NGẠI BẮT CHUYỆN?",
+      "at": "L1"
+     }
+    ]
+   }
+  },
+  {
+   "lines": [
+    "Cách sai: cúi mặt vào điện thoại, nói lí nhí.",
+    "Người kia chỉ thấy bạn không muốn nói chuyện."
+   ],
+   "panels": [],
+   "act": {
+    "transition": "draw",
+    "badge": "wrong",
+    "beats": [
+     {
+      "who": "minh",
+      "hold": "phone",
+      "do": "walk",
+      "to": "lan",
+      "at": 0.3,
+      "emo": "awkward"
+     },
+     {
+      "who": "minh",
+      "do": "phone",
+      "face": 1
+     },
+     {
+      "who": "minh",
+      "say": "Ờ… chào…",
+      "at": "L0@0.7"
+     },
+     {
+      "who": "lan",
+      "do": "listen",
+      "at": "L0@0.7",
+      "emo": "neutral"
+     },
+     {
+      "who": "lan",
+      "hold": null,
+      "at": "L0@0.5"
+     },
+     {
+      "who": "lan",
+      "do": "shrug",
+      "at": "L1",
+      "emo": "awkward"
+     },
+     {
+      "who": "lan",
+      "do": "walk",
+      "to": 330,
+      "at": "L1@0.45"
+     },
+     {
+      "who": "minh",
+      "mark": "cross",
+      "at": "L1@0.55",
+      "do": "sad",
+      "emo": "sad",
+      "hold": null
+     }
+    ]
+   }
+  },
+  {
+   "lines": [
+    "Bí quyết là quy tắc ba giây:",
+    "thấy cơ hội, đếm một, hai, ba, rồi bước tới."
+   ],
+   "panels": [],
+   "act": {
+    "transition": "draw",
+    "turn": true,
+    "props": [
+     {
+      "id": "clock1",
+      "kind": "clock",
+      "x": 100,
+      "y": -520,
+      "s": 1.2
+     }
+    ],
+    "draw": [
+     "clock1"
+    ],
+    "beats": [
+     {
+      "who": "minh",
+      "do": "think",
+      "emo": "thinking",
+      "at": 0.2,
+      "mark": "bulb"
+     },
+     {
+      "who": "minh",
+      "cam": "close",
+      "at": "L0@0.55"
+     },
+     {
+      "who": "minh",
+      "do": "nod",
+      "at": "L1",
+      "emo": "confident",
+      "cam": "two"
+     },
+     {
+      "who": "minh",
+      "do": "hips",
+      "at": "L1@0.6",
+      "emo": "confident",
+      "mark": "star"
+     },
+     {
+      "who": "lan",
+      "do": "walk",
+      "to": 720,
+      "at": 0
+     }
+    ],
+    "text": [
+     {
+      "text": "3 giây",
+      "kind": "number",
+      "at": "L0@0.4",
+      "dur": 2.2
+     },
+     {
+      "text": "ĐẾM 1 – 2 – 3",
+      "at": "L1"
+     }
+    ]
+   }
+  },
+  {
+   "lines": [
+    "Cách đúng: nhìn vào mắt, mỉm cười,",
+    "và hỏi một câu thật đơn giản."
+   ],
+   "panels": [],
+   "act": {
+    "set": "cafe",
+    "transition": "walk",
+    "badge": "right",
+    "turn": true,
+    "cast": [
+     {
+      "id": "minh",
+      "x": -150
+     },
+     {
+      "id": "lan",
+      "x": 120,
+      "face": -1,
+      "emo": "neutral"
+     }
+    ],
+    "beats": [
+     {
+      "who": "minh",
+      "do": "walk",
+      "to": "lan",
+      "at": "L0@0.2",
+      "emo": "confident"
+     },
+     {
+      "who": "minh",
+      "do": "wave",
+      "emo": "happy",
+      "say": "Chào bạn! Cà phê ở đây ngon không?"
+     },
+     {
+      "who": "lan",
+      "do": "surprised",
+      "at": "L1@0.3",
+      "emo": "surprised"
+     },
+     {
+      "who": "lan",
+      "do": "talk",
+      "at": "L1@0.75",
+      "emo": "happy",
+      "say": "Ngon lắm, bạn thử đi!"
+     }
+    ]
+   }
+  },
+  {
+   "lines": [
+    "Một câu hỏi mở giúp người kia dễ trả lời,",
+    "và cuộc trò chuyện tự nhiên bắt đầu."
+   ],
+   "panels": [],
+   "act": {
+    "transition": "draw",
+    "beats": [
+     {
+      "who": "minh",
+      "do": "handshake",
+      "at": 0.2,
+      "cam": "two"
+     },
+     {
+      "who": "lan",
+      "do": "handshake",
+      "at": 0.25
+     },
+     {
+      "who": "minh",
+      "do": "explain",
+      "at": "L0@0.6",
+      "say": "Mình là Minh, mới đến!"
+     },
+     {
+      "who": "lan",
+      "do": "laugh",
+      "at": "L1",
+      "emo": "happy"
+     },
+     {
+      "who": "minh",
+      "do": "laugh",
+      "at": "L1+0.2",
+      "emo": "happy",
+      "mark": "heart"
+     }
+    ]
+   }
+  },
+  {
+   "lines": [
+    "Hãy nhớ: người lạ chỉ là người bạn chưa quen."
+   ],
+   "panels": [],
+   "act": {
+    "transition": "match",
+    "cam": "two",
+    "beats": [
+     {
+      "who": "minh",
+      "do": "celebrate",
+      "at": 0.6,
+      "emo": "confident",
+      "cam": "wide"
+     },
+     {
+      "who": "lan",
+      "do": "clap",
+      "at": 0.7,
+      "emo": "happy"
+     }
+    ],
+    "text": [
+     {
+      "text": "Người lạ = người bạn chưa quen",
+      "kind": "big",
+      "at": 0.9
+     }
+    ]
+   }
+  }
+ ]
+}

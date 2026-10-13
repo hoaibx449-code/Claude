@@ -9,6 +9,7 @@ import { qrCells } from './qr.ts';
 import { wrapVi } from './textwrap.ts';
 import { extractStrokes, LINE_SHARE, pathStroke, penState, type StrokePlan } from './strokes.ts';
 import { buildLook, preparePhoto, renderLook, skinOf, type LookModel } from './looks.ts';
+import { buildAct, renderAct, type ActModel } from './act/director.ts';
 
 /** Logical canvas size; the output size is a multiple of it (dpr). */
 export function logicalSize(ratio: Ratio) {
@@ -107,6 +108,8 @@ export interface Model {
   icons: IconSet;
   /** video format (new videos); when set, the frame is drawn by looks.ts */
   look?: LookModel;
+  /** story animation (rigged people, hand drawing, camera); drawn by act/director.ts */
+  act?: ActModel;
 }
 
 /** Family of the modern sans (Be Vietnam Pro ExtraBold, registered under this name). */
@@ -133,6 +136,7 @@ export function prepare(opts: {
   media?: Record<string, Img>;
 }): Model {
   const { env, project, timeline, images, hand, dpr } = opts;
+  if (project.look === 'act') return prepareAct(opts);
   if (project.look) return prepareLook(opts);
   const mode: Mode = (['motion', 'math', 'kinetic'] as const).includes(project.mode as any) ? project.mode! : 'hand';
   const subs = !!project.subtitles;
@@ -203,6 +207,17 @@ function prepareLook(opts: Parameters<typeof prepare>[0]): Model {
   return { project, timeline, style: STYLES.notebook, tool: 'marker', W, H, dpr, background: bg, panels: project.scenes.map(() => []), mask: new Map(), hand, env,
     units: project.scenes.map(() => []), mode: 'kinetic', icons: opts.icons || {}, look };
 }
+
+function prepareAct(opts: Parameters<typeof prepare>[0]): Model {
+  const { env, project, timeline, hand, dpr } = opts;
+  const { W, H } = logicalSize(project.ratio);
+  const act = buildAct({ project, timeline, font: SANS, hand: 'Pangolin', measure: env.createCanvas(4, 4).getContext('2d') });
+  return { project, timeline, style: STYLES.notebook, tool: 'marker', W, H, dpr, background: env.createCanvas(4, 4), panels: project.scenes.map(() => []), mask: new Map(), hand, env,
+    units: project.scenes.map(() => []), mode: 'hand', icons: opts.icons || {}, act };
+}
+
+/** Sound cues of the video (formats and story animation). */
+export const cuesOf = (m: Model) => m.act?.cues || m.look?.cues || [];
 
 export const TRANSITIONS = ['fade', 'slide', 'wipe', 'zoom'] as const;
 /** Transition into scene si: the project's choice, or a varied but fixed sequence ("auto"). */
@@ -382,6 +397,10 @@ export function drawHand(c: Ctx, m: Model, x: number, y: number, lift: number, r
 export function renderFrame(c: Ctx, m: Model, t: number, opts: { hand?: boolean } = {}) {
   const { W, H, style, project, timeline } = m;
   c.setTransform(m.dpr, 0, 0, m.dpr, 0, 0);
+  if (m.act) {
+    renderAct(c, m.act, t, opts.hand === false ? undefined : (x, y, lift, rot) => drawHand(c, m, x, y, lift, rot));
+    return;
+  }
   if (m.look) {
     renderLook(c, m.look, t, project.scenes);
     if (timeline.intro && t < timeline.intro + 0.4) drawIntro(c, m, t);

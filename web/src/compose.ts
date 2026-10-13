@@ -1,3 +1,4 @@
+import { composeAct } from './act.ts';
 // Free mode (no AI cost): turns the user's own script into scenes and designs a sketch for each
 // one with simple rules — key words become handwritten text, nouns become line-art icons,
 // numbers get circled, "A nhưng B" becomes a ✗/✓ comparison, verbs move a stick figure...
@@ -284,13 +285,23 @@ export function numbersIn(s: string) {
 const iconFor = (s: string) => iconsIn(s)[0]?.name;
 const keysOf = (s: string) => [...iconsIn(s).map((x) => x.word), ...(s.match(/\d+(?:[.,]\d+)*\s*%?/g) || [])].slice(0, 4);
 
-export interface LookInput { look: string; scenes: { lines: string[]; x?: any; pause?: number; panels?: any[] }[]; sides?: { a: string; b: string }; chatName?: string }
+export interface LookInput { look: string; scenes: { lines: string[]; x?: any; pause?: number; panels?: any[]; act?: any }[]; sides?: { a: string; b: string }; chatName?: string; cast?: any[] }
 
 /** Fill the format data of every scene (keeps what is already there). */
 export function composeLook(input: LookInput): LookInput {
   const { look } = input, all = input.scenes.map((s) => s.lines.join(' ')).join(' ');
   let scenes = input.scenes.map((s) => ({ ...s, x: { ...(s.x || {}) } }));
   const out: LookInput = { ...input };
+  if (look === 'act') {
+    // story animation: the AI's storyboard where it gave one, a storyboard from the words elsewhere
+    const c = composeAct(scenes);
+    const cast = Array.isArray(input.cast) && input.cast.length ? input.cast : c.cast;
+    const ids = cast.map((x: any) => String(x.id));
+    const remap = (a: any) => JSON.parse(JSON.stringify(a).replace(/"minh"/g, JSON.stringify(ids[0] || 'minh')).replace(/"lan"/g, JSON.stringify(ids[1] || ids[0] || 'lan')));
+    out.cast = cast;
+    out.scenes = scenes.map((s, i) => ({ ...s, act: s.act && typeof s.act === 'object' && Object.keys(s.act).length ? s.act : (cast === c.cast ? c.acts[i] : remap(c.acts[i])) }));
+    return out;
+  }
   for (const s of scenes) {
     const text = s.lines.join(' ');
     s.x.icon ||= iconFor(text);
