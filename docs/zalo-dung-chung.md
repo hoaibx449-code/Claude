@@ -18,7 +18,10 @@ Zalo ──webhook──▶ web Apps Script ──(tin không phải của nó)�
    - Mở mục **"Dùng chung một bot Zalo"** và sao chép **địa chỉ chuyển tiếp**. Giữ bí mật địa chỉ này vì nó chứa mã xác thực.
 2. **Web Apps Script:**
    - Dán bản vá Code.gs. Bản vá thêm hai hàm `_netveRelayUrl_`, `_netveChuyen_` và sửa `_fvZaloWebhook_`, `_fvZlLenhChu_`.
-   - Vào Cài đặt dự án → Script Properties, thêm khoá `NETVE_RELAY_URL` với địa chỉ vừa sao chép.
+   - Lưu địa chỉ vừa sao chép bằng **một** trong ba cách:
+     - Thêm một dòng vào trang tính **CauHinh** của dự án: cột Key ghi `NETVE_RELAY_URL`, cột Value ghi địa chỉ. Cách này hợp khi Script Properties đã đầy. Cấu hình được đọc lại sau tối đa 5 phút.
+     - Dán thẳng địa chỉ vào biến `var NETVE_RELAY_URL_ = '';` trong Code.gs.
+     - Thêm khoá `NETVE_RELAY_URL` vào Script Properties, nếu còn chỗ.
    - Triển khai lại, giữ nguyên URL `/exec`.
 3. Nhắn `HUONGDAN` cho bot, rồi bấm **Kiểm tra lại** trong trang quản trị Nét Vẽ.
 

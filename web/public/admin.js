@@ -389,7 +389,7 @@ function relayCard(z) {
         h('ol', {},
           h('li', {}, 'Chọn chế độ "Dùng chung bot với web khác" ở trên rồi Lưu. Web này sẽ không đổi webhook của bot và không hỏi định kỳ nữa.'),
           h('li', {}, 'Ở mục Khoá API, dán đúng token của bot mà web kia đang dùng.'),
-          h('li', {}, 'Ở web kia (Apps Script): dán bản vá Code.gs (hàm _netveChuyen_), rồi vào Cài đặt dự án → Script Properties thêm khoá NETVE_RELAY_URL với giá trị dưới đây, triển khai lại.'),
+          h('li', {}, 'Ở web kia (Apps Script): dán bản vá Code.gs (hàm _netveChuyen_). Lưu địa chỉ dưới đây bằng một trong ba cách: thêm một dòng vào trang tính CauHinh (cột Key: NETVE_RELAY_URL, cột Value: địa chỉ), hoặc dán vào biến NETVE_RELAY_URL_ trong Code.gs, hoặc Script Properties nếu còn chỗ. Rồi triển khai lại.'),
           h('li', {}, 'Nhắn HUONGDAN cho bot: web kia giữ lệnh của nó (duyet, huy, don, mã KETNOI của nó), mọi tin còn lại web này trả lời.')),
         h('label', {}, 'Địa chỉ chuyển tiếp (giữ bí mật)', h('div', { class: 'row' }, h('input', { value: url, readonly: true, onfocus: (e) => e.target.select() }), h('button', { type: 'button', class: 'ghost small', onclick: () => copy(url) }, 'Sao chép'))));
     } catch (e) { box.replaceChildren(h('p', { class: 'bad' }, e.message)); }
