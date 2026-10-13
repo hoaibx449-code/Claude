@@ -207,7 +207,7 @@ export function handAt(plan: HandPlan, t: number): { way: number; x: number; y: 
     const s0 = inStart(b), u = (t - s0) / IN;
     if (u < 0 || u >= 1) return null;
     const target = t < tasks[b].start ? tasks[b].pen(0) : penAt(b, t);
-    return away(choice[b], target, 1 - u, clamp((1 - u) * 2));
+    return away(choice[b], target, 1 - u, clamp(1 - u));
   };
   if (i >= 0 && t <= tasks[i].end) {
     // drawing task i (or the hand is still on its way in)

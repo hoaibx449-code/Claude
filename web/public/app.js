@@ -1331,6 +1331,8 @@ function loadImg(src) {
 let iconSet = null;
 const getIcons = () => (iconSet ||= fetch('/assets/icons/tabler.json').then((r) => r.json()).catch(() => ({})));
 let handAsset = null;
+/** Bump when assets/hands/poses changes (tools/hands-build.py). */
+const HAND_VERSION = 3;
 async function getHand() {
   if (!handAsset) {
     const [img, fingers, meta] = await Promise.all([loadImg('/assets/hands/default/hand.webp'), loadImg('/assets/hands/default/fingers.webp'),
@@ -1338,8 +1340,9 @@ async function getHand() {
     handAsset = { img, fingers, meta };
     // the photographed poses of adaptive positioning (the classic hand stays if they fail to load)
     try {
-      const list = await fetch('/assets/hands/poses/poses.json').then((r) => r.json()), B = '/assets/hands/poses/';
-      const loaded = await Promise.all(list.map(async (pm) => [pm.id, { meta: pm, img: await loadImg(B + `hand-${pm.id}.webp`), fingers: await loadImg(B + `fingers-${pm.id}.webp`) }]));
+      // versioned addresses: a phone that cached older hand pictures never mixes them with new anchors
+      const V = '?v=' + HAND_VERSION, list = await fetch('/assets/hands/poses/poses.json' + V).then((r) => r.json()), B = '/assets/hands/poses/';
+      const loaded = await Promise.all(list.map(async (pm) => [pm.id, { meta: pm, img: await loadImg(B + `hand-${pm.id}.webp` + V), fingers: await loadImg(B + `fingers-${pm.id}.webp` + V) }]));
       handAsset.poses = Object.fromEntries(loaded);
     } catch {}
   }
