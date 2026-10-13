@@ -17,7 +17,8 @@ Zalo ──webhook──▶ web Apps Script ──(tin không phải của nó)�
    - Ở mục Khoá API, dán **đúng token của bot** mà web kia đang dùng.
    - Mở mục **"Dùng chung một bot Zalo"** và sao chép **địa chỉ chuyển tiếp**. Giữ bí mật địa chỉ này vì nó chứa mã xác thực.
 2. **Web Apps Script:**
-   - Dán bản vá Code.gs. Bản vá thêm hai hàm `_netveRelayUrl_`, `_netveChuyen_` và sửa `_fvZaloWebhook_`, `_fvZlLenhChu_`.
+   - Thay **toàn bộ** Code.gs bằng bản đã vá. Bản vá thêm ba hàm `_netveRelayUrl_`, `_netveChuyen_`, `_netveLaLenhFv_` và chỉ sửa bản `_fvZaloWebhook_ = function (e)` ở cuối tệp (bản đang chạy thật). `_fvZlLenhChu_` giữ nguyên.
+   - Nét Vẽ chỉ được coi là đã nhận tin khi trả về `{"ok": true}`. Nếu Nét Vẽ từ chối hoặc không gọi được, web Apps Script tự trả lời như cũ, nên bot không bao giờ im lặng hay trả về "null".
    - Lưu địa chỉ vừa sao chép bằng **một** trong ba cách:
      - Thêm một dòng vào trang tính **CauHinh** của dự án: cột Key ghi `NETVE_RELAY_URL`, cột Value ghi địa chỉ. Cách này hợp khi Script Properties đã đầy. Cấu hình được đọc lại sau tối đa 5 phút.
      - Dán thẳng địa chỉ vào biến `var NETVE_RELAY_URL_ = '';` trong Code.gs.
