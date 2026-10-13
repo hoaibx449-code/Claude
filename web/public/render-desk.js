@@ -23,7 +23,8 @@ const RenderDesk = (() => {
       h('ol', { class: 'render-steps' }, steps),
       h('div', { class: 'render-desk-body' }, h('figure', { class: 'render-still' }, canvas, h('figcaption', {}, 'Xem bố cục cảnh đầu')),
         h('section', {}, h('h3', {}, spec.title || 'Video mới'), note, h('div', { class: 'render-meter' }, progress, percent),
-          h('p', { class: 'muted' }, 'Bạn có thể đóng cửa sổ hoặc rời trang. Máy chủ tiếp tục dựng; kết quả lưu trong mục Video.'), actions,
+          h('p', { class: 'muted' }, 'Bạn có thể đóng cửa sổ hoặc rời trang. Máy chủ tiếp tục dựng; kết quả lưu trong mục Video.'),
+          window.pushButton ? window.pushButton(true) : null, actions,
           h('details', {}, h('summary', {}, `Storyboard · ${spec.scenes.length} cảnh`), storyboard))));
     dialog.addEventListener('cancel', (event) => { event.preventDefault(); close(); });
     document.body.append(dialog); dialog.showModal();

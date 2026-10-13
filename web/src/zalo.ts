@@ -474,9 +474,10 @@ export async function zaloRecvStatus(env: XEnv) {
 export async function receiveMode(env: XEnv): Promise<'webhook' | 'poll'> {
   const want = env.config.zalo.receive || 'auto';
   if (want !== 'auto') return want;
-  // the admin just connected the webhook: give it a day to prove itself before polling takes over
+  // the admin just connected the webhook: it has 15 minutes to deliver a first message (Zalo's
+  // calls can be blocked on the way, e.g. by a firewall rule), after which polling takes over
   const st = await zaloRecvStatus(env);
-  if (st?.mode === 'webhook' && st.connected && Date.now() - st.connected < 86_400_000) return 'webhook';
+  if (st?.mode === 'webhook' && st.connected && Date.now() - st.connected < 15 * 60_000) return 'webhook';
   const ok = await env.DB.prepare("SELECT ts FROM events WHERE type IN ('zalo.received','zalo.ignored') AND channel = 'zalo' AND ts > ? AND json_extract(data, '$.via') IS NOT 'poll' ORDER BY id DESC LIMIT 1").bind(Date.now() - 3 * 86_400_000).first<any>();
   return ok ? 'webhook' : 'poll';
 }

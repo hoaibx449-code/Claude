@@ -288,6 +288,35 @@ const footer = () => h('footer', { class: 'site' },
     V('feature:plans') === 'on' ? h('a', { href: '#/hoan-tien' }, 'Hoàn tiền') : null),
   h('small', { class: 'muted' }, '© ' + new Date().getFullYear() + ' ' + (ui.legal?.company || ui.brand.name)));
 
+// ---------- notifications on this device when a video is ready (Web Push, no third party)
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const iosNeedsInstall = () => /iPhone|iPad|iPod/.test(navigator.userAgent) && !(matchMedia('(display-mode: standalone)').matches || navigator.standalone);
+const b64uBytes = (s) => { const b = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
+async function pushState() {
+  if (!pushSupported()) return 'unsupported';
+  if (Notification.permission === 'denied') return 'denied';
+  const reg = await navigator.serviceWorker.getRegistration();
+  return (await reg?.pushManager.getSubscription()) ? 'on' : 'off';
+}
+async function enablePush() {
+  if (iosNeedsInstall()) throw new Error('Trên iPhone: bấm nút Chia sẻ → "Thêm vào MH chính", mở web từ biểu tượng đó rồi bật thông báo.');
+  if (!pushSupported()) throw new Error('Trình duyệt này chưa hỗ trợ thông báo.');
+  if ((await Notification.requestPermission()) !== 'granted') throw new Error('Bạn chưa cho phép thông báo. Mở cài đặt trang web để cho phép.');
+  const reg = await navigator.serviceWorker.ready, { key } = await api('/api/push/key');
+  const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uBytes(key) });
+  await api('/api/push/subscribe', { method: 'POST', body: { endpoint: sub.endpoint } });
+  track('push_on');
+}
+/** "Tell me when it's ready": one button, its label follows the state of this device. */
+function pushButton(small) {
+  const b = h('button', { type: 'button', class: 'ghost' + (small ? ' small' : ''), 'data-ev': 'push-on' }, '🔔 Báo cho tôi khi video xong');
+  const paint = (st) => { b.disabled = st === 'on' || st === 'unsupported'; b.textContent = st === 'on' ? '🔔 Đã bật thông báo trên thiết bị này' : st === 'denied' ? '🔕 Thông báo đang bị chặn' : st === 'unsupported' ? '🔕 Trình duyệt chưa hỗ trợ thông báo' : '🔔 Báo cho tôi khi video xong'; };
+  pushState().then(paint).catch(() => {});
+  b.addEventListener('click', async () => { try { await enablePush(); paint('on'); toast('Đã bật. Khi video xong, thiết bị này sẽ báo cho bạn.'); } catch (e) { toast(e.message); paint(await pushState().catch(() => 'off')); } });
+  return b;
+}
+window.pushButton = pushButton;
+
 // ---------- live demo videos (the real engine, playing in the page)
 let demoSet = null, demoRuns = [], demoObserver = null;
 const getDemos = () => (demoSet ||= fetch('/demos.json').then((r) => r.json()).catch(() => []));
@@ -345,7 +374,8 @@ async function showLanding() {
     ? site.showcase.map((m, i) => h('figure', { class: 'sample', 'data-ev': 'sample-' + i },
       m.video ? siteVideo(m.video, m.poster, m.title || 'Video mẫu') : h('img', { src: siteUrl(m.poster), alt: m.title || '', loading: 'lazy' }),
       h('figcaption', { class: 'cap' }, h('b', {}, m.title), m.caption ? h('span', {}, m.caption) : null)))
-    : LOOK_GROUPS.flatMap(([, keys]) => keys).filter((k) => isClassic(k) || looksOn().includes(k)).map((k) => demos.find((x) => x.look === k)).filter(Boolean).map((d) => {
+    // the home page shows three ways; every way is on the formats page
+    : ['act', 'classic-sketch', 'classic-diagram'].filter((k) => isClassic(k) || looksOn().includes(k)).map((k) => demos.find((x) => x.look === k)).filter(Boolean).map((d) => {
       const c = h('canvas', { 'aria-label': lookName(d.look) });
       setTimeout(() => playDemo(c, d.spec, { dpr: 0.45 }), 0);
       return h('a', { class: 'sample', href: '#/tao', 'data-ev': 'sample-' + d.look, onclick: () => sessionStorage.setItem('nv_look', d.look) }, c,
@@ -381,7 +411,8 @@ async function showLanding() {
         h('ol', { class: 'steps3' }, steps.map(([t, d], i) => h('li', { class: 'card' }, h('span', { class: 'num' }, String(i + 1)), h('h3', {}, t), h('p', {}, d)))))),
     h('section', { class: 'section', id: 'mau-video' },
       h('header', { class: 'head' }, h('span', { class: 'kicker' }, 'Video mẫu'), h('h2', {}, 'Chọn cách kể cho nội dung của bạn'), h('p', {}, 'Mỗi cách kể có nhịp, bố cục và âm thanh riêng. Bấm một mẫu để bắt đầu với cách kể đó.')),
-      h('div', { class: 'samples' }, samples)),
+      h('div', { class: 'samples' }, samples),
+      h('p', { class: 'more' }, h('a', { class: 'btn ghost', href: '#/mau', 'data-ev': 'samples-all' }, `Xem tất cả ${allLooks(demos).length} cách kể`))),
     h('section', { class: 'section offer' },
       h('div', {}, h('span', { class: 'kicker' }, 'Chi phí'), h('h2', {}, beta ? 'Dùng miễn phí mỗi ngày' : 'Biết trước chi phí cho mỗi video'),
         h('p', { class: 'muted' }, beta ? 'Mọi định dạng đều mở. Hạn mức mỗi ngày giữ máy dựng nhanh cho tất cả mọi người.' : 'Giá hiển thị đủ trước khi dựng; hạn mức từng gói ghi rõ bên dưới.')),
@@ -500,31 +531,37 @@ function stylePicker(spec, current, onPick) {
 }
 
 // ---------- styles gallery
+/** Every way of telling a video that has a demo, in the order of the picker (auto has no single demo). */
+const allLooks = (demos) => LOOK_GROUPS.flatMap(([, keys]) => keys).filter((k) => k !== 'auto' && (isClassic(k) || looksOn().includes(k))).map((k) => demos.find((d) => d.look === k)).filter(Boolean);
 async function showStyles() {
   viewed('styles');
   const demos = await getDemos();
-  const looks = looksOn().map((k) => demos.find((d) => d.look === k)).filter(Boolean);
-  let cur = looks[0]?.look, skin = '';
+  const looks = allLooks(demos);
+  let cur = looks[0]?.look;
   const canvas = h('canvas', { 'aria-label': 'Video minh hoạ định dạng' });
   const run = looks[0] ? playDemo(canvas, looks[0].spec, { dpr: 0.75 }) : null;
   const title = h('h2', {}), note = h('p', { class: 'muted' }), skins = h('div');
   const select = async (k) => {
-    cur = k; skin = '';
+    cur = k;
     const d = looks.find((x) => x.look === k);
-    title.textContent = L('looks', k); note.textContent = L('lookNotes', k);
-    skins.replaceChildren(h('span', { class: 'plabel' }, 'Bộ màu'), skinChips(k, '', async (n) => { skin = n; run.spec = { ...run.spec, skin: n }; run.t = 0; await run.build(); }));
+    title.textContent = lookName(k); note.textContent = lookNote(k);
+    skins.replaceChildren(...((NV.SKINS?.[k] || []).length > 1 ? [h('span', { class: 'plabel' }, 'Bộ màu'), skinChips(k, '', async (n) => { run.spec = { ...run.spec, skin: n }; run.t = 0; await run.build(); })] : []));
     if (run && d) { run.spec = d.spec; run.t = 0; await run.build(); }
-    list.querySelectorAll('.look').forEach((b) => b.classList.toggle('on', b.dataset.k === k));
+    groups.querySelectorAll('.look').forEach((b) => b.classList.toggle('on', b.dataset.k === k));
   };
-  const list = h('div', { class: 'looks' }, looks.map((d) => {
+  const card = (d) => {
     const c = h('canvas', { 'aria-hidden': 'true' }); setTimeout(() => playDemo(c, d.spec, { dpr: 0.32 }), 0);
-    return h('button', { type: 'button', class: 'look', 'data-k': d.look, onclick: () => select(d.look) }, c, h('b', {}, L('looks', d.look)), d.look === 'doc' ? h('span', { class: 'credit-tag' }, 'Tính credit') : null, h('small', {}, L('lookNotes', d.look)));
-  }));
-  show(h('section', { class: 'section', style: 'margin-top:8px' }, h('header', { class: 'head' }, h('span', { class: 'kicker' }, 'Định dạng video'), h('h1', {}, looks.length + ' cách kể cho cùng một kịch bản'), h('p', {}, 'Mỗi định dạng có nhịp kể, bố cục, tiếng hiệu ứng và bộ màu riêng. Bấm để xem video mẫu đổi theo.'))),
+    return h('button', { type: 'button', class: 'look', 'data-k': d.look, onclick: () => select(d.look) }, c, h('b', {}, lookName(d.look)), d.look === 'doc' ? h('span', { class: 'credit-tag' }, 'Tính credit') : null, h('small', {}, lookNote(d.look)));
+  };
+  const groups = h('div', { class: 'lookgroups' }, LOOK_GROUPS.map(([name, keys]) => {
+    const list = looks.filter((d) => keys.includes(d.look));
+    return list.length ? h('section', { class: 'lookgroup' }, h('h3', {}, name), h('div', { class: 'looks' }, list.map(card))) : null;
+  }).filter(Boolean));
+  show(h('section', { class: 'section', style: 'margin-top:8px' }, h('header', { class: 'head' }, h('span', { class: 'kicker' }, 'Định dạng video'), h('h1', {}, looks.length + ' cách kể cho cùng một kịch bản'), h('p', {}, 'Mỗi cách kể có nhịp, bố cục, tiếng hiệu ứng và bộ màu riêng. Khi tạo video, để "Tự động đa dạng" thì mỗi video được chọn cách kể hợp với nội dung.'))),
     h('div', { class: 'editor' },
       h('div', { class: 'preview' }, iphone(canvas),
-        h('a', { class: 'btn big', href: '#/tao', 'data-ev': 'styles-create', onclick: () => sessionStorage.setItem('nv_look', cur) }, 'Dùng định dạng này')),
-      h('div', { class: 'card' }, title, note, skins, list)),
+        h('a', { class: 'btn big', href: '#/tao', 'data-ev': 'styles-create', onclick: () => sessionStorage.setItem('nv_look', cur) }, 'Dùng cách kể này')),
+      h('div', { class: 'card' }, title, note, skins, groups)),
     footer());
   if (cur) select(cur);
 }
@@ -1031,6 +1068,8 @@ async function showAccount() {
   show(h('header', { class: 'pagehead' }, h('div', {}, h('h1', {}, 'Tài khoản'), h('p', { class: 'muted' }, 'Thông tin, gói đang dùng và dữ liệu của bạn.'))),
     h('section', { class: 'card setgroup' }, h('h2', {}, 'Thông tin'),
       h('div', { class: 'profile' }, h('span', { class: 'avatar big' }, (me.user.name || me.user.email).charAt(0).toUpperCase()), h('div', {}, h('b', {}, me.user.name || me.user.email.split('@')[0]), h('p', { class: 'muted' }, me.user.email + ' · đăng nhập bằng Google')))),
+    h('section', { class: 'card setgroup' }, h('h2', {}, 'Thông báo'),
+      row('Báo khi video xong', 'Nhận thông báo ngay trên điện thoại hoặc máy tính này, không cần Zalo. iPhone: thêm web vào màn hình chính trước.', pushButton(true))),
     h('section', { class: 'card setgroup' }, h('h2', {}, 'Gói và lượt dùng'),
       h('dl', { class: 'summary' },
         h('dt', {}, 'Gói'), h('dd', {}, (me.plan?.name || 'Miễn phí') + (me.plan?.expires ? ` · đến ${fmtDate(me.plan.expires)}` : '')),
@@ -1216,6 +1255,16 @@ async function showWatch(pid, jobId) {
           h('p', { class: 'muted' }, [L('modes', spec.mode || 'hand'), L('styles', spec.style), portrait ? 'Dọc 9:16' : 'Ngang 16:9', 'Dựng lúc ' + fmtDate(job.finished_at || job.created_at)].join(' · ')),
           h('div', { class: 'row' }, h('a', { class: 'btn', href: `/api/jobs/${jobId}/video`, download: true, 'data-ev': 'download' }, '⬇ ' + T('download')),
             V('feature:srt') === 'hidden' ? null : h('a', { class: 'btn ghost', href: `/api/jobs/${jobId}/srt`, download: true, 'data-ev': 'download-srt' }, T('subtitles')),
+            h('button', { type: 'button', class: 'btn ghost', 'data-ev': 'send-zalo', onclick: async (e) => {
+              // a 7-day link anyone can open; the phone's share sheet lists Zalo, Messenger…
+              await busy(e.currentTarget, 'Đang lấy link…', async () => {
+                try {
+                  const { url } = await api(`/api/jobs/${jobId}/link`);
+                  if (navigator.share) { try { await navigator.share({ title: spec.title, text: spec.title, url }); return; } catch (err) { if (err.name === 'AbortError') return; } }
+                  await navigator.clipboard.writeText(url).then(() => toast('Đã sao chép link video (7 ngày). Dán vào Zalo để gửi.'), () => prompt('Link video (7 ngày):', url));
+                } catch (err) { fail(err); }
+              });
+            } }, '💬 Gửi qua Zalo'),
             shareBtn, h('a', { class: 'btn ghost', href: '#/p/' + pid, 'data-ev': 'edit-again' }, '✏️ Sửa & dựng lại'))),
         tags ? h('div', { class: 'card' }, h('h2', {}, T('post')), h('p', { class: 'caption' }, tags),
           h('button', { type: 'button', class: 'ghost small', 'data-ev': 'copy-caption', onclick: async () => { try { await navigator.clipboard.writeText(tags); toast('Đã sao chép caption và hashtag.'); } catch { toast('Hãy bôi đen rồi copy.'); } } }, 'Sao chép caption + hashtag')) : null,

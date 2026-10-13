@@ -14,7 +14,8 @@ import { aiCost, clientIp, imageCost, logEvent, routeName, summarize, voiceCost,
 import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, vis } from './settings.ts';
 import { adminRoutes } from './admin.ts';
 import { budgetState, fitVoiceToBudget, requireBudget } from './budget.ts';
-import { checkShare, notifyJob, rememberOrigin, resumeZalo, zaloUser, zaloWebhook, pollZalo, receiveMode } from './zalo.ts';
+import { checkShare, notifyJob, rememberOrigin, resumeZalo, shareLink, zaloUser, zaloWebhook, pollZalo, receiveMode } from './zalo.ts';
+import { pushPublicKey, pushUser, validEndpoint } from './push.ts';
 import { checkAllowed, checkSource, expireOrders, limitsFor, planOf, planRoutes, sepayWebhook } from './plans.ts';
 import { affiliateScene, communityPublic, deleteVideo, introFor, serveObject, shareToCommunity, siteType, storedVideoKey, upload, videoKey } from './media.ts';
 import { body, type Env, HttpError, json, randomId, refundQuota, sha256, timingSafeEqual, today, useQuota } from './util.ts';
@@ -345,6 +346,35 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
   }
   if (path === '/api/consent' && method === 'POST') { await recordConsent(env, rc, user.id); return json({ ok: true }); }
   if (path.startsWith('/api/zalo/')) return zaloUser(req, env, rc, user, path.slice('/api/zalo/'.length), method);
+  // notifications on this device when a video is ready (Web Push)
+  if (path === '/api/push/key' && method === 'GET') return json({ key: await pushPublicKey(env) });
+  if (path === '/api/push/subscribe' && method === 'POST') {
+    const b = await body<any>(req, 4000);
+    if (!validEndpoint(b?.endpoint)) throw new HttpError(400, 'Trình duyệt này chưa hỗ trợ thông báo.');
+    await env.DB.prepare('INSERT INTO push_subs (endpoint, user_id, created_at) VALUES (?, ?, ?) ON CONFLICT (endpoint) DO UPDATE SET user_id = excluded.user_id').bind(String(b.endpoint), user.id, Date.now()).run();
+    rc.log('push.subscribe');
+    return json({ ok: true });
+  }
+  if (path === '/api/push/subscribe' && method === 'DELETE') {
+    const b = await body<any>(req, 4000).catch(() => ({}));
+    await env.DB.prepare('DELETE FROM push_subs WHERE user_id = ? AND (endpoint = ? OR ? = \'\')').bind(user.id, String(b?.endpoint || ''), String(b?.endpoint || '')).run();
+    return json({ ok: true });
+  }
+  if (path === '/api/push/latest' && method === 'GET') {
+    const n = await env.DB.prepare('SELECT title, body, url, ts FROM push_notes WHERE user_id = ?').bind(user.id).first<any>();
+    return json({ note: n || null });
+  }
+  if (path === '/api/push/test' && method === 'POST') {
+    const r = await pushUser(env, user.id, { title: 'Thông báo đã bật', body: 'Khi video dựng xong, bạn sẽ nhận tin ở đây.', url: '/#/' }, 'mailto:' + env.config.legal.email);
+    return json(r);
+  }
+  // a link anyone can open (7 days): to send the finished video through Zalo or any app
+  const jl = path.match(/^\/api\/jobs\/([a-f0-9]{24})\/link$/);
+  if (jl && method === 'GET') {
+    const job = await env.DB.prepare("SELECT id FROM jobs WHERE id = ? AND user_id = ? AND status = 'done'").bind(jl[1], user.id).first<any>();
+    if (!job) throw new HttpError(404, 'Video chưa dựng xong.');
+    return json({ url: await shareLink(env, new URL(req.url).origin, job.id) });
+  }
   if (path === '/api/plans' || path.startsWith('/api/orders')) {
     if (vis(env.config, 'feature:plans') !== 'on') throw new HttpError(403, 'Gói cước đang tắt.');
     return planRoutes(req, env, rc, user, path, method);
@@ -628,6 +658,13 @@ async function shareVideo(env: XEnv, rc: Rc, jobId: string, url: URL) {
 
 /** After a render: tell the user where they asked to be told (Zalo). */
 async function afterJob(env: XEnv, rc: Rc, job: any, ok: boolean, error = '', seconds = 0) {
+  // the user's phone or computer first (no third party), then Zalo for those who linked it
+  try {
+    const title = JSON.parse(job.spec).title || 'Video';
+    const r = await pushUser(env, job.user_id, ok ? { title: 'Video đã xong ✓', body: `"${title}" đã dựng xong. Bấm để xem và tải về.`, url: `/#/p/${job.project_id}` }
+      : { title: 'Video chưa dựng được', body: `"${title}": ${String(error).slice(0, 120)}`, url: `/#/p/${job.project_id}` }, 'mailto:' + env.config.legal.email);
+    if (r.devices) rc.log('push.notify', { projectId: job.project_id, data: { job: job.id, done: ok, ...r } });
+  } catch (e: any) { rc.log('push.notify', { ok: false, data: { error: e.message } }); }
   try { await notifyJob(env, rc, job, ok, error, seconds); } catch (e: any) { rc.log('zalo.notify', { ok: false, data: { error: e.message } }); }
 }
 
