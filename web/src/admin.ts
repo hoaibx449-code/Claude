@@ -6,8 +6,9 @@ import { body, type Env, HttpError, json, today } from './util.ts';
 import type { Rc, XEnv } from './worker.ts';
 import { zaloAdmin } from './zalo.ts';
 import { plansAdmin } from './plans.ts';
-import { communityAdmin } from './media.ts';
+import { communityAdmin, uploadSite } from './media.ts';
 import { queueRender } from './worker.ts';
+import { budgetState } from './budget.ts';
 
 const DAY = 86_400_000, TZ = 7 * 3_600_000; // days are counted in Vietnam time
 
@@ -50,6 +51,12 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
     return json({ job });
   }
 
+  if (sub === 'site-media' && method === 'POST') return uploadSite(req, env, rc);
+  if (sub === 'budget' && method === 'GET') {
+    const state = await budgetState(env, true);
+    const top = await env.DB.prepare('SELECT type, COUNT(*) AS n, ROUND(SUM(cost)) AS cost FROM events WHERE cost > 0 AND ts > ? GROUP BY type ORDER BY cost DESC LIMIT 10').bind(Date.now() - 30 * 86_400_000).all<any>();
+    return json({ ...state, top: top.results });
+  }
   if (sub === 'settings' && method === 'GET') return json({ config: env.config, secrets: await secretStatus(rawEnv) });
   if (sub === 'settings' && method === 'PUT') {
     const b = await body<any>(req, 200_000);

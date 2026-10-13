@@ -1,0 +1,519 @@
+<title>Phòng thử định dạng video</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Be+Vietnam+Pro:wght@400;500;700;800&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: a contact sheet of phone-sized takes, each with its slate (cost, effort, verdict); the ballot closes the reel. */
+:root {
+  --bg: #f6f5f2; --surface: #ffffff; --ink: #1b1a22; --muted: #5d5b6a; --line: #e2dfd8;
+  --tally: #e5372b; --keep: #1f8a57; --later: #b7791f; --drop: #8a8796;
+  --display: "Bricolage Grotesque", "Be Vietnam Pro", system-ui, sans-serif;
+  --body: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121117; --surface: #1c1b23; --ink: #f1eff6; --muted: #a6a3b5; --line: #2e2c38;
+  --tally: #ff5a4e; --keep: #3cc68a; --later: #e3a44a; --drop: #8f8c9c; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121117; --surface: #1c1b23; --ink: #f1eff6; --muted: #a6a3b5; --line: #2e2c38;
+  --tally: #ff5a4e; --keep: #3cc68a; --later: #e3a44a; --drop: #8f8c9c; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--body); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: clamp(16px, 4vw, 40px); padding-block: 40px 80px; display: flex; flex-direction: column; gap: 64px; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.1; margin: 0; text-wrap: balance; letter-spacing: -0.02em; }
+h1 { font-size: clamp(2.25rem, 1.5rem + 3vw, 3.75rem); font-weight: 800; max-width: 18ch; }
+h2 { font-size: clamp(1.5rem, 1.2rem + 1.2vw, 2.25rem); font-weight: 800; }
+h3 { font-size: 1.25rem; font-weight: 800; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.label { font: 700 .75rem/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+header.top { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 40px; align-items: end; }
+header.top .rec { display: inline-flex; align-items: center; gap: 8px; font: 700 .8125rem var(--mono); color: var(--tally); letter-spacing: .08em; }
+header.top .rec i { width: 10px; height: 10px; border-radius: 50%; background: var(--tally); animation: blink 1.4s steps(2) infinite; }
+@keyframes blink { 50% { opacity: .25; } }
+header.top .lead { font-size: 1.125rem; color: var(--muted); max-width: 60ch; margin-top: 16px; }
+.script { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.script ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; font-size: .9375rem; }
+.findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 24px; }
+.finding { border-top: 3px solid var(--ink); padding-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.finding code { font: 500 .8125rem var(--mono); background: color-mix(in srgb, var(--ink) 7%, transparent); padding: 1px 6px; border-radius: 4px; }
+.sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: 32px 24px; }
+.take { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.phone { position: relative; aspect-ratio: 9 / 16; max-width: 100%; border-radius: 26px; overflow: hidden; background: #000; border: 6px solid #15141b; box-shadow: 0 18px 40px -22px rgba(0,0,0,.55); }
+.phone canvas { display: block; width: 100%; height: 100%; }
+.phone .slate { position: absolute; right: 10px; bottom: 10px; font: 700 .6875rem var(--mono); color: #fff; background: rgba(0,0,0,.55); padding: 4px 8px; border-radius: 6px; letter-spacing: .06em; }
+.take.now .phone { border-color: var(--drop); }
+.take h3 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.verdict { font: 700 .75rem var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; border: 1.5px solid currentColor; }
+.verdict.keep { color: var(--keep); } .verdict.later { color: var(--later); } .verdict.drop { color: var(--drop); } .verdict.merge { color: var(--muted); }
+.take .what { color: var(--muted); font-size: .9375rem; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: .875rem; margin: 0; }
+.facts dt { font: 700 .75rem/1.9 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+.vote { display: flex; gap: 6px; flex-wrap: wrap; }
+.vote label { flex: 1 1 0; min-width: 72px; }
+.vote input { position: absolute; opacity: 0; pointer-events: none; }
+.vote span { display: grid; place-items: center; min-height: 40px; border: 1.5px solid var(--line); border-radius: 10px; font-weight: 700; font-size: .875rem; cursor: pointer; background: var(--surface); }
+.vote input:checked + span { border-color: var(--ink); background: var(--ink); color: var(--bg); }
+.vote input:focus-visible + span { outline: 3px solid var(--tally); outline-offset: 2px; }
+.upgrades { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 0; border-top: 1px solid var(--line); }
+.upgrades div { padding: 18px 20px 18px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.tablebox { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: .9375rem; }
+th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+th { font: 700 .75rem var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: .875rem; }
+tr:last-child td { border-bottom: 0; }
+.debate { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; }
+.debate .side { display: flex; flex-direction: column; gap: 14px; }
+.debate .side h3 { font-size: 1.125rem; }
+.debate ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
+.ask { border-left: 4px solid var(--tally); padding: 4px 0 4px 18px; display: flex; flex-direction: column; gap: 10px; }
+.ask ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.ballot { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: clamp(20px, 3vw, 32px); display: flex; flex-direction: column; gap: 16px; }
+.ballot textarea { width: 100%; min-height: 180px; font: 500 .875rem/1.6 var(--mono); padding: 14px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--bg); color: var(--ink); resize: vertical; }
+.ballot label.note { display: flex; flex-direction: column; gap: 6px; font-weight: 700; font-size: .875rem; }
+.ballot input[type=text] { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--bg); color: var(--ink); }
+button.copy { align-self: flex-start; font: 700 1rem var(--body); min-height: 44px; padding: 10px 22px; border-radius: 10px; border: 0; background: var(--tally); color: #fff; cursor: pointer; }
+button.copy:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+@media (max-width: 760px) { header.top, .debate { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { header.top .rec i { animation: none; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <span class="rec"><i></i>PHÒNG THỬ · 8 BẢN QUAY CÙNG MỘT KỊCH BẢN</span>
+      <h1>Chọn định dạng video cho Nét Vẽ Studio</h1>
+      <p class="lead">Tôi rà soát phần dựng video hiện tại, rồi dựng thử 7 định dạng đang chạy tốt trên TikTok, Reels và Shorts. Cả 8 bản dưới đây dùng chung một kịch bản để bạn so sánh cách kể, không bị nội dung đánh lừa. Mỗi bản có chi phí cho video 60 giây, công sức làm và đánh giá của tôi. Bạn chọn ở cuối trang, rồi gửi phiếu lại cho tôi để chúng ta tranh luận.</p>
+    </div>
+    <div class="script">
+      <span class="label">Kịch bản chung (5 câu)</span>
+      <ol>
+        <li>Lương 15 triệu, sao cuối tháng vẫn hết sạch?</li>
+        <li>Tiền nhà 5 triệu, ăn uống 4 triệu.</li>
+        <li>Trà sữa, Shopee, cà phê: thêm 4 triệu lúc nào không hay.</li>
+        <li>Còn 2 triệu. Tiết kiệm: 0 đồng.</li>
+        <li>Mẹo: nhận lương là chuyển ngay 20% sang tài khoản khác.</li>
+      </ol>
+    </div>
+  </header>
+
+  <section style="display:flex;flex-direction:column;gap:24px">
+    <span class="label">Rà soát bản hiện tại</span>
+    <h2>Vì sao video hiện tại nhàm và rối</h2>
+    <div class="findings">
+      <div class="finding"><h3>Mọi video mở đầu giống hệt nhau</h3><p class="muted">Cảnh đầu do bộ tự minh hoạ luôn xếp cùng một bố cục: tiêu đề, người que đứng nghĩ và vòng tròn dấu hỏi (<code>web/src/compose.ts</code>, dòng 130–134 và 215–217). Trang chủ có 10 video mẫu nhưng 8 cái trông như nhau, chỉ khác màu nền.</p></div>
+      <div class="finding"><h3>17 "phong cách" thực chất là 17 bảng màu</h3><p class="muted">Người dùng phải chọn trong 17 phong cách × 4 kiểu video × 4 kiểu hình × 7 dụng cụ vẽ, nhưng nhịp kể và bố cục không đổi theo lựa chọn nào. Nhiều lựa chọn mà khác biệt ít nên ai cũng thấy rối.</p></div>
+      <div class="finding"><h3>3 giây đầu không có gì xảy ra</h3><p class="muted">Bàn tay vẽ từng nét nên mấy giây đầu màn hình gần như trống. Trên TikTok đó là lúc người xem quyết định lướt qua. Video lại im lặng ngoài giọng đọc: nhạc nền đang ở trạng thái "đang phát triển", không có tiếng hiệu ứng, phụ đề trên hình tắt mặc định.</p></div>
+      <div class="finding"><h3>Bản tham khảo FACIUP làm tốt hơn ở đâu</h3><p class="muted">Phụ đề tô sáng đúng từ đang đọc (karaoke), mỗi cảnh có vai trò rõ ràng (Hook → Vấn đề → Giải pháp → Kêu gọi) và duyệt nhanh từng cảnh trước khi dựng. Ba điểm này nên đưa vào mọi định dạng bên dưới.</p></div>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:24px">
+    <span class="label">8 bản quay thử · tự chạy khi cuộn tới</span>
+    <h2>Xem, so sánh, rồi bỏ phiếu</h2>
+    <div class="sheet" id="sheet"></div>
+    <p class="muted" style="font-size:.875rem">Demo được vẽ bằng Canvas ngay trong trang để minh hoạ nhịp kể và bố cục, chưa phải video do máy dựng xuất ra. Bản "Phim tài liệu AI" dùng tranh vẽ giả lập; bản thật dùng ảnh do AI tạo cho từng cảnh. Chi phí tính theo bảng giá vốn đang lưu trong mã: 60 giây ≈ 900 ký tự lời đọc, giọng EverAI, AI viết bằng Gemini 2.5 Flash, ảnh Gemini 0,039 USD, tỷ giá 26.000đ.</p>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:24px">
+    <span class="label">Áp dụng cho mọi định dạng</span>
+    <h2>Năm nâng cấp quan trọng hơn cả việc chọn định dạng</h2>
+    <div class="upgrades">
+      <div><h3>Câu mở đầu trong 1,5 giây</h3><p class="muted">Cảnh đầu luôn có chữ lớn và chuyển động ngay khung hình đầu tiên. Không bắt người xem chờ bàn tay vẽ.</p></div>
+      <div><h3>Thay đổi hình mỗi 2–3 giây</h3><p class="muted">Phóng to nhẹ, cắt cảnh hoặc thêm một chi tiết mới để mắt luôn có thứ để theo. Mỗi ý lớn là một cảnh.</p></div>
+      <div><h3>Phụ đề karaoke bật mặc định</h3><p class="muted">Rất nhiều người xem video ngắn khi tắt tiếng. Tô sáng từ đang đọc như bản FACIUP, từ khoá và con số đổi màu.</p></div>
+      <div><h3>Nhạc nền và tiếng hiệu ứng</h3><p class="muted">Nhạc tự hạ khi có giọng đọc; tiếng "vút", "bụp", "ting", gõ phím. Âm thanh tự tổng hợp hoặc lấy từ thư viện CC0 nên không tốn phí bản quyền.</p></div>
+      <div><h3>Thanh tiến độ và kết vòng lặp</h3><p class="muted">Thanh mảnh ở mép trên cho biết còn bao lâu; câu cuối nối về câu đầu để video tự lặp lại mượt.</p></div>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:24px">
+    <span class="label">Chi phí cho một video 60 giây</span>
+    <h2>Chỉ có ảnh AI làm chi phí tăng gấp 10 lần</h2>
+    <div class="tablebox"><table>
+      <thead><tr><th>Định dạng</th><th class="n">AI viết</th><th class="n">Giọng đọc</th><th class="n">Ảnh AI</th><th class="n">Máy dựng*</th><th class="n">Tổng</th></tr></thead>
+      <tbody id="costs"></tbody>
+    </table></div>
+    <p class="muted" style="font-size:.875rem">* Máy dựng: ước tính Cloud Run 1 vCPU, khoảng 0,6 giây xử lý cho mỗi giây video. Dùng giọng cơ bản thì phần giọng đọc là 0đ; dùng kịch bản của bạn + tự minh hoạ thì phần AI viết là 0đ. Trần chi phí mới trong Quản trị → Cài đặt tự chuyển sang cách miễn phí khi chạm trần.</p>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:24px">
+    <span class="label">Lập trường của tôi</span>
+    <h2>Đề xuất: 4 định dạng, mỗi cái 2–3 bộ màu</h2>
+    <div class="debate">
+      <div class="side">
+        <h3>Tôi chọn</h3>
+        <ul>
+          <li><b>Chữ bùng nổ làm mặc định.</b> Giữ chân tốt nhất ở 3 giây đầu, hợp mọi ngách, 0đ ảnh, máy đã có chế độ chữ chuyển động để nâng cấp.</li>
+          <li><b>Hai bên đối lập.</b> "Người giàu – người nghèo", "Trước – sau" đang rất phổ biến ở ngách tài chính và kỹ năng tiếng Việt; người xem đọc ra ý chỉ trong một cái nhìn.</li>
+          <li><b>Tin nhắn drama.</b> Biến lời khuyên khô thành câu chuyện có nhân vật; người xem tò mò tin nhắn tiếp theo nên xem hết.</li>
+          <li><b>Kể chuyện người que, làm lại.</b> Giữ chất vẽ tay làm nhận diện, nhưng bỏ đoạn chờ vẽ: một nhân vật xuyên suốt, có bối cảnh, máy quay lia theo, vẽ nhanh trong 0,3 giây.</li>
+          <li><b>Con số biết nói và Đố vui</b> thành <i>kiểu cảnh</i> dùng được trong mọi định dạng, không đứng riêng. Một video tài chính cần một cảnh số liệu, không cần cả video là biểu đồ.</li>
+        </ul>
+      </div>
+      <div class="side">
+        <h3>Phản biện tôi đã cân nhắc</h3>
+        <ul>
+          <li><b>"Bàn tay vẽ là thương hiệu, sao không giữ làm mặc định?"</b> Thương hiệu vẫn còn ở định dạng người que và ở nét chữ, nhưng mặc định phải là thứ giữ người xem tốt nhất. Ta có thể đo: dựng 2 bản cùng nội dung, đăng thử và so tỷ lệ xem hết.</li>
+          <li><b>"Phim tài liệu AI trông sang nhất."</b> Đúng, nhưng tốn khoảng 11.000đ/video, ảnh AI hay lệch nhân vật giữa các cảnh và dễ dính ảnh lỗi. Tôi để nó ở bản Beta cho quản trị bật, có trần chi phí.</li>
+          <li><b>"Bớt lựa chọn có làm người dùng thấy ít tính năng?"</b> Bốn định dạng khác nhau thật dễ hiểu hơn 17 bảng màu gần giống nhau. Bộ màu vẫn còn, chỉ gói gọn trong từng định dạng.</li>
+          <li><b>Rủi ro của Tin nhắn drama:</b> không dùng giao diện hay logo Zalo/Messenger thật, chỉ khung chat chung chung, để tránh vấn đề thương hiệu.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="ask">
+      <h3>Ba câu tôi cần bạn trả lời để chốt</h3>
+      <ol>
+        <li>Kênh của khách hàng chủ yếu là ngách nào: tài chính, kỹ năng sống, bán hàng tiếp thị liên kết, hay kể chuyện / giáo dục?</li>
+        <li>Bạn muốn giữ "bàn tay vẽ" làm định dạng mặc định vì nhận diện, hay ưu tiên định dạng giữ chân người xem tốt nhất?</li>
+        <li>Bạn có chấp nhận khoảng 11.000đ mỗi video cho dòng phim tài liệu AI (giới hạn bằng trần chi phí), hay bỏ hẳn?</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="ballot" aria-labelledby="ballot-h">
+    <span class="label">Phiếu chọn</span>
+    <h2 id="ballot-h">Gửi lựa chọn của bạn</h2>
+    <p class="muted">Chọn Giữ, Để sau hoặc Bỏ ở từng bản quay phía trên. Phiếu tự cập nhật bên dưới; thêm ý kiến rồi bấm Sao chép phiếu và dán vào chat với tôi.</p>
+    <label class="note" for="note">Ý kiến thêm (ngách chính, định dạng mặc định, ngân sách…)<input type="text" id="note" placeholder="Ví dụ: ngách tài chính, mặc định Hai bên đối lập, bỏ tài liệu AI"></label>
+    <textarea id="out" readonly aria-label="Phiếu chọn"></textarea>
+    <button type="button" class="copy" id="copy">Sao chép phiếu</button>
+  </section>
+</div>
+
+<script>
+'use strict';
+// ------------------------------------------------------------------ catalogue
+const TAKES = [
+  { id: 'now', name: 'Bản hiện tại', verdict: ['drop', 'Thay thế'], what: 'Bảng vẽ tự do: tiêu đề viết tay, người que đứng nghĩ, vòng tròn dấu hỏi. Hình hiện dần theo nét vẽ.',
+    best: 'Bài giảng chậm, chủ đề cần giải thích từng bước', effort: 'Đang có', cost: [120, 900, 0, 25], draw: drawNow },
+  { id: 'kinetic', name: 'Chữ bùng nổ', verdict: ['keep', 'Mặc định'], what: '2–3 chữ mỗi nhịp, cỡ rất lớn, từ khoá tô vàng, biểu tượng bật ra, rung nhẹ ở con số. Kiểu video "chữ to" của các kênh kỹ năng, kinh doanh.',
+    best: 'Mẹo nhanh, tài chính, động lực, câu mở đầu', effort: '2–3 ngày (nâng cấp chế độ chữ chuyển động)', cost: [120, 900, 0, 25], draw: drawKinetic },
+  { id: 'split', name: 'Hai bên đối lập', verdict: ['keep', 'Giữ'], what: 'Màn hình chia đôi: một bên làm sai, một bên làm đúng; bộ đếm chạy song song để thấy khác biệt sau 12 tháng.',
+    best: 'Người giàu – người nghèo, trước – sau, sai – đúng', effort: '3 ngày', cost: [120, 900, 0, 25], draw: drawSplit },
+  { id: 'chat', name: 'Tin nhắn drama', verdict: ['keep', 'Giữ'], what: 'Khung chat chung chung (không dùng giao diện Zalo/Messenger thật): bong bóng hiện theo lời đọc, dấu "đang gõ", "đã xem", chốt bằng một thẻ lời khuyên.',
+    best: 'Câu chuyện gia đình, cảnh báo lừa đảo, chăm sóc khách hàng', effort: '3 ngày (+ AI chuyển kịch bản thành hội thoại)', cost: [150, 900, 0, 25], draw: drawChat },
+  { id: 'stick', name: 'Kể chuyện người que (làm lại)', verdict: ['keep', 'Giữ, làm lại'], what: 'Một nhân vật xuyên suốt đi qua các bối cảnh (nhà, quán, cây ATM); máy quay lia theo, tiền bay khỏi ví, vẽ nhanh thay vì chờ từng nét.',
+    best: 'Kể chuyện, tình huống đời thường, giữ nhận diện vẽ tay', effort: '4–5 ngày', cost: [120, 900, 0, 25], draw: drawStick },
+  { id: 'data', name: 'Con số biết nói', verdict: ['merge', 'Thành kiểu cảnh'], what: 'Số đếm chạy lên, vòng tròn chia phần, phần còn lại nhấp nháy đỏ. Rõ và đáng tin khi nội dung có số liệu.',
+    best: 'Tài chính, tin tức, so sánh giá', effort: '2 ngày (biểu đồ cột và con số đã có)', cost: [120, 900, 0, 25], draw: drawData },
+  { id: 'quiz', name: 'Đố vui đếm ngược', verdict: ['merge', 'Thành kiểu cảnh'], what: 'Câu hỏi, ba đáp án, vòng đếm ngược 3–2–1 có tiếng tích tắc, rồi lật đáp án đúng. Kéo bình luận rất tốt.',
+    best: 'Cảnh mở đầu hoặc kết của mọi định dạng', effort: '1–2 ngày', cost: [120, 900, 0, 25], draw: drawQuiz },
+  { id: 'doc', name: 'Phim tài liệu AI', verdict: ['later', 'Beta, có trần'], what: 'Mỗi cảnh một ảnh AI, máy quay trượt và phóng chậm (Ken Burns), hạt phim, chữ dưới kiểu điện ảnh.',
+    best: 'Lịch sử, nhân vật, bí ẩn, câu chuyện thương hiệu', effort: '3 ngày + kiểm soát ảnh lỗi', cost: [120, 900, 10140, 25], draw: drawDoc },
+];
+const VND = (n) => Math.round(n).toLocaleString('vi-VN') + 'đ';
+
+// ------------------------------------------------------------------ drawing helpers
+const W = 360, H = 640;
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const eOut = (x) => 1 - Math.pow(1 - x, 3);
+const eBack = (x) => { const c = 1.9; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const F = (w, px, fam = 'Be Vietnam Pro') => `${w} ${px}px "${fam}", system-ui, sans-serif`;
+function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
+function wrap(c, text, maxW) {
+  const out = []; let line = '';
+  for (const word of text.split(' ')) { const t = line ? line + ' ' + word : word; if (c.measureText(t).width > maxW && line) { out.push(line); line = word; } else line = t; }
+  if (line) out.push(line); return out;
+}
+function centerText(c, text, y, px, color, w = 800, maxW = 300, lh = 1.18, cx = W / 2) {
+  c.font = F(w, px); c.fillStyle = color; c.textAlign = 'center'; c.textBaseline = 'middle';
+  const lines = wrap(c, text, maxW); lines.forEach((l, i) => c.fillText(l, cx, y + (i - (lines.length - 1) / 2) * px * lh)); return lines.length;
+}
+function progress(c, t, D, color = '#fff') { c.fillStyle = 'rgba(255,255,255,.18)'; c.fillRect(0, 0, W, 4); c.fillStyle = color; c.fillRect(0, 0, W * (t / D), 4); }
+function stick(c, x, y, s, pose, t, color = '#1b1a22') {
+  c.save(); c.translate(x, y); c.strokeStyle = color; c.lineWidth = 4 * s; c.lineCap = 'round'; c.lineJoin = 'round';
+  const sw = pose === 'walk' ? Math.sin(t * 9) * 0.5 : pose === 'cheer' ? 0 : 0.12;
+  c.beginPath(); c.arc(0, -78 * s, 13 * s, 0, Math.PI * 2); c.stroke();
+  c.beginPath(); c.moveTo(0, -65 * s); c.lineTo(0, -25 * s); c.stroke();
+  c.beginPath(); c.moveTo(0, -25 * s); c.lineTo(Math.sin(sw) * 22 * s, 8 * s); c.moveTo(0, -25 * s); c.lineTo(-Math.sin(sw) * 22 * s, 8 * s); c.stroke();
+  c.beginPath();
+  if (pose === 'cheer') { c.moveTo(0, -56 * s); c.lineTo(-20 * s, -84 * s); c.moveTo(0, -56 * s); c.lineTo(20 * s, -84 * s); }
+  else if (pose === 'sad') { c.moveTo(0, -56 * s); c.lineTo(-14 * s, -30 * s); c.moveTo(0, -56 * s); c.lineTo(14 * s, -30 * s); }
+  else { c.moveTo(0, -56 * s); c.lineTo(-Math.sin(sw) * 20 * s, -32 * s); c.moveTo(0, -56 * s); c.lineTo(Math.sin(sw) * 20 * s, -32 * s); }
+  c.stroke();
+  c.beginPath(); if (pose === 'sad') c.arc(0, -70 * s, 5 * s, Math.PI * 1.15, Math.PI * 1.85); else c.arc(0, -79 * s, 6 * s, Math.PI * 0.15, Math.PI * 0.85); c.stroke();
+  c.restore();
+}
+function caption(c, words, t, t0, t1, y = 560) {
+  // karaoke subtitle: the word being read is boxed
+  if (t < t0 || t > t1) return;
+  c.font = F(800, 20); c.textAlign = 'left'; c.textBaseline = 'middle';
+  const k = Math.floor(seg(t, t0, t1) * words.length * 0.999);
+  const gap = 7, widths = words.map((w) => c.measureText(w).width), total = widths.reduce((a, b) => a + b, 0) + gap * (words.length - 1);
+  let x = (W - total) / 2;
+  words.forEach((w, i) => {
+    if (i === k) { c.fillStyle = '#ffd23f'; rr(c, x - 4, y - 15, widths[i] + 8, 30, 6); c.fill(); c.fillStyle = '#16131f'; }
+    else { c.fillStyle = '#fff'; c.shadowColor = 'rgba(0,0,0,.6)'; c.shadowBlur = 6; }
+    c.fillText(w, x, y); c.shadowBlur = 0; x += widths[i] + gap;
+  });
+}
+
+// ------------------------------------------------------------------ 0. current
+function drawNow(c, t) {
+  const D = 10; t %= D;
+  c.fillStyle = '#fff8ee'; c.fillRect(0, 0, W, H);
+  c.font = F(400, 26, 'Pangolin'); c.font = '26px "Comic Sans MS", cursive'; c.fillStyle = '#3b2f6b'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  const title = 'Lương 15 triệu, sao cuối tháng vẫn hết sạch?';
+  const shown = Math.floor(seg(t, 0.3, 4.5) * title.length);
+  wrap(c, title.slice(0, shown), 290).forEach((l, i) => c.fillText(l, W / 2, 120 + i * 34));
+  const p = seg(t, 4.5, 7.5);
+  c.save(); c.globalAlpha = p > 0 ? 1 : 0; stick(c, 120, 400, 1.3 * Math.min(1, p * 1.5), 'idle', 0, '#3b2f6b'); c.restore();
+  if (t > 6.2) { c.strokeStyle = '#f08a24'; c.lineWidth = 4; c.beginPath(); c.arc(250, 320, 46, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * seg(t, 6.2, 8.4)); c.stroke(); }
+  if (t > 8.2) { c.font = '56px "Comic Sans MS", cursive'; c.fillStyle = '#f08a24'; c.fillText('?', 250, 322); }
+  c.font = '18px "Comic Sans MS", cursive'; c.fillStyle = '#f08a24'; if (t > 8.8) c.fillText('Lãi kép', W / 2, 520);
+}
+
+// ------------------------------------------------------------------ 1. kinetic captions
+const KBEATS = [
+  [0, 1.3, ['LƯƠNG', '15 TRIỆU'], 1, '💸'], [1.3, 2.6, ['CUỐI THÁNG', 'VẪN HẾT?'], 1, '😱'],
+  [2.6, 3.9, ['NHÀ', '5 TRIỆU'], 1, '🏠'], [3.9, 5.2, ['ĂN UỐNG', '4 TRIỆU'], 1, '🍜'],
+  [5.2, 6.5, ['TRÀ SỮA', 'SHOPEE'], 1, '🧋'], [6.5, 7.8, ['+4 TRIỆU', 'KHÔNG HAY'], 0, '🫠'],
+  [7.8, 9.1, ['TIẾT KIỆM', '0 ĐỒNG'], 1, '❌'], [9.1, 11, ['CHUYỂN NGAY', '20%'], 1, '✅'],
+];
+function drawKinetic(c, t) {
+  const D = 11; t %= D;
+  const beat = KBEATS.find(([a, b]) => t >= a && t < b) || KBEATS[0];
+  const [a, b, words, hi, emoji] = beat, p = seg(t, a, a + 0.28);
+  const bg = ['#111018', '#1a1033', '#0f1d2b'][KBEATS.indexOf(beat) % 3];
+  c.fillStyle = bg; c.fillRect(0, 0, W, H);
+  // punch zoom on each beat
+  const z = 1 + (1 - eOut(seg(t, a, a + 0.35))) * 0.25;
+  const shake = /\d/.test(words[hi]) ? Math.sin(t * 60) * 3 * (1 - seg(t, a, a + 0.4)) : 0;
+  c.save(); c.translate(W / 2 + shake, H / 2 - 30); c.scale(z, z); c.translate(-W / 2, -(H / 2 - 30));
+  words.forEach((w, i) => {
+    const pi = eBack(seg(t, a + i * 0.12, a + i * 0.12 + 0.3));
+    c.save(); c.translate(W / 2, 250 + i * 76); c.scale(pi, pi);
+    c.font = F(800, w.length > 9 ? 44 : 54); c.textAlign = 'center'; c.textBaseline = 'middle';
+    if (i === hi) { const m = c.measureText(w).width; c.fillStyle = '#ffd23f'; rr(c, -m / 2 - 12, -34, m + 24, 68, 12); c.fill(); c.fillStyle = '#15121f'; }
+    else c.fillStyle = '#fff';
+    c.fillText(w, 0, 3); c.restore();
+  });
+  c.restore();
+  const ep = eBack(seg(t, a + 0.25, a + 0.55));
+  c.save(); c.translate(W / 2, 430); c.scale(ep, ep); c.rotate(Math.sin(t * 6) * 0.08); c.font = '64px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(emoji, 0, 0); c.restore();
+  caption(c, ['Lương', '15', 'triệu,', 'sao', 'cuối', 'tháng', 'vẫn', 'hết', 'sạch?'], t, 0, 2.6);
+  caption(c, ['Nhận', 'lương', 'là', 'chuyển', 'ngay', '20%'], t, 9.1, 11);
+  progress(c, t, D, '#ffd23f');
+}
+
+// ------------------------------------------------------------------ 2. split screen
+function drawSplit(c, t) {
+  const D = 11; t %= D;
+  const half = H / 2;
+  c.fillStyle = '#2a1416'; c.fillRect(0, 0, W, half); c.fillStyle = '#0f2a1d'; c.fillRect(0, half, W, half);
+  c.fillStyle = '#fff'; c.fillRect(0, half - 1.5, W, 3);
+  const tag = (txt, y, col) => { c.font = F(800, 15); const m = c.measureText(txt).width; c.fillStyle = col; rr(c, 14, y, m + 20, 28, 8); c.fill(); c.fillStyle = '#fff'; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(txt, 24, y + 14); };
+  tag('NGƯỜI A: TIÊU TRƯỚC', 16, '#e5372b'); tag('NGƯỜI B: CẤT TRƯỚC 20%', half + 16, '#1f8a57');
+  const month = Math.min(12, Math.floor(seg(t, 1.2, 8.5) * 12) + (t > 1.2 ? 1 : 0));
+  // A: wallet empties every month
+  const aCycle = (seg(t, 1.2, 8.5) * 12) % 1;
+  stick(c, 80, 250, 0.9, t > 8.5 ? 'sad' : 'walk', t, '#ffd9d5');
+  for (let i = 0; i < 6; i++) { const k = (aCycle + i / 6) % 1; c.globalAlpha = 1 - k; c.font = '22px sans-serif'; c.fillText('💸', 130 + k * 180 + Math.sin(i * 3) * 10, 220 - k * 120 + i * 6); }
+  c.globalAlpha = 1;
+  stick(c, 80, half + 250, 0.9, t > 8.5 ? 'cheer' : 'walk', t, '#d4ffe8');
+  // B: a growing stack
+  const stack = Math.round(seg(t, 1.2, 8.5) * 12);
+  for (let i = 0; i < stack; i++) { c.fillStyle = i % 2 ? '#3cc68a' : '#2fae76'; rr(c, 190, half + 250 - i * 12, 120, 10, 3); c.fill(); }
+  c.textAlign = 'right'; c.textBaseline = 'alphabetic';
+  c.font = F(800, 30); c.fillStyle = '#ff8a80'; c.fillText('0đ', W - 20, 120);
+  c.font = F(800, 30); c.fillStyle = '#7dffb9'; c.fillText(VND(month * 3e6).replace('đ', ' đ'), W - 20, half + 120);
+  c.font = F(700, 13); c.fillStyle = 'rgba(255,255,255,.75)'; c.fillText(`tháng ${month}/12`, W - 20, 146); c.fillText(`tháng ${month}/12`, W - 20, half + 146);
+  if (t > 8.6) { const p = eBack(seg(t, 8.6, 9)); c.save(); c.translate(W / 2, half); c.scale(p, p); c.fillStyle = '#ffd23f'; rr(c, -130, -32, 260, 64, 14); c.fill(); centerText(c, 'Khác 36 triệu/năm', 0, 24, '#15121f', 800, 300, 1.18, 0); c.restore(); }
+  progress(c, t, D, '#ffd23f');
+}
+
+// ------------------------------------------------------------------ 3. chat story
+const CHAT = [
+  [0.4, 'l', 'Anh ơi lương về chưa? 🥺'], [1.8, 'r', 'Về rồi em, 15 triệu'], [3.2, 'l', 'Sao tài khoản giờ còn 2 triệu???'],
+  [4.8, 'r', 'Nhà 5tr, ăn 4tr…'], [6.0, 'r', 'Trà sữa với Shopee chắc 4tr 😅'], [7.4, 'l', 'Tháng sau nhận lương là cất 20% trước nha'],
+];
+function drawChat(c, t) {
+  const D = 11; t %= D;
+  c.fillStyle = '#eef1f6'; c.fillRect(0, 0, W, H);
+  c.fillStyle = '#ffffff'; c.fillRect(0, 0, W, 70); c.fillStyle = '#d8dce5'; c.fillRect(0, 70, W, 1);
+  c.fillStyle = '#ff7aa2'; c.beginPath(); c.arc(40, 38, 18, 0, Math.PI * 2); c.fill();
+  c.font = F(800, 16); c.fillStyle = '#1b1a22'; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText('Vợ yêu ❤️', 68, 32);
+  c.font = F(500, 12); c.fillStyle = '#1f8a57'; c.fillText('đang hoạt động', 68, 50);
+  let y = 100; const shown = CHAT.filter(([at]) => t >= at);
+  const next = CHAT.find(([at]) => t < at && at - t < 0.9);
+  const scroll = Math.max(0, shown.length - 5) * 64;
+  c.save(); c.translate(0, -scroll);
+  shown.forEach(([at, side, text], i) => {
+    c.font = F(500, 16); const lines = wrap(c, text, 210), bw = Math.max(...lines.map((l) => c.measureText(l).width)) + 28, bh = lines.length * 22 + 18;
+    const p = eBack(seg(t, at, at + 0.3)), x = side === 'l' ? 16 : W - 16 - bw;
+    c.save(); c.translate(x + (side === 'l' ? 0 : bw), y); c.scale(p, p); c.translate(-(side === 'l' ? 0 : bw), 0);
+    c.fillStyle = side === 'l' ? '#ffffff' : '#3d7bff'; rr(c, 0, 0, bw, bh, 18); c.fill();
+    c.fillStyle = side === 'l' ? '#1b1a22' : '#fff'; c.textAlign = 'left'; c.textBaseline = 'top'; lines.forEach((l, k) => c.fillText(l, 14, 10 + k * 22));
+    c.restore(); y += bh + 12;
+    if (i === shown.length - 1 && side === 'r' && t - at > 0.8) { c.font = F(500, 11); c.fillStyle = '#8a8796'; c.textAlign = 'right'; c.fillText('Đã xem', W - 18, y - 6); }
+  });
+  if (next) { const x = next[1] === 'l' ? 16 : W - 86; c.fillStyle = next[1] === 'l' ? '#fff' : '#3d7bff'; rr(c, x, y, 70, 36, 18); c.fill(); for (let k = 0; k < 3; k++) { c.fillStyle = next[1] === 'l' ? '#8a8796' : '#dbe6ff'; c.beginPath(); c.arc(x + 20 + k * 15, y + 18 + Math.sin(t * 10 + k) * 3, 4, 0, Math.PI * 2); c.fill(); } }
+  c.restore();
+  if (t > 9) { const p = eOut(seg(t, 9, 9.4)); c.fillStyle = `rgba(16,14,24,${0.72 * p})`; c.fillRect(0, 0, W, H); c.save(); c.translate(0, (1 - p) * 40); c.fillStyle = '#ffd23f'; rr(c, 30, 230, W - 60, 170, 18); c.fill(); centerText(c, 'MẸO', 268, 16, '#15121f'); centerText(c, 'Nhận lương là chuyển ngay 20% sang tài khoản khác', 330, 22, '#15121f', 800, 250); c.restore(); }
+  progress(c, t, D, '#3d7bff');
+}
+
+// ------------------------------------------------------------------ 4. stick story (redone)
+function drawStick(c, t) {
+  const D = 11; t %= D;
+  // camera pans across three places of one continuous street
+  const camX = eOut(seg(t, 0, 3.5)) * 360 + eOut(seg(t, 4.5, 7.5)) * 360;
+  c.fillStyle = '#fffdf6'; c.fillRect(0, 0, W, H);
+  c.save(); c.translate(-camX, 0);
+  c.strokeStyle = '#1b1a22'; c.lineWidth = 3; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(-40, 470); c.lineTo(1200, 470); c.stroke();
+  // place 1: office with payslip; place 2: milk-tea shop; place 3: ATM
+  c.strokeRect(40, 250, 120, 220); c.font = F(800, 16); c.fillStyle = '#1b1a22'; c.textAlign = 'center'; c.fillText('CÔNG TY', 100, 240);
+  c.strokeRect(420, 290, 170, 180); c.beginPath(); c.moveTo(410, 290); c.lineTo(505, 240); c.lineTo(600, 290); c.stroke(); c.fillText('TRÀ SỮA', 505, 330);
+  c.strokeRect(830, 300, 80, 170); c.fillStyle = '#e5372b'; c.fillRect(845, 320, 50, 30); c.fillStyle = '#1b1a22'; c.fillText('ATM', 870, 288);
+  const walkerX = 180 + eOut(seg(t, 0, 3.5)) * 360 + eOut(seg(t, 4.5, 7.5)) * 360;
+  const pose = t > 8 ? 'sad' : (t < 3.5 || (t > 4.5 && t < 7.5)) ? 'walk' : 'idle';
+  stick(c, walkerX, 470, 1.25, pose, t);
+  // money flying away from the wallet at the shop
+  if (t > 3.6 && t < 6.5) for (let i = 0; i < 7; i++) { const k = ((t - 3.6) * 0.8 + i / 7) % 1; c.globalAlpha = 1 - k; c.font = '22px sans-serif'; c.fillText('💸', walkerX + 20 + k * 120, 380 - k * 160 + Math.sin(i + t * 4) * 12); }
+  c.globalAlpha = 1;
+  c.restore();
+  // speech bubble per beat
+  const say = t < 3.5 ? 'Lương về! 15 triệu 🤑' : t < 6.5 ? 'Một ly thôi mà…' : t < 8.5 ? 'Ơ… còn 2 triệu?' : 'Lần sau cất 20% trước!';
+  c.font = F(700, 17); const m = c.measureText(say).width;
+  c.fillStyle = '#fff'; c.strokeStyle = '#1b1a22'; c.lineWidth = 2.5; rr(c, W / 2 - m / 2 - 16, 120, m + 32, 50, 16); c.fill(); c.stroke();
+  c.fillStyle = '#1b1a22'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(say, W / 2, 146);
+  if (t > 8.5) { const p = eBack(seg(t, 8.5, 8.9)); c.save(); c.translate(W / 2, 560); c.scale(p, p); c.fillStyle = '#1f8a57'; rr(c, -120, -24, 240, 48, 12); c.fill(); centerText(c, '20% → tiết kiệm', 0, 20, '#fff', 800, 300, 1.18, 0); c.restore(); }
+  progress(c, t, D, '#e5372b');
+}
+
+// ------------------------------------------------------------------ 5. numbers
+function drawData(c, t) {
+  const D = 11; t %= D;
+  c.fillStyle = '#0d1424'; c.fillRect(0, 0, W, H);
+  const total = 15e6, n = Math.round(eOut(seg(t, 0.2, 1.6)) * total);
+  c.font = F(800, 46); c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(n.toLocaleString('vi-VN'), W / 2, 120);
+  c.font = F(700, 14); c.fillStyle = '#9fb3d9'; c.fillText('LƯƠNG MỖI THÁNG (đ)', W / 2, 160);
+  const parts = [['Nhà', 5, '#5b8def', 2.0], ['Ăn uống', 4, '#f2a541', 3.2], ['Trà sữa, Shopee', 4, '#e5372b', 4.6], ['Còn lại', 2, '#3cc68a', 6.0]];
+  let a0 = -Math.PI / 2; const cx = W / 2, cy = 360, r = 110;
+  parts.forEach(([name, v, col, at], i) => {
+    const p = eOut(seg(t, at, at + 0.9)), a1 = a0 + (v / 15) * Math.PI * 2 * p;
+    if (p > 0) {
+      const pulse = i === 3 && t > 7 ? 1 + Math.sin(t * 8) * 0.04 : 1;
+      c.beginPath(); c.moveTo(cx, cy); c.arc(cx, cy, r * pulse, a0, a1); c.closePath(); c.fillStyle = col; c.fill();
+      const mid = a0 + (v / 15) * Math.PI; c.font = F(800, 14); c.fillStyle = '#fff'; c.globalAlpha = p;
+      c.fillText(`${v}tr`, cx + Math.cos(mid) * r * 0.62, cy + Math.sin(mid) * r * 0.62); c.globalAlpha = 1;
+    }
+    a0 += (v / 15) * Math.PI * 2;
+    c.globalAlpha = seg(t, at, at + 0.4); c.fillStyle = col; rr(c, 40, 500 + i * 26, 14, 14, 3); c.fill();
+    c.font = F(600, 14); c.fillStyle = '#dbe4f5'; c.textAlign = 'left'; c.fillText(name, 62, 508 + i * 26); c.textAlign = 'center'; c.globalAlpha = 1;
+  });
+  c.beginPath(); c.arc(cx, cy, 52, 0, Math.PI * 2); c.fillStyle = '#0d1424'; c.fill();
+  if (t > 7.4) { c.font = F(800, 18); c.fillStyle = '#3cc68a'; c.fillText('Tiết kiệm?', cx, cy - 8); c.font = F(800, 22); c.fillStyle = '#ff6b5e'; c.fillText('0đ', cx, cy + 18); }
+  progress(c, t, D, '#5b8def');
+}
+
+// ------------------------------------------------------------------ 6. quiz
+function drawQuiz(c, t) {
+  const D = 10; t %= D;
+  c.fillStyle = '#2b1660'; c.fillRect(0, 0, W, H);
+  c.fillStyle = 'rgba(255,255,255,.08)'; for (let i = 0; i < 9; i++) { c.beginPath(); c.arc((i * 97) % W, (i * 173 + t * 20) % H, 30 + (i % 3) * 20, 0, Math.PI * 2); c.fill(); }
+  const qp = eBack(seg(t, 0.1, 0.5));
+  c.save(); c.translate(W / 2, 140); c.scale(qp, qp); c.fillStyle = '#fff'; rr(c, -150, -70, 300, 140, 20); c.fill();
+  centerText(c, 'Lương 15 triệu, mỗi tháng nên cất bao nhiêu?', 0, 21, '#2b1660', 800, 260, 1.18, 0); c.restore();
+  const opts = ['5%', '20%', '50%'], right = 1, reveal = t > 6;
+  opts.forEach((o, i) => {
+    const p = eBack(seg(t, 0.8 + i * 0.25, 1.1 + i * 0.25)), y = 290 + i * 74;
+    c.save(); c.translate(W / 2, y); c.scale(p, p);
+    c.fillStyle = reveal ? (i === right ? '#1f8a57' : 'rgba(255,255,255,.25)') : '#ffffff'; rr(c, -140, -28, 280, 56, 16); c.fill();
+    c.font = F(800, 22); c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillStyle = reveal ? '#fff' : '#2b1660'; c.fillText(String.fromCharCode(65 + i) + '.  ' + o, -116, 2);
+    if (reveal && i === right) { c.textAlign = 'right'; c.fillText('✓', 116, 2); }
+    c.restore();
+  });
+  if (t > 2.5 && t < 6) { const left = 3 - Math.floor(t - 2.8); const k = (t - 2.8) % 1; c.strokeStyle = 'rgba(255,255,255,.25)'; c.lineWidth = 8; c.beginPath(); c.arc(W / 2, 540, 40, 0, Math.PI * 2); c.stroke(); c.strokeStyle = '#ffd23f'; c.beginPath(); c.arc(W / 2, 540, 40, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - k)); c.stroke(); centerText(c, String(Math.max(1, left)), 542, 34, '#fff'); }
+  if (reveal) centerText(c, 'Bình luận đáp án của bạn 👇', 545, 18, '#ffd23f', 700);
+  progress(c, t, D, '#ffd23f');
+}
+
+// ------------------------------------------------------------------ 7. documentary (simulated AI picture)
+function drawDoc(c, t) {
+  const D = 11; t %= D;
+  const shots = [[0, 3.6, 'Sài Gòn, 25 tháng 10. Lương vừa về tài khoản.', 'night'], [3.6, 7.3, 'Một ly trà sữa, một đơn Shopee, rồi thêm một đơn nữa.', 'shop'], [7.3, 11, 'Ngày 30, số dư còn hai triệu.', 'room']];
+  const [a, b, text, kind] = shots.find(([x, y]) => t >= x && t < y);
+  const k = seg(t, a, b), z = 1.05 + k * 0.12, px = (kind === 'shop' ? -1 : 1) * k * 24;
+  c.save(); c.translate(W / 2 + px, H / 2); c.scale(z, z); c.translate(-W / 2, -H / 2);
+  const g = c.createLinearGradient(0, 0, 0, H);
+  if (kind === 'night') { g.addColorStop(0, '#0b1636'); g.addColorStop(0.6, '#2a2160'); g.addColorStop(1, '#f2873a'); }
+  else if (kind === 'shop') { g.addColorStop(0, '#3b1d12'); g.addColorStop(1, '#d9773c'); }
+  else { g.addColorStop(0, '#1c2430'); g.addColorStop(1, '#4b5b6e'); }
+  c.fillStyle = g; c.fillRect(-40, -40, W + 80, H + 80);
+  if (kind === 'night') { for (let i = 0; i < 12; i++) { const bx = i * 34 - 10, bh = 140 + ((i * 53) % 160); c.fillStyle = '#0a0f22'; c.fillRect(bx, H - 120 - bh, 30, bh + 120); c.fillStyle = 'rgba(255,214,120,.8)'; for (let j = 0; j < bh / 22; j++) if ((i * 7 + j * 3) % 4) c.fillRect(bx + 6 + (j % 2) * 12, H - 110 - bh + j * 22, 6, 8); } }
+  if (kind === 'shop') { c.fillStyle = 'rgba(255,230,190,.9)'; rr(c, 120, 260, 120, 180, 30); c.fill(); c.fillStyle = '#6b3b22'; c.fillRect(150, 300, 60, 120); c.fillStyle = 'rgba(255,255,255,.7)'; c.fillRect(176, 190, 8, 90); for (let i = 0; i < 4; i++) { c.fillStyle = '#e8b36a'; rr(c, 30 + i * 80, 470, 60, 50, 8); c.fill(); } }
+  if (kind === 'room') { c.fillStyle = '#0e131b'; rr(c, 90, 220, 180, 300, 22); c.fill(); c.fillStyle = '#3d7bff'; rr(c, 100, 240, 160, 260, 14); c.fill(); centerText(c, 'Số dư', 320, 18, '#dbe6ff', 600); centerText(c, '2.000.000đ', 360, 28, '#fff'); }
+  c.restore();
+  // film grain, letterbox, lower-third
+  for (let i = 0; i < 160; i++) { c.fillStyle = `rgba(255,255,255,${Math.random() * 0.06})`; c.fillRect(Math.random() * W, Math.random() * H, 1.5, 1.5); }
+  c.fillStyle = '#000'; c.fillRect(0, 0, W, 54); c.fillRect(0, H - 54, W, 54);
+  const tp = seg(t, a + 0.3, a + 0.9); c.globalAlpha = tp;
+  c.fillStyle = 'rgba(0,0,0,.55)'; rr(c, 20, H - 170, W - 40, 96, 10); c.fill();
+  c.font = F(500, 17); c.fillStyle = '#fff'; c.textAlign = 'left'; c.textBaseline = 'top'; wrap(c, text, W - 72).forEach((l, i) => c.fillText(l, 36, H - 156 + i * 24));
+  c.globalAlpha = 1;
+  c.font = F(700, 10, 'JetBrains Mono'); c.fillStyle = 'rgba(255,255,255,.6)'; c.textAlign = 'right'; c.textBaseline = 'middle'; c.fillText('TRANH GIẢ LẬP · BẢN THẬT DÙNG ẢNH AI', W - 14, 27);
+  progress(c, t, D, '#f2873a');
+}
+
+// ------------------------------------------------------------------ page
+const sheet = document.getElementById('sheet'), votes = {};
+let saved = {}; try { saved = JSON.parse(localStorage.getItem('nv-votes') || '{}'); } catch {}
+const runs = [];
+for (const tk of TAKES) {
+  const total = tk.cost.reduce((a, b) => a + b, 0);
+  const el = document.createElement('article'); el.className = 'take' + (tk.id === 'now' ? ' now' : '');
+  el.innerHTML = `<div class="phone"><canvas width="${W * 2}" height="${H * 2}" aria-label="Demo ${tk.name}"></canvas><span class="slate"></span></div>
+    <h3></h3><p class="what"></p>
+    <dl class="facts"><dt>Hợp với</dt><dd class="best"></dd><dt>Công sức</dt><dd class="effort"></dd><dt>Chi phí</dt><dd class="cost"></dd></dl>
+    <div class="vote" role="radiogroup"></div>`;
+  el.querySelector('.slate').textContent = tk.id === 'now' ? 'HIỆN TẠI' : 'ĐỀ XUẤT';
+  const h3 = el.querySelector('h3'); h3.textContent = tk.name; const v = document.createElement('span'); v.className = 'verdict ' + tk.verdict[0]; v.textContent = tk.verdict[1]; h3.append(v);
+  el.querySelector('.what').textContent = tk.what; el.querySelector('.best').textContent = tk.best; el.querySelector('.effort').textContent = tk.effort;
+  el.querySelector('.cost').textContent = `${VND(total)} / video 60 giây`;
+  const vote = el.querySelector('.vote'); vote.setAttribute('aria-label', 'Bỏ phiếu cho ' + tk.name);
+  const def = saved[tk.id] || ({ keep: 'Giữ', merge: 'Giữ', later: 'Để sau', drop: 'Bỏ' })[tk.verdict[0]];
+  for (const opt of ['Giữ', 'Để sau', 'Bỏ']) {
+    const id = `v-${tk.id}-${opt}`, lab = document.createElement('label'), inp = document.createElement('input'), sp = document.createElement('span');
+    lab.htmlFor = id; inp.type = 'radio'; inp.name = 'v-' + tk.id; inp.id = id; inp.value = opt; inp.checked = opt === def; sp.textContent = opt;
+    inp.addEventListener('change', () => { votes[tk.id] = opt; try { localStorage.setItem('nv-votes', JSON.stringify(votes)); } catch {} paintBallot(); });
+    lab.append(inp, sp); vote.append(lab);
+  }
+  votes[tk.id] = def;
+  sheet.append(el);
+  const canvas = el.querySelector('canvas'), ctx = canvas.getContext('2d'); ctx.scale(2, 2);
+  runs.push({ canvas, ctx, draw: tk.draw, visible: false, t0: performance.now() - Math.random() * 3000 });
+  const row = document.createElement('tr');
+  [tk.name, ...tk.cost.map(VND), VND(total)].forEach((x, i) => { const td = document.createElement('td'); td.textContent = x; if (i) td.className = 'n'; if (i === 5) td.style.fontWeight = '700'; row.append(td); });
+  document.getElementById('costs').append(row);
+}
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const io = new IntersectionObserver((es) => es.forEach((e) => { const r = runs.find((x) => x.canvas === e.target); if (r) r.visible = e.isIntersecting; }), { threshold: 0.2 });
+const still = (r) => r.draw(r.ctx, 6.5);
+document.fonts.ready.then(() => {
+  runs.forEach((r) => { still(r); io.observe(r.canvas); });
+  if (reduce) return;
+  const loop = (now) => { for (const r of runs) if (r.visible) r.draw(r.ctx, (now - r.t0) / 1000); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+});
+function paintBallot() {
+  const lines = ['PHIẾU CHỌN ĐỊNH DẠNG VIDEO'];
+  for (const g of ['Giữ', 'Để sau', 'Bỏ']) { const names = TAKES.filter((tk) => votes[tk.id] === g).map((tk) => tk.name); lines.push(`${g}: ${names.length ? names.join(', ') : '(không)'}`); }
+  const note = document.getElementById('note').value.trim();
+  if (note) lines.push('Ý kiến: ' + note);
+  document.getElementById('out').value = lines.join('\n');
+}
+document.getElementById('note').addEventListener('input', paintBallot);
+paintBallot();
+document.getElementById('copy').addEventListener('click', async (e) => {
+  const out = document.getElementById('out'), b = e.currentTarget;
+  try { await navigator.clipboard.writeText(out.value); b.textContent = 'Đã sao chép'; }
+  catch { out.focus(); out.select(); b.textContent = 'Đã chọn sẵn, bấm Ctrl/⌘ + C'; }
+  setTimeout(() => { b.textContent = 'Sao chép phiếu'; }, 2500);
+});
+</script>

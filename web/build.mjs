@@ -29,7 +29,7 @@ const genres = [['lai-kep', 'sunset', 'hand'], ['chia-luong', 'cosmos', 'motion'
 const make = ([id, style, mode], intro) => {
   const t = DEFAULT_TEMPLATES.find((x) => x.id === id);
   const spec = cleanSpec({ title: t.title, visual: 'sketch', ratio: '9:16', style, mode, channel: 'Nét Vẽ', scenes: splitScript(t.text).map((lines) => ({ lines })).slice(0, 4),
-    intro: intro ? { title: t.title, badge: 'MIỄN PHÍ', icon: 'sparkles' } : null }, 'demo');
+    intro: intro ? { title: t.title, badge: 'MẸO TÀI CHÍNH', icon: 'sparkles' } : null }, 'demo');
   return { id, title: t.title, style, mode: mode || 'hand', spec };
 };
 const demos = [...picks.map((p, i) => make(p, i === 0)), ...genres.slice(1).map((g) => make(g))];

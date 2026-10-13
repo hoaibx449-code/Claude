@@ -11,7 +11,9 @@ export type SecretName = (typeof SECRET_NAMES)[number];
 /** Keys the render machine needs (voices); the Worker uses the AI ones itself. */
 const RUNNER_SECRETS: SecretName[] = ['EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'ELEVENLABS_API_KEY'];
 /** Visibility of an option ("style:kraft", "feature:zalo"); anything not set is on. */
-export const vis = (c: Config, key: string): Vis => c.visibility[key] || 'on';
+export const vis = (c: Config, key: string): Vis => (key === 'feature:plans' && c.beta?.enabled ? 'hidden' : c.visibility[key] || 'on');
+/** Selling is shown to users: not in beta, plans on. */
+export const selling = (c: Config) => vis(c, 'feature:plans') === 'on';
 
 export const STYLE_KEYS = ['sunset', 'cosmos', 'manim', 'bold', 'whiteboard', 'chalkboard', 'neon', 'darkboard', 'comic', 'pastel', 'oly', 'kraft', 'pencil', 'newspaper', 'blueprint', 'ricepaper', 'notebook'] as const;
 export const TOOL_KEYS = ['marker', 'chalk', 'fountain', 'colormarker', 'pencil', 'technical', 'brush'] as const;
@@ -61,6 +63,19 @@ export interface Config {
   templates: Template[];
   /** Terms, privacy and refund pages; raising `version` asks everyone to accept again. */
   legal: LegalConfig;
+  /** Beta: the public site shows no prices, plans, payment or upgrade prompts. Plan/payment settings stay editable and still set the limits. */
+  beta: { enabled: boolean; label: string; note: string };
+  /** Home page pictures and sample videos (URL or uploaded "site:" file). */
+  site: SiteConfig;
+  /** Spending cap for paid APIs (VND, from the logged costs). Over the cap the site switches to free paths. */
+  budget: { dailyVnd: number; monthlyVnd: number; warnPct: number; perVideoVnd: number };
+}
+export interface SiteMedia { title: string; caption: string; video: string; poster: string }
+export interface SiteConfig {
+  heroTitle: string; heroText: string;
+  /** picture or video beside the headline; empty = live hand-drawn preview */
+  heroMedia: string; heroPoster: string;
+  showcase: SiteMedia[];
 }
 export type Vis = 'on' | 'dev' | 'hidden';
 export interface ZaloConfig {
@@ -172,6 +187,9 @@ export function defaultConfig(env: Env): Config {
     payment: { enabled: false, bank: '970436', account: '', accountName: '', prefix: 'NV', expiryDays: 7, holdMinutes: 15, note: 'Chuyển khoản đúng nội dung để được kích hoạt tự động trong 1-2 phút.' },
     notice: '',
     templates: DEFAULT_TEMPLATES,
+    beta: { enabled: true, label: 'Beta', note: 'Đang thử nghiệm: tính năng và giao diện có thể thay đổi. Góp ý giúp chúng tôi làm video hay hơn.' },
+    site: { heroTitle: 'Biến ý tưởng thành video giải thích cuốn hút', heroText: 'Viết hoặc dán kịch bản, chọn định dạng video, nhận MP4 có giọng đọc tiếng Việt và phụ đề.', heroMedia: '', heroPoster: '', showcase: [] },
+    budget: { dailyVnd: 200_000, monthlyVnd: 3_000_000, warnPct: 80, perVideoVnd: 15_000 },
     legal: { company: 'Nét Vẽ Studio', email: 'hotro@example.com', address: 'Việt Nam', taxId: '', version: LEGAL_VERSION, terms: DEFAULT_TERMS, privacy: DEFAULT_PRIVACY, refund: DEFAULT_REFUND },
   };
 }
@@ -294,6 +312,25 @@ export function cleanConfig(input: any, base: Config): Config {
       return { company: str(l.company, 120, b.company) || b.company, email: str(l.email, 120, b.email) || b.email, address: str(l.address, 200, b.address), taxId: str(l.taxId, 30, ''),
         version: /^[\w.-]{1,20}$/.test(l.version || '') ? l.version : b.version, terms: doc(l.terms, b.terms), privacy: doc(l.privacy, b.privacy), refund: doc(l.refund, b.refund) };
     })(),
+    beta: (() => {
+      const b = i.beta || {}, d = base.beta;
+      return { enabled: typeof b.enabled === 'boolean' ? b.enabled : d.enabled, label: str(b.label, 20, d.label) || d.label, note: str(b.note, 300, d.note) };
+    })(),
+    site: (() => {
+      const x = i.site || {}, d = base.site;
+      const media = (v: unknown) => { const t = String(v ?? '').trim(); return /^(site:[a-f0-9]{24}\.(png|jpg|webp|mp4|webm)|https:\/\/[^\s"'<>]{4,400})$/.test(t) ? t : ''; };
+      return {
+        heroTitle: str(x.heroTitle, 120, d.heroTitle) || d.heroTitle, heroText: str(x.heroText, 300, d.heroText),
+        heroMedia: x.heroMedia === undefined ? d.heroMedia : media(x.heroMedia), heroPoster: x.heroPoster === undefined ? d.heroPoster : media(x.heroPoster),
+        showcase: (Array.isArray(x.showcase) ? x.showcase : d.showcase).slice(0, 12)
+          .map((m: any) => ({ title: str(m?.title, 60, ''), caption: str(m?.caption, 120, ''), video: media(m?.video), poster: media(m?.poster) }))
+          .filter((m: SiteMedia) => m.video || m.poster),
+      };
+    })(),
+    budget: (() => {
+      const b = i.budget || {}, d = base.budget;
+      return { dailyVnd: int(b.dailyVnd, 0, 1_000_000_000, d.dailyVnd), monthlyVnd: int(b.monthlyVnd, 0, 10_000_000_000, d.monthlyVnd), warnPct: int(b.warnPct, 10, 100, d.warnPct), perVideoVnd: int(b.perVideoVnd, 0, 10_000_000, d.perVideoVnd) };
+    })(),
     admins: (Array.isArray(i.admins) ? i.admins : base.admins).map((e: unknown) => str(e, 100, '').toLowerCase()).filter((e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)).slice(0, 20),
   };
 }
@@ -394,12 +431,14 @@ export async function isAdmin(env: Env, config: Config, user: User) {
 export function publicConfig(config: Config) {
   return {
     brand: config.brand, labels: config.labels, texts: config.texts, enabledStyles: config.enabledStyles, enabledSources: config.enabledSources, defaults: config.defaults,
-    voices: config.voices.filter((v) => config.visibility['voice:' + v.code] !== 'hidden'), visibility: config.visibility, notice: config.notice,
-    plans: config.plans.filter((p) => p.visible).map((p) => ({ id: p.id, name: p.name, price: p.price, days: p.days, highlight: p.highlight, desc: p.desc, features: p.features, limits: p.limits })),
+    voices: config.voices.filter((v) => config.visibility['voice:' + v.code] !== 'hidden'), visibility: config.beta.enabled ? { ...config.visibility, 'feature:plans': 'hidden' as Vis } : config.visibility, notice: config.notice,
+    beta: config.beta.enabled ? { label: config.beta.label, note: config.beta.note } : null,
+    site: config.site,
+    plans: !selling(config) ? [] : config.plans.filter((p) => p.visible).map((p) => ({ id: p.id, name: p.name, price: p.price, days: p.days, highlight: p.highlight, desc: p.desc, features: p.features, limits: p.limits })),
     templates: config.visibility['feature:templates'] === 'hidden' ? [] : config.templates.map((t) => ({ id: t.id, title: t.title, niche: t.niche })),
     legal: { version: config.legal.version, company: config.legal.company, email: config.legal.email },
     zalo: { enabled: config.zalo.enabled && config.visibility['feature:zalo'] !== 'hidden', botLink: config.zalo.botLink, dev: config.visibility['feature:zalo'] === 'dev' },
-    payment: { enabled: config.payment.enabled, holdMinutes: config.payment.holdMinutes },
+    payment: { enabled: selling(config) && config.payment.enabled, holdMinutes: config.payment.holdMinutes },
     limits: { maxSeconds: config.limits.maxSeconds },
     auth: config.auth,
   };

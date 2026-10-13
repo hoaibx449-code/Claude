@@ -4,7 +4,7 @@
 // whose transfer memo is the order code; SePay calls our webhook when the money arrives and
 // the plan is activated at once (the admin can also confirm by hand).
 import type { User } from './auth.ts';
-import type { Plan } from './settings.ts';
+import { type Plan, selling } from './settings.ts';
 import { body, type Env, HttpError, json, timingSafeEqual } from './util.ts';
 import type { Rc, XEnv } from './worker.ts';
 import { notifyOwner } from './zalo.ts';
@@ -27,6 +27,7 @@ const allows = (list: 'all' | string[], key: string) => list === 'all' || list.i
 
 /** Cheapest visible plan that would allow what was blocked (for a targeted upgrade message). */
 function upgradeFor(env: XEnv, test: (p: Plan) => boolean) {
+  if (!selling(env.config)) return {};
   const p = env.config.plans.filter((x) => x.visible && x.price > 0 && test(x)).sort((a, b) => a.price - b.price)[0];
   return p ? { upgrade: { id: p.id, name: p.name, price: p.price } } : {};
 }

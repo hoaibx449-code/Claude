@@ -9,9 +9,10 @@ import { fillLegal } from './legal.ts';
 import { aiCost, clientIp, imageCost, logEvent, routeName, summarize, voiceCost, type LogEntry } from './log.ts';
 import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, vis } from './settings.ts';
 import { adminRoutes } from './admin.ts';
+import { budgetState, fitVoiceToBudget, requireBudget } from './budget.ts';
 import { checkShare, notifyJob, rememberOrigin, resumeZalo, zaloUser, zaloWebhook } from './zalo.ts';
 import { checkAllowed, checkSource, expireOrders, limitsFor, planOf, planRoutes, sepayWebhook } from './plans.ts';
-import { affiliateScene, communityPublic, deleteVideo, introFor, serveObject, shareToCommunity, storedVideoKey, upload, videoKey } from './media.ts';
+import { affiliateScene, communityPublic, deleteVideo, introFor, serveObject, shareToCommunity, siteType, storedVideoKey, upload, videoKey } from './media.ts';
 import { body, type Env, HttpError, json, randomId, refundQuota, sha256, timingSafeEqual, today, useQuota } from './util.ts';
 
 const MAX_ACTIVE_JOBS = 2;
@@ -89,6 +90,9 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
   // called by other services (verified inside), and the no-login share link for finished videos
   if (path === '/api/zalo/webhook' && method === 'POST') return zaloWebhook(req, env, rc);
   if (path === '/api/sepay/webhook' && method === 'POST') return sepayWebhook(req, env, rc);
+  // home page pictures and sample videos (public, content-addressed so cached for a year)
+  const site = path.match(/^\/api\/site\/([a-f0-9]{24})\.(png|jpg|webp|mp4|webm)$/);
+  if (site && (method === 'GET' || method === 'HEAD')) { rc.quiet = true; return serveObject(env, req, `site/${site[1]}.${site[2]}`, siteType(site[2]), { 'cache-control': 'public, max-age=31536000, immutable' }); }
   const sh = path.match(/^\/api\/share\/([a-f0-9]{24})$/);
   if (sh && method === 'GET') return shareVideo(env, rc, sh[1], url);
 
@@ -402,6 +406,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       const base = `img/${user.id}/${(await sha256(provider + '\n' + panel.prompt)).slice(0, 24)}`;
       let key = (await env.BUCKET.head(base + '.webp')) ? base + '.webp' : (await env.BUCKET.head(base + '.png')) ? base + '.png' : '';
       if (!key) {
+        await requireBudget(env, 'vẽ tranh AI');
         await useQuota(env, user.id, 'image', (await limitsFor(env, user.id)).image);
         try {
           const t0 = Date.now();
@@ -603,7 +608,10 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
       const scenes = splitScript(text);
       if (!scenes.length) throw new HttpError(400, 'Không tách được câu nào từ kịch bản.');
       raw = { title: scenes[0][0].replace(/[.!?…]+$/, '').slice(0, 70), scenes: scenes.map((lines) => ({ lines })) };
-      if (source === 'mine-ai') {
+      if (source === 'mine-ai' && (await budgetState(env)).over) {
+        note = 'Hôm nay đã dùng hết ngân sách AI nên hình được tự thiết kế theo luật. Bạn vẫn sửa được từng cảnh.';
+        rc.log('budget.fallback', { data: { source } });
+      } else if (source === 'mine-ai') {
         const provider = b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (D.textAI as TextProvider);
         await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
         try {
@@ -622,6 +630,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
       const seconds = Math.max(15, Math.min(env.config.limits.maxSeconds, (await planOf(env, user.id)).plan.maxSeconds, Number(b.seconds) || D.seconds));
       if (provider === 'mock') raw = sampleScript(text);
       else {
+        await requireBudget(env, 'AI viết kịch bản');
         await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
         try {
           raw = await writeScript(env, provider, { topic: text, seconds, tone: String(b.tone || '').slice(0, 200), ratio, visual, extra: env.config.promptExtra + affiliateBrief(aff), format: aff ? 'sales' : format, niche });
@@ -655,6 +664,10 @@ export async function queueRender(env: XEnv, rc: Rc, user: User, id: string, spe
   await checkAllowed(env, user, spec);
   const active = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE user_id = ? AND status IN ('queued','running')").bind(user.id).first<any>();
   if (active.n >= MAX_ACTIVE_JOBS) throw new HttpError(429, 'Bạn đang có video chờ dựng. Đợi xong rồi dựng tiếp nhé.');
+  // a paid voice that would break the spending cap becomes the basic voice (this render only)
+  spec = { ...spec };
+  const note = await fitVoiceToBudget(env, spec);
+  if (note) rc.log('budget.voice', { projectId: id, data: { note } });
   await useQuota(env, user.id, 'render', (await limitsFor(env, user.id)).render);
   const jobId = randomId(12);
   try {
@@ -665,7 +678,7 @@ export async function queueRender(env: XEnv, rc: Rc, user: User, id: string, spe
   } catch (error) { await refundQuota(env, user.id, 'render'); throw error; }
   rc.wait(startRunner(env).catch((e) => { rc.log('render.trigger', { ok: false, data: { error: String(e.message || e) } }); }));
   rc.log('render.queue', { projectId: id, data: { job: jobId, scenes: spec.scenes.length, chars: spec.scenes.reduce((n: number, sc: any) => n + sc.lines.join(' ').length, 0), voice: spec.voice, style: spec.style, via: rc.channel } });
-  return { id: jobId, status: 'queued', progress: 0 };
+  return { id: jobId, status: 'queued', progress: 0, note };
 }
 
 function affiliateBrief(a: { product?: string; price?: string } | null) {

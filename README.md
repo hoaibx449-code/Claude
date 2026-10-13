@@ -109,7 +109,15 @@ assets/       font Pangolin (OFL), hình Open Doodles (CC0), ảnh tay
 
 **Không cần AI vẫn chạy:** kịch bản mẫu, chế độ "kịch bản của tôi + tự minh hoạ" (luật trong `web/src/compose.ts`, nhận diện dạng video/ngách trong `web/src/intent.ts`), giọng đọc miễn phí (Google Neural2 qua tài khoản Google Cloud của máy dựng, dự phòng espeak-ng). Giọng trả phí lỗi thì tự chuyển sang giọng miễn phí; AI lỗi thì thử model dự phòng, rồi nhà cung cấp còn lại, cuối cùng tự minh hoạ miễn phí.
 
-**Zalo** (`web/src/zalo.ts`, Zalo Bot Platform): người dùng gửi `KB` + kịch bản hoặc `TAO` + chủ đề cho bot và nhận link video (ký số, hạn 7 ngày). Liên kết tài khoản bằng mã `KETNOI`; người chưa có tài khoản web được tạo tài khoản Zalo tự động (tuỳ chọn). Webhook xác thực bằng header `X-Bot-Api-Secret-Token`.
+**Zalo** (`web/src/zalo.ts`, Zalo Bot Platform): người dùng gửi `KB` + kịch bản hoặc `TAO` + chủ đề cho bot và nhận link video (ký số, hạn 7 ngày). Liên kết tài khoản bằng mã `KETNOI`; người chưa có tài khoản web được tạo tài khoản Zalo tự động (tuỳ chọn). Webhook xác thực bằng header `X-Bot-Api-Secret-Token`. Webhook luôn trả HTTP 200 cho Zalo (lỗi được ghi nhật ký và hiện ở Quản trị → Zalo) để Zalo không ngừng gọi; mã bí mật đi kèm cả header lẫn `?s=` trên địa chỉ webhook.
+
+**Chế độ Beta** (Quản trị → Nội dung, bật mặc định): trang web không hiện bảng giá, gói cước, thanh toán, nút nâng cấp hay khẩu hiệu bán hàng; `/api/orders` bị chặn. Cài đặt gói/thanh toán vẫn giữ và giới hạn mỗi gói vẫn áp dụng. Tắt Beta là mở bán lại.
+
+**Trang chủ tuỳ biến** (Quản trị → Nội dung → Trang chủ): tiêu đề, đoạn giới thiệu, ảnh/video cạnh tiêu đề và tối đa 12 video mẫu. Dán địa chỉ `https://` hoặc tải tệp lên (PNG/JPG/WebP/MP4/WebM ≤ 60 MB, lưu R2 `site/`, phục vụ công khai qua `/api/site/…` có Range và cache 1 năm). Để trống thì trang chủ vẽ demo trực tiếp.
+
+**Trần chi phí** (`web/src/budget.ts`, Quản trị → Cài đặt): trần ngày/tháng (VND, tính từ `events.cost`) và mức tối đa một video. Chạm trần thì AI viết/vẽ tạm dừng có thông báo, "kịch bản của tôi + AI minh hoạ" chuyển sang tự minh hoạ, giọng trả phí chuyển sang giọng cơ bản cho lượt dựng đó. Trang quản trị hiện mức đã tiêu và loại tốn nhiều nhất 30 ngày.
+
+**Đề xuất định dạng video**: [`docs/de-xuat-dinh-dang-video.html`](docs/de-xuat-dinh-dang-video.html) (rà soát phong cách hiện tại, 7 định dạng có demo, chi phí, phiếu chọn).
 
 **Gói cước & thanh toán** (`web/src/plans.ts`): giới hạn theo ngày, phong cách/giọng/cách tạo theo gói, mã VietQR, SePay báo tiền về `/api/sepay/webhook` (API key) để kích hoạt tự động.
 
