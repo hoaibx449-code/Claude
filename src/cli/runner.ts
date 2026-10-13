@@ -67,6 +67,12 @@ async function runJob(job: { id: string; lease: string; spec: ProjectSpec }) {
       writeFileSync(file, Buffer.from(await (await call('/api/runner/asset?key=' + encodeURIComponent(ref.slice(3)))).arrayBuffer()));
       spec.media![k] = file;
     }
+    // background music chosen on the site (public home page media)
+    if (spec.music && /^site:[a-f0-9]{24}\.(mp3|m4a)$/.test(spec.music)) {
+      const file = join(dir, 'music.' + spec.music.split('.').pop());
+      try { writeFileSync(file, Buffer.from(await (await call('/api/site/' + spec.music.slice(5))).arrayBuffer())); spec.music = file; }
+      catch (e: any) { console.error('Bỏ nhạc nền:', e.message); delete spec.music; }
+    } else delete spec.music;
     let last = 0;
     const r = await renderProject({
       project: spec, projDir: dir, out: join(dir, 'video.mp4'), tts: process.env.RUNNER_TTS || spec.voice?.provider, size: 1080,

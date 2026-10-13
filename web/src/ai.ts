@@ -12,6 +12,23 @@ export const LINE_ART_STYLE =
   'no color, no gray fill, plain pure white background, no text, no letters, no frame, centered subject, 4:3 composition. Scene: ';
 
 export type VisualMode = 'sketch' | 'mix' | 'images' | 'diagram';
+
+/** Documentary pictures: photographic, not line art. */
+export const PHOTO_STYLE =
+  'Cinematic documentary photograph, realistic, natural light, shallow depth of field, rich but natural colours, ' +
+  'vertical-friendly composition with the subject centred, no text, no letters, no watermark, no logos. Scene: ';
+
+const ICON_HINT = 'Tên icon là tên bộ Tabler Icons tiếng Anh, viết thường, gạch nối (vd cash, pig-money, wallet, brain, clock, home, briefcase, coffee, shopping-cart, building-bank, trending-up, trending-down, heart, target-arrow, bulb, mood-sad, mood-happy, school, book).';
+/** What each format needs from the writer, and the per-scene "x" data it reads. */
+export const LOOK_BRIEF: Record<string, string> = {
+  kinetic: 'ĐỊNH DẠNG: CHỮ BÙNG NỔ. Câu ngắn, mạnh, có con số cụ thể; mỗi câu ≤ 14 chữ. Mỗi cảnh có "x":{"icon":"icon chính","keys":["1-3 từ cần nhấn, đúng như trong câu"]}.',
+  split: 'ĐỊNH DẠNG: HAI BÊN ĐỐI LẬP. Ở gốc JSON có "sides":{"a":"tên bên sai/nghèo/trước (≤ 20 ký tự)","b":"tên bên đúng/giàu/sau"}. Mỗi cảnh thân bài có đúng 2 câu: câu 1 nói bên A làm gì, câu 2 nói bên B làm gì, và "x":{"a":"bên A làm gì (≤ 40 ký tự)","b":"bên B làm gì","aIcon":"icon","bIcon":"icon","aValue":"(tuỳ chọn) kết quả bên A, vd 0đ","bValue":"(tuỳ chọn) kết quả bên B"}. Cảnh mở và kết chỉ cần "lines".',
+  chat: 'ĐỊNH DẠNG: TIN NHẮN DRAMA. Kể câu chuyện bằng tin nhắn giữa "mình" và một người thân. Ở gốc JSON có "chatName":"tên người kia (vd Vợ yêu, Sếp, Mẹ, Bạn thân)". Mỗi câu thoại là một tin nhắn ngắn, văn nói; "x":{"chat":[{"who":"a hoặc b","text":"đúng nguyên câu thoại"}]} với a là người kia, b là mình. Cảnh cuối thêm "x":{"card":"câu bài học, là một trong các câu thoại của cảnh"}.',
+  story: 'ĐỊNH DẠNG: KỂ CHUYỆN NGƯỜI QUE. Một nhân vật xuyên suốt, mỗi cảnh ở một nơi. Mỗi cảnh có "x":{"place":{"icon":"icon nơi chốn (home, briefcase, coffee, building-bank, school, shopping-cart, barbell, trees)","label":"tên nơi ≤ 14 ký tự"},"action":"idle|walk|run|wave|think|cheer|sad|point|shrug|jump","say":"lời nhân vật nói ≤ 30 ký tự","money":true nếu cảnh nói về tiêu tiền,"icons":["≤ 2 icon đồ vật"]}.',
+  data: 'ĐỊNH DẠNG: CON SỐ BIẾT NÓI. Phần lớn cảnh xoay quanh một con số. Cảnh có số dùng "x":{"stat":{"value":số (không dấu chấm),"unit":"đ|triệu|%|lần|...","label":"con số này là gì ≤ 24 ký tự","parts":[{"label":"≤ 20 ký tự","value":số}] (tuỳ chọn, 2-5 phần, cùng đơn vị)}}. Con số phải là ví dụ minh hoạ và nói rõ là ví dụ, không bịa thống kê.',
+  quiz: 'ĐỊNH DẠNG: ĐỐ VUI ĐẾM NGƯỢC. Xen kẽ cảnh HỎI và cảnh ĐÁP. Cảnh hỏi: đúng 1 câu hỏi, "pause":3, "x":{"quiz":{"q":"đúng câu hỏi","options":["2-4 đáp án rất ngắn"],"answer":chỉ số đáp án đúng (từ 0)}}. Cảnh đáp ngay sau: 1-2 câu giải thích, "x":{"quiz":{giống cảnh hỏi, thêm "reveal":true}}. Cảnh cuối mời bình luận đáp án.',
+  doc: 'ĐỊNH DẠNG: PHIM TÀI LIỆU. Giọng kể điềm tĩnh, giàu hình ảnh, có bối cảnh thời gian và nơi chốn. Mỗi cảnh có "panels":[{"prompt":"TIẾNG ANH: mô tả một ảnh chụp điện ảnh chân thực cho cảnh này (bối cảnh, nhân vật, ánh sáng, góc máy), không chữ trong ảnh"}].',
+};
 export interface ScriptRequest {
   topic: string; seconds: number; tone: string; ratio: string; visual: VisualMode;
   /** admin's extra instructions */ extra?: string;
@@ -19,6 +36,8 @@ export interface ScriptRequest {
   scenes?: string[][];
   /** detected kind of video and topic area (see intent.ts) */
   format?: string; niche?: string;
+  /** video format (src/engine/looks.ts): asks for its scene data instead of drawings */
+  look?: string;
 }
 
 const ICON_VOCAB = 'user, users, user-check, user-x, user-heart, user-star, friends, man, woman, baby-carriage, old, mood-happy, mood-sad, mood-cry, mood-angry, mood-confuzed, mood-sick, mood-nervous, mood-smile-beam, heart, heart-broken, heart-handshake, hearts, brain, bulb, bulb-off, message, message-circle, messages, speakerphone, microphone, thumb-up, thumb-down, hand-stop, hand-click, pointer, eye, eye-off, ear, search, zoom-question, question-mark, exclamation-mark, alert-triangle, alert-circle, info-circle, check, x, circle-check, circle-x, ban, lock, lock-open, key, shield, shield-check, fingerprint, home, building, building-skyscraper, building-bank, building-store, building-hospital, building-factory, school, briefcase, tent, cash, coin, coins, currency-dollar, pig-money, wallet, credit-card, receipt, receipt-tax, report-money, moneybag, basket, shopping-cart, shopping-bag, gift, tag, discount, percentage, calculator, chart-bar, chart-line, chart-pie, chart-arrows-vertical, trending-up, trending-down, arrow-up-right, arrow-down-right, scale, scale-outline, clock, alarm, hourglass, calendar, calendar-event, calendar-time, stopwatch, history, hourglass-high, device-mobile, device-laptop, device-desktop, device-tv, device-gamepad-2, wifi, world, cloud, database, server, robot, cpu, code, mail, phone, camera, photo, video, movie, music, headphones, car, bus, bike, plane, rocket, ship, truck, map, map-pin, route, road-sign, compass, globe, sun, moon, cloud-rain, snowflake, bolt, flame, droplet, leaf, plant, tree, seedling, mountain, beach, coffee, cup, tools-kitchen-2, pizza, apple, salad, bottle, beer, cake, candy, egg, fish, meat, milk, bed, zzz, run, walk, swimming, yoga, barbell, stretching, heartbeat, activity, pill, vaccine, stethoscope, first-aid-kit, virus, book, book-2, books, notebook, pencil, writing, certificate, award, trophy, medal, crown, star, stars, flag, target, target-arrow, puzzle, chess, chess-knight, dice-5, ladder, stairs-up, stairs-down, battery, battery-1, battery-4, plug, lamp, bell, bell-ringing, hammer, tool, tools, settings, adjustments, box, package, link, anchor, magnet, umbrella, paperclip, sparkles, confetti, balloon, mask, mood-crazy-happy, ghost, skull, bomb, fire-extinguisher, arrows-split, arrows-join, refresh, repeat, infinity, recycle, arrow-loop-right, arrows-exchange';
@@ -75,17 +94,24 @@ function systemPrompt(r: ScriptRequest) {
     r.tone ? `Giọng văn: ${r.tone}.` : '',
     r.format ? 'DẠNG VIDEO (đã nhận diện, giữ đúng): ' + (FORMAT_NAMES as any)[r.format] + ' — ' + (FORMAT_BRIEF as any)[r.format] : '',
     r.niche && r.niche !== 'general' ? 'Ngách: ' + (NICHE_NAMES as any)[r.niche] + '. Dùng ví dụ, từ ngữ, ẩn dụ đúng ngách này.' : '',
-    'HÌNH: ' + visual,
+    r.look ? LOOK_BRIEF[r.look] + ' ' + ICON_HINT : 'HÌNH: ' + visual,
     r.extra ? 'YÊU CẦU THÊM CỦA CHỦ TRANG: ' + r.extra : '',
-    '"panels": [{"prompt":"TIẾNG ANH, 1 hình minh hoạ đơn giản: chủ thể, hành động, đồ vật ẩn dụ; không chữ trong hình"}].',
-    DIAGRAM_SCHEMA + '. Chữ trong diagram là tiếng Việt, rất ngắn, khớp ý câu thoại của cảnh.',
-    r.visual === 'sketch' ? sketchSchema(r.ratio) : '',
-    'Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption đăng bài ≤ 150 ký tự, kết bằng một câu hỏi mời bình luận","hashtags":["#tiengvietkhongdau", "... 5-8 thẻ"],"scenes":[{"lines":["câu 1","câu 2"],"panels":[...]} hoặc {"lines":[...],"diagram":{...}}]}',
+    r.look ? '' : '"panels": [{"prompt":"TIẾNG ANH, 1 hình minh hoạ đơn giản: chủ thể, hành động, đồ vật ẩn dụ; không chữ trong hình"}].',
+    r.look ? '' : DIAGRAM_SCHEMA + '. Chữ trong diagram là tiếng Việt, rất ngắn, khớp ý câu thoại của cảnh.',
+    !r.look && r.visual === 'sketch' ? sketchSchema(r.ratio) : '',
+    r.look ? 'Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#... 5-8 thẻ"], (các trường gốc của định dạng nếu có), "scenes":[{"lines":["câu 1","câu 2"],"x":{...}}]}' : '',
+    r.look ? '' : 'Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption đăng bài ≤ 150 ký tự, kết bằng một câu hỏi mời bình luận","hashtags":["#tiengvietkhongdau", "... 5-8 thẻ"],"scenes":[{"lines":["câu 1","câu 2"],"panels":[...]} hoặc {"lines":[...],"diagram":{...}}]}',
   ].filter(Boolean).join('\n');
 }
 
 /** The user wrote the narration; the AI only designs a picture for each scene. */
 function illustratePrompt(r: ScriptRequest) {
+  if (r.look) return [
+    'Người dùng đã có kịch bản tiếng Việt, chia sẵn thành cảnh. GIỮ NGUYÊN lời thoại, KHÔNG viết lại; chỉ thêm dữ liệu hình cho từng cảnh, đúng thứ tự, đúng số cảnh.',
+    LOOK_BRIEF[r.look] + ' ' + ICON_HINT,
+    r.extra ? 'YÊU CẦU THÊM CỦA CHỦ TRANG: ' + r.extra : '',
+    `Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#..."], (các trường gốc của định dạng nếu có), "scenes":[{"x":{...}}, ... đúng ${r.scenes!.length} cảnh, cảnh đố vui có thêm "pause"]}`,
+  ].filter(Boolean).join('\n');
   return [
     'Bạn là hoạ sĩ minh hoạ video "bàn tay vẽ" tiếng Việt. Người dùng đã có kịch bản, chia sẵn thành cảnh. GIỮ NGUYÊN lời thoại, KHÔNG viết lại; chỉ thiết kế hình cho từng cảnh, đúng thứ tự, đúng số cảnh.',
     DIAGRAM_SCHEMA + '. Chữ trong hình là tiếng Việt, rất ngắn, khớp ý câu thoại của cảnh.',
@@ -182,15 +208,16 @@ export interface DrawnImage { bytes: Uint8Array; type: 'image/webp' | 'image/png
 
 // Images arrive as base64 inside JSON. Ask for compressed WebP and decode with the native
 // Buffer: decoding a multi-MB PNG in plain JS exceeds the Workers CPU limit.
-export async function drawImage(env: Env, provider: ImageProvider, prompt: string): Promise<DrawnImage> {
-  const full = LINE_ART_STYLE + prompt;
+export async function drawImage(env: Env, provider: ImageProvider, prompt: string, kind: 'line' | 'photo' = 'line', portrait = true): Promise<DrawnImage> {
+  const photo = kind === 'photo';
+  const full = (kind === 'photo' ? PHOTO_STYLE : LINE_ART_STYLE) + prompt;
   const reason = async (res: Response) => ((await res.text()).match(/"message":\s*"([^"]{0,200})/)?.[1] || `HTTP ${res.status}`);
   if (provider === 'openai') {
     if (!env.OPENAI_API_KEY) throw new HttpError(503, 'Chủ trang chưa cấu hình khoá OpenAI.');
     const res = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: env.OPENAI_IMAGE_MODEL, prompt: full, size: '1536x1024', quality: env.OPENAI_IMAGE_QUALITY || 'medium', output_format: 'webp', output_compression: 85, n: 1 }),
+      body: JSON.stringify({ model: env.OPENAI_IMAGE_MODEL, prompt: full, size: photo && portrait ? '1024x1536' : '1536x1024', quality: env.OPENAI_IMAGE_QUALITY || 'medium', output_format: 'webp', output_compression: 85, n: 1 }),
     });
     if (!res.ok) throw new HttpError(502, `OpenAI chưa vẽ được ảnh: ${await reason(res)}`);
     const b64 = ((await res.json()) as any).data?.[0]?.b64_json;
@@ -201,7 +228,7 @@ export async function drawImage(env: Env, provider: ImageProvider, prompt: strin
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_IMAGE_MODEL}:generateContent`, {
     method: 'POST',
     headers: { 'x-goog-api-key': env.GEMINI_API_KEY, 'content-type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [{ text: full }] }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '4:3' } } }),
+    body: JSON.stringify({ contents: [{ parts: [{ text: full }] }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: photo ? (portrait ? '9:16' : '16:9') : '4:3' } } }),
   });
   if (!res.ok) throw new HttpError(502, `Gemini chưa vẽ được ảnh: ${await reason(res)}`);
   const part = (((await res.json()) as any).candidates?.[0]?.content?.parts || []).find((p: any) => p.inlineData?.data);

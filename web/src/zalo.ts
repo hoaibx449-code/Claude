@@ -5,7 +5,7 @@
 //  · check progress, list recent videos, pick frame/style/voice, mute notifications.
 // The webhook is verified with the secret token header Zalo sends back on every call.
 import type { User } from './auth.ts';
-import { vis, type Config } from './settings.ts';
+import { LOOK_KEYS, vis, type Config } from './settings.ts';
 import { body, type Env, HttpError, json, randomId, sha256, timingSafeEqual, useQuota } from './util.ts';
 import { createProject, queueRender, type Rc, type XEnv } from './worker.ts';
 
@@ -13,7 +13,11 @@ const API = 'https://bot-api.zaloplatforms.com/bot';
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const SHARE_DAYS = 7;
 
+/** Tokens are often pasted with spaces, quotes or a leading "bot" copied from an example URL. */
+export const cleanToken = (t: string) => String(t || '').trim().replace(/^["']|["']$/g, '').replace(/^bot(?=\d)/i, '').trim();
+
 export async function zaloApi(token: string, method: string, payload: unknown = {}): Promise<{ ok: boolean; status: number; result: any; error: string }> {
+  token = cleanToken(token);
   try {
     const res = await fetch(`${API}${token}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(10_000) });
     const j: any = await res.json().catch(() => ({}));
@@ -74,21 +78,21 @@ export async function notifyOwner(env: XEnv, kind: keyof Config['zalo']['notifyO
 }
 
 // ---------------------------------------------------------------- webhook
+// Zalo stops calling (or refuses to save) a webhook that keeps answering with errors, so every
+// answer to Zalo is HTTP 200; what went wrong is recorded in the log and shown on the admin page.
 export async function zaloWebhook(req: Request, env: XEnv, rc: Rc): Promise<Response> {
   const token = (env as any).ZALO_BOT_TOKEN;
-  if (!env.config.zalo.enabled || !token || !env.RUNNER_TOKEN || env.RUNNER_TOKEN.length < 32) {
-    rc.log('zalo.webhook', { ok: false, data: { error: !env.config.zalo.enabled ? 'Tính năng Zalo đang tắt.' : !token ? 'Chưa có Zalo Bot token.' : 'RUNNER_TOKEN chưa hợp lệ.' } });
-    throw new HttpError(503, 'Kết nối Zalo chưa được cấu hình đầy đủ.');
-  }
+  const refuse = (error: string, extra: Record<string, unknown> = {}) => { rc.log('zalo.webhook', { ok: false, data: { error, ...extra } }); return json({ ok: false, error }); };
+  if (!env.config.zalo.enabled) return refuse('Tính năng Zalo đang tắt (Quản trị → Zalo → Bật).');
+  if (!token) return refuse('Chưa có Zalo Bot token.');
+  if (!env.RUNNER_TOKEN || env.RUNNER_TOKEN.length < 32) return refuse('RUNNER_TOKEN chưa hợp lệ.');
   const secret = await webhookSecret(env);
   const given = req.headers.get('x-bot-api-secret-token') || new URL(req.url).searchParams.get('s') || '';
-  if (!timingSafeEqual(given, secret)) { rc.log('zalo.webhook', { ok: false, data: { error: 'sai mã bí mật' } }); throw new HttpError(401, 'Không có quyền.'); }
-  const b = await body<any>(req, 50_000);
+  if (!timingSafeEqual(given, secret)) return refuse(given ? 'sai mã bí mật: bấm "Kết nối webhook" lại' : 'thiếu mã bí mật: bấm "Kết nối webhook" lại');
+  let b: any;
+  try { b = await body<any>(req, 50_000); } catch { return refuse('Nội dung không phải JSON.'); }
   const event = normalizeMessage(b);
-  if (!event) {
-    rc.log('zalo.webhook', { ok: false, data: { error: 'Payload không có message/chat_id của Zalo Bot Platform.', event: String(b.event_name || b.result?.event_name || '').slice(0, 80) } });
-    throw new HttpError(400, 'Không nhận diện được tin nhắn Zalo Bot.');
-  }
+  if (!event) return refuse('Payload không có message/chat_id của Zalo Bot Platform.', { event: String(b?.event_name || b?.result?.event_name || '').slice(0, 80), keys: Object.keys(b?.result || b || {}).slice(0, 8).join(',') });
   if (event.event && !event.event.includes('received')) { rc.log('zalo.ignored', { data: { event: event.event } }); return json({ ok: true, ignored: true }); }
   const id = event.id || randomId(16), now = Date.now();
   await env.DB.prepare(`INSERT OR IGNORE INTO zalo_messages (id, chat_id, sender_name, text, is_text, status, received_at, updated_at)
@@ -209,13 +213,15 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
       await savePrefs(prefs);
       return reply(`Đã chọn khung ${prefs.ratio === '16:9' ? 'ngang 16:9 (YouTube)' : 'dọc 9:16 (TikTok, Reels)'}.`);
     }
-    case 'PHONGCACH': case 'PC': {
-      const styles = env.config.enabledStyles;
+    case 'DINHDANG': case 'DD': case 'PHONGCACH': case 'PC': {
+      // video formats; the documentary needs pictures drawn on the web first, so it is not offered here
+      const looks = LOOK_KEYS.filter((k) => k !== 'doc' && vis(env.config, 'look:' + k) === 'on');
       const n = Number(rest[0]);
-      if (!rest.length) return reply('Chọn phong cách (gõ PHONGCACH + số):\n0. Tự chọn theo nội dung\n' + styles.map((k, i) => `${i + 1}. ${env.config.labels.styles[k]}`).join('\n'));
-      prefs.style = n === 0 ? 'auto' : styles[n - 1] || styles.find((k) => fold(env.config.labels.styles[k]).toLowerCase().includes(fold(rest.join(' ')).toLowerCase())) || 'auto';
+      if (!rest.length) return reply('Chọn định dạng video (gõ DINHDANG + số):\n0. Mặc định của web\n' + looks.map((k, i) => `${i + 1}. ${env.config.labels.looks[k]} — ${env.config.labels.lookNotes[k]}`).join('\n'));
+      const want = fold(rest.join(' ')).toLowerCase();
+      prefs.look = n === 0 ? undefined : looks[n - 1] || looks.find((k) => fold(env.config.labels.looks[k]).toLowerCase().includes(want));
       await savePrefs(prefs);
-      return reply('Đã chọn phong cách: ' + (prefs.style === 'auto' ? 'tự chọn theo nội dung' : env.config.labels.styles[prefs.style]));
+      return reply('Đã chọn định dạng: ' + (prefs.look ? env.config.labels.looks[prefs.look] : 'mặc định của web'));
     }
     case 'GIONG': {
       const voices = env.config.voices.filter((v) => vis(env.config, 'voice:' + v.code) === 'on');
@@ -263,7 +269,7 @@ async function makeVideo(env: XEnv, rc: Rc, user: User, chatId: string, source: 
     if (checkpoint?.job_id) return send(env, chatId, 'Video này đã vào hàng chờ. Gõ TT để xem tiến độ.', messageId);
     await send(env, chatId, 'Đã nhận, mình đang chuẩn bị kịch bản và hình…', messageId);
     const existing = checkpoint?.project_id ? await env.DB.prepare('SELECT id, spec FROM projects WHERE id = ? AND user_id = ?').bind(checkpoint.project_id, user.id).first<any>() : null;
-    const p = existing ? { id: existing.id, spec: JSON.parse(existing.spec), note: '' } : await createProject(env, rc, user, { source, topic: text, ratio: prefs.ratio, style: prefs.style || 'auto', voiceId: prefs.voice, visual: 'sketch', channel: '' });
+    const p = existing ? { id: existing.id, spec: JSON.parse(existing.spec), note: '' } : await createProject(env, rc, user, { source, topic: text, ratio: prefs.ratio, style: prefs.style || 'auto', voiceId: prefs.voice, visual: 'sketch', channel: '', look: prefs.look && prefs.look !== 'doc' ? prefs.look : undefined });
     await env.DB.prepare('UPDATE zalo_messages SET project_id = ? WHERE id = ?').bind(p.id, messageId).run();
     if (!env.config.zalo.autoRender) return send(env, chatId, `Kịch bản "${p.spec.title}" đã sẵn sàng (${p.spec.scenes.length} cảnh). Mở web để xem và dựng: ${origin(env)}/#/p/${p.id}`, messageId);
     const queued = await env.DB.prepare("SELECT id FROM jobs WHERE project_id = ? AND user_id = ? AND status IN ('queued','running','done') ORDER BY created_at DESC LIMIT 1").bind(p.id, user.id).first<any>();
@@ -298,6 +304,9 @@ async function guestUser(env: XEnv, chatId: string, name: string): Promise<User>
   }
   return { id, email: `zalo:${chatId}`, name, picture: null };
 }
+
+/** Webhook address without the secret query, safe to show and compare. */
+const hookPath = (u: unknown) => String(u || '').split('?')[0];
 
 let originCache = '';
 /** Public address of the site (from the last request). */
@@ -364,12 +373,19 @@ export async function zaloAdmin(req: Request, env: XEnv, rawEnv: Env, sub: strin
   const url = new URL(req.url);
   if (sub === 'zalo/connect' && method === 'POST') {
     if (!token) throw new HttpError(400, 'Nhập Zalo Bot token ở mục Khoá API trước.');
-    const hook = `${url.origin}/api/zalo/webhook`;
-    const r = await zaloApi(token, 'setWebhook', { url: hook, secret_token: await webhookSecret(rawEnv) });
+    if (!env.config.zalo.enabled) throw new HttpError(400, 'Bật tính năng Zalo và lưu cài đặt trước khi kết nối webhook.');
+    if (url.protocol !== 'https:') throw new HttpError(400, 'Zalo chỉ gọi địa chỉ HTTPS. Mở trang quản trị bằng tên miền thật rồi kết nối.');
+    const before = await zaloApi(token, 'getWebhookInfo');
+    const secret = await webhookSecret(rawEnv);
+    // the secret also rides in the address: Zalo sends the header, the query is a fallback
+    const hook = `${url.origin}/api/zalo/webhook?s=${secret}`;
+    const r = await zaloApi(token, 'setWebhook', { url: hook, secret_token: secret });
     const info = await zaloApi(token, 'getWebhookInfo');
-    rc.log('admin.zalo.connect', { ok: r.ok, data: { error: r.error, url: info.result?.url } });
+    const saved = String(info.result?.url || '');
+    rc.log('admin.zalo.connect', { ok: r.ok, data: { error: r.error, before: hookPath(before.result?.url), url: hookPath(saved) } });
     if (!r.ok) throw new HttpError(502, 'Zalo từ chối đăng ký webhook: ' + r.error);
-    return json({ ok: true, url: hook, info: info.result });
+    if (info.ok && saved && hookPath(saved) !== hookPath(hook)) throw new HttpError(502, 'Zalo báo đã nhận nhưng webhook vẫn trỏ về: ' + hookPath(saved));
+    return json({ ok: true, url: hookPath(hook), before: hookPath(before.result?.url) || null, info: info.result ? { ...info.result, url: hookPath(saved) } : null });
   }
   if (sub === 'zalo/check' && method === 'GET') {
     const me = token ? await zaloApi(token, 'getMe') : null;
@@ -379,11 +395,13 @@ export async function zaloAdmin(req: Request, env: XEnv, rawEnv: Env, sub: strin
     const expected = `${url.origin}/api/zalo/webhook`;
     const inbox = await env.DB.prepare('SELECT id, chat_id, status, error, received_at FROM zalo_messages ORDER BY received_at DESC LIMIT 1').first<any>();
     const reply = await env.DB.prepare('SELECT status, error, updated_at FROM zalo_outbox ORDER BY created_at DESC LIMIT 1').first<any>();
+    const lastCall = await env.DB.prepare("SELECT ts, ok, data FROM events WHERE type IN ('zalo.webhook','zalo.received','zalo.ignored') ORDER BY id DESC LIMIT 1").first<any>();
     return json({
       steps: [
         { k: 'Bật tính năng Zalo', ok: env.config.zalo.enabled, fix: 'Bật ở mục Zalo rồi lưu.' },
         { k: 'Token hợp lệ', ok: !!me?.ok, detail: me?.result?.account_name || me?.result?.display_name || me?.error || 'chưa nhập token', fix: 'Lấy token trong Zalo Bot Creator và dán vào Khoá API.' },
-        { k: 'Webhook trỏ về web này', ok: info?.result?.url === expected, detail: info?.result?.url || '(chưa có)', fix: 'Bấm "Kết nối webhook".' },
+        { k: 'Webhook trỏ về web này', ok: hookPath(info?.result?.url) === expected, detail: hookPath(info?.result?.url) || '(chưa có)', fix: 'Bấm "Kết nối webhook". Bot chỉ có một webhook: nếu đang trỏ về Apps Script/FACIUP hay web khác thì web này không nhận được tin.' },
+        { k: 'Zalo đã gọi tới web này', ok: !!lastCall && lastCall.ok !== 0, detail: lastCall ? `${new Date(lastCall.ts).toLocaleString('vi-VN')} · ${lastCall.ok ? 'hợp lệ' : (JSON.parse(lastCall.data || '{}').error || 'bị từ chối')}` : 'Chưa có lần gọi nào.', fix: lastCall ? 'Sửa theo lỗi ở trên rồi nhắn lại GIUP.' : 'Zalo chưa gọi tới. Kiểm tra: (1) webhook đúng địa chỉ; (2) trong Zalo Bot Creator đã bật nhận sự kiện tin nhắn (message.text.received); (3) Cloudflare không chặn (tắt Bot Fight Mode / Under Attack cho /api/zalo/webhook); (4) bạn đang nhắn đúng bot có token này.' },
         { k: 'Web đã ghi nhận tin nhắn', ok: !!inbox, detail: inbox ? `Tin gần nhất: ${inbox.status}${inbox.error ? ' — ' + inbox.error : ''}` : 'Chưa có tin nhắn được ghi nhận.', fix: 'Nhắn GIUP cho bot rồi bấm Kiểm tra lại. Nếu không nhận, kiểm tra webhook và token.' },
         { k: 'Phản hồi gần nhất gửi thành công', ok: reply?.status === 'sent', detail: reply ? `${reply.status}${reply.error ? ' — ' + reply.error : ''}` : 'Chưa gửi phản hồi.', fix: 'Xem Hộp thư Zalo để thử gửi lại phản hồi lỗi.' },
         { k: 'Chủ web đã nhận bot (để nhận thông báo quản trị)', ok: !!env.config.zalo.ownerChat, fix: 'Tạo mã chủ web và gửi CHUWEB <mã> cho bot. Khách vẫn dùng bot khi chưa có chat chủ web.' },
@@ -416,6 +434,17 @@ export async function zaloAdmin(req: Request, env: XEnv, rawEnv: Env, sub: strin
     const code = Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
     await env.DB.prepare("INSERT INTO zalo_codes (code, user_id, expires_at) VALUES (?, 'owner', ?)").bind(code, Date.now() + 30 * 60_000).run();
     return json({ command: 'CHUWEB ' + code, expiresMin: 30 });
+  }
+  if (sub === 'zalo/simulate' && method === 'POST') {
+    // run a message through the same path as a real one, answering in the owner's chat
+    if (!env.config.zalo.ownerChat) throw new HttpError(400, 'Chưa có Zalo chủ web: tạo mã chủ web và nhắn CHUWEB <mã> cho bot trước.');
+    const text = String((await body<any>(req, 2000)).text || 'GIUP').slice(0, 1000);
+    const id = 'sim-' + randomId(8), now = Date.now();
+    await env.DB.prepare("INSERT INTO zalo_messages (id, chat_id, sender_name, text, is_text, status, received_at, updated_at) VALUES (?, ?, 'Mô phỏng', ?, 1, 'received', ?, ?)")
+      .bind(id, env.config.zalo.ownerChat, text, now, now).run();
+    await processMessage(env, rc, id);
+    const reply = await env.DB.prepare('SELECT status, error, text FROM zalo_outbox WHERE message_id = ? ORDER BY created_at DESC LIMIT 1').bind(id).first<any>();
+    return json({ ok: reply?.status === 'sent', reply });
   }
   if (sub === 'zalo/test' && method === 'POST') {
     if (!env.config.zalo.ownerChat) throw new HttpError(400, 'Chưa có Zalo chủ web.');

@@ -7,6 +7,7 @@ import { buildKinetic } from './kinetic.ts';
 import { flatten } from './svgpath.ts';
 import { qrCells } from './qr.ts';
 import { wrapVi } from './textwrap.ts';
+import { buildLook, preparePhoto, renderLook, skinOf, type LookModel } from './looks.ts';
 
 /** Logical canvas size; the output size is a multiple of it (dpr). */
 export function logicalSize(ratio: Ratio) {
@@ -85,6 +86,8 @@ export interface Model {
   units: Unit[][];
   mode: Mode;
   icons: IconSet;
+  /** video format (new videos); when set, the frame is drawn by looks.ts */
+  look?: LookModel;
 }
 
 /** Family of the modern sans (Be Vietnam Pro ExtraBold, registered under this name). */
@@ -111,6 +114,7 @@ export function prepare(opts: {
   media?: Record<string, Img>;
 }): Model {
   const { env, project, timeline, images, hand, dpr } = opts;
+  if (project.look) return prepareLook(opts);
   const mode: Mode = (['motion', 'math', 'kinetic'] as const).includes(project.mode as any) ? project.mode! : 'hand';
   const subs = !!project.subtitles;
   const style = STYLES[project.style] ?? STYLES.notebook;
@@ -167,6 +171,18 @@ export function prepare(opts: {
     }));
   });
   return m;
+}
+
+function prepareLook(opts: Parameters<typeof prepare>[0]): Model {
+  const { env, project, timeline, images, hand, dpr } = opts;
+  const { W, H } = logicalSize(project.ratio);
+  const skin = skinOf(project.look!, project.skin);
+  const photos = project.scenes.map((sc, si) => (project.look === 'doc' && !sc.diagram ? preparePhoto(env, images[si]?.[0] || null, !!skin.mono, dpr, W, H) : null));
+  const measure = env.createCanvas(4, 4).getContext('2d');
+  const look = buildLook({ c: measure, env, project, timeline, W, H, icons: opts.icons || {}, font: SANS, hand: 'Pangolin', photos });
+  const bg = env.createCanvas(4, 4);
+  return { project, timeline, style: STYLES.notebook, tool: 'marker', W, H, dpr, background: bg, panels: project.scenes.map(() => []), mask: new Map(), hand, env,
+    units: project.scenes.map(() => []), mode: 'kinetic', icons: opts.icons || {}, look };
 }
 
 export const TRANSITIONS = ['fade', 'slide', 'wipe', 'zoom'] as const;
@@ -313,6 +329,11 @@ export function drawHand(c: Ctx, m: Model, x: number, y: number, lift: number, r
 export function renderFrame(c: Ctx, m: Model, t: number, opts: { hand?: boolean } = {}) {
   const { W, H, style, project, timeline } = m;
   c.setTransform(m.dpr, 0, 0, m.dpr, 0, 0);
+  if (m.look) {
+    renderLook(c, m.look, t, project.scenes);
+    if (timeline.intro && t < timeline.intro + 0.4) drawIntro(c, m, t);
+    return;
+  }
   c.drawImage(m.background, 0, 0, W, H);
   const portrait = project.ratio === '9:16';
   const top = portrait ? 70 : 46;

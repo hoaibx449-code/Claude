@@ -6,6 +6,12 @@ import { detectIntent, FORMATS, NICHES } from './intent.ts';
 
 export const STYLES = ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'pencil', 'blueprint', 'ricepaper', 'neon', 'pastel', 'newspaper', 'comic', 'darkboard', 'sunset', 'cosmos', 'manim', 'bold'] as const;
 export const MODES = ['hand', 'motion', 'math', 'kinetic'] as const;
+/** video formats (src/engine/looks.ts) */
+export const LOOKS = ['kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
+export const SKIN_NAMES: Record<string, string[]> = {
+  kinetic: ['dem', 'sang', 'tim'], split: ['do-xanh', 'sang', 'tim-vang'], chat: ['sang', 'toi', 'hong'], story: ['giay', 'bang-den', 'xanh'],
+  data: ['dem', 'sang', 'xanh-la'], quiz: ['tim', 'xanh', 'cam'], doc: ['dien-anh', 'trang-den', 'lanh'],
+};
 export const MAX_SCENES = 80;
 /** an uploaded picture of this user (reference character, product photo) */
 export const mediaRef = (userId: string) => new RegExp(`^r2:up/${userId.replace(/[^\w-]/g, '')}/[a-f0-9]{24}\\.(png|jpg|webp)$`);
@@ -135,6 +141,50 @@ function cleanDiagram(d: any, lines = 3, media: string[] = []) {
   return out;
 }
 
+const iconName = (v: unknown) => (/^[a-z0-9-]{2,40}$/.test(String(v ?? '')) ? String(v) : undefined);
+/** Format data of one scene: every field checked, anything else dropped. */
+export function cleanLook(x: any, look: string) {
+  if (!x || typeof x !== 'object') return undefined;
+  const o: any = {};
+  if (iconName(x.icon)) o.icon = iconName(x.icon);
+  const keys = (Array.isArray(x.keys) ? x.keys : []).map((k: unknown) => str(k, 24)).filter(Boolean).slice(0, 6);
+  if (keys.length) o.keys = keys;
+  if (look === 'split') {
+    for (const k of ['a', 'b']) if (str(x[k], 60)) o[k] = str(x[k], 60);
+    for (const k of ['aIcon', 'bIcon']) if (iconName(x[k])) o[k] = iconName(x[k]);
+    for (const k of ['aValue', 'bValue']) if (str(x[k], 18)) o[k] = str(x[k], 18);
+    for (const k of ['aAction', 'bAction']) if (ACTIONS.includes(x[k])) o[k] = x[k];
+  }
+  if (look === 'chat') {
+    const chat = (Array.isArray(x.chat) ? x.chat : []).map((m: any) => ({ who: m?.who === 'b' ? 'b' : 'a', text: str(m?.text, 160) })).filter((m: any) => m.text).slice(0, 6);
+    if (chat.length) o.chat = chat;
+    if (str(x.card, 160)) o.card = str(x.card, 160);
+  }
+  if (look === 'story') {
+    if (x.place && iconName(x.place.icon)) o.place = { icon: iconName(x.place.icon), label: str(x.place.label, 16) || 'Nơi này' };
+    if (ACTIONS.includes(x.action)) o.action = x.action;
+    if (str(x.say, 60)) o.say = str(x.say, 60);
+    if (x.money === true) o.money = true;
+    const icons = (Array.isArray(x.icons) ? x.icons : []).map(iconName).filter(Boolean).slice(0, 2);
+    if (icons.length) o.icons = icons;
+  }
+  if (look === 'data' && x.stat && Number.isFinite(Number(x.stat.value))) {
+    const v = Number(x.stat.value);
+    if (Math.abs(v) < 1e15) {
+      o.stat = { value: v, unit: str(x.stat.unit, 10), label: str(x.stat.label, 40) };
+      const parts = (Array.isArray(x.stat.parts) ? x.stat.parts : []).map((p: any) => ({ label: str(p?.label, 30), value: Number(p?.value) }))
+        .filter((p: any) => p.label && Number.isFinite(p.value) && p.value >= 0 && p.value < 1e15).slice(0, 5);
+      if (parts.length >= 2) o.stat.parts = parts;
+    }
+  }
+  if (look === 'quiz' && x.quiz && str(x.quiz.q, 160)) {
+    const options = (Array.isArray(x.quiz.options) ? x.quiz.options : []).map((v: unknown) => str(v, 60)).filter(Boolean).slice(0, 4);
+    o.quiz = { q: str(x.quiz.q, 160), options, answer: Math.max(0, Math.min(Math.max(0, options.length - 1), Math.round(Number(x.quiz.answer) || 0))) };
+    if (x.quiz.reveal === true) o.quiz.reveal = true;
+  }
+  return Object.keys(o).length ? o : undefined;
+}
+
 export function cleanSpec(input: any, userId: string) {
   if (!input || typeof input !== 'object' || !Array.isArray(input.scenes)) throw new HttpError(400, 'Kịch bản không hợp lệ.');
   const ownImage = new RegExp(`^r2:img/${userId}/[a-f0-9]{24}\\.(png|jpg|webp)$`);
@@ -150,8 +200,20 @@ export function cleanSpec(input: any, userId: string) {
   const own = mediaRef(userId), media: Record<string, string> = {};
   for (const [k, v] of Object.entries(input.media && typeof input.media === 'object' ? input.media : {}).slice(0, 12)) if (/^[a-z0-9]{1,20}$/.test(k) && own.test(String(v))) media[k] = String(v);
   const mk = Object.keys(media);
+  const look = LOOKS.includes(input.look) ? input.look : undefined;
   const scenes = input.scenes.slice(0, MAX_SCENES).map((sc: any, si: number) => {
     const lines = (Array.isArray(sc?.lines) ? sc.lines : []).map((l: unknown) => str(l, 160)).filter(Boolean).slice(0, 3);
+    if (look) {
+      // format videos: the words carry the picture; only the documentary needs a picture per scene
+      const out: any = { lines, panels: [] };
+      const x = cleanLook(sc?.x, look); if (x) out.x = x;
+      const pause = Number(sc?.pause); if (pause > 0) out.pause = Math.min(6, pause);
+      if (look === 'doc') {
+        const p = Array.isArray(sc?.panels) ? sc.panels[0] : null, image = str(p?.image, 120);
+        out.panels = [{ image: ownImage.test(image) ? image : '', prompt: str(p?.prompt, 500) || 'Cinematic documentary still, realistic, no text. Scene: ' + lines.join(' ') }];
+      }
+      return out;
+    }
     let diagram = cleanDiagram(sc?.diagram, lines.length, mk);
     // drawn-only videos: a scene that came back without a usable drawing gets one designed from its words
     if (!diagram && (visual === 'diagram' || visual === 'sketch') && lines.length) diagram = { kind: 'sketch', items: cleanSketch(composeScene(lines, ratio === '9:16', si, { format, index: si, total }), lines.length) };
@@ -163,7 +225,7 @@ export function cleanSpec(input: any, userId: string) {
       return { image: ownImage.test(image) ? image : '', prompt };
     });
     return { lines, panels };
-  }).filter((sc: any) => sc.lines.length && (sc.panels.length || sc.diagram));
+  }).filter((sc: any) => sc.lines.length && (look || sc.panels.length || sc.diagram));
   if (!scenes.length) throw new HttpError(400, 'Kịch bản cần ít nhất một cảnh có lời và hình.');
   const v = input.voice || {};
   return {
@@ -175,7 +237,14 @@ export function cleanSpec(input: any, userId: string) {
     channel: str(input.channel, 40),
     episode: str(input.episode, 30),
     ratio,
-    subtitles: input.subtitles === true,
+    subtitles: look ? input.subtitles !== false : input.subtitles === true,
+    ...(look ? {
+      look, skin: (SKIN_NAMES[look] || []).includes(input.skin) ? input.skin : SKIN_NAMES[look][0],
+      sides: look === 'split' && input.sides ? { a: str(input.sides.a, 24) || 'Cách sai', b: str(input.sides.b, 24) || 'Cách đúng' } : undefined,
+      chatName: look === 'chat' ? str(input.chatName, 30) || 'Bạn thân' : undefined,
+      music: /^site:[a-f0-9]{24}\.(mp3|m4a)$/.test(String(input.music || '')) ? input.music : undefined,
+      sfx: input.sfx !== false,
+    } : {}),
     transition: pick(input.transition, TRANSITIONS, 'auto'),
     style: pick(input.style, STYLES, 'notebook'),
     mode: pick(input.mode, MODES, 'hand'),

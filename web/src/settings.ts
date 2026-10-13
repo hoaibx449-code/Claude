@@ -11,13 +11,17 @@ export type SecretName = (typeof SECRET_NAMES)[number];
 /** Keys the render machine needs (voices); the Worker uses the AI ones itself. */
 const RUNNER_SECRETS: SecretName[] = ['EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'ELEVENLABS_API_KEY'];
 /** Visibility of an option ("style:kraft", "feature:zalo"); anything not set is on. */
-export const vis = (c: Config, key: string): Vis => c.visibility[key] || 'on';
+export const vis = (c: Config, key: string): Vis => (key === 'feature:plans' && c.beta?.enabled ? 'hidden' : c.visibility[key] || 'on');
+/** Selling is shown to users: not in beta, plans on. */
+export const selling = (c: Config) => vis(c, 'feature:plans') === 'on';
 
 export const STYLE_KEYS = ['sunset', 'cosmos', 'manim', 'bold', 'whiteboard', 'chalkboard', 'neon', 'darkboard', 'comic', 'pastel', 'oly', 'kraft', 'pencil', 'newspaper', 'blueprint', 'ricepaper', 'notebook'] as const;
 export const TOOL_KEYS = ['marker', 'chalk', 'fountain', 'colormarker', 'pencil', 'technical', 'brush'] as const;
 export const KIND_KEYS = ['sketch', 'bars', 'flow', 'compare', 'steps', 'number', 'statement', 'stick', 'plot'] as const;
 /** How the picture comes alive (the four genres of explainer video). */
 export const MODE_KEYS = ['hand', 'motion', 'math', 'kinetic'] as const;
+/** Video formats (src/engine/looks.ts). */
+export const LOOK_KEYS = ['kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
 export const GOOGLE_MODES = ['auto', 'popup', 'redirect'] as const;
 export const VISUAL_KEYS = ['sketch', 'diagram', 'mix', 'images'] as const;
 export const SOURCE_KEYS = ['topic', 'mine-ai', 'mine-free'] as const;
@@ -31,13 +35,13 @@ export interface Config {
   labels: {
     styles: Record<string, string>; tools: Record<string, string>; kinds: Record<string, string>;
     visual: Record<string, string>; actions: Record<string, string>; ai: Record<string, string>; sources: Record<string, string>;
-    modes: Record<string, string>;
+    modes: Record<string, string>; looks: Record<string, string>; lookNotes: Record<string, string>;
   };
   /** Ways to start a video the users may pick (AI from a topic, own script + AI pictures, own script free). */
   enabledSources: string[];
   texts: Record<string, string>;
   enabledStyles: string[];
-  defaults: { source: string; textAI: string; imageAI: string; style: string; visual: string; ratio: string; seconds: number; voice: string; channel: string; tone: string; subtitles: boolean; mode: string; intro: boolean };
+  defaults: { source: string; textAI: string; imageAI: string; style: string; visual: string; ratio: string; seconds: number; voice: string; channel: string; tone: string; subtitles: boolean; mode: string; intro: boolean; look: string; music: string };
   /** Google sign-in: popup (Google's button), redirect (full page, works in installed apps and in-app browsers), auto. */
   auth: { google: string };
   voices: Voice[];
@@ -61,6 +65,23 @@ export interface Config {
   templates: Template[];
   /** Terms, privacy and refund pages; raising `version` asks everyone to accept again. */
   legal: LegalConfig;
+  /** Beta: the public site shows no prices, plans, payment or upgrade prompts. Plan/payment settings stay editable and still set the limits. */
+  beta: { enabled: boolean; label: string; note: string };
+  /** Home page pictures and sample videos (URL or uploaded "site:" file). */
+  site: SiteConfig;
+  /** Spending cap for paid APIs (VND, from the logged costs). Over the cap the site switches to free paths. */
+  budget: { dailyVnd: number; monthlyVnd: number; warnPct: number; perVideoVnd: number };
+  /** documentary format: what one video costs in credits, pictures it covers, packs on sale */
+  doc: { creditsPerVideo: number; imagesPerVideo: number; packs: { id: string; name: string; credits: number; price: number }[] };
+  /** background music the users can pick (uploaded on the admin page) */
+  music: { id: string; title: string; file: string }[];
+}
+export interface SiteMedia { title: string; caption: string; video: string; poster: string }
+export interface SiteConfig {
+  heroTitle: string; heroText: string;
+  /** picture or video beside the headline; empty = live hand-drawn preview */
+  heroMedia: string; heroPoster: string;
+  showcase: SiteMedia[];
 }
 export type Vis = 'on' | 'dev' | 'hidden';
 export interface ZaloConfig {
@@ -79,6 +100,8 @@ export interface Plan {
   /** per day */ limits: { script: number; image: number; render: number };
   /** 'all' or a list of keys allowed on this plan */ styles: 'all' | string[]; sources: 'all' | string[]; voices: 'all' | string[];
   zalo: boolean; maxSeconds: number;
+  /** documentary videos included each month (VIP); others pay credits */
+  docPerMonth: number;
 }
 
 export const FEATURES: Record<string, string> = {
@@ -117,11 +140,18 @@ export function defaultConfig(env: Env): Config {
       actions: { idle: 'Đứng', walk: 'Đi bộ', run: 'Chạy', wave: 'Vẫy tay', think: 'Suy nghĩ', cheer: 'Ăn mừng', sad: 'Buồn', point: 'Chỉ tay', shrug: 'Nhún vai', jump: 'Nhảy' },
       ai: { openai: 'OpenAI', gemini: 'Gemini' },
       modes: { hand: 'Bàn tay vẽ (whiteboard)', motion: 'Đồ hoạ chuyển động (motion graphics)', math: 'Toán học / học thuật (kiểu Manim)', kinetic: 'Chữ chuyển động (kinetic typography)' },
+      looks: { kinetic: 'Chữ bùng nổ', split: 'Hai bên đối lập', chat: 'Tin nhắn drama', story: 'Kể chuyện người que', data: 'Con số biết nói', quiz: 'Đố vui đếm ngược', doc: 'Phim tài liệu AI' },
+      lookNotes: {
+        kinetic: 'Chữ to từng nhịp, từ khoá tô vàng. Hợp mẹo nhanh, động lực, câu mở đầu.', split: 'Màn hình chia đôi: sai và đúng, nghèo và giàu. Hợp tài chính, kỹ năng sống.',
+        chat: 'Câu chuyện qua tin nhắn, chốt bằng bài học. Hợp gia đình, cảnh báo, tình huống.', story: 'Một nhân vật đi qua các bối cảnh. Hợp kể chuyện đời thường.',
+        data: 'Số đếm chạy lên và biểu đồ chia phần. Hợp tài chính, so sánh giá.', quiz: 'Hỏi, đếm ngược 3-2-1 rồi lật đáp án. Kéo bình luận.',
+        doc: 'Ảnh AI điện ảnh, máy quay trượt chậm. Hợp triết lý, lịch sử, nhân vật. Tính credit riêng.',
+      },
     },
     texts: { ...DEFAULT_TEXTS },
     enabledStyles: [...STYLE_KEYS],
     enabledSources: [...SOURCE_KEYS],
-    defaults: { source: 'topic', subtitles: false, textAI: 'gemini', imageAI: 'gemini', style: 'sunset', visual: 'sketch', ratio: '9:16', seconds: 45, voice: 'vi_female_thuytrang_mb', channel: '', tone: '', mode: 'hand', intro: true },
+    defaults: { source: 'topic', subtitles: false, textAI: 'gemini', imageAI: 'gemini', style: 'sunset', visual: 'sketch', ratio: '9:16', seconds: 45, voice: 'vi_female_thuytrang_mb', channel: '', tone: '', mode: 'hand', intro: true, look: 'kinetic', music: 'auto' },
     auth: { google: 'auto' },
     voices: [
       ['vi_female_thuytrang_mb', 'Thùy Trang · nữ Bắc · nói chuyện'], ['vi_male_minhtriet_mb', 'Minh Triết · nam Bắc · sách nói'],
@@ -154,7 +184,7 @@ export function defaultConfig(env: Env): Config {
       enabled: false, botLink: '', allowGuests: true, scriptSource: 'mine-free', autoRender: true, ownerChat: '',
       notifyOwner: { signup: true, failed: true, order: true, daily: false },
       templates: {
-        help: 'Chào {ten}! Gửi cho mình:\n• KB + kịch bản của bạn → mình dựng video bàn tay vẽ\n• TAO + chủ đề → AI viết kịch bản rồi dựng\n• TT → xem video đang dựng\n• DS → video gần đây\n• KHUNG DOC hoặc KHUNG NGANG → đổi khung hình\n• PHONGCACH → chọn phong cách\n• GIONG → chọn giọng đọc\n• TAT / BAT → tắt/bật thông báo\n• HUYKETNOI → bỏ liên kết',
+        help: 'Chào {ten}! Gửi cho mình:\n• KB + kịch bản của bạn → mình dựng video\n• TAO + chủ đề → AI viết kịch bản rồi dựng\n• TT → xem video đang dựng\n• DS → video gần đây\n• KHUNG DOC hoặc KHUNG NGANG → đổi khung hình\n• DINHDANG → chọn định dạng video\n• GIONG → chọn giọng đọc\n• TAT / BAT → tắt/bật thông báo\n• HUYKETNOI → bỏ liên kết',
         linked: 'Đã kết nối Zalo với tài khoản {email}. Video dựng xong sẽ được gửi về đây. Gõ HUONGDAN để xem lệnh.',
         queued: 'Đã nhận! Video "{tieuDe}" ({canh} cảnh, {dang}) đang được dựng, khoảng vài phút. Mình sẽ gửi link khi xong.{suaWeb}',
         done: '🎬 Video "{tieuDe}" đã xong ({giay} giây).\nXem / tải: {link}\n(Link có hạn {hanNgay} ngày)',
@@ -165,13 +195,19 @@ export function defaultConfig(env: Env): Config {
     },
     plans: [
       { id: 'free', name: 'Miễn phí', price: 0, days: 0, visible: true, highlight: false, desc: 'Dùng thử đầy đủ quy trình', features: ['Bảng vẽ tự do', 'Kịch bản của bạn', 'Giọng máy miễn phí'],
-        limits: { script: 3, image: 0, render: 2 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 90 },
+        limits: { script: 3, image: 0, render: 2 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 90, docPerMonth: 0 },
       { id: 'pro', name: 'Chuyên nghiệp', price: 199000, days: 30, visible: true, highlight: true, desc: 'Cho người làm kênh đều đặn', features: ['AI viết & minh hoạ', 'Giọng EverAI tự nhiên', 'Tranh AI', 'Ưu tiên dựng'],
-        limits: { script: 30, image: 60, render: 10 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 600 },
+        limits: { script: 30, image: 60, render: 10 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 600, docPerMonth: 4 },
     ],
     payment: { enabled: false, bank: '970436', account: '', accountName: '', prefix: 'NV', expiryDays: 7, holdMinutes: 15, note: 'Chuyển khoản đúng nội dung để được kích hoạt tự động trong 1-2 phút.' },
     notice: '',
     templates: DEFAULT_TEMPLATES,
+    beta: { enabled: true, label: 'Beta', note: 'Đang thử nghiệm: tính năng và giao diện có thể thay đổi. Góp ý giúp chúng tôi làm video hay hơn.' },
+    site: { heroTitle: 'Biến ý tưởng thành video giải thích cuốn hút', heroText: 'Viết hoặc dán kịch bản, chọn định dạng video, nhận MP4 có giọng đọc tiếng Việt và phụ đề.', heroMedia: '', heroPoster: '', showcase: [] },
+    budget: { dailyVnd: 200_000, monthlyVnd: 3_000_000, warnPct: 80, perVideoVnd: 15_000 },
+    // one documentary ≈ 10 AI pictures + voice ≈ 11.000đ cost; 1 credit = 1 video, packs priced with margin
+    doc: { creditsPerVideo: 1, imagesPerVideo: 14, packs: [{ id: 'doc1', name: '1 phim tài liệu', credits: 1, price: 29000 }, { id: 'doc5', name: '5 phim tài liệu', credits: 5, price: 119000 }, { id: 'doc20', name: '20 phim tài liệu', credits: 20, price: 399000 }] },
+    music: [],
     legal: { company: 'Nét Vẽ Studio', email: 'hotro@example.com', address: 'Việt Nam', taxId: '', version: LEGAL_VERSION, terms: DEFAULT_TERMS, privacy: DEFAULT_PRIVACY, refund: DEFAULT_REFUND },
   };
 }
@@ -206,6 +242,7 @@ export function cleanConfig(input: any, base: Config): Config {
       kinds: labels(L.kinds, KIND_KEYS, base.labels.kinds), visual: labels(L.visual, VISUAL_KEYS, base.labels.visual, 80),
       actions: labels(L.actions, ACTION_KEYS, base.labels.actions), ai: labels(L.ai, AI_KEYS, base.labels.ai),
       sources: labels(L.sources, SOURCE_KEYS, base.labels.sources, 80), modes: labels(L.modes, MODE_KEYS, base.labels.modes, 80),
+      looks: labels(L.looks, LOOK_KEYS, base.labels.looks, 40), lookNotes: labels(L.lookNotes, LOOK_KEYS, base.labels.lookNotes, 160),
     },
     enabledSources: (() => {
       let v: string[] = Array.isArray(i.enabledSources) ? SOURCE_KEYS.filter((k) => i.enabledSources.includes(k)) : [...base.enabledSources];
@@ -221,6 +258,7 @@ export function cleanConfig(input: any, base: Config): Config {
       ratio: pick(d.ratio, ['9:16', '16:9'], base.defaults.ratio), seconds: int(d.seconds, 15, 1800, base.defaults.seconds),
       voice: pick(d.voice, vs.map((v: Voice) => v.code), vs[0].code), channel: str(d.channel, 40, base.defaults.channel), tone: str(d.tone, 200, base.defaults.tone),
       mode: pick(d.mode, MODE_KEYS, base.defaults.mode), intro: typeof d.intro === 'boolean' ? d.intro : base.defaults.intro,
+      look: pick(d.look, LOOK_KEYS.filter((k) => k !== 'doc'), base.defaults.look), music: typeof d.music === 'string' && /^(auto|none|[a-z0-9-]{2,20})$/.test(d.music) ? d.music : base.defaults.music,
     },
     auth: { google: pick(i.auth?.google, GOOGLE_MODES, base.auth.google) },
     voices: vs,
@@ -273,6 +311,7 @@ export function cleanConfig(input: any, base: Config): Config {
           desc: str(p?.desc, 200, ''), features: (Array.isArray(p?.features) ? p.features : []).map((x: unknown) => str(x, 80, '')).filter(Boolean).slice(0, 10),
           limits: { script: int(p?.limits?.script, 0, 1000, 3), image: int(p?.limits?.image, 0, 5000, 0), render: int(p?.limits?.render, 0, 500, 2) },
           styles: keys(p?.styles), sources: keys(p?.sources), voices: keys(p?.voices), zalo: p?.zalo !== false, maxSeconds: int(p?.maxSeconds, 15, 1800, 180),
+          docPerMonth: int(p?.docPerMonth, 0, 1000, 0),
         };
       });
       // exactly one free plan, always first
@@ -294,6 +333,36 @@ export function cleanConfig(input: any, base: Config): Config {
       return { company: str(l.company, 120, b.company) || b.company, email: str(l.email, 120, b.email) || b.email, address: str(l.address, 200, b.address), taxId: str(l.taxId, 30, ''),
         version: /^[\w.-]{1,20}$/.test(l.version || '') ? l.version : b.version, terms: doc(l.terms, b.terms), privacy: doc(l.privacy, b.privacy), refund: doc(l.refund, b.refund) };
     })(),
+    beta: (() => {
+      const b = i.beta || {}, d = base.beta;
+      return { enabled: typeof b.enabled === 'boolean' ? b.enabled : d.enabled, label: str(b.label, 20, d.label) || d.label, note: str(b.note, 300, d.note) };
+    })(),
+    site: (() => {
+      const x = i.site || {}, d = base.site;
+      const media = (v: unknown) => { const t = String(v ?? '').trim(); return /^(site:[a-f0-9]{24}\.(png|jpg|webp|mp4|webm)|https:\/\/[^\s"'<>]{4,400})$/.test(t) ? t : ''; };
+      return {
+        heroTitle: str(x.heroTitle, 120, d.heroTitle) || d.heroTitle, heroText: str(x.heroText, 300, d.heroText),
+        heroMedia: x.heroMedia === undefined ? d.heroMedia : media(x.heroMedia), heroPoster: x.heroPoster === undefined ? d.heroPoster : media(x.heroPoster),
+        showcase: (Array.isArray(x.showcase) ? x.showcase : d.showcase).slice(0, 12)
+          .map((m: any) => ({ title: str(m?.title, 60, ''), caption: str(m?.caption, 120, ''), video: media(m?.video), poster: media(m?.poster) }))
+          .filter((m: SiteMedia) => m.video || m.poster),
+      };
+    })(),
+    budget: (() => {
+      const b = i.budget || {}, d = base.budget;
+      return { dailyVnd: int(b.dailyVnd, 0, 1_000_000_000, d.dailyVnd), monthlyVnd: int(b.monthlyVnd, 0, 10_000_000_000, d.monthlyVnd), warnPct: int(b.warnPct, 10, 100, d.warnPct), perVideoVnd: int(b.perVideoVnd, 0, 10_000_000, d.perVideoVnd) };
+    })(),
+    doc: (() => {
+      const x = i.doc || {}, d = base.doc;
+      const packs = (Array.isArray(x.packs) ? x.packs : d.packs).slice(0, 6).map((p: any, k: number) => ({
+        id: /^[a-z0-9-]{2,20}$/.test(p?.id) ? p.id : 'goi-doc' + (k + 1), name: str(p?.name, 40, '') || `${int(p?.credits, 1, 1000, 1)} credit`,
+        credits: int(p?.credits, 1, 1000, 1), price: int(p?.price, 1000, 100_000_000, 29000),
+      }));
+      return { creditsPerVideo: int(x.creditsPerVideo, 1, 100, d.creditsPerVideo), imagesPerVideo: int(x.imagesPerVideo, 4, 60, d.imagesPerVideo), packs };
+    })(),
+    music: (Array.isArray(i.music) ? i.music : base.music).slice(0, 30)
+      .map((m: any, k: number) => ({ id: /^[a-z0-9-]{2,20}$/.test(m?.id) ? m.id : 'nhac-' + (k + 1), title: str(m?.title, 50, '') || 'Nhạc ' + (k + 1), file: String(m?.file || '') }))
+      .filter((m: any) => /^site:[a-f0-9]{24}\.(mp3|m4a)$/.test(m.file)),
     admins: (Array.isArray(i.admins) ? i.admins : base.admins).map((e: unknown) => str(e, 100, '').toLowerCase()).filter((e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)).slice(0, 20),
   };
 }
@@ -394,12 +463,16 @@ export async function isAdmin(env: Env, config: Config, user: User) {
 export function publicConfig(config: Config) {
   return {
     brand: config.brand, labels: config.labels, texts: config.texts, enabledStyles: config.enabledStyles, enabledSources: config.enabledSources, defaults: config.defaults,
-    voices: config.voices.filter((v) => config.visibility['voice:' + v.code] !== 'hidden'), visibility: config.visibility, notice: config.notice,
-    plans: config.plans.filter((p) => p.visible).map((p) => ({ id: p.id, name: p.name, price: p.price, days: p.days, highlight: p.highlight, desc: p.desc, features: p.features, limits: p.limits })),
+    voices: config.voices.filter((v) => config.visibility['voice:' + v.code] !== 'hidden'), visibility: config.beta.enabled ? { ...config.visibility, 'feature:plans': 'hidden' as Vis } : config.visibility, notice: config.notice,
+    beta: config.beta.enabled ? { label: config.beta.label, note: config.beta.note } : null,
+    site: config.site,
+    plans: !selling(config) ? [] : config.plans.filter((p) => p.visible).map((p) => ({ id: p.id, name: p.name, price: p.price, days: p.days, highlight: p.highlight, desc: p.desc, features: p.features, limits: p.limits })),
     templates: config.visibility['feature:templates'] === 'hidden' ? [] : config.templates.map((t) => ({ id: t.id, title: t.title, niche: t.niche })),
     legal: { version: config.legal.version, company: config.legal.company, email: config.legal.email },
     zalo: { enabled: config.zalo.enabled && config.visibility['feature:zalo'] !== 'hidden', botLink: config.zalo.botLink, dev: config.visibility['feature:zalo'] === 'dev' },
-    payment: { enabled: config.payment.enabled, holdMinutes: config.payment.holdMinutes },
+    payment: { enabled: selling(config) && config.payment.enabled, holdMinutes: config.payment.holdMinutes },
+    music: config.music.map((m) => ({ id: m.id, title: m.title })),
+    doc: { perVideo: config.doc.creditsPerVideo, packs: selling(config) && config.payment.enabled ? config.doc.packs : [] },
     limits: { maxSeconds: config.limits.maxSeconds },
     auth: config.auth,
   };

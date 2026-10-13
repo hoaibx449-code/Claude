@@ -2,16 +2,18 @@
 import { consumeNonce, currentUser, endSession, newNonce, startSession, type User, verifyGoogleToken } from './auth.ts';
 import { drawImage, type ImageProvider, type TextProvider, writeScript } from './ai.ts';
 import { startRunner } from './gcp.ts';
-import { cleanSpec, STYLES } from './spec.ts';
-import { composeScene, splitScript } from './compose.ts';
+import { cleanSpec, LOOKS, STYLES } from './spec.ts';
+import { composeLook, composeScene, splitScript } from './compose.ts';
+import { chargeDoc, closeDocProject, creditRoutes, giveBackDocImage, openDocProject, refundDoc, useDocImage } from './credits.ts';
 import { detectIntent, FORMATS, FORMAT_NAMES, FORMAT_STYLE, NICHES, NICHE_NAMES, NICHE_STYLE } from './intent.ts';
 import { fillLegal } from './legal.ts';
 import { aiCost, clientIp, imageCost, logEvent, routeName, summarize, voiceCost, type LogEntry } from './log.ts';
 import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, vis } from './settings.ts';
 import { adminRoutes } from './admin.ts';
+import { budgetState, fitVoiceToBudget, requireBudget } from './budget.ts';
 import { checkShare, notifyJob, rememberOrigin, resumeZalo, zaloUser, zaloWebhook } from './zalo.ts';
 import { checkAllowed, checkSource, expireOrders, limitsFor, planOf, planRoutes, sepayWebhook } from './plans.ts';
-import { affiliateScene, communityPublic, deleteVideo, introFor, serveObject, shareToCommunity, storedVideoKey, upload, videoKey } from './media.ts';
+import { affiliateScene, communityPublic, deleteVideo, introFor, serveObject, shareToCommunity, siteType, storedVideoKey, upload, videoKey } from './media.ts';
 import { body, type Env, HttpError, json, randomId, refundQuota, sha256, timingSafeEqual, today, useQuota } from './util.ts';
 
 const MAX_ACTIVE_JOBS = 2;
@@ -89,6 +91,9 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
   // called by other services (verified inside), and the no-login share link for finished videos
   if (path === '/api/zalo/webhook' && method === 'POST') return zaloWebhook(req, env, rc);
   if (path === '/api/sepay/webhook' && method === 'POST') return sepayWebhook(req, env, rc);
+  // home page pictures and sample videos (public, content-addressed so cached for a year)
+  const site = path.match(/^\/api\/site\/([a-f0-9]{24})\.(png|jpg|webp|mp4|webm|mp3|m4a)$/);
+  if (site && (method === 'GET' || method === 'HEAD')) { rc.quiet = true; return serveObject(env, req, `site/${site[1]}.${site[2]}`, siteType(site[2]), { 'cache-control': 'public, max-age=31536000, immutable' }); }
   const sh = path.match(/^\/api\/share\/([a-f0-9]{24})$/);
   if (sh && method === 'GET') return shareVideo(env, rc, sh[1], url);
 
@@ -234,8 +239,11 @@ async function tryPreview(req: Request, env: XEnv, rc: Rc) {
   const it = detectIntent(text);
   const format = FORMATS.includes(b.format) ? b.format : it.format;
   const style = env.config.enabledStyles.includes(b.style) ? b.style : FORMAT_STYLE[format as keyof typeof FORMAT_STYLE] || NICHE_STYLE[it.niche];
-  const spec = cleanSpec({ title: scenes[0][0].replace(/[.!?…]+$/, '').slice(0, 70), scenes: scenes.map((lines) => ({ lines })), visual: 'sketch', format, niche: it.niche,
-    ratio: b.ratio === '16:9' ? '16:9' : '9:16', style: env.config.enabledStyles.includes(style) ? style : env.config.defaults.style, channel: env.config.brand.name }, 'guest');
+  const look = LOOKS.includes(b.look) && b.look !== 'doc' && vis(env.config, 'look:' + b.look) === 'on' ? b.look : undefined;
+  const composed = look ? composeLook({ look, scenes: scenes.map((lines) => ({ lines })) }) : null;
+  const spec = cleanSpec({ title: scenes[0][0].replace(/[.!?…]+$/, '').slice(0, 70), scenes: composed ? composed.scenes : scenes.map((lines) => ({ lines })), visual: 'sketch', format, niche: it.niche,
+    ratio: b.ratio === '16:9' ? '16:9' : '9:16', style: env.config.enabledStyles.includes(style) ? style : env.config.defaults.style, channel: env.config.brand.name,
+    look, skin: b.skin, sides: composed?.sides, chatName: composed?.chatName }, 'guest');
   rc.log('try.preview', { data: { format, niche: it.niche, style: spec.style, scenes: spec.scenes.length, chars: text.length } });
   return json({ spec, formatName: FORMAT_NAMES[format as keyof typeof FORMAT_NAMES], nicheName: NICHE_NAMES[it.niche] });
 }
@@ -355,8 +363,16 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
     const p = await getProject(env, user, id);
     if (!sub && method === 'GET') return json({ id, spec: p.spec, updated_at: p.updated_at });
     if (!sub && method === 'PUT') {
-      const input = (await body<any>(req)).spec;
+      let input = (await body<any>(req)).spec;
       if (input?.voice) input.voice = voiceFor(env.config, input.voice.voiceId, input.voice.speed);
+      // a documentary is paid when it is created; other formats can be switched freely
+      if (input?.look === 'doc' && p.spec.look !== 'doc') throw new HttpError(403, 'Phim tài liệu cần tạo video mới (tính credit riêng).');
+      if (p.spec.look === 'doc' && input?.look !== 'doc') throw new HttpError(403, 'Không đổi phim tài liệu sang định dạng khác; hãy tạo video mới.');
+      if (input?.look && input.look !== p.spec.look && LOOKS.includes(input.look)) {
+        if (vis(env.config, 'look:' + input.look) !== 'on') throw new HttpError(403, 'Định dạng này đang tắt.');
+        const c = composeLook({ look: input.look, scenes: (input.scenes || []).map((sc: any) => ({ lines: sc.lines || [] })), sides: undefined, chatName: undefined });
+        input = { ...input, scenes: c.scenes, sides: c.sides, chatName: c.chatName, skin: undefined };
+      }
       const spec = cleanSpec(input, user.id);
       await saveSpec(env, user, id, spec);
       rc.log('project.save', { projectId: id, data: { scenes: spec.scenes.length, style: spec.style, ratio: spec.ratio, subtitles: spec.subtitles } });
@@ -367,6 +383,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       for (const j of jobs.results) await deleteVideo(env, user.id, j.id);
       await env.DB.prepare('DELETE FROM jobs WHERE project_id = ?').bind(id).run();
       await env.DB.prepare('DELETE FROM projects WHERE id = ? AND user_id = ?').bind(id, user.id).run();
+      await closeDocProject(env, rc, id);
       rc.log('project.delete', { projectId: id, data: { title: p.title } });
       return json({ ok: true });
     }
@@ -385,6 +402,15 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       const si = Number((await body<any>(req, 1_000)).scene);
       const sc = p.spec.scenes[si];
       if (!sc) throw new HttpError(400, 'Không tìm thấy cảnh.');
+      if (p.spec.look) {
+        // format videos: rebuild this scene's format data from its words
+        const c = composeLook({ look: p.spec.look, scenes: p.spec.scenes.map((x: any, k: number) => (k === si ? { lines: x.lines, panels: x.panels } : x)), sides: p.spec.sides, chatName: p.spec.chatName });
+        p.spec.scenes[si] = c.scenes[si] || sc;
+        const spec = cleanSpec(p.spec, user.id);
+        await saveSpec(env, user, id, spec);
+        rc.log('project.compose', { projectId: id, data: { scene: si, look: p.spec.look } });
+        return json({ spec });
+      }
       sc.diagram = { kind: 'sketch', items: composeScene(sc.lines, p.spec.ratio === '9:16', si + Date.now() % 7, { format: p.spec.format, index: si, total: p.spec.scenes.length }) };
       sc.panels = [];
       const spec = cleanSpec(p.spec, user.id);
@@ -401,15 +427,21 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       const provider: ImageProvider = (b.provider === 'openai' || b.provider === 'gemini') && vis(env.config, 'ai:' + b.provider) === 'on' ? b.provider : (env.config.defaults.imageAI as ImageProvider);
       const base = `img/${user.id}/${(await sha256(provider + '\n' + panel.prompt)).slice(0, 24)}`;
       let key = (await env.BUCKET.head(base + '.webp')) ? base + '.webp' : (await env.BUCKET.head(base + '.png')) ? base + '.png' : '';
+      const docLook = p.spec.look === 'doc';
       if (!key) {
-        await useQuota(env, user.id, 'image', (await limitsFor(env, user.id)).image);
+        if (docLook) {
+          if (!(await useDocImage(env, id))) throw new HttpError(402, 'Phim tài liệu này đã dùng hết lượt vẽ ảnh đã trả. Tạo video mới hoặc dùng lại ảnh đã vẽ.', { needCredits: true });
+        } else {
+          await requireBudget(env, 'vẽ tranh AI');
+          await useQuota(env, user.id, 'image', (await limitsFor(env, user.id)).image);
+        }
         try {
           const t0 = Date.now();
-          const img = await drawImage(env, provider, panel.prompt);
+          const img = await drawImage(env, provider, panel.prompt, docLook ? 'photo' : 'line', p.spec.ratio !== '16:9');
           key = `${base}.${img.ext}`;
           await env.BUCKET.put(key, img.bytes, { httpMetadata: { contentType: img.type } });
           rc.log('ai.image', { projectId: id, ms: Date.now() - t0, cost: imageCost(env.config, provider), data: { provider, bytes: img.bytes.length, prompt: panel.prompt } });
-        } catch (e: any) { await refundQuota(env, user.id, 'image'); rc.log('ai.image', { projectId: id, ok: false, data: { provider, error: e.message } }); throw e; }
+        } catch (e: any) { if (docLook) await giveBackDocImage(env, id); else await refundQuota(env, user.id, 'image'); rc.log('ai.image', { projectId: id, ok: false, data: { provider, error: e.message } }); throw e; }
       }
       panel.image = 'r2:' + key;
       await saveSpec(env, user, id, p.spec);
@@ -454,6 +486,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
   }
 
   if (path === '/api/uploads' && method === 'POST') return upload(req, env, rc, user);
+  if (path === '/api/credits') return creditRoutes(req, env, rc, user, method);
   const md = path.match(/^\/api\/media\/(up\/([^/]+)\/[a-f0-9]{24}\.(?:png|jpg|webp))$/);
   if (md && method === 'GET') {
     if (md[2] !== user.id) throw new HttpError(404, 'Không tìm thấy.');
@@ -598,19 +631,29 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     const aff = b.affiliate && on('feature:affiliate') && /^https?:\/\/\S{3,300}$/.test(String(b.affiliate.link || ''))
       ? { link: String(b.affiliate.link), product: String(b.affiliate.product || '').slice(0, 80), price: String(b.affiliate.price || '').slice(0, 30), image: b.affiliate.image ? (media.sp = String(b.affiliate.image), 'sp') : undefined } : null;
     const mode = ['hand', 'motion', 'math', 'kinetic'].includes(b.mode) && on('mode:' + b.mode) ? b.mode : on('mode:' + D.mode) ? D.mode : 'hand';
+    // video format: new videos use one unless the page asked for the classic hand-drawn board (look: "")
+    const look: string | undefined = b.look === '' || b.look === 'classic' ? undefined : LOOKS.includes(b.look) && on('look:' + b.look) ? b.look : b.look === undefined && on('look:' + D.look) ? D.look : undefined;
+    if (b.look && LOOKS.includes(b.look) && !on('look:' + b.look)) throw new HttpError(403, 'Định dạng video này đang tắt.');
+    // the documentary is paid first (plan allowance or credits); given back if the script fails
+    const chargeRef = look === 'doc' ? 'doc-' + randomId(8) : '';
+    if (look === 'doc') await chargeDoc(env, rc, user, chargeRef);
+    try {
     if (source !== 'topic') {
       // the user's own words, split into scenes; pictures are designed by rules (free) or by the AI
       const scenes = splitScript(text);
       if (!scenes.length) throw new HttpError(400, 'Không tách được câu nào từ kịch bản.');
       raw = { title: scenes[0][0].replace(/[.!?…]+$/, '').slice(0, 70), scenes: scenes.map((lines) => ({ lines })) };
-      if (source === 'mine-ai') {
+      if (source === 'mine-ai' && (await budgetState(env)).over) {
+        note = 'Hôm nay đã dùng hết ngân sách AI nên hình được tự thiết kế theo luật. Bạn vẫn sửa được từng cảnh.';
+        rc.log('budget.fallback', { data: { source } });
+      } else if (source === 'mine-ai') {
         const provider = b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (D.textAI as TextProvider);
         await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
         try {
-          const out = await writeScript(env, provider, { topic: '', seconds: 0, tone: '', ratio, visual: 'sketch', extra: env.config.promptExtra, scenes, format, niche });
+          const out = await writeScript(env, provider, { topic: '', seconds: 0, tone: '', ratio, visual: 'sketch', extra: env.config.promptExtra, scenes, format, niche, look });
           usage = out._usage;
           // the narration always stays the user's own words
-          raw = { ...out, title: out.title || raw.title, scenes: scenes.map((lines, i) => ({ lines, diagram: out.scenes?.[i]?.diagram })) };
+          raw = { ...out, title: out.title || raw.title, scenes: scenes.map((lines, i) => ({ lines, diagram: out.scenes?.[i]?.diagram, x: out.scenes?.[i]?.x, pause: out.scenes?.[i]?.pause, panels: out.scenes?.[i]?.panels })) };
         } catch (e: any) {
           await refundQuota(env, user.id, 'script');
           note = 'AI đang bận nên hình được tự thiết kế (miễn phí). Bạn vẫn sửa được từng cảnh.';
@@ -622,9 +665,10 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
       const seconds = Math.max(15, Math.min(env.config.limits.maxSeconds, (await planOf(env, user.id)).plan.maxSeconds, Number(b.seconds) || D.seconds));
       if (provider === 'mock') raw = sampleScript(text);
       else {
+        await requireBudget(env, 'AI viết kịch bản');
         await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
         try {
-          raw = await writeScript(env, provider, { topic: text, seconds, tone: String(b.tone || '').slice(0, 200), ratio, visual, extra: env.config.promptExtra + affiliateBrief(aff), format: aff ? 'sales' : format, niche });
+          raw = await writeScript(env, provider, { topic: text, seconds, tone: String(b.tone || '').slice(0, 200), ratio, visual, extra: env.config.promptExtra + affiliateBrief(aff), format: aff ? 'sales' : format, niche, look });
           usage = raw._usage;
         } catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
       }
@@ -634,19 +678,30 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     const modeStyle = ({ motion: 'cosmos', math: 'manim', kinetic: 'bold' } as Record<string, string>)[mode];
     const auto = modeStyle && env.config.enabledStyles.includes(modeStyle) ? modeStyle : autoStyle;
     const style = env.config.enabledStyles.includes(b.style) ? b.style : (b.style === 'auto' || !b.style) && env.config.enabledStyles.includes(auto) ? auto : D.style;
-    if (aff && raw.scenes?.length) raw.scenes = [...raw.scenes, affiliateScene(aff, ratio === '9:16')];
+    if (aff && raw.scenes?.length && !look) raw.scenes = [...raw.scenes, affiliateScene(aff, ratio === '9:16')];
+    if (look) {
+      // fill what the AI (or nobody) gave: free rules per format
+      const c = composeLook({ look, scenes: (raw.scenes || []).map((sc: any) => ({ lines: sc.lines || [], x: sc.x, pause: sc.pause, panels: sc.panels })), sides: raw.sides, chatName: raw.chatName });
+      raw = { ...raw, scenes: c.scenes, sides: c.sides, chatName: c.chatName };
+    }
+    const music = b.music === 'none' ? undefined : (env.config.music.find((m) => m.id === b.music) || (b.music === undefined || b.music === 'auto'
+      ? (D.music === 'none' ? undefined : env.config.music.find((m) => m.id === D.music) || env.config.music[hashText(text) % Math.max(1, env.config.music.length)]) : undefined))?.file;
     const spec: any = cleanSpec({ ...raw, format: aff ? 'sales' : format, niche, visual, ratio, subtitles: typeof b.subtitles === 'boolean' ? b.subtitles : D.subtitles,
       style, tool: b.tool, channel: b.channel ?? D.channel, episode: b.episode, mode, media, character: media.nv ? 'nv' : undefined, affiliate: aff,
-      voice: voiceFor(env.config, b.voiceId, Number(b.speed) || 1) }, user.id);
+      voice: voiceFor(env.config, b.voiceId, Number(b.speed) || 1), look, skin: b.skin, music, sfx: b.sfx !== false }, user.id);
     const wantIntro = typeof b.intro === 'boolean' ? b.intro : D.intro;
     if (wantIntro && on('feature:intro')) spec.intro = introFor(spec);
     if (usage) rc.log('ai.script', { cost: aiCost(env.config, usage), data: { source, format, niche, ...usage } });
     const id = randomId(12), now = Date.now();
     await env.DB.prepare('INSERT INTO projects (id, user_id, title, spec, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(id, user.id, spec.title, JSON.stringify(spec), now, now).run();
-    rc.log('project.create', { projectId: id, data: { source, format, niche, style: spec.style, mode, intro: !!spec.intro, character: !!spec.character, affiliate: !!spec.affiliate, ratio, visual, scenes: spec.scenes.length, chars: text.length, via: rc.channel, note: note || undefined } });
+    if (look === 'doc') await openDocProject(env, id, user.id, chargeRef);
+    rc.log('project.create', { projectId: id, data: { look, source, format, niche, style: spec.style, mode, intro: !!spec.intro, character: !!spec.character, affiliate: !!spec.affiliate, ratio, visual, scenes: spec.scenes.length, chars: text.length, via: rc.channel, note: note || undefined } });
   return { id, spec, note };
+    } catch (e) { if (chargeRef) await refundDoc(env, rc, user.id, chargeRef); throw e; }
 }
+
+const hashText = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) >>> 0; return h; };
 
 /** Put a project in the render queue and wake the render machine. */
 export async function queueRender(env: XEnv, rc: Rc, user: User, id: string, spec: any) {
@@ -655,6 +710,10 @@ export async function queueRender(env: XEnv, rc: Rc, user: User, id: string, spe
   await checkAllowed(env, user, spec);
   const active = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE user_id = ? AND status IN ('queued','running')").bind(user.id).first<any>();
   if (active.n >= MAX_ACTIVE_JOBS) throw new HttpError(429, 'Bạn đang có video chờ dựng. Đợi xong rồi dựng tiếp nhé.');
+  // a paid voice that would break the spending cap becomes the basic voice (this render only)
+  spec = { ...spec };
+  const note = await fitVoiceToBudget(env, spec);
+  if (note) rc.log('budget.voice', { projectId: id, data: { note } });
   await useQuota(env, user.id, 'render', (await limitsFor(env, user.id)).render);
   const jobId = randomId(12);
   try {
@@ -665,7 +724,7 @@ export async function queueRender(env: XEnv, rc: Rc, user: User, id: string, spe
   } catch (error) { await refundQuota(env, user.id, 'render'); throw error; }
   rc.wait(startRunner(env).catch((e) => { rc.log('render.trigger', { ok: false, data: { error: String(e.message || e) } }); }));
   rc.log('render.queue', { projectId: id, data: { job: jobId, scenes: spec.scenes.length, chars: spec.scenes.reduce((n: number, sc: any) => n + sc.lines.join(' ').length, 0), voice: spec.voice, style: spec.style, via: rc.channel } });
-  return { id: jobId, status: 'queued', progress: 0 };
+  return { id: jobId, status: 'queued', progress: 0, note };
 }
 
 function affiliateBrief(a: { product?: string; price?: string } | null) {

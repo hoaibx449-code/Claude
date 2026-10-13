@@ -244,3 +244,150 @@ function compose(lines: string[], P: boolean, si: number, ctx: ComposeContext): 
     { t: 'underline', on: 's', line: L1 },
   ];
 }
+
+// ---------------------------------------------------------------- video formats (looks)
+// Free rules that fill each format's scene data from the words. The AI may provide the same
+// fields; whatever it left out is filled here, so every format works without any AI key.
+const PLACES: [RegExp, { icon: string; label: string }][] = [
+  [/ngân hàng|atm|tài khoản|số dư|thẻ/, { icon: 'building-bank', label: 'Ngân hàng' }], [/công ty|văn phòng|đi làm|sếp|lương|đồng nghiệp/, { icon: 'briefcase', label: 'Công ty' }],
+  [/trà sữa|cà phê|quán|uống/, { icon: 'coffee', label: 'Quán' }], [/mua|shopee|siêu thị|chợ|cửa hàng|mua sắm/, { icon: 'shopping-cart', label: 'Cửa hàng' }],
+  [/nhà|gia đình|vợ|chồng|con|bố|mẹ|phòng/, { icon: 'home', label: 'Nhà' }], [/học|trường|lớp|thi|sách/, { icon: 'school', label: 'Trường' }],
+  [/bệnh|bác sĩ|thuốc|sức khoẻ|sức khỏe/, { icon: 'first-aid-kit', label: 'Bệnh viện' }], [/tập|gym|chạy bộ|thể dục/, { icon: 'barbell', label: 'Phòng tập' }],
+  [/đầu tư|chứng khoán|cổ phiếu|vàng/, { icon: 'trending-up', label: 'Sàn đầu tư' }], [/công viên|đi dạo|thiên nhiên|cây/, { icon: 'trees', label: 'Công viên' }],
+];
+const PLACES_VI = vi(PLACES.map(([re, p]) => [re, JSON.stringify(p)]));
+const CHAT_NAMES: [RegExp, string][] = [[/vợ/, 'Vợ yêu'], [/chồng/, 'Chồng'], [/sếp/, 'Sếp'], [/mẹ/, 'Mẹ'], [/bố|ba\b/, 'Bố'], [/khách/, 'Khách hàng'], [/con\b/, 'Con'], [/người yêu|anh yêu|em yêu/, 'Người yêu']];
+const CHAT_NAMES_VI = vi(CHAT_NAMES);
+const LESSON = /^(mẹo|bài học|hãy|nhớ|đừng|lưu ý|tóm lại|nguyên tắc|bí quyết|vậy nên|cho nên)/i;
+const UNIT = '(%|tr(?!\\p{L})|triệu|tỷ|nghìn|ngàn|k(?!\\p{L})|đồng|đ(?!\\p{L})|năm|tháng|ngày|giờ|phút|lần|người)';
+
+/** Every number in a line, with its unit and the few words before it (its label). */
+export function numbersIn(s: string) {
+  const out: { value: number; unit: string; label: string }[] = [];
+  const re = new RegExp(`(\\d+(?:[.,]\\d+)*)\\s*${UNIT}?`, 'giu');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s))) {
+    const raw = m[1], dots = (raw.match(/\./g) || []).length;
+    // 15.000.000 → thousands separators; 1,5 → decimal comma
+    const value = dots >= 1 && /^\d{1,3}(\.\d{3})+$/.test(raw) ? Number(raw.replace(/\./g, '')) : Number(raw.replace(/\./g, '').replace(',', '.'));
+    if (!Number.isFinite(value)) continue;
+    const before = s.slice(0, m.index).replace(/[,.:;]+\s*$/, '').split(/[,.:;]/).pop()!.trim().split(/\s+/).filter((w) => w && !FILLER.test(w)).slice(-3).join(' ');
+    let unit = (m[2] || '').toLowerCase();
+    if (unit === 'tr') unit = 'triệu';
+    if (unit === 'k') unit = 'nghìn';
+    if (unit === 'đồng') unit = 'đ';
+    out.push({ value, unit, label: before.charAt(0).toUpperCase() + before.slice(1) });
+  }
+  return out;
+}
+
+const iconFor = (s: string) => iconsIn(s)[0]?.name;
+const keysOf = (s: string) => [...iconsIn(s).map((x) => x.word), ...(s.match(/\d+(?:[.,]\d+)*\s*%?/g) || [])].slice(0, 4);
+
+export interface LookInput { look: string; scenes: { lines: string[]; x?: any; pause?: number; panels?: any[] }[]; sides?: { a: string; b: string }; chatName?: string }
+
+/** Fill the format data of every scene (keeps what is already there). */
+export function composeLook(input: LookInput): LookInput {
+  const { look } = input, all = input.scenes.map((s) => s.lines.join(' ')).join(' ');
+  let scenes = input.scenes.map((s) => ({ ...s, x: { ...(s.x || {}) } }));
+  const out: LookInput = { ...input };
+  for (const s of scenes) {
+    const text = s.lines.join(' ');
+    s.x.icon ||= iconFor(text);
+    if (!s.x.keys?.length) s.x.keys = keysOf(text);
+  }
+  if (look === 'split') {
+    const low = all.toLowerCase();
+    out.sides ||= /giàu|nghèo/.test(low) ? { a: 'Người nghèo', b: 'Người giàu' } : /trước|sau/.test(low) && /trước khi|sau khi|trước đây|bây giờ/.test(low) ? { a: 'Trước đây', b: 'Bây giờ' } : { a: 'Cách sai', b: 'Cách đúng' };
+    for (const s of scenes) {
+      if (s.x.a && s.x.b) continue;
+      let a = '', b = '';
+      if (s.lines.length >= 2) { a = s.lines[0]; b = s.lines[1]; }
+      else {
+        const m = s.lines[0].match(/^(.*?)(?:,\s*|\s+)(?:nhưng|còn|trong khi|thì ngược lại|ngược lại)\s+(.*)$/iu);
+        if (m && m[1].split(' ').length >= 3 && m[2].split(' ').length >= 3) { a = m[1]; b = m[2]; }
+      }
+      if (!a || !b) continue;
+      // the "right" side speaks second; swap when the words say otherwise
+      if (/giàu|đúng|thông minh|thành công/.test(a.toLowerCase()) && /nghèo|sai|thất bại/.test(b.toLowerCase())) [a, b] = [b, a];
+      const strip = (x: string) => keyPhrase(x.replace(/^(người\s+(giàu|nghèo)|bên\s+\w+|cách\s+(sai|đúng))\s*/iu, ''), 8);
+      s.x.a = strip(a); s.x.b = strip(b);
+      // each side gets a picture of its own (not the word both sides share)
+      const ia = iconsIn(a).map((x) => x.name), ib = iconsIn(b).map((x) => x.name);
+      s.x.aIcon ||= ia.find((n) => !ib.includes(n)) || ia[0] || 'x'; s.x.bIcon ||= ib.find((n) => !ia.includes(n)) || ib[0] || 'check';
+      const na = numbersIn(a)[0], nb = numbersIn(b)[0];
+      if (na && nb) { s.x.aValue ||= `${na.value.toLocaleString('vi-VN')} ${na.unit}`.trim(); s.x.bValue ||= `${nb.value.toLocaleString('vi-VN')} ${nb.unit}`.trim(); }
+      s.x.aAction ||= actionIn(a) || 'shrug'; s.x.bAction ||= actionIn(b) || 'cheer';
+    }
+  }
+  if (look === 'chat') {
+    out.chatName ||= CHAT_NAMES_VI.find(([re]) => re.test(all.toLowerCase()))?.[1] || 'Bạn thân';
+    let n = 0;
+    scenes.forEach((s, si) => {
+      const last = si === scenes.length - 1;
+      if (last && !s.x.card) { const lesson = [...s.lines].reverse().find((l) => LESSON.test(l.trim())); if (lesson) s.x.card = lesson; }
+      if (!s.x.chat?.length) s.x.chat = s.lines.filter((l) => l !== s.x.card).map((l) => ({ who: (l.trim().endsWith('?') ? 'a' : n % 2 ? 'b' : 'a') as 'a' | 'b', text: l, _: n++ })).map(({ who, text }) => ({ who, text }));
+    });
+    // a question is answered by the other person
+    let prev: string | null = null;
+    for (const s of scenes) for (const m of s.x.chat) { if (prev && m.who === prev && !m.text.trim().endsWith('?')) m.who = prev === 'a' ? 'b' : 'a'; prev = m.who; }
+  }
+  if (look === 'story') {
+    scenes.forEach((s, si) => {
+      const text = s.lines.join(' ').toLowerCase();
+      if (!s.x.place) { const hit = PLACES_VI.find(([re]) => re.test(text)); s.x.place = hit ? JSON.parse(hit[1]) : si === 0 ? { icon: 'home', label: 'Nhà' } : (scenes[si - 1].x.place || { icon: 'home', label: 'Nhà' }); }
+      s.x.action ||= actionIn(text) || (si === scenes.length - 1 ? 'point' : 'idle');
+      s.x.say ||= (s.lines.join(' ').match(/[“"]([^”"]{3,40})[”"]/)?.[1]) || keyPhrase(s.lines[0], 6);
+      if (s.x.money === undefined) s.x.money = /tiền|tiêu|mua|chi tiêu|lương|nợ|trả góp|shopee/.test(text);
+      if (!s.x.icons) s.x.icons = iconsIn(text).map((x) => x.name).filter((n) => n !== s.x.place.icon).slice(0, 2);
+    });
+  }
+  if (look === 'data') {
+    for (const s of scenes) {
+      if (s.x.stat) continue;
+      const nums = s.lines.flatMap((l) => numbersIn(l)).filter((n) => !['năm', 'tháng', 'ngày', 'giờ', 'phút'].includes(n.unit) || n.value > 31);
+      if (!nums.length) continue;
+      const [head, ...rest] = nums;
+      const sameUnit = rest.filter((r) => r.unit === head.unit || (!r.unit && head.unit));
+      s.x.stat = { value: head.value, unit: head.unit, label: head.label || keyPhrase(s.lines[0], 4) };
+      if (sameUnit.length >= 2) s.x.stat.parts = sameUnit.slice(0, 5).map((r, i) => ({ label: r.label || `Phần ${i + 1}`, value: r.value }));
+      else if (rest.length === 0 && nums.length === 1 && s.lines.length === 1) { /* a single big figure */ }
+    }
+  }
+  if (look === 'quiz') {
+    // a question gets a scene of its own, a countdown, then its answer
+    const flat: typeof scenes = [];
+    for (const s of scenes) {
+      const qi = s.lines.findIndex((l) => l.trim().endsWith('?'));
+      if (qi < 0 || s.lines.length === 1 || s.x.quiz) { flat.push(s); continue; }
+      if (qi > 0) flat.push({ ...s, lines: s.lines.slice(0, qi), x: { ...s.x, quiz: undefined } });
+      flat.push({ ...s, lines: [s.lines[qi]], x: { ...s.x } });
+      if (qi + 1 < s.lines.length) flat.push({ ...s, lines: s.lines.slice(qi + 1), x: { ...s.x, quiz: undefined } });
+    }
+    scenes = flat;
+    scenes.forEach((s, si) => {
+      if (s.x.quiz || s.lines.length !== 1 || !s.lines[0].trim().endsWith('?')) return;
+      const answer = scenes[si + 1];
+      if (!answer || answer.x.quiz) return;
+      const n = answer.lines.flatMap((l) => numbersIn(l))[0];
+      // a real answer follows (not a rhetorical hook question followed by more story)
+      if (!/^(đáp án|câu trả lời|trả lời|là|chính là|câu đúng|đúng là|thực ra|sự thật là)/iu.test(answer.lines[0].trim()) && !(si > 0 && n)) return;
+      let options: string[] = [], right = 0;
+      if (n) {
+        const fmt = (v: number) => `${Math.round(v * 10) / 10}`.replace('.', ',') + (n.unit === '%' ? '%' : n.unit ? ' ' + n.unit : '');
+        const vals = [n.value / 4, n.value, n.value * 2.5].map((v) => (v > 10 ? Math.round(v) : v));
+        const order = hash(s.lines[0]) % 3; // where the right answer sits
+        const opts = [vals[0], vals[2]]; opts.splice(order, 0, vals[1]);
+        options = opts.map(fmt); right = order;
+      }
+      s.x.quiz = { q: s.lines[0], options, answer: right };
+      s.pause = options.length ? 3 : 2.5;
+      answer.x.quiz = { ...s.x.quiz, reveal: true };
+    });
+  }
+  if (look === 'doc') {
+    for (const s of scenes) if (!s.panels?.length || !s.panels[0]?.prompt) s.panels = [{ prompt: 'Cinematic documentary still, realistic, natural light, Vietnam setting, no text. Scene: ' + s.lines.join(' ') }];
+  }
+  out.scenes = scenes;
+  return out;
+}

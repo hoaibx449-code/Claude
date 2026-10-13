@@ -6,6 +6,29 @@ export type ToolKind = 'marker' | 'chalk' | 'fountain' | 'colormarker' | 'pencil
 export type StyleKey = 'notebook' | 'whiteboard' | 'chalkboard' | 'kraft' | 'oly' | 'pencil' | 'blueprint' | 'ricepaper' | 'neon' | 'pastel' | 'newspaper' | 'comic' | 'darkboard' | 'sunset' | 'cosmos' | 'manim' | 'bold';
 /** How the board comes alive: a hand drawing, motion graphics, maths animation, kinetic typography. */
 export type Mode = 'hand' | 'motion' | 'math' | 'kinetic';
+/** Video formats (each its own storytelling grammar, pacing and sound); replaces style × mode for new videos. */
+export type Look = 'kinetic' | 'split' | 'chat' | 'story' | 'data' | 'quiz' | 'doc';
+export const LOOKS: Look[] = ['kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'];
+
+/** Per-scene data a format uses (all optional: missing parts are derived from the lines). */
+export interface LookData {
+  /** main icon of the scene (Tabler name) */
+  icon?: string;
+  /** words to emphasise (kinetic, captions) */
+  keys?: string[];
+  /** split: what side A / side B does in this scene, their icons, optional figures ("0đ", "36 triệu") */
+  a?: string; b?: string; aIcon?: string; bIcon?: string; aValue?: string; bValue?: string; aAction?: string; bAction?: string;
+  /** chat: bubbles of this scene (default: one per line); a = the other person (left), b = me (right) */
+  chat?: { who: 'a' | 'b'; text: string }[];
+  /** chat: a lesson card shown over the thread */
+  card?: string;
+  /** story: where the scene happens, what the character does and says */
+  place?: { icon: string; label: string }; action?: string; say?: string; icons?: string[]; money?: boolean;
+  /** data: the headline figure and its breakdown */
+  stat?: { value: number; unit?: string; label?: string; parts?: { label: string; value: number }[] };
+  /** quiz: question, options, index of the right one; reveal = the answer scene */
+  quiz?: { q: string; options: string[]; answer: number; reveal?: boolean };
+}
 
 export interface PanelSpec {
   /** Local image file (SVG/PNG/WebP). Used as is when present. */
@@ -57,6 +80,10 @@ export interface SceneSpec {
   panels: PanelSpec[];
   /** Drawn stroke by stroke instead of images. */
   diagram?: DiagramSpec;
+  /** format data (see LookData) */
+  x?: LookData;
+  /** silence after the narration, seconds (quiz countdown) */
+  pause?: number;
 }
 
 export interface ProjectSpec {
@@ -77,6 +104,18 @@ export interface ProjectSpec {
   transition?: 'auto' | 'fade' | 'slide' | 'wipe' | 'zoom';
   /** hand (default) · motion graphics · maths animation · kinetic typography */
   mode?: Mode;
+  /** video format; when set, style/mode/tool are ignored */
+  look?: Look;
+  /** colour set of the format */
+  skin?: string;
+  /** split: names of the two sides */
+  sides?: { a: string; b: string };
+  /** chat: name shown at the top of the conversation */
+  chatName?: string;
+  /** background music: file path (server) or stored reference (web); ducked under the voice */
+  music?: string;
+  /** sound effects of the format (default on) */
+  sfx?: boolean;
   /** Opening title card, made to work as the video's thumbnail. */
   intro?: { title: string; sub?: string; badge?: string; icon?: string } | null;
   /** Pictures used by image items: key → URL (browser) or file path (server). */

@@ -126,15 +126,24 @@ async function adminUsers(body) {
   const tbody = h('tbody');
   const fill = () => tbody.replaceChildren(...r.users.filter((u) => !q || (u.email + ' ' + (u.name || '')).toLowerCase().includes(q)).map((u) => h('tr', {},
     h('td', {}, h('a', { href: '#', onclick: (e) => { e.preventDefault(); adminUserDetail(u.id); } }, u.email)), h('td', {}, u.name || ''),
-    h('td', {}, u.plan || 'free'), h('td', {}, num(u.projects)), h('td', {}, num(u.videos)), h('td', {}, num(u.today)), h('td', {}, money(u.cost)),
+    h('td', {}, u.plan || 'free'), h('td', {}, creditCell(u)), h('td', {}, num(u.projects)), h('td', {}, num(u.videos)), h('td', {}, num(u.today)), h('td', {}, money(u.cost)),
     h('td', {}, u.zalo ? '✓' : ''), h('td', {}, u.last_seen ? fmtDate(u.last_seen) : '—'), h('td', {}, fmtDate(u.created_at)),
     h('td', {}, u.blocked ? h('span', { class: 'bad' }, 'Đã khoá') : ''))));
   fill();
   const j = r.jobs7d || {};
   body.replaceChildren(detail, card('Người dùng', `${r.users.length} tài khoản · 7 ngày: ${j.done || 0} video xong, ${j.failed || 0} lỗi, ${(j.queued || 0) + (j.running || 0)} đang chờ/dựng.`,
     input('', (v) => { q = v.toLowerCase(); fill(); }, { placeholder: 'Tìm email hoặc tên' }),
-    table(['Email', 'Tên', 'Gói', 'Dự án', 'Video', 'Lượt hôm nay', 'Chi phí', 'Zalo', 'Lần cuối', 'Tham gia', ''], tbody)));
+    table(['Email', 'Tên', 'Gói', 'Credit phim TL', 'Dự án', 'Video', 'Lượt hôm nay', 'Chi phí', 'Zalo', 'Lần cuối', 'Tham gia', ''], tbody)));
   if (pendingUser) { const id = pendingUser; pendingUser = null; adminUserDetail(id); }
+}
+/** Documentary credits of a user, with a quick grant box (works in Beta, when nothing is sold). */
+function creditCell(u) {
+  const out = h('span', {}, num(u.credits || 0));
+  const box = h('input', { type: 'number', value: 1, min: -1000, max: 1000, style: 'width:72px', 'aria-label': 'Số credit cấp thêm' });
+  const go = h('button', { type: 'button', class: 'ghost small', onclick: async () => {
+    try { const r = await api(`/api/admin/users/${encodeURIComponent(u.id)}/credits`, { method: 'POST', body: { delta: Number(box.value), note: 'cấp từ trang quản trị' } }); u.credits = r.balance; out.textContent = num(r.balance); toast('Đã cập nhật credit.'); } catch (e) { fail(e); }
+  } }, 'Cấp');
+  return h('div', { class: 'row', style: 'gap:6px;flex-wrap:nowrap' }, out, box, go);
 }
 async function adminUserDetail(id) {
   const box = document.getElementById('userDetail');
@@ -220,7 +229,8 @@ function settingsTab(c, secrets, secretInput) {
       h('label', {}, 'Phong cách', select(Object.entries(c.labels.styles), c.defaults.style, (v) => { c.defaults.style = v; })),
       h('label', {}, 'Kiểu hình', select(Object.entries(c.labels.visual), c.defaults.visual, (v) => { c.defaults.visual = v; })),
       h('label', {}, 'Khung hình', select([['9:16', 'Dọc 9:16'], ['16:9', 'Ngang 16:9']], c.defaults.ratio, (v) => { c.defaults.ratio = v; })),
-      h('label', {}, 'Kiểu video', select(Object.entries(c.labels.modes), c.defaults.mode, (v) => { c.defaults.mode = v; })),
+      h('label', {}, 'Định dạng video mặc định', select(Object.entries(c.labels.looks).filter(([k]) => k !== 'doc'), c.defaults.look, (v) => { c.defaults.look = v; })),
+      h('label', {}, 'Kiểu vẽ tay cổ điển', select(Object.entries(c.labels.modes), c.defaults.mode, (v) => { c.defaults.mode = v; })),
       h('label', {}, 'Thời lượng mặc định (giây)', input(c.defaults.seconds, (v) => { c.defaults.seconds = v; }, { type: 'number', min: 15, max: 1800 })),
       h('label', {}, 'Giọng đọc', select(c.voices.map((v) => [v.code, v.label]), c.defaults.voice, (v) => { c.defaults.voice = v; })),
       h('label', {}, 'Tên kênh', input(c.defaults.channel, (v) => { c.defaults.channel = v; }, { maxlength: 40 })),
@@ -243,6 +253,7 @@ function settingsTab(c, secrets, secretInput) {
       h('label', {}, 'Gemini dự phòng', input(c.models.geminiFallback, (v) => { c.models.geminiFallback = v; })),
       h('label', {}, 'Gemini vẽ', input(c.models.geminiImage, (v) => { c.models.geminiImage = v; }))),
       h('label', {}, 'Lời dặn thêm cho AI viết kịch bản (áp dụng mọi video)', area(c.promptExtra, (v) => { c.promptExtra = v; }, 3))),
+    budgetCard(c),
     card('Bảng giá vốn', 'Dùng để ghi chi phí từng lần gọi AI và giọng đọc vào nhật ký. Model: "tên-model: giá vào, giá ra" (USD / 1 triệu token), "*" = mặc định.',
       h('div', { class: 'grid' },
         h('label', {}, 'Tỷ giá USD → VND', input(c.costs.usdVnd, (v) => { c.costs.usdVnd = v; }, { type: 'number' })),
@@ -274,6 +285,7 @@ function plansTab(c, secrets, secretInput) {
       h('label', {}, 'Video dài tối đa (giây)', input(p.maxSeconds, (v) => { p.maxSeconds = v; }, { type: 'number', min: 15 })),
       check(p.visible, (v) => { p.visible = v; }, 'Hiện cho người dùng'), check(p.highlight, (v) => { p.highlight = v; }, 'Nổi bật'), check(p.zalo, (v) => { p.zalo = v; }, 'Dùng Zalo')),
     h('label', {}, 'Mô tả', input(p.desc, (v) => { p.desc = v; }, { maxlength: 200 })),
+    h('label', {}, 'Phim tài liệu AI kèm theo mỗi tháng (gói VIP; 0 = phải dùng credit)', input(p.docPerMonth || 0, (v) => { p.docPerMonth = v; }, { type: 'number', min: 0, max: 1000 })),
     h('label', {}, 'Điểm nổi bật (mỗi dòng một ý)', area(p.features.join('\n'), (v) => { p.features = v.split('\n').map((x) => x.trim()).filter(Boolean); }, 3)),
     h('label', {}, 'Phong cách được dùng (để trống = tất cả)', input(p.styles === 'all' ? '' : p.styles.join(', '), (v) => { p.styles = v.trim() ? v.split(/[\s,]+/).filter(Boolean) : 'all'; }, { placeholder: Object.keys(c.labels.styles).join(', ') })),
     h('label', {}, 'Cách tạo được dùng (để trống = tất cả)', input(p.sources === 'all' ? '' : p.sources.join(', '), (v) => { p.sources = v.trim() ? v.split(/[\s,]+/).filter(Boolean) : 'all'; }, { placeholder: 'topic, mine-ai, mine-free' })),
@@ -292,8 +304,9 @@ function plansTab(c, secrets, secretInput) {
       h('p', { class: 'muted' }, 'Webhook SePay: ', h('code', {}, location.origin + '/api/sepay/webhook'), ' · Kiểu xác thực: API Key.')),
     keysCard(secrets, secretInput, ['SEPAY_API_KEY']),
     card('Các gói', 'Giới hạn tính theo ngày. Phong cách/giọng/cách tạo ngoài gói sẽ hiện thông báo nâng cấp đúng gói cần mua.',
-      h('button', { type: 'button', class: 'ghost small', onclick: (e) => { c.plans.push({ id: 'goi' + (c.plans.length + 1), name: 'Gói mới', price: 99000, days: 30, visible: true, highlight: false, desc: '', features: [], limits: { script: 10, image: 20, render: 5 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 180 }); e.target.closest('.card').after(planCard(c.plans[c.plans.length - 1], c.plans.length - 1)); } }, '+ Thêm gói')),
+      h('button', { type: 'button', class: 'ghost small', onclick: (e) => { c.plans.push({ id: 'goi' + (c.plans.length + 1), name: 'Gói mới', price: 99000, days: 30, visible: true, highlight: false, desc: '', features: [], limits: { script: 10, image: 20, render: 5 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 180, docPerMonth: 0 }); e.target.closest('.card').after(planCard(c.plans[c.plans.length - 1], c.plans.length - 1)); } }, '+ Thêm gói')),
     ...c.plans.map(planCard),
+    docCard(c),
   ];
 }
 
@@ -327,6 +340,34 @@ async function adminCommunity(body) {
       : h('p', { class: 'muted' }, 'Chưa có video nào.')));
 }
 
+function docCard(c) {
+  const list = h('div', { class: 'scenes' });
+  const draw = () => list.replaceChildren(...c.doc.packs.map((p, i) => h('div', { class: 'grid wide' },
+    h('label', {}, 'Tên gói', input(p.name, (v) => { p.name = v; }, { maxlength: 40 })),
+    h('label', {}, 'Số credit', input(p.credits, (v) => { p.credits = v; }, { type: 'number', min: 1 })),
+    h('label', {}, 'Giá (VND)', input(p.price, (v) => { p.price = v; }, { type: 'number', min: 1000, step: 1000 })),
+    h('button', { type: 'button', class: 'ghost small danger', onclick: () => { c.doc.packs.splice(i, 1); draw(); } }, 'Bỏ gói'))));
+  draw();
+  const costEach = Math.round(c.doc.imagesPerVideo * 0.7 * c.costs.imageGemini * c.costs.usdVnd + 900 * c.costs.everaiPer1000 / 1000);
+  return card('Phim tài liệu AI: credit', `Mỗi phim tài liệu trừ credit trước khi gọi AI, kèm một số lượt vẽ ảnh (cả vẽ lại). Ước tính giá vốn một video ~${costEach.toLocaleString('vi-VN')}đ (theo bảng giá vốn, ~70% lượt ảnh được dùng). Đặt giá gói cao hơn mức này để không lỗ. Trong bản Beta, gói credit không hiện cho khách; cấp credit ở trang Người dùng.`,
+    h('div', { class: 'grid wide' },
+      h('label', {}, 'Credit cho một video', input(c.doc.creditsPerVideo, (v) => { c.doc.creditsPerVideo = v; }, { type: 'number', min: 1, max: 100 })),
+      h('label', {}, 'Lượt vẽ ảnh cho một video', input(c.doc.imagesPerVideo, (v) => { c.doc.imagesPerVideo = v; }, { type: 'number', min: 4, max: 60 }))),
+    h('h3', {}, 'Gói credit bán lẻ'), list,
+    h('button', { type: 'button', class: 'ghost small', onclick: () => { c.doc.packs.push({ id: 'doc' + Date.now().toString(36).slice(-4), name: 'Gói mới', credits: 3, price: 79000 }); draw(); } }, '+ Thêm gói credit'));
+}
+function musicCard(c) {
+  const list = h('div', { class: 'scenes' });
+  const draw = () => list.replaceChildren(...c.music.map((m, i) => h('div', { class: 'grid wide' },
+    h('label', {}, 'Tên bản nhạc', input(m.title, (v) => { m.title = v; }, { maxlength: 50 })),
+    mediaField('Tệp MP3/M4A', m.file, (v) => { m.file = v; }, 'audio/mpeg,audio/mp4,audio/x-m4a'),
+    h('button', { type: 'button', class: 'ghost small danger', onclick: () => { c.music.splice(i, 1); draw(); } }, 'Bỏ'))));
+  draw();
+  return card('Nhạc nền', 'Nhạc tự hạ âm lượng khi có giọng đọc. Chỉ tải nhạc bạn có quyền dùng thương mại (nhạc tự sáng tác, mua bản quyền hoặc CC0). "Tự chọn" lấy một bản theo nội dung video.',
+    h('label', {}, 'Mặc định khi tạo video', select([['auto', 'Tự chọn trong thư viện'], ['none', 'Không nhạc'], ...c.music.map((m) => [m.id, m.title])], c.defaults.music, (v) => { c.defaults.music = v; })),
+    list, h('button', { type: 'button', class: 'ghost small', onclick: () => { c.music.push({ id: 'nhac-' + Date.now().toString(36).slice(-5), title: '', file: '' }); draw(); } }, '+ Thêm bản nhạc'));
+}
+
 function zaloTab(c, secrets, secretInput, zcheck, inbox) {
   const z = c.zalo;
   const action = (label, fn) => h('button', { type: 'button', class: 'ghost small', onclick: async (event) => { const button = event.currentTarget; button.disabled = true; try { await fn(); } catch (e) { fail(e); } finally { button.disabled = false; } } }, label);
@@ -338,7 +379,8 @@ function zaloTab(c, secrets, secretInput, zcheck, inbox) {
       zcheck ? h('p', { class: 'muted' }, `${zcheck.links?.n || 0} người đã kết nối (${zcheck.links?.guests || 0} chỉ dùng Zalo).`) : null,
       h('div', { class: 'row' },
         action('Kiểm tra lại', async () => { const check = await api('/api/admin/zalo/check'); out.replaceChildren(h('ul', {}, check.steps.map((step) => h('li', { class: step.ok ? 'ok' : 'bad' }, (step.ok ? '✓ ' : '✗ ') + step.k, h('p', { class: 'muted' }, step.detail || step.fix || ''))))); }),
-        action('Kết nối webhook', async () => { const r = await api('/api/admin/zalo/connect', { method: 'POST' }); toast('Đã kết nối: ' + r.url); }),
+        action('Kết nối webhook', async () => { const r = await api('/api/admin/zalo/connect', { method: 'POST' }); out.replaceChildren(h('p', {}, '✓ Webhook trỏ về: ', h('b', {}, r.url)), r.before && r.before !== r.url ? h('p', { class: 'muted' }, 'Trước đó bot trỏ về: ' + r.before + ' (đã chuyển sang web này).') : null, h('p', { class: 'muted' }, 'Giờ nhắn GIUP cho bot rồi bấm Kiểm tra lại.')); }),
+        action('Mô phỏng tin "GIUP"', async () => { const r = await api('/api/admin/zalo/simulate', { method: 'POST', body: { text: 'GIUP' } }); out.replaceChildren(h('p', { class: r.ok ? 'ok' : 'bad' }, r.ok ? '✓ Bot xử lý và gửi phản hồi về Zalo chủ web thành công. Nếu khách vẫn không nhận được, lỗi nằm ở chiều Zalo → web (webhook/sự kiện/Cloudflare).' : '✗ Gửi phản hồi lỗi: ' + (r.reply?.error || 'không rõ'))); }),
         action('Tạo mã chủ web', async () => { const r = await api('/api/admin/zalo/owner-code', { method: 'POST' }); out.replaceChildren('Gửi cho bot: ', h('b', { class: 'memo' }, r.command), ` (hạn ${r.expiresMin} phút)`); }),
         action('Gửi tin thử cho chủ web', async () => { await api('/api/admin/zalo/test', { method: 'POST' }); toast('Đã gửi.'); })),
       out,
@@ -368,7 +410,8 @@ function visTab(c) {
   return [
     card('Hiển thị tuỳ chọn', '"Đang phát triển" = người dùng thấy nhưng không chọn được (có nhãn đang phát triển). "Ẩn" = không thấy. Áp dụng cả trên web và Zalo.',
       group('Tính năng', Object.entries(FEATURES).map(([k, v]) => ['feature:' + k, v])),
-      group('Kiểu video', Object.entries(c.labels.modes).map(([k, v]) => ['mode:' + k, v])),
+      group('Định dạng video (mới)', Object.entries(c.labels.looks).map(([k, v]) => ['look:' + k, v])),
+      group('Kiểu vẽ tay cổ điển', Object.entries(c.labels.modes).map(([k, v]) => ['mode:' + k, v])),
       group('Cách tạo video', Object.entries(c.labels.sources).map(([k, v]) => ['source:' + k, v])),
       group('Phong cách', Object.entries(c.labels.styles).map(([k, v]) => ['style:' + k, v])),
       group('Kiểu hình', Object.entries(c.labels.visual).map(([k, v]) => ['visual:' + k, v])),
@@ -380,8 +423,68 @@ function visTab(c) {
   ];
 }
 
+/** A home page picture/video: paste an https address or upload a file (stored as "site:…"). */
+function mediaField(label, value, onChange, accept = 'image/png,image/jpeg,image/webp,video/mp4,video/webm') {
+  const preview = h('div', { class: 'media-preview' });
+  const paint = (v) => {
+    const url = siteUrl(v);
+    preview.replaceChildren(!v ? h('span', { class: 'muted' }, 'Chưa có') : /\.(mp4|webm)$/i.test(v) ? h('video', { src: url, muted: true, controls: true, preload: 'metadata' }) : h('img', { src: url, alt: '' }));
+  };
+  const box = input(value, (v) => { onChange(v.trim()); paint(v.trim()); }, { placeholder: 'https://… hoặc bấm Tải lên' });
+  const file = h('input', { type: 'file', accept, hidden: true, onchange: async () => {
+    const f = file.files[0]; if (!f) return;
+    try {
+      toast('Đang tải lên…');
+      const res = await fetch('/api/admin/site-media', { method: 'POST', credentials: 'same-origin', headers: { 'x-nv': '1', 'content-type': f.type }, body: f });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Không tải lên được.');
+      box.value = data.ref; onChange(data.ref); paint(data.ref); toast('Đã tải lên. Bấm Lưu cài đặt để áp dụng.');
+    } catch (e) { fail(e); }
+    file.value = '';
+  } });
+  paint(value);
+  return h('div', { class: 'mediafield' }, h('label', {}, label, box), h('div', { class: 'row' },
+    h('button', { type: 'button', class: 'ghost small', onclick: () => file.click() }, 'Tải lên'),
+    h('button', { type: 'button', class: 'ghost small', onclick: () => { box.value = ''; onChange(''); paint(''); } }, 'Bỏ')), preview, file);
+}
+
+function siteCard(c) {
+  const list = h('div', { class: 'scenes' });
+  const draw = () => list.replaceChildren(...c.site.showcase.map((m, i) => h('div', { class: 'scene' },
+    h('div', { class: 'grid wide' }, h('label', {}, 'Tiêu đề', input(m.title, (v) => { m.title = v; }, { maxlength: 60 })), h('label', {}, 'Mô tả ngắn', input(m.caption, (v) => { m.caption = v; }, { maxlength: 120 }))),
+    h('div', { class: 'grid wide' }, mediaField('Video (MP4/WebM, dọc 9:16)', m.video, (v) => { m.video = v; }, 'video/mp4,video/webm'), mediaField('Ảnh bìa (poster)', m.poster, (v) => { m.poster = v; }, 'image/png,image/jpeg,image/webp')),
+    h('div', { class: 'row' },
+      i > 0 ? h('button', { type: 'button', class: 'ghost small', onclick: () => { c.site.showcase.splice(i - 1, 0, c.site.showcase.splice(i, 1)[0]); draw(); } }, '↑ Lên') : null,
+      h('button', { type: 'button', class: 'ghost small danger', onclick: () => { c.site.showcase.splice(i, 1); draw(); } }, 'Bỏ video')))));
+  draw();
+  return card('Trang chủ: hình và video mẫu', 'Ảnh/video cạnh tiêu đề và danh sách video mẫu. Để trống thì trang chủ tự vẽ demo trực tiếp. Tệp tải lên tối đa 60 MB; video nên dưới 10 MB, H.264, dọc 9:16 để tải nhanh.',
+    h('div', { class: 'grid wide' },
+      h('label', {}, 'Tiêu đề lớn', input(c.site.heroTitle, (v) => { c.site.heroTitle = v; }, { maxlength: 120 })),
+      h('label', {}, 'Đoạn giới thiệu', input(c.site.heroText, (v) => { c.site.heroText = v; }, { maxlength: 300 }))),
+    h('div', { class: 'grid wide' }, mediaField('Ảnh hoặc video cạnh tiêu đề', c.site.heroMedia, (v) => { c.site.heroMedia = v; }), mediaField('Ảnh chờ cho video (poster)', c.site.heroPoster, (v) => { c.site.heroPoster = v; }, 'image/png,image/jpeg,image/webp')),
+    h('h3', {}, 'Video mẫu'), list,
+    h('button', { type: 'button', class: 'ghost small', onclick: () => { if (c.site.showcase.length >= 12) return toast('Tối đa 12 video.'); c.site.showcase.push({ title: '', caption: '', video: '', poster: '' }); draw(); } }, '+ Thêm video mẫu'));
+}
+
+function budgetCard(c) {
+  const status = h('div', { class: 'budget-status' }, 'Đang đọc chi tiêu…');
+  api('/api/admin/budget').then((b) => {
+    const bar = (used, cap, label) => { const pct = cap ? Math.min(100, Math.round(used / cap * 100)) : 0; return h('div', {}, h('div', { class: 'row' }, h('b', {}, label), h('span', { class: pct >= 100 ? 'bad' : pct >= c.budget.warnPct ? 'warn' : 'muted' }, `${money(used)} / ${cap ? money(cap) : 'không giới hạn'}${cap ? ` (${pct}%)` : ''}`)), h('div', { class: 'bar' }, h('i', { style: `width:${pct}%` }))); };
+    status.replaceChildren(bar(b.day, c.budget.dailyVnd, 'Hôm nay'), bar(b.month, c.budget.monthlyVnd, 'Tháng này'),
+      b.over ? h('p', { class: 'bad' }, '⚠ Đã chạm trần: AI viết/vẽ và giọng trả phí đang tạm chuyển sang cách miễn phí.') : null,
+      b.top?.length ? h('details', {}, h('summary', {}, 'Tốn nhiều nhất 30 ngày'), table(['Loại', 'Lượt', 'Chi phí'], b.top.map((r) => h('tr', {}, h('td', {}, r.type), h('td', {}, num(r.n)), h('td', {}, money(r.cost)))))) : null);
+  }).catch((e) => status.replaceChildren(h('span', { class: 'bad' }, e.message)));
+  return card('Trần chi phí', 'Tính từ chi phí đã ghi trong nhật ký (AI viết, ảnh AI, giọng trả phí). Khi chạm trần, hệ thống tự dùng cách miễn phí (tự minh hoạ theo luật, giọng cơ bản) thay vì báo lỗi. 0 = không giới hạn.',
+    status,
+    h('div', { class: 'grid wide' },
+      h('label', {}, 'Trần mỗi ngày (VND)', input(c.budget.dailyVnd, (v) => { c.budget.dailyVnd = v; }, { type: 'number', min: 0, step: 10000 })),
+      h('label', {}, 'Trần mỗi tháng (VND)', input(c.budget.monthlyVnd, (v) => { c.budget.monthlyVnd = v; }, { type: 'number', min: 0, step: 100000 })),
+      h('label', {}, 'Cảnh báo khi đạt (%)', input(c.budget.warnPct, (v) => { c.budget.warnPct = v; }, { type: 'number', min: 10, max: 100 })),
+      h('label', {}, 'Chi phí tối đa một video (VND)', input(c.budget.perVideoVnd, (v) => { c.budget.perVideoVnd = v; }, { type: 'number', min: 0, step: 1000 }))));
+}
+
 function contentTab(c) {
-  const LABEL_GROUPS = [['modes', 'Kiểu video'], ['styles', 'Phong cách vẽ'], ['tools', 'Dụng cụ vẽ'], ['kinds', 'Kiểu sơ đồ'], ['visual', 'Kiểu hình'], ['actions', 'Động tác người que'], ['ai', 'Nhà cung cấp AI'], ['sources', 'Cách tạo video']];
+  const LABEL_GROUPS = [['looks', 'Định dạng video'], ['lookNotes', 'Mô tả định dạng'], ['modes', 'Kiểu vẽ tay cổ điển'], ['styles', 'Phong cách vẽ'], ['tools', 'Dụng cụ vẽ'], ['kinds', 'Kiểu sơ đồ'], ['visual', 'Kiểu hình'], ['actions', 'Động tác người que'], ['ai', 'Nhà cung cấp AI'], ['sources', 'Cách tạo video']];
   const tplList = h('div', { class: 'scenes' });
   const drawTpls = () => tplList.replaceChildren(...c.templates.map((t, i) => h('div', { class: 'scene' },
     h('div', { class: 'grid' }, h('label', {}, 'Tên mẫu', input(t.title, (v) => { t.title = v; })), h('label', {}, 'Mã', input(t.id, (v) => { t.id = v; })),
@@ -394,6 +497,13 @@ function contentTab(c) {
       h('label', {}, 'Chữ nổi bật sau tên', input(c.brand.accent, (v) => { c.brand.accent = v; }, { maxlength: 30 })),
       h('label', {}, 'Mô tả ngắn', input(c.brand.tagline, (v) => { c.brand.tagline = v; }, { maxlength: 160 }))),
       h('label', {}, 'Thông báo đầu trang chủ (để trống = không hiện)', input(c.notice, (v) => { c.notice = v; }, { maxlength: 500 }))),
+    card('Chế độ Beta', 'Khi bật: trang web không hiện bảng giá, gói cước, thanh toán, nút nâng cấp hay khẩu hiệu bán hàng. Mọi cài đặt gói/thanh toán vẫn giữ nguyên và giới hạn mỗi gói vẫn áp dụng; tắt Beta là mở bán lại ngay.',
+      check(c.beta.enabled, (v) => { c.beta.enabled = v; }, 'Đang chạy bản Beta'),
+      h('div', { class: 'grid wide' },
+        h('label', {}, 'Nhãn', input(c.beta.label, (v) => { c.beta.label = v; }, { maxlength: 20 })),
+        h('label', {}, 'Giải thích cho người dùng', input(c.beta.note, (v) => { c.beta.note = v; }, { maxlength: 300 })))),
+    siteCard(c),
+    musicCard(c),
     card('Pháp lý', 'Điều khoản, bảo mật, hoàn tiền hiện ở chân trang và khi đăng nhập. Định dạng: "## " là tiêu đề, "- " là gạch đầu dòng; {brand} {company} {email} {address} được tự điền. Nội dung mặc định là bản nháp theo luật Việt Nam — nên nhờ luật sư rà soát.',
       h('div', { class: 'grid' },
         h('label', {}, 'Tên doanh nghiệp / chủ thể', input(c.legal.company, (v) => { c.legal.company = v; })),

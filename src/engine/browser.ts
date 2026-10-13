@@ -4,3 +4,4 @@ export { qrCells } from './qr.ts';
 export { buildTimeline, estimateVoice } from './timeline.ts';
 export { TOOL_NAMES } from './tools.ts';
 export { STYLES } from './styles.ts';
+export { SKINS } from './looks.ts';

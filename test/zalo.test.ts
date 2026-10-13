@@ -32,12 +32,20 @@ test('Zalo records incoming GIUP, replies, and does not repeat a delivered webho
  await f.receive('GIUP');await f.drain();assert.equal(f.sent.length,1);
  const inbox=await (await zaloAdmin(new Request('https://studio.test/api/admin/zalo/inbox'),f.env,f.env,'zalo/inbox','GET',f.rc)).json();assert.equal(inbox.messages.length,1);assert.equal(inbox.replies[0].status,'sent');
 }));
-test('Zalo rejects wrong secrets, reports disabled configuration, and records unsupported payload diagnostics',async()=>fixture(async f=>{
- await assert.rejects(f.receive('GIUP','m1','wrong'),{status:401});assert.equal(await f.env.DB.prepare('SELECT * FROM zalo_messages').first(),null);
- f.env.config.zalo.enabled=false;await assert.rejects(f.receive('GIUP'),{status:503});f.env.config.zalo.enabled=true;
- await assert.rejects(zaloWebhook(new Request('https://studio.test/api/zalo/webhook',{method:'POST',headers:{'x-bot-api-secret-token':await webhookSecret(f.env)},body:'{"event_name":"user_send_text"}'}),f.env,f.rc),{status:400});
- assert.ok(f.log.some((e: any)=>e.type==='zalo.webhook'&&e.ok===false));
+test('Zalo answers 200 but refuses wrong secrets, disabled configuration and unsupported payloads, logging why',async()=>fixture(async f=>{
+ const refused=async (res: Response)=>{assert.equal(res.status,200);assert.equal((await res.json()).ok,false);};
+ await refused(await f.receive('GIUP','m1','wrong'));assert.equal(await f.env.DB.prepare('SELECT * FROM zalo_messages').first(),null);
+ f.env.config.zalo.enabled=false;await refused(await f.receive('GIUP'));f.env.config.zalo.enabled=true;
+ await refused(await zaloWebhook(new Request('https://studio.test/api/zalo/webhook',{method:'POST',headers:{'x-bot-api-secret-token':await webhookSecret(f.env)},body:'{"event_name":"user_send_text"}'}),f.env,f.rc));
+ assert.ok(f.log.some((e: any)=>e.type==='zalo.webhook'&&e.ok===false&&/sai mã/.test(e.data.error)));
+ // the secret may also arrive in the webhook address
+ const viaQuery=await zaloWebhook(new Request('https://studio.test/api/zalo/webhook?s='+await webhookSecret(f.env),{method:'POST',body:JSON.stringify({event_name:'message.text.received',message:{message_id:'q1',chat:{id:'chat-q'},from:{display_name:'Q'},text:'GIUP'}})}),f.env,f.rc);
+ assert.equal((await viaQuery.json()).recorded,true);await f.drain();
 }));
+test('Zalo token cleanup strips pasted bot prefix and quotes',async()=>{
+ const { cleanToken }=await import('../web/src/zalo.ts');
+ assert.equal(cleanToken(' "bot123:abc" '),'123:abc');assert.equal(cleanToken('123:abc'),'123:abc');
+});
 test('Zalo HTTP 200 without ok:true is a failed reply; retry persists the actual result',async()=>fixture(async f=>{
  f.setResponse({description:'temporary service failure'});await f.receive('GIUP');await f.drain();
  const failed=await f.env.DB.prepare('SELECT * FROM zalo_outbox').first();assert.equal(failed.status,'failed');assert.match(failed.error,/temporary/);

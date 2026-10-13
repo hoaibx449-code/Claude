@@ -49,6 +49,28 @@ export async function upload(req: Request, env: XEnv, rc: Rc, user: User) {
   return json({ ref: 'r2:' + key, url: '/api/media/' + key });
 }
 
+const SITE_TYPES: Record<string, string> = { ...TYPES, 'video/mp4': 'mp4', 'video/webm': 'webm', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a' };
+const SITE_MAX = 60 * 1024 * 1024;
+export const siteType = (ext: string) => Object.entries(SITE_TYPES).find(([, e]) => e === ext)?.[0] || 'application/octet-stream';
+
+/** Admin upload of a home page picture or sample video. Returns the "site:" reference stored in settings. */
+export async function uploadSite(req: Request, env: XEnv, rc: Rc) {
+  const type = (req.headers.get('content-type') || '').split(';')[0].trim();
+  const ext = SITE_TYPES[type];
+  if (!ext) throw new HttpError(415, 'Chỉ nhận ảnh PNG/JPG/WebP, video MP4/WebM hoặc nhạc MP3/M4A.');
+  const bytes = new Uint8Array(await req.arrayBuffer());
+  if (bytes.length < 100 || bytes.length > SITE_MAX) throw new HttpError(413, 'Tệp cần nhỏ hơn 60 MB.');
+  const sig = (a: number[], at = 0) => a.every((b, i) => bytes[at + i] === b);
+  const real = ext === 'png' ? sig([0x89, 0x50, 0x4e, 0x47]) : ext === 'jpg' ? sig([0xff, 0xd8, 0xff]) : ext === 'webp' ? sig([0x52, 0x49, 0x46, 0x46]) && bytes[8] === 0x57
+    : ext === 'mp4' || ext === 'm4a' ? sig([0x66, 0x74, 0x79, 0x70], 4) : ext === 'mp3' ? sig([0x49, 0x44, 0x33]) || (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) : sig([0x1a, 0x45, 0xdf, 0xa3]);
+  if (!real) throw new HttpError(415, 'Nội dung tệp không khớp định dạng.');
+  const hex = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (b) => b.toString(16).padStart(2, '0')).join('').slice(0, 24);
+  const key = `site/${hex}.${ext}`;
+  if (!(await env.BUCKET.head(key))) await env.BUCKET.put(key, bytes, { httpMetadata: { contentType: type } });
+  rc.log('admin.site.upload', { data: { key, bytes: bytes.length, type } });
+  return json({ ref: `site:${hex}.${ext}`, url: `/api/site/${hex}.${ext}` });
+}
+
 /** An R2 object with HTTP range support (videos can be scrubbed and start playing at once). */
 export async function serveObject(env: Env, req: Request, key: string, type: string, headers: Record<string, string> = {}) {
   const range = req.headers.get('range')?.match(/^bytes=(\d*)-(\d*)$/);

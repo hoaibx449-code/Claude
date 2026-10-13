@@ -11,6 +11,8 @@ import { logicalSize, prepare, renderFrame, SANS } from '../engine/render.ts';
 import type { HandMeta, ProjectSpec, Timeline } from '../engine/types.ts';
 import { pickTTS, withFallback } from './tts.ts';
 import { cachedImage, pickImages } from './images.ts';
+import { writeSfxTrack } from './sfx.ts';
+import { existsSync } from 'node:fs';
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -110,7 +112,22 @@ export async function renderProject(o: RenderOptions) {
       const ms = Math.round((timeline.scenes[i].start + 0.3) * 1000);
       delays.push(`[${i + 1}:a]aresample=44100,adelay=${ms}:all=1[a${i}]`);
     });
-    const mix = `${delays.join(';')};${voice.map((_, i) => `[a${i}]`).join('')}amix=inputs=${voice.length}:normalize=0[aout]`;
+    // format videos: sound effects on their cues, and music that ducks under the voice
+    let next = voice.length + 1;
+    const sfxFile = join(work, 'sfx.wav');
+    const sfx = model.look && project.sfx !== false && writeSfxTrack(model.look.cues, timeline.duration, sfxFile) ? next++ : 0;
+    if (sfx) audioArgs.push('-i', sfxFile);
+    const musicFile = project.music ? resolve(projDir, project.music) : '';
+    const music = musicFile && existsSync(musicFile) ? next++ : 0;
+    if (music) audioArgs.push('-stream_loop', '-1', '-i', musicFile);
+    let mix = `${delays.join(';')};${voice.map((_, i) => `[a${i}]`).join('')}amix=inputs=${voice.length}:normalize=0[vo]`;
+    const layers = ['[vo]'];
+    if (music) {
+      mix += `;[vo]asplit=2[vo1][vo2];[${music}:a]aresample=44100,aformat=channel_layouts=stereo,volume=0.2[mu];[mu][vo2]sidechaincompress=threshold=0.02:ratio=10:attack=15:release=400[mud]`;
+      layers[0] = '[vo1]'; layers.push('[mud]');
+    }
+    if (sfx) { mix += `;[${sfx}:a]aresample=44100[fx]`; layers.push('[fx]'); }
+    mix += layers.length > 1 ? `;${layers.join('')}amix=inputs=${layers.length}:normalize=0:duration=longest,alimiter=limit=0.95[aout]` : `;[vo]anull[aout]`;
     const ff = spawn('ffmpeg', [
       '-v', 'error', '-y',
       '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${PW}x${PH}`, '-r', String(fps), '-i', 'pipe:0',
