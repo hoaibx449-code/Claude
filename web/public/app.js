@@ -314,7 +314,7 @@ async function showLanding() {
       const c = h('canvas', { 'aria-label': d.look === 'classic' ? 'Bàn tay vẽ' : L('looks', d.look) });
       setTimeout(() => playDemo(c, d.spec, { dpr: 0.45 }), 0);
       return h('a', { class: 'sample', href: '#/tao', 'data-ev': 'sample-' + d.look, onclick: () => sessionStorage.setItem('nv_look', d.look) }, c,
-        h('span', { class: 'cap' }, h('b', {}, d.look === 'classic' ? 'Bàn tay vẽ' : L('looks', d.look)), h('span', {}, d.look === 'classic' ? 'Tranh line-art lộ dần theo nét bút, phụ đề viết tay.' : L('lookNotes', d.look))));
+        h('span', { class: 'cap' }, h('b', {}, d.look === 'classic' ? 'Bàn tay vẽ' : L('looks', d.look)), h('span', {}, d.look === 'classic' ? 'Bàn tay vẽ tranh line-art từng nét, phụ đề viết tay.' : L('lookNotes', d.look))));
     });
   const steps = [
     ['Nhập nội dung', 'Dán kịch bản của bạn, chọn kịch bản mẫu, hoặc gõ một chủ đề để AI viết.'],
@@ -621,7 +621,7 @@ function lookPicker(current, onPick, demos) {
     box.replaceChildren(...[...looksOn(), 'classic'].map((k) => {
       const dev = k !== 'classic' && V('look:' + k) === 'dev', d = demos.find((x) => x.look === k), c = h('canvas', { 'aria-hidden': 'true' });
       if (d) setTimeout(() => playDemo(c, d.spec, { dpr: 0.32 }), 0);
-      const name = k === 'classic' ? 'Bàn tay vẽ' : L('looks', k), note = k === 'classic' ? 'Bàn tay vẽ tranh line-art lộ dần theo nét bút, phụ đề viết tay. Hợp kể chuyện, bài giảng, review sách.' : L('lookNotes', k);
+      const name = k === 'classic' ? 'Bàn tay vẽ' : L('looks', k), note = k === 'classic' ? 'Bàn tay vẽ tranh line-art từng nét theo lời đọc, phụ đề viết tay. Hợp kể chuyện, bài giảng, review sách.' : L('lookNotes', k);
       return h('button', { type: 'button', class: 'look' + (k === cur ? ' on' : ''), role: 'radio', 'aria-checked': String(k === cur), disabled: dev, 'data-ev': 'look-' + k, 'data-k': k,
         onclick: () => { onPick(k); mark(k); } },
         d ? c : h('div', { class: 'look-thumb classic' }, '✍️'),

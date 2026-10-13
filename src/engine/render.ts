@@ -7,6 +7,7 @@ import { buildKinetic } from './kinetic.ts';
 import { flatten } from './svgpath.ts';
 import { qrCells } from './qr.ts';
 import { wrapVi } from './textwrap.ts';
+import { extractStrokes, LINE_SHARE, pathStroke, penState, type StrokePlan } from './strokes.ts';
 import { buildLook, preparePhoto, renderLook, skinOf, type LookModel } from './looks.ts';
 
 /** Logical canvas size; the output size is a multiple of it (dpr). */
@@ -71,6 +72,22 @@ export function inkify(env: Env, img: Img, w: number, h: number, ink: string) {
   return cv;
 }
 
+/**
+ * A picture on the board. Line art is drawn stroke by stroke along its centre lines (`plan`,
+ * worked out on first use); anything else (a photo) falls back to the zigzag sweep.
+ */
+interface Panel { canvas: any; box: Box; zig: Zig; plan?: StrokePlan | null }
+
+/** Panel strokes, found once from the inked picture at about 1 working px per logical px. */
+function planOf(m: Model, P: Panel): StrokePlan | null {
+  if (P.plan !== undefined) return P.plan;
+  const s = Math.min(1.2, 560 / Math.max(P.box.w, P.box.h)), w = Math.max(8, Math.round(P.box.w * s)), h = Math.max(8, Math.round(P.box.h * s));
+  const cv = m.env.createCanvas(w, h), x = cv.getContext('2d');
+  x.drawImage(P.canvas, 0, 0, w, h);
+  P.plan = extractStrokes(x.getImageData(0, 0, w, h).data, w, h, s);
+  return P.plan;
+}
+
 export interface HandAsset { img: Img; fingers: Img; meta: HandMeta }
 
 export interface Model {
@@ -80,7 +97,7 @@ export interface Model {
   tool: ToolKind;
   W: number; H: number; dpr: number;
   background: any;
-  panels: { canvas: any; box: Box; zig: Zig }[][];
+  panels: Panel[][];
   mask: Map<string, any>;
   hand: HandAsset;
   env: Env;
@@ -96,7 +113,7 @@ export interface Model {
 export const SANS = 'NVSans';
 
 /** `t` is the frame time: animated parts (stick figures) keep moving after they are drawn. */
-export interface Unit { start: number; end: number; draw(c: Ctx, p: number, alpha: number, t: number): void; pen(p: number): [number, number] }
+export interface Unit { start: number; end: number; draw(c: Ctx, p: number, alpha: number, t: number): void; pen(p: number): [number, number] | [number, number, number] }
 
 /** Area a diagram may use (above the subtitles when they are shown on the picture). */
 export function diagramBox(ratio: Ratio, subtitles = false): Box {
@@ -290,6 +307,8 @@ function drawPanel(c: Ctx, m: Model, si: number, k: number, p: number, alpha: nu
   const P = m.panels[si][k], { box } = P;
   c.save(); c.globalAlpha = alpha;
   if (p >= 1) { c.drawImage(P.canvas, box.x, box.y, box.w, box.h); c.restore(); return; }
+  const plan = planOf(m, P);
+  if (plan) { drawStrokes(c, m, P, plan, p, alpha); c.restore(); return; }
   const key = `${P.canvas.width}x${P.canvas.height}`;
   let mk = m.mask.get(key);
   if (!mk) { mk = m.env.createCanvas(P.canvas.width, P.canvas.height); m.mask.set(key, mk); }
@@ -305,8 +324,40 @@ function drawPanel(c: Ctx, m: Model, si: number, k: number, p: number, alpha: nu
   c.restore();
 }
 
-function penAt(m: Model, si: number, k: number, p: number): [number, number] {
-  const P = m.panels[si][k], [x, y] = along(P.zig, p);
+/**
+ * Line art revealed along its own strokes: finished strokes accumulate in a cached mask (frames
+ * are rendered in order; going back rebuilds it), the stroke being drawn ends exactly at the
+ * nib. Over the last tenth, soft tones and specks too small to draw settle in.
+ */
+function drawStrokes(c: Ctx, m: Model, P: Panel, plan: StrokePlan, p: number, alpha: number) {
+  const { box, canvas } = P, q = p / LINE_SHARE, st = penState(plan, q);
+  const key = `${canvas.width}x${canvas.height}`;
+  let cache = m.mask.get('done:' + key), work = m.mask.get(key);
+  if (!cache) { cache = { cv: m.env.createCanvas(canvas.width, canvas.height), owner: null, done: 0 }; m.mask.set('done:' + key, cache); }
+  if (!work) { work = m.env.createCanvas(canvas.width, canvas.height); m.mask.set(key, work); }
+  const pen = (x: any, i: number) => { x.setTransform(m.dpr, 0, 0, m.dpr, 0, 0); x.lineCap = 'round'; x.lineJoin = 'round'; x.lineWidth = plan.widths[i]; x.strokeStyle = '#000'; x.beginPath(); };
+  const d = cache.cv.getContext('2d');
+  if (cache.owner !== P || cache.done > st.done) { d.setTransform(1, 0, 0, 1, 0, 0); d.clearRect(0, 0, cache.cv.width, cache.cv.height); cache.owner = P; cache.done = 0; }
+  if (cache.done < st.done) {
+    for (let i = cache.done; i < st.done; i++) { pen(d, i); pathStroke(d, plan, i); d.stroke(); }
+    cache.done = st.done;
+  }
+  const x = work.getContext('2d');
+  x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, work.width, work.height);
+  x.drawImage(cache.cv, 0, 0);
+  if (st.along > 0 && st.done < plan.strokes.length) { pen(x, st.done); pathStroke(x, plan, st.done, st.along); x.stroke(); }
+  x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-in'; x.drawImage(canvas, 0, 0);
+  c.drawImage(work, box.x, box.y, box.w, box.h);
+  if (p > LINE_SHARE) { c.globalAlpha = alpha * ease((p - LINE_SHARE) / (1 - LINE_SHARE)); c.drawImage(canvas, box.x, box.y, box.w, box.h); }
+}
+
+function penAt(m: Model, si: number, k: number, p: number): [number, number] | [number, number, number] {
+  const P = m.panels[si][k], plan = planOf(m, P);
+  if (plan) {
+    const st = penState(plan, p / LINE_SHARE);
+    return [P.box.x + st.x, P.box.y + st.y, st.lift];
+  }
+  const [x, y] = along(P.zig, p);
   return [P.box.x + x, P.box.y + y];
 }
 
@@ -500,7 +551,7 @@ function drawHandAt(c: Ctx, m: Model, t: number, si: number, units: Unit[], prog
   };
   let pos: [number, number] = off, lift = 0;
   const active = prog.findIndex((p) => p > 0 && p < 1);
-  if (active >= 0) pos = units[active].pen(prog[active]);
+  if (active >= 0) { const q = units[active].pen(prog[active]); pos = [q[0], q[1]]; lift = q[2] ?? 0; }
   else if (units.length) {
     const next = units.findIndex((u) => t < u.start);
     if (next === 0) {
@@ -516,5 +567,7 @@ function drawHandAt(c: Ctx, m: Model, t: number, si: number, units: Unit[], prog
       pos = lerp(last.pen(1), to, u); lift = si === scenes.length - 1 ? u : Math.sin(Math.PI * u) * 0.6;
     }
   }
-  drawHand(c, m, pos[0], pos[1], lift, Math.sin(t * 2.1) * 0.025);
+  // the wrist turns a little as the nib moves across the board (continuous, since pos is)
+  const turn = ((pos[0] - W * 0.5) / W) * 0.16 + ((pos[1] - H * 0.5) / H) * 0.05;
+  drawHand(c, m, pos[0], pos[1], lift, Math.sin(t * 2.1) * 0.02 + turn);
 }
