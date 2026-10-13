@@ -383,11 +383,11 @@ export async function runnerSecrets(env: Env) {
   return Object.fromEntries(RUNNER_SECRETS.filter((n) => secrets[n]).map((n) => [n, secrets[n]]));
 }
 
-/** Admins are listed by email; until someone is listed, the first account ever created is the admin. */
+/** Fail closed in production; bootstrap ownership must be explicitly configured. */
 export async function isAdmin(env: Env, config: Config, user: User) {
   if (config.admins.length) return config.admins.includes(user.email.toLowerCase());
-  const first = await env.DB.prepare("SELECT id FROM users WHERE id NOT LIKE 'dev-%' AND id NOT LIKE 'zl-%' ORDER BY created_at LIMIT 1").first<any>();
-  return first ? first.id === user.id : user.id.startsWith('dev-');
+  if (user.id.startsWith('dev-')) return env.DEV_LOGIN === '1';
+  return !!env.ADMIN_EMAIL && env.ADMIN_EMAIL.trim().toLowerCase() === user.email.toLowerCase();
 }
 
 /** What every visitor's browser needs to draw the interface. */

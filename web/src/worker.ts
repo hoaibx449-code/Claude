@@ -1,6 +1,6 @@
 // Nét Vẽ Studio API (Cloudflare Worker). Static pages are served from ./public.
 import { consumeNonce, currentUser, endSession, newNonce, startSession, type User, verifyGoogleToken } from './auth.ts';
-import { drawImage, ImageProvider, TextProvider, writeScript } from './ai.ts';
+import { drawImage, type ImageProvider, type TextProvider, writeScript } from './ai.ts';
 import { startRunner } from './gcp.ts';
 import { cleanSpec, STYLES } from './spec.ts';
 import { composeScene, splitScript } from './compose.ts';
@@ -9,9 +9,9 @@ import { fillLegal } from './legal.ts';
 import { aiCost, clientIp, imageCost, logEvent, routeName, summarize, voiceCost, type LogEntry } from './log.ts';
 import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, vis } from './settings.ts';
 import { adminRoutes } from './admin.ts';
-import { checkShare, notifyJob, rememberOrigin, zaloUser, zaloWebhook } from './zalo.ts';
+import { checkShare, notifyJob, rememberOrigin, resumeZalo, zaloUser, zaloWebhook } from './zalo.ts';
 import { checkAllowed, checkSource, expireOrders, limitsFor, planOf, planRoutes, sepayWebhook } from './plans.ts';
-import { affiliateScene, communityPublic, introFor, serveObject, shareToCommunity, upload } from './media.ts';
+import { affiliateScene, communityPublic, deleteVideo, introFor, serveObject, shareToCommunity, storedVideoKey, upload, videoKey } from './media.ts';
 import { body, type Env, HttpError, json, randomId, refundQuota, sha256, timingSafeEqual, today, useQuota } from './util.ts';
 
 const MAX_ACTIVE_JOBS = 2;
@@ -61,11 +61,17 @@ export default {
     const { config } = await load(env);
     ctx.waitUntil(env.DB.prepare('DELETE FROM events WHERE ts < ?').bind(Date.now() - config.logDays * 86_400_000).run().then(() => {}, (e) => console.error(e)));
     const xenv = await effectiveEnv(env);
+    const zaloRc: Rc = { userId: null, visitor: null, ip: '', ua: null, channel: 'zalo', quiet: true,
+      log(type, extra = {}) { ctx.waitUntil(logEvent(env, { type, channel: 'zalo', ...extra })); },
+      wait(p) { ctx.waitUntil(p); } };
+    ctx.waitUntil(resumeZalo(xenv, zaloRc));
     ctx.waitUntil(Promise.all([
       expireOrders(xenv),
       env.DB.prepare('DELETE FROM zalo_seen WHERE ts < ?').bind(Date.now() - 2 * 86_400_000).run(),
       env.DB.prepare('DELETE FROM zalo_codes WHERE expires_at < ?').bind(Date.now()).run(),
       env.DB.prepare('DELETE FROM usage WHERE day < ?').bind(new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10)).run(),
+      env.DB.prepare('DELETE FROM zalo_messages WHERE received_at < ?').bind(Date.now() - config.logDays * 86_400_000).run(),
+      env.DB.prepare('DELETE FROM zalo_outbox WHERE created_at < ?').bind(Date.now() - config.logDays * 86_400_000).run(),
     ]).then(() => {}, (e) => console.error(e)));
     const waiting = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'queued' AND created_at < ?").bind(Date.now() - 90_000).first<any>();
     if (waiting?.n) ctx.waitUntil(startRunner(env).catch((e) => console.error(e)));
@@ -253,8 +259,7 @@ async function exportAccount(env: XEnv, rc: Rc, user: User) {
 /** Delete the account and its content. Payment records stay (accounting law) but lose the link to the person. */
 async function deleteAccount(env: XEnv, rc: Rc, user: User) {
   const jobs = (await env.DB.prepare('SELECT id FROM jobs WHERE user_id = ?').bind(user.id).all<any>()).results;
-  const keys = jobs.flatMap((j) => [`video/${user.id}/${j.id}.mp4`, `video/${user.id}/${j.id}.srt`]);
-  for (let i = 0; i < keys.length; i += 500) await env.BUCKET.delete(keys.slice(i, i + 500));
+  for (const job of jobs) await deleteVideo(env, user.id, job.id);
   let cursor: string | undefined;
   do {
     const l = await env.BUCKET.list({ prefix: `img/${user.id}/`, cursor });
@@ -268,6 +273,8 @@ async function deleteAccount(env: XEnv, rc: Rc, user: User) {
   } while (cursor);
   const anon = 'deleted-' + (await sha256(user.id)).slice(0, 12);
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM zalo_messages WHERE chat_id IN (SELECT chat_id FROM zalo_links WHERE user_id = ?)').bind(user.id),
+    env.DB.prepare('DELETE FROM zalo_outbox WHERE chat_id IN (SELECT chat_id FROM zalo_links WHERE user_id = ?)').bind(user.id),
     env.DB.prepare('DELETE FROM jobs WHERE user_id = ?').bind(user.id), env.DB.prepare('DELETE FROM projects WHERE user_id = ?').bind(user.id),
     env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(user.id), env.DB.prepare('DELETE FROM zalo_links WHERE user_id = ?').bind(user.id),
     env.DB.prepare('DELETE FROM usage WHERE user_id = ?').bind(user.id), env.DB.prepare('DELETE FROM user_plans WHERE user_id = ?').bind(user.id),
@@ -357,7 +364,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
     }
     if (!sub && method === 'DELETE') {
       const jobs = await env.DB.prepare('SELECT id FROM jobs WHERE project_id = ?').bind(id).all<any>();
-      for (const j of jobs.results) await env.BUCKET.delete([`video/${user.id}/${j.id}.mp4`, `video/${user.id}/${j.id}.srt`]);
+      for (const j of jobs.results) await deleteVideo(env, user.id, j.id);
       await env.DB.prepare('DELETE FROM jobs WHERE project_id = ?').bind(id).run();
       await env.DB.prepare('DELETE FROM projects WHERE id = ? AND user_id = ?').bind(id, user.id).run();
       rc.log('project.delete', { projectId: id, data: { title: p.title } });
@@ -410,7 +417,9 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
     }
     if (sub === '/render' && method === 'POST') return json({ job: await queueRender(env, rc, user, id, p.spec) });
     if (sub === '/jobs' && method === 'GET') {
-      const r = await env.DB.prepare('SELECT id, status, progress, error, created_at, finished_at, (SELECT 1 FROM community c WHERE c.job_id = jobs.id) AS shared FROM jobs WHERE project_id = ? ORDER BY created_at DESC LIMIT 10').bind(id).all();
+      const r = await env.DB.prepare(`SELECT jobs.id, status, progress, error, created_at, started_at, finished_at, jp.phase, jp.message, jp.updated_at AS heartbeat_at,
+        (SELECT 1 FROM community c WHERE c.job_id = jobs.id) AS shared FROM jobs LEFT JOIN job_progress jp ON jp.job_id = jobs.id
+        WHERE project_id = ? ORDER BY created_at DESC LIMIT 10`).bind(id).all();
       const queued = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'queued'").first<any>();
       return json({ jobs: r.results, queueLength: queued.n });
     }
@@ -424,9 +433,9 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
     if (ext === 'mp4' && new URL(req.url).searchParams.get('inline') === '1') {
       // watching in the page: streamed with seeking, logged once (not every range request)
       if (!req.headers.get('range') || /^bytes=0-/.test(req.headers.get('range') || '')) rc.log('video.play', { data: { job: f[1] } }); else rc.quiet = true;
-      return serveObject(env, req, `video/${user.id}/${f[1]}.mp4`, 'video/mp4', { 'cache-control': 'private, max-age=3600', 'content-disposition': 'inline' });
+      return serveObject(env, req, await storedVideoKey(env, user.id, f[1], 'mp4'), 'video/mp4', { 'cache-control': 'private, max-age=3600', 'content-disposition': 'inline' });
     }
-    const obj = await env.BUCKET.get(`video/${user.id}/${f[1]}.${ext}`);
+    const obj = await env.BUCKET.get(await storedVideoKey(env, user.id, f[1], ext));
     if (!obj) throw new HttpError(404, 'Không tìm thấy tệp.');
     rc.log('video.download', { data: { job: f[1], kind: f[2] } });
     return new Response(obj.body, { headers: {
@@ -460,7 +469,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
 }
 
 // ---- render machines: pull a job, fetch assets, upload the result. Auth: Bearer RUNNER_TOKEN.
-async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Promise<Response> {
+export async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Promise<Response> {
   const auth = req.headers.get('authorization') || '';
   if (!env.RUNNER_TOKEN || env.RUNNER_TOKEN.length < 32 || !timingSafeEqual(auth, `Bearer ${env.RUNNER_TOKEN}`)) throw new HttpError(401, 'Không có quyền.');
   const now = Date.now();
@@ -469,16 +478,17 @@ async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Promise<Res
   if (sub === 'config' && req.method === 'GET') return json({ env: await runnerSecrets(env) });
   if (sub === 'claim' && req.method === 'POST') {
     const name = String((await body(req, 1_000)).runner || 'runner').slice(0, 60);
+    const lease = 'lease-' + randomId(16);
     await env.DB.prepare("UPDATE jobs SET status = 'queued', runner = NULL WHERE status = 'running' AND started_at < ?").bind(now - STALE_JOB_MS).run();
     const job = await env.DB.prepare(
       `UPDATE jobs SET status = 'running', started_at = ?, runner = ?, progress = 0
        WHERE id = (SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at LIMIT 1) AND status = 'queued'
        RETURNING id, spec, user_id, project_id, created_at`,
-    ).bind(now, name).first<any>();
+    ).bind(now, lease).first<any>();
     if (!job) { rc.quiet = true; return json({ job: null }); }
     rc.userId = job.user_id;
     rc.log('render.start', { projectId: job.project_id, data: { job: job.id, runner: name, waitedSec: Math.round((now - job.created_at) / 1000) } });
-    return json({ job: { id: job.id, spec: JSON.parse(job.spec) } });
+    return json({ job: { id: job.id, lease, spec: JSON.parse(job.spec) } });
   }
   if (sub === 'asset' && req.method === 'GET') {
     const key = new URL(req.url).searchParams.get('key') || '';
@@ -489,22 +499,35 @@ async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Promise<Res
   }
   const m = sub.match(/^jobs\/([a-f0-9]{24})\/(progress|video|srt|done|fail)$/);
   if (!m) throw new HttpError(404, 'Không tìm thấy.');
-  const job = await env.DB.prepare("SELECT id, user_id, project_id, created_at, spec FROM jobs WHERE id = ? AND status = 'running'").bind(m[1]).first<any>();
-  if (!job) throw new HttpError(409, 'Việc này không còn ở trạng thái đang dựng.');
+  const expectedMethod = m[2] === 'video' || m[2] === 'srt' ? 'PUT' : 'POST';
+  if (req.method !== expectedMethod) throw new HttpError(405, 'Không hỗ trợ.');
+  const lease = req.headers.get('x-nv-lease') || '';
+  const job = await env.DB.prepare("SELECT id, user_id, project_id, created_at, spec, runner, status FROM jobs WHERE id = ? AND runner = ?").bind(m[1], lease).first<any>();
+  // Acknowledging a terminal action is idempotent if its first response was lost.
+  if (job && ((m[2] === 'done' && job.status === 'done') || (m[2] === 'fail' && job.status === 'failed'))) return json({ ok: true });
+  if (!job || job.status !== 'running') throw new HttpError(409, 'Việc này không còn ở trạng thái đang dựng.');
   rc.userId = job.user_id;
   if (m[2] === 'progress') {
-    const pct = Math.max(0, Math.min(99, Math.round(Number((await body(req, 1_000)).progress) || 0)));
-    await env.DB.prepare('UPDATE jobs SET progress = ?, started_at = ? WHERE id = ?').bind(pct, now, job.id).run();
+    const update = await body<any>(req, 1_000);
+    const pct = Math.max(0, Math.min(99, Math.round(Number(update.progress) || 0)));
+    const changed = await env.DB.prepare("UPDATE jobs SET progress = ?, started_at = ? WHERE id = ? AND status = 'running' AND runner = ?").bind(pct, now, job.id, lease).run();
+    if (!changed.meta.changes) throw new HttpError(409, 'Lượt dựng đã hết hạn.');
+    const phase = ['preparing','images','voice','rendering','uploading'].includes(update.phase) ? update.phase : 'rendering';
+    await env.DB.prepare(`INSERT INTO job_progress (job_id, phase, message, updated_at) SELECT ?, ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM jobs WHERE id = ? AND status = 'running' AND runner = ?)
+      ON CONFLICT(job_id) DO UPDATE SET phase = excluded.phase, message = excluded.message, updated_at = excluded.updated_at`)
+      .bind(job.id, phase, String(update.message || '').slice(0, 160), now, job.id, lease).run();
     return json({ ok: true });
   }
   if ((m[2] === 'video' || m[2] === 'srt') && req.method === 'PUT') {
     const ext = m[2] === 'video' ? 'mp4' : 'srt';
-    await env.BUCKET.put(`video/${job.user_id}/${job.id}.${ext}`, req.body, { httpMetadata: { contentType: ext === 'mp4' ? 'video/mp4' : 'text/plain' } });
+    await env.BUCKET.put(videoKey(job.user_id, job.id, ext, lease), req.body, { httpMetadata: { contentType: ext === 'mp4' ? 'video/mp4' : 'text/plain' } });
     return json({ ok: true });
   }
   if (m[2] === 'done') {
-    if (!(await env.BUCKET.head(`video/${job.user_id}/${job.id}.mp4`))) throw new HttpError(400, 'Chưa tải video lên.');
-    await env.DB.prepare("UPDATE jobs SET status = 'done', progress = 100, finished_at = ? WHERE id = ?").bind(now, job.id).run();
+    if (!(await env.BUCKET.head(videoKey(job.user_id, job.id, 'mp4', lease))) || !(await env.BUCKET.head(videoKey(job.user_id, job.id, 'srt', lease)))) throw new HttpError(400, 'Chưa tải đủ video và phụ đề lên.');
+    const changed = await env.DB.prepare("UPDATE jobs SET status = 'done', progress = 100, finished_at = ? WHERE id = ? AND status = 'running' AND runner = ?").bind(now, job.id, lease).run();
+    if (!changed.meta.changes) throw new HttpError(409, 'Lượt dựng đã hết hạn.');
     // the runner reports how long the render took and how much was read aloud
     const r = await body<any>(req, 5_000).catch(() => ({}));
     const spec = JSON.parse(job.spec), provider = String(r.voice || spec.voice?.provider || '');
@@ -516,7 +539,8 @@ async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Promise<Res
   }
   if (m[2] === 'fail') {
     const error = String((await body(req, 5_000)).error || 'Dựng video thất bại.').slice(0, 300);
-    await env.DB.prepare("UPDATE jobs SET status = 'failed', error = ?, finished_at = ? WHERE id = ?").bind(error, now, job.id).run();
+    const changed = await env.DB.prepare("UPDATE jobs SET status = 'failed', error = ?, finished_at = ? WHERE id = ? AND status = 'running' AND runner = ?").bind(error, now, job.id, lease).run();
+    if (!changed.meta.changes) throw new HttpError(409, 'Lượt dựng đã hết hạn.');
     await refundQuota(env, job.user_id, 'render');
     rc.log('render.fail', { ok: false, projectId: job.project_id, data: { job: job.id, error } });
     await afterJob(env, rc, job, false, error);
@@ -530,7 +554,7 @@ async function shareVideo(env: XEnv, rc: Rc, jobId: string, url: URL) {
   if (!(await checkShare(env, jobId, Number(url.searchParams.get('e')), url.searchParams.get('s') || ''))) throw new HttpError(403, 'Link đã hết hạn. Gõ TT trong Zalo để lấy link mới.');
   const job = await env.DB.prepare("SELECT user_id, project_id FROM jobs WHERE id = ? AND status = 'done'").bind(jobId).first<any>();
   if (!job) throw new HttpError(404, 'Video không còn.');
-  const obj = await env.BUCKET.get(`video/${job.user_id}/${jobId}.mp4`);
+  const obj = await env.BUCKET.get(await storedVideoKey(env, job.user_id, jobId, 'mp4'));
   if (!obj) throw new HttpError(404, 'Video không còn.');
   rc.userId = job.user_id; rc.channel = 'zalo';
   rc.log('video.download', { projectId: job.project_id, data: { job: jobId, kind: 'share' } });
@@ -633,8 +657,12 @@ export async function queueRender(env: XEnv, rc: Rc, user: User, id: string, spe
   if (active.n >= MAX_ACTIVE_JOBS) throw new HttpError(429, 'Bạn đang có video chờ dựng. Đợi xong rồi dựng tiếp nhé.');
   await useQuota(env, user.id, 'render', (await limitsFor(env, user.id)).render);
   const jobId = randomId(12);
-  await env.DB.prepare("INSERT INTO jobs (id, project_id, user_id, status, spec, created_at) VALUES (?, ?, ?, 'queued', ?, ?)")
-    .bind(jobId, id, user.id, JSON.stringify({ ...spec, _via: rc.channel }), Date.now()).run();
+  try {
+    const inserted = await env.DB.prepare(`INSERT INTO jobs (id, project_id, user_id, status, spec, created_at)
+      SELECT ?, ?, ?, 'queued', ?, ? WHERE (SELECT COUNT(*) FROM jobs WHERE user_id = ? AND status IN ('queued','running')) < ?`)
+      .bind(jobId, id, user.id, JSON.stringify({ ...spec, _via: rc.channel }), Date.now(), user.id, MAX_ACTIVE_JOBS).run();
+    if (!inserted.meta.changes) throw new HttpError(429, 'Bạn đang có video chờ dựng. Đợi xong rồi dựng tiếp nhé.');
+  } catch (error) { await refundQuota(env, user.id, 'render'); throw error; }
   rc.wait(startRunner(env).catch((e) => { rc.log('render.trigger', { ok: false, data: { error: String(e.message || e) } }); }));
   rc.log('render.queue', { projectId: id, data: { job: jobId, scenes: spec.scenes.length, chars: spec.scenes.reduce((n: number, sc: any) => n + sc.lines.join(' ').length, 0), voice: spec.voice, style: spec.style, via: rc.channel } });
   return { id: jobId, status: 'queued', progress: 0 };

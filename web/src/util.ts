@@ -24,6 +24,8 @@ export interface Env {
   GCP_JOB?: string;
   /** Local development only: enables /api/auth/dev on localhost. */
   DEV_LOGIN?: string;
+  /** Explicit owner for initial production bootstrap; never first-visitor ownership. */
+  ADMIN_EMAIL?: string;
 }
 
 /** Error whose message is safe to show to the user. */
@@ -64,15 +66,37 @@ export function cookie(req: Request, name: string) {
 }
 
 export async function body<T = any>(req: Request, maxBytes = 200_000): Promise<T> {
-  const text = await req.text();
-  if (text.length > maxBytes) throw new HttpError(413, 'Dữ liệu gửi lên quá lớn.');
-  try { return JSON.parse(text || '{}'); } catch { throw new HttpError(400, 'Dữ liệu không hợp lệ.'); }
+  if (Number(req.headers.get('content-length')) > maxBytes) throw new HttpError(413, 'Dữ liệu gửi lên quá lớn.');
+  const reader = req.body?.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  if (reader) {
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > maxBytes) { await reader.cancel(); throw new HttpError(413, 'Dữ liệu gửi lên quá lớn.'); }
+        chunks.push(value);
+      }
+    } finally { reader.releaseLock(); }
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  const text = new TextDecoder().decode(bytes);
+  try {
+    const value = JSON.parse(text || '{}');
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected an object');
+    return value;
+  } catch { throw new HttpError(400, 'Dữ liệu không hợp lệ.'); }
 }
 
 export const today = () => new Date().toISOString().slice(0, 10);
 
 /** Count one use of `kind` today; refuse when the daily limit is reached. */
 export async function useQuota(env: Env, userId: string, kind: 'script' | 'image' | 'render' | 'events' | 'zalo' | 'try' | 'upload' | 'like', limit: number) {
+  if (!Number.isFinite(limit) || limit < 1) throw new HttpError(429, 'Gói hiện tại không có lượt sử dụng tính năng này.');
   const day = today();
   const row = await env.DB.prepare(
     `INSERT INTO usage (user_id, day, kind, n) VALUES (?, ?, ?, 1)

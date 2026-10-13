@@ -1255,7 +1255,7 @@ async function showEditor(id) {
       // never let placeholder art reach the video: draw (or redesign) what is missing first
       if (!(await drawAll())) { renderBtn.disabled = false; return; }
       await api(`/api/projects/${id}`, { method: 'PUT', body: { spec } });
-      await api(`/api/projects/${id}/render`, { method: 'POST' }); toast('Đã xếp video vào hàng chờ dựng.'); pollJobs();
+      const { job } = await api(`/api/projects/${id}/render`, { method: 'POST' }); toast('Đã xếp video vào hàng chờ dựng.'); RenderDesk.open(spec, id, job.id).catch(fail); pollJobs();
       me = await api('/api/me').catch(() => me);
     }
     catch (e) { fail(e); }
@@ -1265,15 +1265,18 @@ async function showEditor(id) {
   async function pollJobs() {
     clearTimeout(pollTimer);
     if (!document.body.contains(jobsBox)) return;
-    const { jobs, queueLength } = await api(`/api/projects/${id}/jobs`).catch(() => ({ jobs: [] }));
+    let jobs, queueLength;
+    try { ({ jobs, queueLength } = await api(`/api/projects/${id}/jobs`)); } catch (error) { jobsBox.replaceChildren(h('p', { class: 'error' }, 'Chưa đọc được trạng thái: ' + error.message)); pollTimer = setTimeout(pollJobs, 4000); return; }
     const wasRunning = jobsBox.dataset.running === '1', running = jobs.some((j) => j.status === 'queued' || j.status === 'running');
     jobsBox.dataset.running = running ? '1' : '';
     // the moment a render finishes, take the user to watch it
-    if (wasRunning && !running && jobs[0]?.status === 'done') { toast('🎉 Video đã dựng xong!'); location.hash = `#/xem/${id}/${jobs[0].id}`; return; }
+    if (wasRunning && !running && jobs[0]?.status === 'done' && !document.querySelector('dialog.render-desk[open]')) { toast('🎉 Video đã dựng xong!'); location.hash = `#/xem/${id}/${jobs[0].id}`; return; }
     jobsBox.replaceChildren(...(jobs.length ? jobs.map((j) => h('div', { class: 'card' },
       h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', { class: 'pill ' + j.status }, JOB_TEXT[j.status] || j.status), h('small', { class: 'muted' }, fmtDate(j.created_at))),
       j.status === 'queued' ? h('small', { class: 'muted' }, `Có ${queueLength} video đang chờ. Máy dựng khởi động trong khoảng 1 phút.`) : null,
-      j.status === 'running' ? h('div', { class: 'bar' }, h('i', { style: `width:${j.progress}%` })) : null,
+      j.status === 'running' ? h('p', { class: 'render-state' }, j.message || 'Máy dựng đang xử lý…') : null,
+      j.status === 'running' ? h('progress', { max: 100, value: j.progress, 'aria-label': 'Tiến độ dựng video' }) : null,
+      ['queued','running'].includes(j.status) ? h('button', { type: 'button', class: 'ghost small', onclick: () => RenderDesk.open(spec, id, j.id).catch(fail) }, 'Mở bàn dựng') : null,
       j.status === 'failed' ? h('p', { class: 'error' }, j.error || 'Dựng thất bại.') : null,
       j.status === 'done' ? h('div', { class: 'row' }, h('a', { class: 'btn small', href: `#/xem/${id}/${j.id}`, 'data-ev': 'watch' }, '▶ Xem video'), h('a', { href: `/api/jobs/${j.id}/video`, download: true, 'data-ev': 'download' }, T('download')),
         V('feature:srt') === 'hidden' ? null : h('a', { href: `/api/jobs/${j.id}/srt`, download: true, 'data-ev': 'download-srt' }, T('subtitles'))) : null))

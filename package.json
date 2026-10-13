@@ -12,17 +12,19 @@
     "web:build": "node web/build.mjs",
     "web:dev": "node web/build.mjs && cd web && wrangler dev",
     "web:deploy": "node web/build.mjs && cd web && wrangler deploy",
-    "typecheck": "tsc -p web"
+    "typecheck": "tsc -p web",
+    "test:ui": "node tools/check-ui.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "0.1.80",
     "qrcode-generator": "2.0.4"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260702.1",
+    "@cloudflare/workers-types": "5.20261013.1",
     "@tabler/icons": "^3.31.0",
     "esbuild": "^0.25.10",
+    "playwright": "1.64.0",
     "typescript": "^5.6.3",
-    "wrangler": "^4.40.0"
+    "wrangler": "4.149.0"
   }
 }

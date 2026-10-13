@@ -9,6 +9,20 @@ import { estimateVoice } from '../engine/timeline.ts';
 export interface VoiceResult { file: string; lines: Span[]; duration: number }
 export interface TTS { name: string; synth(lines: string[], outBase: string): Promise<VoiceResult> }
 
+/** Approximate cues for continuous narration without provider timestamps.
+ * Fit every cue to the actual audio, rather than using an unrelated reading speed.
+ */
+export function fitVoice(lines: string[], duration: number): Span[] {
+  if (!lines.length || !Number.isFinite(duration) || duration <= 0) throw new Error('Thời lượng lời đọc không hợp lệ.');
+  const weights = lines.map((line) => Math.max(1, Array.from(line.trim()).length));
+  const total = weights.reduce((a, b) => a + b, 0);
+  let start = 0;
+  return weights.map((weight, i) => {
+    const end = i === weights.length - 1 ? duration : start + duration * weight / total;
+    const span = { start, end }; start = end; return span;
+  });
+}
+
 export function audioDuration(file: string): number {
   const out = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file]).toString();
   return parseFloat(out);
@@ -58,6 +72,7 @@ export function elevenLabsTTS(voiceId?: string): TTS {
       const text = lines.join(' ');
       const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(id)}/with-timestamps?output_format=mp3_44100_128`, {
         method: 'POST',
+        signal: AbortSignal.timeout(60_000),
         headers: { 'xi-api-key': key, 'content-type': 'application/json' },
         body: JSON.stringify({ text, model_id: process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2' }),
       });
@@ -96,9 +111,10 @@ export function googleTTS(voiceName?: string, languageCode = 'vi-VN', auth?: { t
     name: 'google',
     async synth(lines, outBase) {
       const key = auth ? '' : need('GOOGLE_TTS_API_KEY');
-      const ssml = '<speak>' + lines.map((l, i) => `<mark name="l${i}"/>${esc(l)}<break time="250ms"/>`).join('') + '</speak>';
+      const ssml = '<speak>' + lines.map((l, i) => `<mark name="l${i}"/>${esc(l)}`).join(' ') + '</speak>';
       const res = await fetch('https://texttospeech.googleapis.com/v1beta1/text:synthesize' + (auth ? '' : `?key=${encodeURIComponent(key)}`), {
         method: 'POST',
+        signal: AbortSignal.timeout(60_000),
         headers: { 'content-type': 'application/json', ...(auth ? { authorization: `Bearer ${auth.token}`, 'x-goog-user-project': auth.project } : {}) },
         body: JSON.stringify({
           input: { ssml },
@@ -115,22 +131,20 @@ export function googleTTS(voiceName?: string, languageCode = 'vi-VN', auth?: { t
       const marks = new Map<string, number>((j.timepoints || []).map((p: any) => [p.markName, p.timeSeconds]));
       const startOf = (i: number) => marks.get(`l${i}`) ?? (i === 0 ? 0 : NaN);
       const spans = lines.map((_, i) => ({ start: startOf(i), end: i + 1 < lines.length ? startOf(i + 1) : duration }));
-      if (spans.some((s) => Number.isNaN(s.start))) return { file, ...estimateVoice(lines), duration };
+      if (spans.some((s, i) => !Number.isFinite(s.start) || s.start < 0 || s.end <= s.start || s.end > duration || (i > 0 && s.start < spans[i - 1].end))) return { file, lines: fitVoice(lines, duration), duration };
       return { file, lines: spans, duration };
     },
   };
 }
 
-/** espeak-ng: offline, always available, robotic. One clip per line so timing is exact. */
+/** Offline fallback: speak the paragraph once to retain sentence context. */
 export const espeakTTS: TTS = {
   name: 'espeak',
   async synth(lines, outBase) {
-    const clips = lines.map((l, i) => {
-      const f = `${outBase}-e${i}.wav`;
-      execFileSync('espeak-ng', ['-v', 'vi', '-s', '150', '-w', f, l]);
-      return f;
-    });
-    return joinLineClips(clips, outBase);
+    const file = outBase + '-e.wav';
+    execFileSync('espeak-ng', ['-v', 'vi', '-s', '170', '-w', file, '--stdin'], { input: lines.join(' ') });
+    const duration = audioDuration(file);
+    return { file, lines: fitVoice(lines, duration), duration };
   },
 };
 

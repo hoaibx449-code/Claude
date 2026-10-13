@@ -71,13 +71,32 @@ async function grant(env: Env, userId: string, plan: Plan, days: number, by: str
 }
 
 async function confirmOrder(env: XEnv, rc: Rc, code: string, paid: number, ref: string, via: string) {
-  // the conditional update makes confirmation happen once even if the bank calls twice
-  const o = await env.DB.prepare("UPDATE orders SET status = 'paid', paid_at = ?, ref = ?, via = ? WHERE code = ? AND status = 'pending' AND amount <= ? RETURNING *")
-    .bind(Date.now(), ref.slice(0, 80), via, code, paid).first<any>();
+  if (!Number.isFinite(paid) || paid <= 0 || !ref) return null;
+  const now = Date.now(), cutoff = now - env.config.payment.expiryDays * DAY;
+  const o = await env.DB.prepare("SELECT * FROM orders WHERE code = ? AND status = 'pending' AND amount <= ? AND created_at > ?")
+    .bind(code, paid, cutoff).first<any>();
   if (!o) return null;
   const plan = env.config.plans.find((p) => p.id === o.plan);
   if (!plan) return null;
-  const until = await grant(env, o.user_id, plan, plan.days || 30, 'order:' + code);
+  // D1 batch is transactional: credit and mark paid together, and serialize retries.
+  // Every statement rechecks pending state, including after another request wins.
+  const receipt = via === 'admin' ? 'admin:' + code : 'sepay:' + ref.slice(0, 80);
+  const results = await env.DB.batch([
+    env.DB.prepare(`INSERT INTO payment_receipts (ref, order_code, received_at)
+      SELECT ?, code, ? FROM orders WHERE code = ? AND status = 'pending' AND amount <= ? AND created_at > ?
+      ON CONFLICT(ref) DO NOTHING`).bind(receipt, now, code, paid, cutoff),
+    env.DB.prepare(`INSERT INTO user_plans (user_id, plan, expires_at, granted_by)
+      SELECT user_id, ?, ?, ? FROM orders WHERE code = ? AND status = 'pending'
+      AND EXISTS (SELECT 1 FROM payment_receipts WHERE ref = ? AND order_code = orders.code)
+      ON CONFLICT(user_id) DO UPDATE SET plan = excluded.plan,
+      expires_at = (CASE WHEN user_plans.plan = excluded.plan AND user_plans.expires_at > ? THEN user_plans.expires_at ELSE ? END) + ?,
+      granted_by = excluded.granted_by`).bind(plan.id, now + (plan.days || 30) * DAY, 'order:' + code, code, receipt, now, now, (plan.days || 30) * DAY),
+    env.DB.prepare(`UPDATE orders SET status = 'paid', paid_at = ?, ref = ?, via = ? WHERE code = ? AND status = 'pending'
+      AND EXISTS (SELECT 1 FROM payment_receipts WHERE ref = ? AND order_code = orders.code)`)
+      .bind(now, ref.slice(0, 80), via, code, receipt),
+  ]);
+  if (!results[2].meta.changes) return null;
+  const until = (await env.DB.prepare('SELECT expires_at FROM user_plans WHERE user_id = ?').bind(o.user_id).first<any>())?.expires_at;
   rc.userId = o.user_id;
   rc.log('order.paid', { data: { code, plan: plan.id, amount: o.amount, via, until } });
   await notifyOwner(env, 'order', `Đã nhận ${o.amount.toLocaleString('vi-VN')}đ cho đơn ${code} (gói ${plan.name}).`);
@@ -129,12 +148,12 @@ export async function sepayWebhook(req: Request, env: XEnv, rc: Rc): Promise<Res
   if (!key || !timingSafeEqual(auth, key)) { rc.log('sepay.webhook', { ok: false, data: { error: 'sai API key' } }); throw new HttpError(401, 'Không có quyền.'); }
   const b = await body<any>(req, 20_000);
   rc.channel = 'system';
-  if (b.transferType && b.transferType !== 'in') return json({ success: true });
+  if (!env.config.payment.enabled || b.transferType !== 'in' || String(b.accountNumber || '') !== env.config.payment.account) return json({ success: true });
   const prefix = env.config.payment.prefix;
   const text = `${b.content || ''} ${b.description || ''} ${b.code || ''}`.toUpperCase();
   const code = text.match(new RegExp(prefix + `[${CODE}]{6}`))?.[0];
   rc.log('sepay.webhook', { data: { id: b.id, amount: b.transferAmount, code: code || null, content: String(b.content || '').slice(0, 120) } });
-  if (code) await confirmOrder(env, rc, code, Number(b.transferAmount) || 0, String(b.referenceCode || b.id || ''), 'sepay');
+  if (code) await confirmOrder(env, rc, code, Number(b.transferAmount), String(b.id || b.referenceCode || ''), 'sepay');
   return json({ success: true });
 }
 

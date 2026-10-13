@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nét Vẽ — phòng thử phong cách</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#0b1220;color:#eaf1ff;font:16px/1.6 system-ui,sans-serif}main{max-width:1160px;margin:auto;padding:40px 24px}p{max-width:850px;color:#b9c7dc}h1{font-size:clamp(28px,4vw,46px);line-height:1.15}.tag{color:#84e9c1;font-weight:700}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:20px}article{background:#152035;border:1px solid #2a3851;border-radius:20px;padding:18px}video{width:100%;aspect-ratio:9/16;background:#070b12;border-radius:12px}h2{font-size:19px}button,a{color:#0b1220;background:#84e9c1;border:0;border-radius:8px;padding:10px 16px;font:inherit;cursor:pointer;text-decoration:none}button:focus-visible,a:focus-visible{outline:3px solid white;outline-offset:4px}.note{background:#152035;padding:20px;border-radius:12px;margin:24px 0}small{color:#b9c7dc}code{color:#84e9c1}.row{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0}
+</style>
+<main><span class="tag">PHÒNG THỬ SẢN PHẨM · DEMO DỰNG TRÊN MÁY CHỦ</span>
+<h1>Một câu chuyện.<br>Bốn cách khiến người xem hiểu.</h1>
+<p>Chủ đề: bắt đầu một thói quen bằng hai phút. So sánh độ rõ của ý, mức chuyển động và khả năng dùng cho kênh của bạn. Đây là MP4 thật, không cần trình duyệt để dựng.</p>
+<div class="note"><strong>Demo hình ảnh, âm thanh mock im lặng.</strong> Phụ đề hiện nội dung lời kể. Giọng EverAI/Google/ElevenLabs cần kiểm chứng riêng bằng tài khoản hợp lệ; demo này không dùng giọng AI trả phí. Video đã tạo nằm trong <code>out/commercial-demo/</code>; tạo lại bằng <code>node tools/commercial-demo.mjs</code>.</div>
+<div class="row"><button id="play">Phát cả bốn</button><button id="pause">Dừng cả bốn</button><button id="reset">Xem lại từ đầu</button></div>
+<div class="grid">
+<article><video controls playsinline preload="metadata" src="../out/commercial-demo/hand.mp4" aria-label="Demo bàn tay vẽ"></video><h2>01 · Bàn tay vẽ</h2><small>Giải thích từng ý. Phù hợp giáo viên và kênh kiến thức; chỉ vẽ từ khóa, tránh bắt người xem chờ nét vẽ dài.</small></article>
+<article><video controls playsinline preload="metadata" src="../out/commercial-demo/motion.mp4" aria-label="Demo đồ họa chuyển động"></video><h2>02 · Đồ họa chuyển động</h2><small>Icon và chữ xuất hiện theo nhịp. Phù hợp mẹo nhanh, nội dung mạng xã hội; tiết kiệm hơn tạo video AI từng cảnh.</small></article>
+<article><video controls playsinline preload="metadata" src="../out/commercial-demo/math.mp4" aria-label="Demo biểu đồ"></video><h2>03 · Biểu đồ & quy trình</h2><small>Đường và bước được dựng từ dữ liệu. Biểu đồ ở đây chỉ minh họa ý tưởng, không phải số liệu nghiên cứu.</small></article>
+<article><video controls playsinline preload="metadata" src="../out/commercial-demo/kinetic.mp4" aria-label="Demo chữ chuyển động"></video><h2>04 · Chữ chuyển động</h2><small>Nhấn một thông điệp rõ. Phù hợp video hook hoặc trích dẫn ngắn; tránh để toàn bộ bài dài chỉ còn chữ.</small></article>
+</div>
+<h2>Nhịp lời kể đề xuất</h2><p>“Bạn có đang chờ có thời gian mới bắt đầu? Thử đổi cách: chỉ dành hai phút cho bước đầu tiên. Mở sách, đọc một trang; mang giày, bước ra cửa. Việc nhỏ đủ dễ để bạn bắt đầu ngay hôm nay.”</p>
+<p>Đọc theo đoạn để giữ ngữ điệu. Câu thoại vẫn là đơn vị phụ đề và nét vẽ; không bắt giọng đọc phải dừng mỗi khi đổi câu. Có thể phối bàn tay vẽ ở đoạn giải thích với chữ chuyển động ở câu chốt; chế độ phối trong một video là đề xuất tiếp theo, chưa được triển khai.</p>
+<div class="row"><a href="commercial-plan.md">Đọc đề xuất thương mại</a></div>
+<p id="status" role="status"></p></main>
+<script>
+const videos=[...document.querySelectorAll('video')],status=document.getElementById('status');
+document.getElementById('play').onclick=async()=>{const results=await Promise.allSettled(videos.map(v=>v.play()));status.textContent=results.some(r=>r.status==='rejected')?'Không tải được một số video. Hãy chạy lệnh tạo demo, hoặc phát từng video bằng nút điều khiển.':'Đang phát bốn phong cách.'};
+document.getElementById('pause').onclick=()=>videos.forEach(v=>v.pause());
+document.getElementById('reset').onclick=()=>{videos.forEach(v=>{v.pause();v.currentTime=0});status.textContent='Đã quay về đầu video.'};
+</script></html>

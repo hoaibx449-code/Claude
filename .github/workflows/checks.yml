@@ -1,0 +1,29 @@
+name: Kiểm tra ứng dụng
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Cài công cụ dựng và kiểm thử SQLite
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg python3
+      - run: npm ci --no-fund
+      - run: npm audit --audit-level=high
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run web:build

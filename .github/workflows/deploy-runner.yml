@@ -16,6 +16,7 @@ env:
   REPO: net-ve
   JOB: net-ve-runner
   TRIGGER_SA: nv-trigger
+  RUNTIME_SA: nv-render
 
 jobs:
   deploy:
@@ -55,12 +56,18 @@ jobs:
           ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
         run: |
           test -n "$NV_API_URL" || { echo "Thiếu secret NV_API_URL"; exit 1; }
+          RUNTIME_ID="$RUNTIME_SA@$GCP_PROJECT.iam.gserviceaccount.com"
+          gcloud iam service-accounts describe "$RUNTIME_ID" >/dev/null 2>&1 \
+            || gcloud iam service-accounts create "$RUNTIME_SA" --display-name "Net Ve: isolated render runtime"
+          # No project-wide role is granted to the runtime. Explicit API keys can
+          # enable paid TTS; otherwise the container's offline voice is available.
           umask 077
           node -e '
             const keys = ["NV_API_URL","RUNNER_TOKEN","EVERAI_API_KEY","EVERAI_VOICE_CODE","GOOGLE_TTS_API_KEY","ELEVENLABS_API_KEY","ELEVENLABS_VOICE_ID"];
             const out = Object.fromEntries(keys.filter((k) => process.env[k]).map((k) => [k, process.env[k]]));
             require("fs").writeFileSync("runner-env.json", JSON.stringify(out));'
           gcloud run jobs deploy "$JOB" --image "$IMAGE" --region "$REGION" \
+            --service-account "$RUNTIME_ID" \
             --tasks 1 --max-retries 0 --task-timeout 3600 --cpu 2 --memory 2Gi \
             --env-vars-file runner-env.json
           rm -f runner-env.json

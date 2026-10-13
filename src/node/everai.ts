@@ -1,9 +1,9 @@
 // EverAI text-to-speech (everai.vn). Asynchronous API:
 //   POST {EVERAI_API_URL}            -> { status: 1, result: { request_id } }
 //   GET  {EVERAI_API_URL}/{id}       -> { result: { status, audio_link, ... } }
-// Each line is synthesised separately so subtitle/drawing timing is exact
-// (EverAI returns no word timestamps). Clips are cached by their exact request,
-// so re-rendering never pays for the same sentence twice.
+// Read whole paragraphs to preserve prosody. EverAI has no word timestamps:
+// subtitle/drawing cues are estimates fitted to the measured audio duration.
+// Requests are cached by content and voice settings to avoid repeat charges.
 //
 // Environment:
 //   EVERAI_API_KEY     Bearer key from the EverAI dashboard (required)
@@ -12,13 +12,30 @@
 //   EVERAI_API_URL     default https://www.everai.vn/api/v1/tts
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { joinLineClips, need, type TTS } from './tts.ts';
+import { join, resolve } from 'node:path';
+import { audioDuration, fitVoice, joinLineClips, need, type TTS } from './tts.ts';
 import { describe, fetchRetry } from './net.ts';
 
 export const EVERAI_URL = 'https://www.everai.vn/api/v1/tts';
 export const EVERAI_MODELS = ['everai-v1.6', 'everai-v1.5', 'everai-v1.5-turbo', 'everai-v1'];
 const MAX_CHARS = 5000;
+
+export function narrationChunks(lines: string[]): string[][] {
+  const chunks: string[][] = [];
+  let current: string[] = [], length = 0;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line.length > MAX_CHARS) throw new Error(`Câu thoại phải có từ 1 đến ${MAX_CHARS} ký tự.`);
+    if (length + (current.length ? 1 : 0) + line.length > MAX_CHARS) {
+      chunks.push(current); current = []; length = 0;
+    }
+    length += (current.length ? 1 : 0) + line.length;
+    current.push(line);
+  }
+  if (current.length) chunks.push(current);
+  if (!chunks.length) throw new Error('Kịch bản chưa có lời đọc.');
+  return chunks;
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -63,21 +80,32 @@ export function everAITTS(opts: EverAIOptions = {}): TTS {
         pitch_rate: Math.round(clamp(opts.pitch ?? 1.0, 0.5, 2.0) * 10) / 10,
         volume: Math.round(clamp(opts.volume ?? 100, 50, 150)),
       };
-      const cacheDir = opts.cacheDir ?? join(outBase, '..', '..', '.cache', 'everai');
+      // Work folders are per render and runner jobs are deleted after completion.
+      // Keep voice reuse outside those folders. Cloud Run instances still need a
+      // shared cache for reuse across machines; this is a local persistent cache.
+      const cacheDir = opts.cacheDir ?? process.env.NV_VOICE_CACHE_DIR ?? resolve('.cache', 'everai');
       mkdirSync(cacheDir, { recursive: true });
 
       const clips: string[] = [];
-      for (let i = 0; i < lines.length; i++) {
-        const text = lines[i].trim();
-        if (text.length > MAX_CHARS) throw new Error(`Câu ${i + 1} dài quá ${MAX_CHARS} ký tự (giới hạn của EverAI)`);
+      const spans = [];
+      let elapsed = 0;
+      const chunks = narrationChunks(lines);
+      for (let i = 0; i < chunks.length; i++) {
+        const text = chunks[i].join(' ');
         const body = { response_type: 'indirect', input_text: text, ...params };
         const cached = join(cacheDir, createHash('sha256').update(JSON.stringify(body)).digest('hex').slice(0, 24) + '.mp3');
         const clip = `${outBase}-l${i}.mp3`;
         if (!existsSync(cached)) writeFileSync(cached, await requestOne(url, headers, body, pollMs, timeoutMs));
         copyFileSync(cached, clip);
         clips.push(clip);
+        const duration = audioDuration(clip);
+        spans.push(...fitVoice(chunks[i], duration).map((s) => ({ start: elapsed + s.start, end: elapsed + s.end })));
+        elapsed += duration;
       }
-      return joinLineClips(clips, outBase);
+      if (clips.length === 1) return { file: clips[0], lines: spans, duration: elapsed };
+      const joined = joinLineClips(clips, outBase, 0);
+      const scale = joined.duration / elapsed;
+      return { ...joined, lines: spans.map((s) => ({ start: s.start * scale, end: s.end * scale })) };
     },
   };
 }
@@ -85,7 +113,7 @@ export function everAITTS(opts: EverAIOptions = {}): TTS {
 async function requestOne(url: string, headers: Record<string, string>, body: object, pollMs: number, timeoutMs: number): Promise<Buffer> {
   // creating a request is not retried automatically: a lost answer could mean a paid duplicate
   let res: Response;
-  try { res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) }); }
+  try { res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) }); }
   catch (e) { throw new Error(`Không gửi được yêu cầu giọng tới EverAI: ${describe(e)}`); }
   const j: any = await res.json().catch(() => ({}));
   if (res.status === 401 || res.status === 403) throw new Error(`Khoá EverAI không hợp lệ hoặc đã hết hạn (HTTP ${res.status})`);
