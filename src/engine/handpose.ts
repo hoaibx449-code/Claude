@@ -1,7 +1,8 @@
 // Adaptive hand positioning: the drawing hand comes in from outside the frame at the angle that
-// suits the stroke being drawn. Five photographed poses (assets/hands/poses, made by
-// tools/hands-build.py) give the ways in: from the bottom right (A), the right (B), below (C,
-// the bottom-right pose turned rigidly), the bottom left (D) and the top (E). The photo is used
+// suits the stroke being drawn. Photographed pen-free hands (assets/hands/poses, made by
+// tools/hands-attach.py, which learns where the pen sits from photos of the same poses with a
+// pen) give the ways in: from the bottom right (A), the right (B), below (C), the bottom left (D)
+// and the top (E); some are a photo turned rigidly, never mirrored or bent. The photo is used
 // as it is, large, like a real hand over the board: its own forearm must run out past the frame
 // edge, it is never lengthened. A way in is possible for a stroke only when the photo's cut edge
 // stays outside the frame; among those the planner weighs how much of the drawing the hand
@@ -31,12 +32,12 @@ export interface PoseAsset { img: Img; fingers: Img; meta: PoseMeta }
 /** The ways in: a pose and a rigid turn of it (never a mirrored or twisted hand). */
 export interface Way { key: 'A' | 'B' | 'C' | 'D' | 'E' | 'E2'; id: string; rot: number; prior: [number, number] }
 export const WAYS: Way[] = [
-  { key: 'A', id: '5', rot: 0, prior: [0, 0.12] },
-  { key: 'B', id: '4', rot: 0, prior: [0.22, 0] },
-  { key: 'C', id: '5', rot: 0.5, prior: [0.12, 0.28] },
-  { key: 'D', id: '2', rot: 0, prior: [0.35, 0.35] },
-  { key: 'E', id: '3', rot: 0, prior: [0.4, 0.5] },
-  { key: 'E2', id: '1', rot: 0, prior: [0.35, 0.45] },
+  { key: 'A', id: '7', rot: 0.15, prior: [0, 0.12] },
+  { key: 'B', id: '6', rot: 0, prior: [0.22, 0] },
+  { key: 'C', id: '7', rot: 0.6, prior: [0.12, 0.28] },
+  { key: 'D', id: '9', rot: 0, prior: [0.35, 0.35] },
+  { key: 'E', id: '8', rot: -0.45, prior: [0.4, 0.5] },
+  { key: 'E2', id: '8', rot: 0, prior: [0.35, 0.45] },
 ];
 
 /** Something the hand draws: its time window and the nib at progress q (screen coordinates). */
@@ -207,7 +208,7 @@ export function handAt(plan: HandPlan, t: number): { way: number; x: number; y: 
     const s0 = inStart(b), u = (t - s0) / IN;
     if (u < 0 || u >= 1) return null;
     const target = t < tasks[b].start ? tasks[b].pen(0) : penAt(b, t);
-    return away(choice[b], target, 1 - u, clamp((1 - u) * 2));
+    return away(choice[b], target, 1 - u, clamp(1 - u));
   };
   if (i >= 0 && t <= tasks[i].end) {
     // drawing task i (or the hand is still on its way in)

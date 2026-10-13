@@ -41,13 +41,13 @@ test('the five ways in come from the photographed poses, each with its anchors',
   }
 });
 
-for (const ratio of ['9:16', '16:9'] as const) {
-  test(`adaptive hand (${ratio}): the photo's forearm runs off the frame, nib on the stroke, no jumps between ways`, async () => {
+for (const [file, ratio] of [['sketchnote', '9:16'], ['sketchnote', '16:9'], ['charts', '9:16'], ['charts', '16:9']] as const) {
+  test(`adaptive hand (${file} ${ratio}): the photo's forearm runs off the frame, nib on the stroke, no jumps between ways`, async () => {
     setPeeps(null);
-    const m = await model('../examples/phong-cach/sketchnote.json', ratio), plan = m.handPlan!;
+    const m = await model(`../examples/phong-cach/${file}.json`, ratio), plan = m.handPlan!;
     assert.ok(plan && plan.tasks.length > 10);
     const used = new Set(plan.choice.filter((c) => c >= 0).map((c) => plan.ways[c].key));
-    if (ratio === '9:16') assert.ok(used.size >= 2, `the hand comes in more than one way (${[...used]})`);
+    if (ratio === '9:16' && file === 'sketchnote') assert.ok(used.size >= 2, `the hand comes in more than one way (${[...used]})`);
     assert.ok(plan.choice.filter((c) => c < 0).length <= plan.choice.length * 0.1, 'almost every stroke has a hand');
     const F = frames(plan, m.timeline.duration);
     // like a person drawing: the hand is there for most of the drawing time
@@ -60,7 +60,8 @@ for (const ratio of ['9:16', '16:9'] as const) {
       // the photo's own forearm always runs out past an edge (it is never lengthened)
       assert.ok(g.out || !inFrame(plan, g), `forearm cut visible at ${t.toFixed(2)}s`);
       // while drawing (once the hand has arrived), the nib is exactly on the stroke
-      const k = plan.tasks.findIndex((x) => t >= x.start && t <= x.end);
+      // (when two things overlap in time, the hand is on the one that started last)
+      let k = -1; plan.tasks.forEach((x, j) => { if (t >= x.start && t <= x.end) k = j; });
       if (k >= 0 && h.lift === 0 && plan.choice[k] === h.way) { const p = plan.tasks[k].pen((t - plan.tasks[k].start) / (plan.tasks[k].end - plan.tasks[k].start)); assert.ok(Math.hypot(p[0] - h.x, p[1] - h.y) < 1e-6); }
       // a change of way happens only out of the frame
       const prev = F[i - 1];
