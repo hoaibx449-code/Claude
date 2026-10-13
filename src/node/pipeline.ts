@@ -21,7 +21,7 @@ export async function loadPoses(dir: string) {
   if (!existsSync(join(dir, 'poses.json'))) return undefined;
   const out: Record<string, any> = {};
   for (const pm of JSON.parse(readFileSync(join(dir, 'poses.json'), 'utf8'))) {
-    out[pm.id] = { meta: pm, img: await loadImage(join(dir, `hand-${pm.id}.webp`)), fingers: await loadImage(join(dir, `fingers-${pm.id}.webp`)), arm: await loadImage(join(dir, `arm-${pm.id}.png`)) };
+    out[pm.id] = { meta: pm, img: await loadImage(join(dir, `hand-${pm.id}.webp`)), fingers: await loadImage(join(dir, `fingers-${pm.id}.webp`)) };
   }
   return out;
 }

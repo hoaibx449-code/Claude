@@ -7,7 +7,7 @@ import numpy as np, json, sys, os, cv2
 from PIL import Image
 src, out = sys.argv[1], sys.argv[2]
 names = {'1': 'E', '2': 'D', '3': 'C', '4': 'B', '5': 'A'}  # filled below from the measured exit
-SCALE = 0.46  # one scale for every pose: the photos share the same hand size
+SCALE = 0.75  # one scale for every pose (the photos share the same hand size); sharp at 1080p
 os.makedirs(out, exist_ok=True)
 poses = []
 for f in sorted(os.listdir(src)):
@@ -114,10 +114,10 @@ for f in sorted(os.listdir(src)):
     wrist = best[1] if best[1] is not None else (grip + p0) / 2
     # scale and pad: the forearm is extruded beyond the cut line (no stretching of the hand)
     k = SCALE
-    ext = 40.0  # a short overlap past the cut; the rest of the forearm is drawn at render time from the arm strip
+    ext = 0.0  # the photo is used as it is: its own forearm, never lengthened
     corners = np.array([[0, 0], [W, 0], [0, H], [W, H]], float)
     far = p0 + fd * ext
-    pts = np.vstack([corners, far + fn * half * 1.2, far - fn * half * 1.2])
+    pts = corners
     x0, y0 = np.floor(pts.min(0)); x1, y1 = np.ceil(pts.max(0))
     OW, OH = int(x1 - x0), int(y1 - y0)
     canvas = np.zeros((OH, OW, 4), np.uint8); fcan = np.zeros((OH, OW, 4), np.uint8)
@@ -126,31 +126,22 @@ for f in sorted(os.listdir(src)):
     # everything past the cut line comes from the cross-section at the cut
     OY, OX = np.mgrid[0:OH, 0:OW]; Q = np.stack([OX + x0, OY + y0], -1).astype(float)
     along = (Q - p0) @ fd; across = (Q - p0) @ fn
-    m = along > 0
-    S = p0 + np.outer(across[m], fn)  # sample point on the cut line (back along the forearm)
-    sx = np.clip(np.round(S[:, 0]).astype(int), 0, W - 1); sy = np.clip(np.round(S[:, 1]).astype(int), 0, H - 1)
-    sec = hand[sy, sx].copy()
-    canvas[m] = sec
+    # (no extrusion: whatever lies past the photo's edge simply is not there)
     # resize
     OWs, OHs = max(2, int(round(OW * k))), max(2, int(round(OH * k)))
     hi = Image.fromarray(canvas).resize((OWs, OHs), Image.LANCZOS)
     fi = Image.fromarray(fcan).resize((OWs, OHs), Image.LANCZOS)
     tr = lambda p: [round(float((p[0] - x0) * k), 2), round(float((p[1] - y0) * k), 2)]
     pid = os.path.splitext(f)[0]
-    # the forearm's cross-section at the cut (a 1-pixel-long strip, across the arm from -fn to +fn)
-    N = int(round(2 * (half + 4)))
-    strip = np.zeros((N, 1, 4), np.uint8)
-    for j in range(N):
-        q = p0 - fd * 3 + fn * (j - N / 2)
-        xi, yi = int(round(q[0])), int(round(q[1]))
-        if 0 <= xi < W and 0 <= yi < H: strip[j, 0] = hand[yi, xi]
-    Image.fromarray(strip).resize((2, max(2, int(round(N * k)))), Image.LANCZOS).save(os.path.join(out, f'arm-{pid}.png'))
     hi.save(os.path.join(out, f'hand-{pid}.webp'), quality=88, method=6)
     fi.save(os.path.join(out, f'fingers-{pid}.webp'), quality=88, method=6)
     ang = lambda v: round(float(np.arctan2(v[1], v[0])), 4)
     # bounding box of the hand itself (without the extrusion), for occlusion
     hy, hx = np.nonzero(hand[..., 3] > 100)
-    poses.append({'id': pid, 'width': OWs, 'height': OHs, 'tip': tr(tip), 'back': tr(back), 'grip': tr(grip), 'wrist': tr(wrist), 'cut': tr(p0),
+    bx_, by_ = bx.astype(float), by.astype(float)
+    along_e = (np.stack([bx_, by_], 1) - ex) @ fn
+    e_a = np.array([bx_[along_e.argmin()], by_[along_e.argmin()]]); e_b = np.array([bx_[along_e.argmax()], by_[along_e.argmax()]])
+    poses.append({'id': pid, 'scale': SCALE, 'edge': [tr(e_a), tr(ex), tr(e_b)], 'width': OWs, 'height': OHs, 'tip': tr(tip), 'back': tr(back), 'grip': tr(grip), 'wrist': tr(wrist), 'cut': tr(p0),
         'penWidth': round(float(2 * hw * k), 2), 'penAxis': ang(ax), 'forearm': ang(fd), 'armHalf': round(float(half * k), 1),
         'box': [round(float((hx.min() - x0) * k)), round(float((hy.min() - y0) * k)), round(float((hx.max() - x0) * k)), round(float((hy.max() - y0) * k))]})
     print(pid, poses[-1])
