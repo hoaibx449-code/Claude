@@ -97,9 +97,9 @@ export interface SiteConfig {
 export type Vis = 'on' | 'dev' | 'hidden';
 export interface ZaloConfig {
   enabled: boolean; botLink: string;
-  /** how messages reach the site: auto (webhook when it works, else polling), webhook only, polling only */
-  /** relay: the bot is shared with another site that owns the webhook and forwards messages here */
-  receive: 'auto' | 'webhook' | 'poll' | 'relay';
+  /** how messages reach the site: webhook (direct, as the Zalo Bot SDK recommends for production),
+   *  poll (long polling every minute, no public address needed), auto (webhook while it works, else polling) */
+  receive: 'webhook' | 'poll' | 'auto';
   /** People who message the bot without a web account get one automatically. */
   allowGuests: boolean;
   /** How a script sent by chat is illustrated: free rules or AI. */
@@ -202,7 +202,7 @@ export function defaultConfig(env: Env): Config {
     logDays: 180,
     visibility: { 'feature:music': 'dev', 'look:story': 'hidden' },
     zalo: {
-      enabled: false, botLink: '', receive: 'auto', allowGuests: true, scriptSource: 'mine-free', autoRender: true, ownerChat: '',
+      enabled: false, botLink: '', receive: 'webhook', allowGuests: true, scriptSource: 'mine-free', autoRender: true, ownerChat: '',
       notifyOwner: { signup: true, failed: true, order: true, daily: false },
       templates: {
         help: 'Chào {ten}! Gửi cho mình:\n• KB + kịch bản của bạn → mình dựng video\n• TAO + chủ đề → AI viết kịch bản rồi dựng\n• TT → xem video đang dựng\n• DS → video gần đây\n• KHUNG DOC hoặc KHUNG NGANG → đổi khung hình\n• DINHDANG → chọn định dạng video\n• GIONG → chọn giọng đọc\n• TAT / BAT → tắt/bật thông báo\n• HUYKETNOI → bỏ liên kết',
@@ -326,7 +326,7 @@ export function cleanConfig(input: any, base: Config): Config {
       const tpl: Record<string, string> = {};
       for (const k of Object.keys(b.templates)) tpl[k] = typeof z.templates?.[k] === 'string' && z.templates[k].trim() ? z.templates[k].slice(0, 1500) : b.templates[k];
       return {
-        enabled: typeof z.enabled === 'boolean' ? z.enabled : b.enabled, receive: ['auto', 'webhook', 'poll', 'relay'].includes(z.receive) ? z.receive : 'auto', botLink: /^https:\/\/[^\s"<>]{4,200}$/.test(z.botLink || '') ? z.botLink : z.botLink === '' ? '' : b.botLink,
+        enabled: typeof z.enabled === 'boolean' ? z.enabled : b.enabled, receive: z.receive === 'poll' || z.receive === 'auto' ? z.receive : 'webhook', botLink: /^https:\/\/[^\s"<>]{4,200}$/.test(z.botLink || '') ? z.botLink : z.botLink === '' ? '' : b.botLink,
         allowGuests: typeof z.allowGuests === 'boolean' ? z.allowGuests : b.allowGuests, scriptSource: z.scriptSource === 'mine-ai' ? 'mine-ai' : 'mine-free',
         autoRender: typeof z.autoRender === 'boolean' ? z.autoRender : b.autoRender, ownerChat: /^[\w.-]{1,80}$/.test(z.ownerChat || '') ? z.ownerChat : z.ownerChat === '' ? '' : b.ownerChat,
         notifyOwner: { signup: z.notifyOwner?.signup ?? b.notifyOwner.signup, failed: z.notifyOwner?.failed ?? b.notifyOwner.failed, order: z.notifyOwner?.order ?? b.notifyOwner.order, daily: z.notifyOwner?.daily ?? b.notifyOwner.daily },

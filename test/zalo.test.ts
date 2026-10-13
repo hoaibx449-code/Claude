@@ -86,22 +86,29 @@ test('blocked Zalo accounts receive an explanation and cannot queue another vide
  await f.receive('KB Kịch bản khác đủ dài để dựng một video mới.','blocked');await f.drain();
  assert.match(f.sent.at(-1).body.text,/bị khóa/);assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM jobs').first()).n,1);
 }));
-test('a shared bot: messages forwarded by the other site (secret in the address, no header) are answered, and the webhook is left alone',async()=>fixture(async f=>{
- f.env.config.zalo.receive='relay';
+test('standalone bot like the Zalo Bot SDK: direct webhook, SDK header accepted, old shared-bot setting becomes webhook',async()=>fixture(async f=>{
  const { receiveMode, pollZalo } = await import('../web/src/zalo.ts');
- assert.equal(await receiveMode(f.env),'relay');
- // the Apps Script forwards the raw Zalo update to the address shown on the admin page
- const relay=await (await zaloAdmin(new Request('https://studio.test/api/admin/zalo/relay'),f.env,f.env,'zalo/relay','GET',f.rc)).json();
- assert.match(relay.url,/^https:\/\/studio\.test\/api\/zalo\/webhook\?s=[a-f0-9]{48}$/);
- const res=await zaloWebhook(new Request(relay.url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ok:true,result:{event_name:'message.text.received',message:{message_id:'r1',chat:{id:'chat-9'},from:{display_name:'Khách'},text:'GIUP'}}})}),f.env,f.rc);
- assert.equal((await res.json()).ok,true);await f.drain();
+ const { cleanConfig } = await import('../web/src/settings.ts');
+ // the removed Apps Script relay setting turns into the direct webhook
+ assert.equal(cleanConfig({zalo:{receive:'relay'}},f.env.config).zalo.receive,'webhook');
+ assert.equal(defaultConfig(f.env).zalo.receive,'webhook');
+ assert.equal(await receiveMode(f.env),'webhook');
+ // X-Zalo-Signature (SDK example) carries the same secret
+ const res=await zaloWebhook(new Request('https://studio.test/api/zalo/webhook',{method:'POST',headers:{'content-type':'application/json','x-zalo-signature':await webhookSecret(f.env)},body:JSON.stringify({event_name:'message.text.received',message:{message_id:'s1',chat:{id:'chat-9',chat_type:'PRIVATE'},from:{id:'u9',display_name:'Khách'},text:'GIUP'}})}),f.env,f.rc);
+ assert.equal((await res.json()).recorded,true);await f.drain();
  assert.equal(f.sent.at(-1).body.chat_id,'chat-9');
- // connecting the webhook from this site is refused: it would take the bot away from the other site
- await assert.rejects(zaloAdmin(new Request('https://studio.test/api/admin/zalo/connect',{method:'POST'}),f.env,f.env,'zalo/connect','POST',f.rc),/Dùng chung|dùng chung/);
- // and polling never removes another site's webhook
- f.env.config.zalo.receive='poll';f.setResponse({ok:true,result:{url:'https://script.google.com/macros/s/abc/exec?zl=x'}});
- const before=f.sent.length;await pollZalo(f.env,f.rc,4000);
- assert.ok(!f.sent.slice(before).some((s: any)=>/deleteWebhook/.test(s.url)));
+ // no forwarding address any more
+ await assert.rejects(zaloAdmin(new Request('https://studio.test/api/admin/zalo/relay'),f.env,f.env,'zalo/relay','GET',f.rc),/Không tìm thấy/);
+ // "Kết nối webhook" moves the bot here with url + secret_token, as SetWebhookRequest does
+ f.setResponse({ok:true,result:{url:'https://studio.test/api/zalo/webhook?s='+await webhookSecret(f.env)}});
+ const before=f.sent.length;
+ const connected=await (await zaloAdmin(new Request('https://studio.test/api/admin/zalo/connect',{method:'POST'}),f.env,f.env,'zalo/connect','POST',f.rc)).json();
+ assert.equal(connected.url,'https://studio.test/api/zalo/webhook');
+ const set=f.sent.slice(before).find((x: any)=>/setWebhook$/.test(x.url));assert.equal(set.body.secret_token,await webhookSecret(f.env));
+ // polling never removes another site's webhook by itself: the admin moves it with "Kết nối webhook"
+ f.env.config.zalo.receive='poll';f.setResponse({ok:true,result:{url:'https://script.google.com/macros/s/abc/exec'}});
+ const b2=f.sent.length;const r=await pollZalo(f.env,f.rc,4000);
+ assert.equal(r.error,'foreign webhook');assert.ok(!f.sent.slice(b2).some((x: any)=>/deleteWebhook/.test(x.url)));
 }));
 test('commands typed the way people speak: Vietnamese words with spaces, accents and punctuation',async()=>{
  const { parseCommand }=await import('../web/src/zalo.ts');

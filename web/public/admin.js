@@ -375,40 +375,15 @@ function musicCard(c) {
     list, h('button', { type: 'button', class: 'ghost small', onclick: () => { c.music.push({ id: 'nhac-' + Date.now().toString(36).slice(-5), title: '', file: '' }); draw(); } }, '+ Thêm bản nhạc'));
 }
 
-/**
- * One Zalo bot for two sites: the other site (e.g. an Apps Script web) keeps the bot's webhook
- * and forwards here every message it does not handle; this site answers with the same bot token.
- */
-function relayCard(z) {
-  const box = h('div');
-  const show = async () => {
-    try {
-      const { url } = await api('/api/admin/zalo/relay');
-      const copy = (text) => navigator.clipboard?.writeText(text).then(() => toast('Đã sao chép.'), () => {});
-      box.replaceChildren(
-        h('ol', {},
-          h('li', {}, 'Chọn chế độ "Dùng chung bot với web khác" ở trên rồi Lưu. Web này sẽ không đổi webhook của bot và không hỏi định kỳ nữa.'),
-          h('li', {}, 'Ở mục Khoá API, dán đúng token của bot mà web kia đang dùng.'),
-          h('li', {}, 'Ở web kia (Apps Script): dán bản vá Code.gs (hàm _netveChuyen_). Lưu địa chỉ dưới đây bằng một trong ba cách: thêm một dòng vào trang tính CauHinh (cột Key: NETVE_RELAY_URL, cột Value: địa chỉ), hoặc dán vào biến NETVE_RELAY_URL_ trong Code.gs, hoặc Script Properties nếu còn chỗ. Rồi triển khai lại.'),
-          h('li', {}, 'Nhắn HUONGDAN cho bot: web kia giữ lệnh của nó (duyet, huy, don, mã KETNOI của nó), mọi tin còn lại web này trả lời.')),
-        h('label', {}, 'Địa chỉ chuyển tiếp (giữ bí mật)', h('div', { class: 'row' }, h('input', { value: url, readonly: true, onfocus: (e) => e.target.select() }), h('button', { type: 'button', class: 'ghost small', onclick: () => copy(url) }, 'Sao chép'))));
-    } catch (e) { box.replaceChildren(h('p', { class: 'bad' }, e.message)); }
-  };
-  const details = h('details', { open: z.receive === 'relay' }, h('summary', {}, 'Dùng chung bot với web khác (Apps Script / FACIUP)'), box);
-  details.addEventListener('toggle', () => { if (details.open && !box.childNodes.length) show(); });
-  if (details.open) show();
-  return card('Dùng chung một bot Zalo', 'Một bot chỉ có một webhook. Nếu web khác đang chạy tốt với bot này, để webhook ở web đó và cho nó chuyển tiếp tin sang đây, thay vì hai web giành nhau webhook.', details);
-}
 function zaloTab(c, secrets, secretInput, zcheck, inbox) {
   const z = c.zalo;
   const action = (label, fn) => h('button', { type: 'button', class: 'ghost small', onclick: async (event) => { const button = event.currentTarget; button.disabled = true; try { await fn(); } catch (e) { fail(e); } finally { button.disabled = false; } } }, label);
   const out = h('div');
   const tplNames = { help: 'Hướng dẫn (HUONGDAN)', linked: 'Khi kết nối xong', queued: 'Khi nhận yêu cầu dựng', done: 'Khi video xong', failed: 'Khi dựng lỗi', unknown: 'Khi không hiểu tin nhắn', noAI: 'Khi chưa có AI (lệnh TAO)' };
   return [
-    card('Cách nhận tin nhắn', 'Tự động: dùng webhook khi nó đang chạy, nếu không web tự hỏi Zalo mỗi phút (không cần webhook, không phụ thuộc tường lửa). Trả lời chậm hơn tối đa khoảng 1 phút.',
-      h('div', { class: 'grid' }, h('label', {}, 'Chế độ', select([['auto', 'Tự động (khuyên dùng)'], ['poll', 'Luôn hỏi định kỳ (không cần webhook)'], ['webhook', 'Chỉ webhook'], ['relay', 'Dùng chung bot với web khác (nhận chuyển tiếp)']], z.receive || 'auto', (v) => { z.receive = v; }))),
-      zcheck?.recv ? h('p', { class: 'muted' }, `Đang dùng: ${({ poll: 'hỏi định kỳ', relay: 'nhận chuyển tiếp từ web khác', webhook: 'webhook' })[zcheck.recv.mode] || 'webhook'}` + (zcheck.recv.status?.at ? ` · lần gần nhất ${fmtDate(zcheck.recv.status.at)}` : '') + (zcheck.recv.status?.error ? ` · lỗi: ${zcheck.recv.status.error}` : '')) : null),
-    relayCard(z),
+    card('Cách nhận tin nhắn', 'Bot chạy độc lập trên web này. Webhook trực tiếp: Zalo gọi thẳng về web, trả lời ngay (khuyên dùng). Hỏi định kỳ: web tự hỏi Zalo mỗi phút, không cần webhook, trả lời chậm hơn tối đa khoảng 1 phút. Tự động: webhook khi nó chạy, nếu không thì hỏi định kỳ.',
+      h('div', { class: 'grid' }, h('label', {}, 'Chế độ', select([['webhook', 'Webhook trực tiếp (khuyên dùng)'], ['poll', 'Hỏi định kỳ (không cần webhook)'], ['auto', 'Tự động']], z.receive === 'poll' || z.receive === 'auto' ? z.receive : 'webhook', (v) => { z.receive = v; }))),
+      zcheck?.recv ? h('p', { class: 'muted' }, `Đang dùng: ${({ poll: 'hỏi định kỳ', webhook: 'webhook trực tiếp' })[zcheck.recv.mode] || 'webhook trực tiếp'}` + (zcheck.recv.status?.at ? ` · lần gần nhất ${fmtDate(zcheck.recv.status.at)}` : '') + (zcheck.recv.status?.error ? ` · lỗi: ${zcheck.recv.status.error}` : '')) : null),
     card('Kiểm tra kết nối', 'Làm lần lượt từ trên xuống. Lưu cài đặt trước khi bấm Kết nối webhook (chỉ cần khi dùng webhook).',
       zcheck ? h('ul', {}, zcheck.steps.map((s) => h('li', { class: s.ok ? 'ok' : 'bad' }, (s.ok ? '✓ ' : '✗ ') + s.k, s.detail ? h('small', { class: 'muted' }, ' — ' + s.detail) : null, !s.ok ? h('div', { class: 'muted' }, '→ ' + s.fix) : null))) : null,
       zcheck ? h('p', { class: 'muted' }, `${zcheck.links?.n || 0} người đã kết nối (${zcheck.links?.guests || 0} chỉ dùng Zalo).`) : null,
