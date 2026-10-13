@@ -21,8 +21,11 @@ export function buildTimeline(scenes: SceneSpec[], voice: { lines: Span[]; durat
       const li = Math.min(p.line ?? k, lines.length - 1);
       const line = lines[li];
       const start = line.start + 0.05;
-      // draw while the line is spoken, never shorter than 1.2s nor longer than 2.4s
-      const dur = Math.max(1.2, Math.min(2.4, (line.end - line.start) * 0.85));
+      // drawn stroke by stroke while the narration is about it: until the next picture's line
+      // starts (or the scene's last words), never shorter than 1.2s nor longer than 7s
+      const nextLine = k + 1 < sc.panels.length ? Math.min(sc.panels[k + 1].line ?? k + 1, lines.length - 1) : lines.length;
+      const until = nextLine > li && nextLine < lines.length ? lines[nextLine].start - 0.3 : lines[lines.length - 1].end - 0.1;
+      const dur = Math.max(1.2, Math.min(7, until - start));
       return { start, end: Math.min(start + dur, end - 0.15) };
     });
     // panels tied to the same line are drawn one after the other
