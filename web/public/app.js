@@ -1332,7 +1332,7 @@ let iconSet = null;
 const getIcons = () => (iconSet ||= fetch('/assets/icons/tabler.json').then((r) => r.json()).catch(() => ({})));
 let handAsset = null;
 /** Bump when assets/hands/poses changes (tools/hands-build.py). */
-const HAND_VERSION = 3;
+const HAND_VERSION = 4;
 async function getHand() {
   if (!handAsset) {
     const [img, fingers, meta] = await Promise.all([loadImg('/assets/hands/default/hand.webp'), loadImg('/assets/hands/default/fingers.webp'),
