@@ -52,6 +52,46 @@ export async function checkShare(env: Env, jobId: string, exp: number, sig: stri
 const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
 const fill = (tpl: string, v: Record<string, string | number>) => tpl.replace(/\{(\w+)\}/g, (_, k) => (v[k] ?? '').toString());
 
+// People type commands the way they speak: "Hướng dẫn", "trạng thái?", "Hủy kết nối", "KB: ...".
+// Longest first, so "KICH BAN MAU" wins over "KICH BAN".
+const PHRASES: [string, string][] = ([
+  ['HUY KET NOI', 'HUYKETNOI'], ['HUY LIEN KET', 'HUYKETNOI'], ['BO KET NOI', 'HUYKETNOI'], ['BO LIEN KET', 'HUYKETNOI'],
+  ['KICH BAN MAU', 'MAU'], ['MAU KICH BAN', 'MAU'], ['HUONG DAN', 'HUONGDAN'], ['TRO GIUP', 'GIUP'], ['XIN CHAO', 'XINCHAO'],
+  ['TRANG THAI', 'TT'], ['TIEN DO', 'TT'], ['DANH SACH', 'DS'], ['DINH DANG', 'DINHDANG'], ['PHONG CACH', 'PHONGCACH'],
+  ['GIONG DOC', 'GIONG'], ['KHUNG HINH', 'KHUNG'], ['KICH BAN', 'KICHBAN'], ['KET NOI', 'KETNOI'], ['CHU WEB', 'CHUWEB'], ['TAO VIDEO', 'TAO'],
+] as [string, string][]).sort((a, b) => b[0].split(' ').length - a[0].split(' ').length);
+
+/** Command word (folded, upper case), the words after it (folded) and the original text after it. */
+export function parseCommand(text: string) {
+  const raw = String(text || '').trim();
+  const words = fold(raw).split(/\s+/).filter(Boolean);
+  const key = (w: string) => (w === '?' ? '?' : w.toUpperCase().replace(/[^A-Z0-9]/g, ''));
+  const keys = words.map(key);
+  let n = keys.length ? 1 : 0, cmd = keys[0] || '';
+  for (const [phrase, name] of PHRASES) {
+    const p = phrase.split(' ');
+    if (p.every((w, i) => keys[i] === w)) { n = p.length; cmd = name; break; }
+  }
+  const arg = n ? raw.replace(new RegExp(`^\\s*(?:\\S+(?:\\s+|$)){${n}}`), '').trim() : '';
+  return { cmd, rest: words.slice(n), arg };
+}
+/** The 6-character code among the words after KETNOI / CHUWEB ("KETNOI ma ABC123" works too). */
+const pickCode = (words: string[]) => { const w = words.map((x) => x.toUpperCase().replace(/[^A-Z0-9]/g, '')); return w.find((x) => /^[A-Z0-9]{6}$/.test(x)) || w[0] || ''; };
+const COMMANDS = ['GIUP', 'HUONGDAN', 'HELP', 'START', 'MENU', '?', 'HD', 'XINCHAO', 'CHAO', 'HI', 'HELLO', 'TT', 'TRANGTHAI', 'DS', 'DANHSACH', 'KHUNG',
+  'DINHDANG', 'DD', 'PHONGCACH', 'PC', 'GIONG', 'TAT', 'BAT', 'HUYKETNOI', 'MAU', 'TAO', 'KB', 'KICHBAN', 'KETNOI', 'CHUWEB'];
+
+/**
+ * Messages whose answer needs the AI (a few seconds to a minute). A webhook call may only work
+ * 30 seconds after it answered Zalo, so these are done by the minute job instead.
+ */
+export function needsAI(env: XEnv, text: string) {
+  const { cmd, arg } = parseCommand(text);
+  if (!(env.GEMINI_API_KEY || env.OPENAI_API_KEY)) return false;
+  if (cmd === 'TAO') return !!arg && env.config.enabledSources.includes('topic');
+  const script = cmd === 'KB' || cmd === 'KICHBAN' || (!COMMANDS.includes(cmd) && String(text || '').trim().length >= 120);
+  return script && env.config.zalo.scriptSource === 'mine-ai';
+}
+
 async function send(env: XEnv, chatId: string, text: string, messageId?: string) {
   const id = randomId(16), now = Date.now();
   await env.DB.prepare('INSERT INTO zalo_outbox (id, chat_id, message_id, text, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
@@ -100,6 +140,15 @@ export async function zaloWebhook(req: Request, env: XEnv, rc: Rc): Promise<Resp
     .bind(id, event.chatId, event.name, event.text, event.isText ? 1 : 0, now, now).run();
   rc.log('zalo.received', { data: { message: id, chat: event.chatId, event: event.event } });
   rc.quiet = true;
+  if (event.isText && needsAI(env, event.text)
+    && (env.config.zalo.allowGuests || await env.DB.prepare('SELECT 1 FROM zalo_links WHERE chat_id = ?').bind(event.chatId).first())) {
+    // the AI may take longer than the 30 seconds a webhook call gets: tell them now, the minute job does the rest
+    rc.wait((async () => {
+      const seen = await env.DB.prepare('SELECT 1 FROM zalo_outbox WHERE message_id = ? LIMIT 1').bind(id).first();
+      if (!seen) await send(env, event.chatId, 'Đã nhận, mình đang viết kịch bản và chuẩn bị hình (khoảng 1–2 phút)…', id);
+    })());
+    return json({ ok: true, recorded: true, deferred: true });
+  }
   rc.wait(processMessage(env, rc, id));
   return json({ ok: true, recorded: true });
 }
@@ -128,13 +177,14 @@ export async function processMessage(env: XEnv, rc: Rc, id: string, force = fals
     const changed = await env.DB.prepare("UPDATE zalo_messages SET status = 'failed', error = ?, updated_at = ? WHERE id = ? AND status = 'processing' AND attempts = ?").bind(String(error.message || 'Lỗi xử lý tin nhắn.').slice(0, 300), Date.now(), id, row.attempts).run();
     if (!changed.meta.changes) return;
     messageRc.log('zalo.processing', { ok: false, data: { message: id, error: String(error.message || 'Lỗi xử lý').slice(0, 200) } });
-    await send(env, row.chat_id, 'Chưa xử lý được tin nhắn. Bạn thử lại sau ít phút hoặc liên hệ chủ web.', id);
+    // retried by the minute job: say sorry once, not on every attempt
+    if (row.attempts === 1) await send(env, row.chat_id,'Chưa xử lý được tin nhắn. Bạn thử lại sau ít phút hoặc liên hệ chủ web.', id);
   }
 }
 
 export async function resumeZalo(env: XEnv, rc: Rc) {
   if (!env.config.zalo.enabled || !(env as any).ZALO_BOT_TOKEN) return;
-  const messages = await env.DB.prepare("SELECT id FROM zalo_messages WHERE attempts < 5 AND (status IN ('received','failed') OR (status = 'processing' AND updated_at < ?)) ORDER BY received_at LIMIT 2").bind(Date.now() - 120_000).all<any>();
+  const messages = await env.DB.prepare("SELECT id FROM zalo_messages WHERE attempts < 5 AND (status IN ('received','failed') OR (status = 'processing' AND updated_at < ?)) ORDER BY received_at LIMIT 5").bind(Date.now() - 120_000).all<any>();
   for (const row of messages.results) await processMessage(env, rc, row.id);
   const replies = await env.DB.prepare("SELECT id FROM zalo_outbox WHERE attempts < 5 AND (status IN ('pending','failed') OR (status = 'sending' AND updated_at < ?)) ORDER BY created_at LIMIT 5").bind(Date.now() - 120_000).all<any>();
   for (const row of replies.results) await deliverReply(env, row.id);
@@ -150,14 +200,12 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   // per chat: at most 60 messages a day
   try { await useQuota(env, 'z:' + chatId, 'zalo', 60); } catch { return reply('Bạn đã dùng hết lượt nhắn bot hôm nay. Thử lại vào ngày mai nhé.'); }
 
-  const raw = text.trim(), plain = fold(raw).trim();
-  const [cmd0, ...rest] = plain.split(/\s+/);
-  const cmd = cmd0.replace(/^\//, '').toUpperCase();
-  const arg = raw.match(/^\S+\s+([\s\S]*)$/)?.[1].trim() || '';
+  const raw = text.trim();
+  const { cmd, rest, arg } = parseCommand(raw);
 
   // owner claims the bot (code from the admin page)
-  if (cmd === 'CHUWEB' || (cmd === 'CHU' && rest[0]?.toUpperCase() === 'WEB')) {
-    const code = (cmd === 'CHUWEB' ? rest[0] : rest[1] || '').toUpperCase();
+  if (cmd === 'CHUWEB') {
+    const code = pickCode(rest);
     const row = await env.DB.prepare("SELECT user_id FROM zalo_codes WHERE code = ? AND user_id = 'owner' AND expires_at > ?").bind(code, Date.now()).first();
     if (!row) return reply('Mã chủ web không đúng hoặc đã hết hạn. Tạo mã mới trong trang Quản trị → Zalo.');
     await saveOwnerChat(env, chatId);
@@ -166,8 +214,8 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
     return reply('Đã nhận bạn là chủ web. Mình sẽ báo người dùng mới, video lỗi và đơn hàng ở đây.');
   }
   // link to a web account
-  if (cmd === 'KETNOI' || cmd === 'KET') {
-    const code = (cmd === 'KETNOI' ? rest[0] : rest[1] || '').toUpperCase();
+  if (cmd === 'KETNOI') {
+    const code = pickCode(rest);
     const row = await env.DB.prepare("SELECT user_id FROM zalo_codes WHERE code = ? AND user_id != 'owner' AND expires_at > ?").bind(code, Date.now()).first<any>();
     if (!row) return reply('Mã kết nối không đúng hoặc đã hết hạn. Mở web → Kết nối Zalo để lấy mã mới.');
     await env.DB.batch([
@@ -186,13 +234,18 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   const help = () => reply(fill(t.help, { ten: name || link?.name || 'bạn' }));
   if (!cmd || ['GIUP', 'HUONGDAN', 'HELP', 'START', 'MENU', '?', 'HD', 'XINCHAO', 'CHAO', 'HI', 'HELLO'].includes(cmd)) return help();
 
-  const wantsVideo = ['KB', 'KICHBAN', 'TAO', 'MAU'].includes(cmd) || raw.length >= 120;
-  if (!user && wantsVideo) {
+  const known = COMMANDS.includes(cmd);
+  const longScript = !known && raw.length >= 120;
+  if (!user) {
+    // nothing to show or undo yet: answer without signing them up
+    if (cmd === 'HUYKETNOI') return reply('Zalo này chưa kết nối tài khoản nào.');
+    if (['TT', 'TRANGTHAI', 'DS', 'DANHSACH'].includes(cmd)) return reply('Zalo này chưa có video nào. Gửi KB + kịch bản (hoặc MAU để xem kịch bản mẫu) để bắt đầu.');
+    if (!known && !longScript) return reply(t.unknown);
+    // any other real command (a video, or a choice of frame/voice/format/notifications) needs an account
     if (!z.allowGuests) return reply('Bạn cần kết nối tài khoản trước: mở web → Kết nối Zalo, rồi gửi mã cho mình.');
     user = await guestUser(env, chatId, name);
     rc.userId = user.id;
   }
-  if (!user) return reply(t.unknown);
   const savePrefs = (p: any) => env.DB.prepare('UPDATE zalo_links SET prefs = ? WHERE chat_id = ?').bind(JSON.stringify(p), chatId).run();
 
   switch (cmd) {
@@ -209,7 +262,9 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
     }
     case 'KHUNG': {
       const v = fold(rest.join(' ')).toLowerCase();
-      prefs.ratio = /ngang|16/.test(v) ? '16:9' : '9:16';
+      if (!/ngang|doc|16|9/.test(v)) return reply(`Khung hiện tại: ${prefs.ratio === '16:9' ? 'ngang 16:9' : 'dọc 9:16'}.\nGõ KHUNG DOC (TikTok, Reels) hoặc KHUNG NGANG (YouTube).`);
+      // "9:16" is tall even though it contains 16
+      prefs.ratio = /ngang|16\s*[:x/]\s*9|^16$/.test(v) ? '16:9' : '9:16';
       await savePrefs(prefs);
       return reply(`Đã chọn khung ${prefs.ratio === '16:9' ? 'ngang 16:9 (YouTube)' : 'dọc 9:16 (TikTok, Reels)'}.`);
     }
@@ -252,7 +307,7 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
     if (!env.config.enabledSources.includes('topic') || !(env.GEMINI_API_KEY || env.OPENAI_API_KEY)) return reply(t.noAI);
     return makeVideo(env, rc, user, chatId, 'topic', arg, prefs, !link, messageId);
   }
-  if (cmd === 'KB' || cmd === 'KICHBAN' || raw.length >= 120) {
+  if (cmd === 'KB' || cmd === 'KICHBAN' || longScript) {
     const script = cmd === 'KB' || cmd === 'KICHBAN' ? arg : raw;
     if (script.length < 20) return reply('Gửi: KB + kịch bản của bạn (ít nhất một câu).');
     const src = z.scriptSource === 'mine-ai' && (env.GEMINI_API_KEY || env.OPENAI_API_KEY) ? 'mine-ai' : 'mine-free';
@@ -267,7 +322,8 @@ async function makeVideo(env: XEnv, rc: Rc, user: User, chatId: string, source: 
     if (await env.DB.prepare('SELECT 1 FROM blocked_users WHERE user_id = ?').bind(user.id).first()) return send(env, chatId, 'Tài khoản đang bị khóa. Vui lòng liên hệ chủ web.', messageId);
     const checkpoint = await env.DB.prepare('SELECT project_id, job_id FROM zalo_messages WHERE id = ?').bind(messageId).first<any>();
     if (checkpoint?.job_id) return send(env, chatId, 'Video này đã vào hàng chờ. Gõ TT để xem tiến độ.', messageId);
-    await send(env, chatId, 'Đã nhận, mình đang chuẩn bị kịch bản và hình…', messageId);
+    // one "received" per message, even when it is retried or was already acknowledged by the webhook
+    if (!(await env.DB.prepare('SELECT 1 FROM zalo_outbox WHERE message_id = ? LIMIT 1').bind(messageId).first())) await send(env, chatId, 'Đã nhận, mình đang chuẩn bị kịch bản và hình…', messageId);
     const existing = checkpoint?.project_id ? await env.DB.prepare('SELECT id, spec FROM projects WHERE id = ? AND user_id = ?').bind(checkpoint.project_id, user.id).first<any>() : null;
     const p = existing ? { id: existing.id, spec: JSON.parse(existing.spec), note: '' } : await createProject(env, rc, user, { source, topic: text, ratio: prefs.ratio, style: prefs.style || 'auto', voiceId: prefs.voice, visual: 'sketch', channel: '', look: prefs.look && prefs.look !== 'doc' ? prefs.look : undefined });
     await env.DB.prepare('UPDATE zalo_messages SET project_id = ? WHERE id = ?').bind(p.id, messageId).run();

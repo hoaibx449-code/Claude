@@ -103,3 +103,42 @@ test('a shared bot: messages forwarded by the other site (secret in the address,
  const before=f.sent.length;await pollZalo(f.env,f.rc,4000);
  assert.ok(!f.sent.slice(before).some((s: any)=>/deleteWebhook/.test(s.url)));
 }));
+test('commands typed the way people speak: Vietnamese words with spaces, accents and punctuation',async()=>{
+ const { parseCommand }=await import('../web/src/zalo.ts');
+ const c=(t: string)=>parseCommand(t).cmd;
+ assert.equal(c('Hướng dẫn'),'HUONGDAN');assert.equal(c('trạng thái?'),'TT');assert.equal(c('Danh sách'),'DS');assert.equal(c('Hủy kết nối'),'HUYKETNOI');
+ assert.equal(c('Định dạng 2'),'DINHDANG');assert.deepEqual(parseCommand('Định dạng 2').rest,['2']);assert.equal(c('GIUP!'),'GIUP');assert.equal(c('/start'),'START');
+ assert.deepEqual(parseCommand('KETNOI: abc123'),{cmd:'KETNOI',rest:['abc123'],arg:'abc123'});
+ assert.equal(parseCommand('Kịch bản mẫu 3').cmd,'MAU');assert.equal(parseCommand('Kịch bản: Một câu.\nHai câu.').arg,'Một câu.\nHai câu.');
+ assert.equal(parseCommand('Tạo video vì sao lương không tăng').arg,'vì sao lương không tăng');
+});
+test('natural commands get real answers, and a new chat typing a valid command is never told "chưa hiểu"',async()=>fixture(async f=>{
+ const last=()=>f.sent.at(-1).body.text;
+ await f.receive('Trạng thái','n1');await f.drain();assert.match(last(),/chưa có video/);
+ await f.receive('Hủy kết nối','n2');await f.drain();assert.match(last(),/chưa kết nối/);
+ await f.receive('Hướng dẫn','n3');await f.drain();assert.match(last(),/KB/);
+ await f.receive('Khung ngang','n4');await f.drain();assert.match(last(),/ngang 16:9/);
+ await f.receive('KHUNG 9:16','n5');await f.drain();assert.match(last(),/dọc 9:16/);
+ await f.receive('Định dạng','n6');await f.drain();assert.match(last(),/Chọn định dạng/);
+ await f.receive('Tắt','n7');await f.drain();assert.match(last(),/tắt thông báo/);
+ assert.ok(!f.sent.some((s: any)=>/chưa hiểu/.test(s.body.text)));
+ await f.receive('blah blah','n8');await f.drain();assert.match(last(),/chưa hiểu/);
+ // guests not allowed: told to link instead of "chưa hiểu"
+ f.env.config.zalo.allowGuests=false;
+ await f.env.DB.prepare("DELETE FROM zalo_links").run();
+ await f.receive('Giọng đọc','n9');await f.drain();assert.match(last(),/kết nối tài khoản/);
+}));
+test('AI work is left to the minute job (a webhook call only lives 30 seconds), acknowledged once',async()=>fixture(async f=>{
+ f.env.GEMINI_API_KEY='g';f.env.config.zalo.scriptSource='mine-ai';
+ const res=await (await f.receive('KB Bắt đầu từ một bước nhỏ. Bạn có thể làm ngay hôm nay.','ai')).json();await f.drain();
+ assert.equal(res.deferred,true);
+ assert.equal((await f.env.DB.prepare("SELECT status FROM zalo_messages WHERE id='ai'").first()).status,'received');
+ assert.equal(f.sent.filter((s: any)=>/Đã nhận/.test(s.body.text)).length,1);
+ await resumeZalo(f.env,f.rc);await f.drain();
+ assert.equal((await f.env.DB.prepare("SELECT status FROM zalo_messages WHERE id='ai'").first()).status,'handled');
+ assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM jobs').first()).n,1);
+ assert.equal(f.sent.filter((s: any)=>/^Đã nhận, mình đang/.test(s.body.text)).length,1);
+ assert.match(f.sent.at(-1).body.text,/đang được dựng/);
+ // quick commands are still answered straight away
+ const quick=await (await f.receive('GIUP','fast')).json();await f.drain();assert.equal(quick.deferred,undefined);
+}));

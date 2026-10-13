@@ -70,16 +70,19 @@ export default {
         log(type, extra = {}) { ctx.waitUntil(logEvent(env, { type, channel: 'zalo', ...extra })); }, wait(p) { ctx.waitUntil(p); } };
       ctx.waitUntil(pollZalo(xenvZ, prc).catch((err) => console.error('pollZalo', err)));
     }
+    // every minute: messages the webhook left for later (AI work does not fit in its 30 seconds),
+    // tasks cut short, and replies Zalo did not take the first time
+    if (xenvZ.config.zalo.enabled && (xenvZ as any).ZALO_BOT_TOKEN) {
+      const zrc: Rc = { userId: null, visitor: null, ip: '', ua: null, channel: 'zalo', quiet: true,
+        log(type, extra = {}) { ctx.waitUntil(logEvent(env, { type, channel: 'zalo', ...extra })); }, wait(p) { ctx.waitUntil(p); } };
+      ctx.waitUntil(resumeZalo(xenvZ, zrc).catch((err) => console.error('resumeZalo', err)));
+    }
     // the rest runs every 10 minutes
     if (new Date(e.scheduledTime).getUTCMinutes() % 10 !== 0) return;
     // keep the activity log to the configured number of days
     const { config } = await load(env);
     ctx.waitUntil(env.DB.prepare('DELETE FROM events WHERE ts < ?').bind(Date.now() - config.logDays * 86_400_000).run().then(() => {}, (e) => console.error(e)));
     const xenv = await effectiveEnv(env);
-    const zaloRc: Rc = { userId: null, visitor: null, ip: '', ua: null, channel: 'zalo', quiet: true,
-      log(type, extra = {}) { ctx.waitUntil(logEvent(env, { type, channel: 'zalo', ...extra })); },
-      wait(p) { ctx.waitUntil(p); } };
-    ctx.waitUntil(resumeZalo(xenv, zaloRc));
     ctx.waitUntil(Promise.all([
       expireOrders(xenv),
       env.DB.prepare('DELETE FROM zalo_seen WHERE ts < ?').bind(Date.now() - 2 * 86_400_000).run(),
