@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 480" fill="none">
+<title>Ý tưởng thành câu chuyện qua nét vẽ</title>
+<circle cx="316" cy="241" r="194" fill="#ede9fe"/>
+<circle cx="522" cy="100" r="22" fill="#fed7aa"/>
+<path d="M71 316l9-16 9 16-9 16zM489 378l8-14 8 14-8 14z" fill="#c4b5fd"/>
+<rect x="108" y="105" width="389" height="294" rx="22" fill="#7c3aed" opacity=".12" transform="rotate(-5 108 105)"/>
+<rect x="104" y="87" width="389" height="294" rx="20" fill="#fff" stroke="#d8cff0" stroke-width="2" transform="rotate(-5 104 87)"/>
+<g transform="rotate(-5 104 87)" stroke-linecap="round" stroke-linejoin="round">
+<path d="M147 89v291" stroke="#ede9fe" stroke-width="2"/>
+<path d="M130 111h-16m16 36h-16m16 36h-16m16 36h-16m16 36h-16m16 36h-16m16 36h-16" stroke="#b9a5e3" stroke-width="4"/>
+<path d="M198 240c-31-15-28-58-4-70 32-16 62 13 55 43-3 12-15 17-19 27m-32 0h32m-31 11h30m-25 12h20" stroke="#7c3aed" stroke-width="4"/>
+<path d="M212 151v-12m-42 31-9-9m96 9 9-9m-106 45h-13m128 0h-13" stroke="#f97316" stroke-width="4"/>
+<path d="M184 293h73m-73 15h49" stroke="#d8cff0" stroke-width="5"/>
+<rect x="304" y="144" width="129" height="91" rx="10" stroke="#5f587a" stroke-width="3"/>
+<path d="m320 217 29-33 25 24 16-17 28 26" stroke="#7c3aed" stroke-width="3"/>
+<circle cx="402" cy="167" r="9" fill="#fdba74"/>
+<path d="M304 314h129m-121-7v-32h24v32m17 0v-51h24v51m17 0v-72h24v72" stroke="#7c3aed" stroke-width="3"/>
+<path d="M270 213c12-3 18-9 22-22m-12 0h12v13" stroke="#f97316" stroke-width="3"/>
+</g>
+<g transform="rotate(29 477 290)"><rect x="466" y="189" width="20" height="154" rx="6" fill="#7c3aed"/><path d="m466 343 10 25 10-25" fill="#fdba74"/><path d="m472 359 4 9 4-9" fill="#17122b"/><path d="M470 199v134" stroke="#c4b5fd" stroke-width="3"/></g>
+<path d="M84 115c-16-4-25-16-20-29 5-13 22-13 30-5 8-8 24-7 28 6 4 14-11 23-28 34z" fill="#ffedd5" stroke="#f97316" stroke-width="2"/>
+</svg>

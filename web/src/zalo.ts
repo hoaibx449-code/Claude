@@ -32,7 +32,7 @@ async function hmacHex(secret: string, msg: string) {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return [...new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(msg)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
-/** Secret Zalo must echo in X-Bot-Api-Secret-Token (derived, so nothing extra to store). */
+/** Derived shared secret, compared verbatim as in the reference SDK dispatcher. */
 export const webhookSecret = async (env: Env) => {
   if (!env.RUNNER_TOKEN || env.RUNNER_TOKEN.length < 32) throw new HttpError(503, 'RUNNER_TOKEN cần ít nhất 32 ký tự để bảo vệ webhook.');
   return (await hmacHex(env.RUNNER_TOKEN, 'zalo-webhook')).slice(0, 48);
@@ -87,8 +87,11 @@ export async function zaloWebhook(req: Request, env: XEnv, rc: Rc): Promise<Resp
   if (!token) return refuse('Chưa có Zalo Bot token.');
   if (!env.RUNNER_TOKEN || env.RUNNER_TOKEN.length < 32) return refuse('RUNNER_TOKEN chưa hợp lệ.');
   const secret = await webhookSecret(env);
-  const given = req.headers.get('x-bot-api-secret-token') || new URL(req.url).searchParams.get('s') || '';
-  if (!timingSafeEqual(given, secret)) return refuse(given ? 'sai mã bí mật: bấm "Kết nối webhook" lại' : 'thiếu mã bí mật: bấm "Kết nối webhook" lại');
+  // The SDK example uses X-Zalo-Signature; its dispatcher compares the
+  // configured secret verbatim (it is not a body HMAC). Keep existing relays.
+  const supplied = [req.headers.get('x-zalo-signature'), req.headers.get('x-bot-api-secret-token'), new URL(req.url).searchParams.get('s')].filter((v): v is string => v !== null);
+  const given = supplied[0] || '';
+  if (!supplied.length || supplied.some((v) => !timingSafeEqual(v, secret))) return refuse(given ? 'sai mã bí mật: bấm "Kết nối webhook" lại' : 'thiếu mã bí mật: bấm "Kết nối webhook" lại');
   let b: any;
   try { b = await body<any>(req, 50_000); } catch { return refuse('Nội dung không phải JSON.'); }
   const event = normalizeMessage(b);

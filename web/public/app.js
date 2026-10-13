@@ -355,81 +355,35 @@ function stopDemos() { for (const r of demoRuns) { r.visible = false; cancelAnim
 const STYLE_SHOW = ['sunset', 'cosmos', 'manim', 'bold', 'neon', 'comic', 'pastel', 'darkboard', 'chalkboard', 'whiteboard', 'kraft', 'newspaper', 'blueprint', 'pencil', 'ricepaper', 'oly', 'notebook'];
 async function showLanding() {
   viewed('landing');
-  const demos = await getDemos();
-  const site = ui.site || {}, beta = ui.beta, free = ui.free || {}, selling = V('feature:plans') === 'on' && ui.plans?.length;
-  // hero media: the admin's own video (with sound) or the real engine drawing in a phone
-  const heroCanvas = h('canvas', { 'aria-label': 'Video mẫu' });
-  const heroDemo = demos.find((d) => d.look === 'act') || demos.find((d) => d.look === (ui.defaults?.look || 'kinetic')) || demos[0];
-  let heroRun = null;
-  const isVideo = /\.(mp4|webm)$/i.test(site.heroMedia || '');
-  const heroMedia = site.heroMedia
-    ? (isVideo ? siteVideo(site.heroMedia, site.heroPoster, 'Video mẫu có tiếng', true) : h('img', { src: siteUrl(site.heroMedia), alt: site.heroTitle || '', loading: 'eager' }))
-    : heroCanvas;
-  const pause = h('button', { type: 'button', class: 'demo-toggle', 'aria-label': 'Tạm dừng video mẫu', onclick: () => { if (!heroRun) return; heroRun.visible = !heroRun.visible; if (heroRun.visible) { heroRun.last = 0; heroRun.raf = requestAnimationFrame(heroRun.loop); } pause.textContent = heroRun.visible ? '❚❚' : '▶'; pause.setAttribute('aria-label', heroRun.visible ? 'Tạm dừng video mẫu' : 'Phát video mẫu'); } }, '❚❚');
-  const perDay = `Miễn phí ${free.render || 0} video mỗi ngày, mỗi video tối đa ${String(Math.round((free.maxSeconds || 90) / 60 * 10) / 10).replace('.', ',')} phút.`;
-  const limitText = beta ? perDay
-    : selling ? `Miễn phí ${free.render || 0} video mỗi ngày. Gói trả phí từ ${money(Math.min(...ui.plans.filter((p) => p.price > 0).map((p) => p.price)))}.` : `Miễn phí ${free.render || 0} video mỗi ngày.`;
-  const check = (t) => h('li', {}, h('span', { class: 'tick', 'aria-hidden': 'true' }, '✓'), t);
-  const samples = site.showcase?.length
-    ? site.showcase.map((m, i) => h('figure', { class: 'sample', 'data-ev': 'sample-' + i },
-      m.video ? siteVideo(m.video, m.poster, m.title || 'Video mẫu') : h('img', { src: siteUrl(m.poster), alt: m.title || '', loading: 'lazy' }),
-      h('figcaption', { class: 'cap' }, h('b', {}, m.title), m.caption ? h('span', {}, m.caption) : null)))
-    // the home page shows three ways; every way is on the formats page
-    : ['act', 'classic-sketch', 'classic-diagram'].filter((k) => isClassic(k) || looksOn().includes(k)).map((k) => demos.find((x) => x.look === k)).filter(Boolean).map((d) => {
-      const c = h('canvas', { 'aria-label': lookName(d.look) });
-      setTimeout(() => playDemo(c, d.spec, { dpr: 0.45 }), 0);
-      return h('a', { class: 'sample', href: '#/tao', 'data-ev': 'sample-' + d.look, onclick: () => sessionStorage.setItem('nv_look', d.look) }, c,
-        h('span', { class: 'cap' }, h('b', {}, lookName(d.look)), h('span', {}, lookNote(d.look))));
-    });
-  const steps = [
-    ['Nhập nội dung', 'Dán kịch bản của bạn, chọn kịch bản mẫu, hoặc gõ một chủ đề để AI viết.'],
-    ['Chọn cách kể', 'Hoạt hình vẽ tay có nhân vật, chữ bùng nổ, tin nhắn, đố vui… Xem trước ngay, sửa từng cảnh.'],
-    ['Nhận video', 'MP4 có giọng đọc và phụ đề, khung dọc hoặc ngang. Tải về hoặc nhận qua Zalo.'],
-  ];
-  const faq = [
-    ['Có cần biết vẽ hay dựng phim không?', 'Không. Bạn chỉ cần nội dung; hình, chuyển động, giọng đọc, phụ đề và khớp nhịp đều tự động.'],
-    ['Video có dùng cho kênh của tôi được không?', 'Được. Tranh vẽ, biểu tượng và phông chữ trong video đều có giấy phép dùng thương mại.'],
-    ['Miễn phí gồm những gì?', `${free.render || 0} video mỗi ngày với giọng đọc cơ bản và mọi định dạng trừ Phim tài liệu AI (dùng ảnh AI nên tính credit riêng).`],
-    ['Dữ liệu của tôi được xử lý thế nào?', 'Chỉ nhận tên, email và ảnh đại diện từ Google khi bạn đăng nhập; không đăng bài thay bạn. Bạn tải hoặc xoá toàn bộ dữ liệu trong trang Tài khoản.'],
-  ].filter(Boolean);
-  const cta = me ? [h('a', { class: 'btn big', href: '#/tao', 'data-ev': 'hero-create' }, 'Tạo video'), h('a', { class: 'btn ghost big', href: '#/video', 'data-ev': 'hero-videos' }, 'Video của tôi')]
-    : [h('a', { class: 'btn big', href: '#/tao', 'data-ev': 'hero-create' }, 'Tạo video thử'), selling ? h('a', { class: 'btn ghost big', href: '#/goi', 'data-ev': 'hero-plans' }, 'Xem bảng giá') : h('a', { class: 'btn ghost big', href: '#mau-video', 'data-ev': 'hero-samples', onclick: (e) => { e.preventDefault(); document.getElementById('mau-video')?.scrollIntoView({ behavior: 'smooth' }); } }, 'Xem video mẫu')];
+  const free = ui.free || {}, selling = V('feature:plans') === 'on' && ui.plans?.length;
+  const formats = [
+    ['act', 'Nhân vật & câu chuyện', 'Kể chuyện bằng hoạt hình vẽ tay.', '✎'],
+    ['kinetic', 'Chữ chuyển động', 'Làm nổi bật thông điệp chính.', 'Aa'],
+    ['chat', 'Hội thoại', 'Biến nội dung thành cuộc trò chuyện.', '···'],
+    ['data', 'Dữ liệu trực quan', 'Giải thích con số dễ hiểu hơn.', '▥'],
+  ].filter(([k]) => looksOn().includes(k));
   show(
     ui.notice ? h('div', { class: 'notice' }, ui.notice) : null,
-    h('section', { class: 'hero' },
-      h('div', { class: 'hero-copy' },
-        h('h1', {}, site.heroTitle || 'Tạo video giải thích có giọng đọc tiếng Việt'),
-        h('p', { class: 'lead' }, site.heroText || ui.brand.tagline),
-        h('ul', { class: 'benefits' }, check('MP4 1080p có giọng đọc tiếng Việt'), check('Phụ đề trên hình và tệp SRT'), check('Khung dọc 9:16 và ngang 16:9')),
-        h('p', { class: 'limit' }, limitText),
-        h('div', { class: 'cta' }, ...cta)),
-      h('div', { class: 'hero-media' }, heroMedia === heroCanvas ? h('div', { class: 'phone-wrap' }, iphone(heroCanvas), pause) : h('div', { class: 'media-frame' }, heroMedia))),
-    h('section', { class: 'section' },
-      h('header', { class: 'head' }, h('span', { class: 'kicker' }, 'Bắt đầu'), h('h2', {}, 'Ba bước, không cần kỹ năng dựng phim')),
-      h('div', { class: 'guide' + (site.tutorial ? ' has-video' : '') },
-        site.tutorial ? h('div', { class: 'guide-video' }, siteVideo(site.tutorial, '', 'Video hướng dẫn')) : null,
-        h('ol', { class: 'steps3' }, steps.map(([t, d], i) => h('li', { class: 'card' }, h('span', { class: 'num' }, String(i + 1)), h('h3', {}, t), h('p', {}, d)))))),
-    h('section', { class: 'section', id: 'mau-video' },
-      h('header', { class: 'head' }, h('span', { class: 'kicker' }, 'Video mẫu'), h('h2', {}, 'Chọn cách kể cho nội dung của bạn'), h('p', {}, 'Mỗi cách kể có nhịp, bố cục và âm thanh riêng. Bấm một mẫu để bắt đầu với cách kể đó.')),
-      h('div', { class: 'samples' }, samples),
-      h('p', { class: 'more' }, h('a', { class: 'btn ghost', href: '#/mau', 'data-ev': 'samples-all' }, `Xem tất cả ${allLooks(demos).length} cách kể`))),
-    h('section', { class: 'section offer' },
-      h('div', {}, h('span', { class: 'kicker' }, 'Chi phí'), h('h2', {}, beta ? 'Dùng miễn phí mỗi ngày' : 'Biết trước chi phí cho mỗi video'),
-        h('p', { class: 'muted' }, beta ? 'Mọi định dạng đều mở. Hạn mức mỗi ngày giữ máy dựng nhanh cho tất cả mọi người.' : 'Giá hiển thị đủ trước khi dựng; hạn mức từng gói ghi rõ bên dưới.')),
-      h('dl', { class: 'offer-list' },
-        h('dt', {}, 'Video mỗi ngày'), h('dd', {}, `${free.render || 0} video, mỗi video tối đa ${Math.round((free.maxSeconds || 90) / 60 * 10) / 10} phút`),
-        h('dt', {}, 'Giọng đọc'), h('dd', {}, 'Giọng cơ bản miễn phí; giọng tự nhiên theo gói'),
-        h('dt', {}, 'Định dạng'), h('dd', {}, `${looksOn().filter((k) => k !== 'doc').length + 1} cách kể, gồm hoạt hình vẽ tay`),
-        h('dt', {}, 'Phim tài liệu AI'), h('dd', {}, `${ui.doc?.perVideo || 1} credit một video (ảnh AI cho từng cảnh)`)),
-      selling ? h('a', { class: 'btn', href: '#/goi' }, 'Xem bảng giá') : null),
-    h('section', { class: 'section try' },
-      h('div', {}, h('span', { class: 'kicker' }, 'Thử ngay'), h('h2', {}, 'Dán kịch bản, xem bố cục trong vài giây'), h('p', { class: 'muted' }, 'Không cần đăng nhập. Hệ thống nhận ra dạng nội dung và dựng bản xem trước ngay trên trang.')),
-      (() => { const box = h('textarea', { rows: 4, maxlength: 6000, placeholder: 'Dán vài câu kịch bản của bạn vào đây…', 'aria-label': 'Kịch bản thử' }), btn = h('button', { type: 'button', class: 'big', 'data-ev': 'landing-try', onclick: () => startTry(box.value, btn, { look: ui.defaults?.look }) }, 'Xem thử ngay'); return h('div', { class: 'try-box' }, box, btn); })()),
-    h('section', { class: 'section' },
-      h('header', { class: 'head' }, h('span', { class: 'kicker' }, 'Câu hỏi thường gặp'), h('h2', {}, 'Giải đáp nhanh')),
-      h('div', { class: 'faq' }, faq.map(([q, a]) => h('details', {}, h('summary', {}, q), h('p', {}, a))))),
+    h('div', { class: 'landing' },
+      h('section', { class: 'landing-hero' },
+        h('div', { class: 'landing-copy' },
+          h('span', { class: 'kicker' }, 'Nét vẽ nhỏ. Câu chuyện lớn.'),
+          h('h1', {}, 'Ý tưởng của bạn.', h('br'), h('span', {}, 'Kể bằng nét vẽ.')),
+          h('p', { class: 'lead' }, 'Tạo video có hình, giọng đọc tiếng Việt và phụ đề từ nội dung của bạn.'),
+          h('div', { class: 'cta' },
+            h('a', { class: 'btn big', href: '#/tao', 'data-ev': 'hero-create' }, me ? 'Tạo video' : 'Bắt đầu tạo video'),
+            h('a', { class: 'btn ghost big', href: '#/mau', 'data-ev': 'hero-formats' }, 'Khám phá phong cách')),
+          h('p', { class: 'landing-note' }, `Miễn phí ${free.render || 0} video mỗi ngày`)),
+        h('div', { class: 'landing-art' }, h('img', { src: '/landing-art.svg', alt: 'Sổ phác thảo với ý tưởng, câu chuyện và biểu đồ', width: 620, height: 480, fetchpriority: 'high' }))),
+      h('section', { class: 'landing-formats' },
+        h('header', { class: 'landing-heading' }, h('h2', {}, 'Một nội dung. Nhiều cách kể.'), h('a', { href: '#/mau' }, 'Xem tất cả →')),
+        h('div', { class: 'landing-grid' }, formats.map(([key, title, note, symbol]) =>
+          h('a', { class: 'landing-format', href: '#/tao', onclick: () => sessionStorage.setItem('nv_look', key) },
+            h('span', { class: 'landing-symbol', 'aria-hidden': 'true' }, symbol), h('h3', {}, title), h('p', {}, note), h('span', { class: 'landing-arrow', 'aria-hidden': 'true' }, '→'))))),
+      h('section', { class: 'landing-start' },
+        h('div', {}, h('h2', {}, 'Từ ý tưởng đến video'), h('p', {}, 'Nhập nội dung → Chọn phong cách → Nhận MP4')),
+        h('a', { class: 'btn', href: selling ? '#/goi' : '#/tao' }, selling ? 'Xem bảng giá' : 'Tạo video đầu tiên'))),
     footer());
-  if (heroMedia === heroCanvas && heroDemo) heroRun = playDemo(heroCanvas, heroDemo.spec, { dpr: 0.75 });
 }
 /** Home page media: uploaded files ("site:abc.mp4") or full https addresses. */
 const siteUrl = (v) => (String(v || '').startsWith('site:') ? '/api/site/' + String(v).slice(5) : String(v || ''));

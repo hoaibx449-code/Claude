@@ -103,3 +103,18 @@ test('a shared bot: messages forwarded by the other site (secret in the address,
  const before=f.sent.length;await pollZalo(f.env,f.rc,4000);
  assert.ok(!f.sent.slice(before).some((s: any)=>/deleteWebhook/.test(s.url)));
 }));
+
+test('SDK X-Zalo-Signature authenticates a received update and delivers exactly one reply',async()=>fixture(async f=>{
+ const secret=await webhookSecret(f.env);
+ const update={event_name:'message.text.received',message:{message_id:'sdk-1',date:1700000000,chat:{id:'sdk-chat',chat_type:'PRIVATE'},from:{id:'sdk-user',display_name:'SDK'},text:'GIUP'}};
+ const send=async(headers: Record<string,string>,url='https://studio.test/api/zalo/webhook')=>zaloWebhook(new Request(url,{method:'POST',headers,body:JSON.stringify(update)}),f.env,f.rc);
+ assert.equal((await (await send({'X-Zalo-Signature':'wrong'})).json()).ok,false);
+ assert.equal((await (await send({'X-Zalo-Signature':'wrong'},'https://studio.test/api/zalo/webhook?s='+secret)).json()).ok,false);
+ assert.equal((await (await send({'X-Zalo-Signature':secret,'X-Bot-Api-Secret-Token':'wrong'})).json()).ok,false);
+ assert.equal(await f.env.DB.prepare('SELECT * FROM zalo_messages').first(),null);
+ assert.equal((await (await send({'X-Zalo-Signature':secret})).json()).recorded,true);await f.drain();
+ assert.equal((await f.env.DB.prepare("SELECT * FROM zalo_messages WHERE id='sdk-1'").first()).status,'handled');
+ assert.equal(f.sent[0].body.chat_id,'sdk-chat');assert.match(f.sent[0].body.text,/HUONGDAN|KB/);
+ await send({'X-Zalo-Signature':secret});await f.drain();assert.equal(f.sent.length,1);
+ assert.ok(!JSON.stringify(f.log).includes(secret));
+}));
