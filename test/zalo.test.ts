@@ -86,3 +86,20 @@ test('blocked Zalo accounts receive an explanation and cannot queue another vide
  await f.receive('KB Kịch bản khác đủ dài để dựng một video mới.','blocked');await f.drain();
  assert.match(f.sent.at(-1).body.text,/bị khóa/);assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM jobs').first()).n,1);
 }));
+test('a shared bot: messages forwarded by the other site (secret in the address, no header) are answered, and the webhook is left alone',async()=>fixture(async f=>{
+ f.env.config.zalo.receive='relay';
+ const { receiveMode, pollZalo } = await import('../web/src/zalo.ts');
+ assert.equal(await receiveMode(f.env),'relay');
+ // the Apps Script forwards the raw Zalo update to the address shown on the admin page
+ const relay=await (await zaloAdmin(new Request('https://studio.test/api/admin/zalo/relay'),f.env,f.env,'zalo/relay','GET',f.rc)).json();
+ assert.match(relay.url,/^https:\/\/studio\.test\/api\/zalo\/webhook\?s=[a-f0-9]{48}$/);
+ const res=await zaloWebhook(new Request(relay.url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ok:true,result:{event_name:'message.text.received',message:{message_id:'r1',chat:{id:'chat-9'},from:{display_name:'Khách'},text:'GIUP'}}})}),f.env,f.rc);
+ assert.equal((await res.json()).ok,true);await f.drain();
+ assert.equal(f.sent.at(-1).body.chat_id,'chat-9');
+ // connecting the webhook from this site is refused: it would take the bot away from the other site
+ await assert.rejects(zaloAdmin(new Request('https://studio.test/api/admin/zalo/connect',{method:'POST'}),f.env,f.env,'zalo/connect','POST',f.rc),/Dùng chung|dùng chung/);
+ // and polling never removes another site's webhook
+ f.env.config.zalo.receive='poll';f.setResponse({ok:true,result:{url:'https://script.google.com/macros/s/abc/exec?zl=x'}});
+ const before=f.sent.length;await pollZalo(f.env,f.rc,4000);
+ assert.ok(!f.sent.slice(before).some((s: any)=>/deleteWebhook/.test(s.url)));
+}));
