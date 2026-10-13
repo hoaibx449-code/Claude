@@ -723,10 +723,9 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     const style = env.config.enabledStyles.includes(b.style) ? b.style : (b.style === 'auto' || !b.style) && env.config.enabledStyles.includes(auto) ? auto : D.style;
     if (aff && raw.scenes?.length && !look) raw.scenes = [...raw.scenes, affiliateScene(aff, ratio === '9:16')];
     if (!look && visual === 'doodle') {
-      // classic hand drawing, as in the product proposal: one Open Doodle per line, revealed by the hand, handwritten subtitles
+      // classic hand drawing: one picture per line (an Open Doodle or the video's hand-drawn person acting the words), revealed by the hand; no subtitles unless asked
       const panels = doodlePanels((raw.scenes || []).map((sc: any) => sc.lines || []));
       raw = { ...raw, scenes: (raw.scenes || []).map((sc: any, i: number) => ({ lines: sc.lines, panels: panels[i] })) };
-      if (typeof b.subtitles !== 'boolean') b.subtitles = true;
     }
     if (look) {
       // fill what the AI (or nobody) gave: free rules per format
@@ -754,7 +753,7 @@ const hashText = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) 
 
 /** Put a project in the render queue and wake the render machine. */
 export async function queueRender(env: XEnv, rc: Rc, user: User, id: string, spec: any) {
-  const missing = spec.scenes.reduce((n: number, sc: any) => n + sc.panels.filter((x: any) => !String(x.image).startsWith('r2:') && !String(x.image).startsWith('doodle:')).length, 0);
+  const missing = spec.scenes.reduce((n: number, sc: any) => n + sc.panels.filter((x: any) => !/^(r2|doodle|peep):/.test(String(x.image))).length, 0);
   if (missing) throw new HttpError(409, `Còn ${missing} khung chưa có tranh AI. Bấm "Vẽ tất cả bằng AI" hoặc đổi cảnh đó sang bảng vẽ.`);
   await checkAllowed(env, user, spec);
   const active = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE user_id = ? AND status IN ('queued','running')").bind(user.id).first<any>();

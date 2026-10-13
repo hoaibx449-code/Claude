@@ -1466,7 +1466,7 @@ async function showEditor(id) {
   const drawAllBtn = h('button', { type: 'button', class: 'ghost', 'data-ev': 'draw-all', onclick: async () => { if (await drawAll()) toast('Mọi cảnh đã có hình.'); } }, T('drawAll'));
   async function drawAll() {
     const todo = [];
-    spec.scenes.forEach((sc, si) => sc.panels.forEach((p, pi) => { if (!sc.diagram && !p.image?.startsWith('r2:') && !p.image?.startsWith('doodle:')) todo.push([si, pi]); }));
+    spec.scenes.forEach((sc, si) => sc.panels.forEach((p, pi) => { if (!sc.diagram && !/^(r2|doodle|peep):/.test(p.image || '')) todo.push([si, pi]); }));
     if (!todo.length) return true;
     if (!imgProvider.options.length || !imageAI) {
       // no image AI: turn picture scenes into hand-drawn boards instead of blocking the render
@@ -1485,7 +1485,7 @@ async function showEditor(id) {
   }
   function drawScenes() {
     panelImgs.clear();
-    drawAllBtn.hidden = !imageAI || (spec.look && spec.look !== 'doc') || !spec.scenes.some((sc) => !sc.diagram && sc.panels.some((p) => !p.image?.startsWith('r2:') && !p.image?.startsWith('doodle:')));
+    drawAllBtn.hidden = !imageAI || (spec.look && spec.look !== 'doc') || !spec.scenes.some((sc) => !sc.diagram && sc.panels.some((p) => !/^(r2|doodle|peep):/.test(p.image || '')));
     const move = (si, d) => { const j = si + d; [spec.scenes[si], spec.scenes[j]] = [spec.scenes[j], spec.scenes[si]]; drawScenes(); changed(); };
     scenesBox.replaceChildren(...spec.scenes.map((sc, si) => h('div', { class: 'scene' },
       h('div', { class: 'row', style: 'justify-content:space-between' }, h('h3', {}, `Cảnh ${si + 1}`),
@@ -1508,6 +1508,11 @@ async function showEditor(id) {
         // the free picture library (Open Doodles): pick another without any AI
         const pickDoodle = (ui.doodles || []).length ? h('label', {}, 'Đổi tranh (thư viện miễn phí)', h('select', { onchange: (e) => { p.image = 'doodle:' + e.target.value; img.src = imageUrl(p.image); changed(); } },
           options([...(p.image?.startsWith('doodle:') ? [] : [['', '— chọn tranh —']]), ...ui.doodles.map((n) => [n, n.replace(/Doodle$/, '').replace(/([a-z])([A-Z])/g, '$1 $2')])], p.image?.startsWith('doodle:') ? p.image.slice(7) : ''))) : null;
+        if (p.image?.startsWith('peep:')) {
+          // a hand-drawn person: its thumbnail is drawn by the engine
+          loadPeeps().then(() => { const cv = NV.peepPanel({ createCanvas: (w, hh) => Object.assign(document.createElement('canvas'), { width: w, height: hh }) }, p.image, 320, 240); if (cv) img.src = cv.toDataURL(); });
+          return h('div', { class: 'panel' }, img, h('span', { class: 'tag' }, 'Nhân vật vẽ tay · hiện khi đọc câu ' + ((p.line ?? pi) + 1)), pickDoodle, btn);
+        }
         if (p.image?.startsWith('doodle:')) return h('div', { class: 'panel' }, img, h('span', { class: 'tag' }, 'Tranh vẽ tay · hiện khi đọc câu ' + ((p.line ?? pi) + 1)), pickDoodle, btn);
         return h('div', { class: 'panel' }, img, pickDoodle,
           h('span', { class: 'tag' }, p.image?.startsWith('r2:') ? 'Tranh AI' : 'Chưa có tranh: chọn trong thư viện hoặc vẽ bằng AI'),
@@ -1621,7 +1626,7 @@ async function previewModel(spec, dpr) {
   const [images, hand, icons, pics] = await Promise.all([
     Promise.all(spec.scenes.map((sc) => Promise.all(sc.panels.map((p) => (imageUrl(p.image) ? loadImg(imageUrl(p.image)).catch(blankCanvas) : Promise.resolve(blankCanvas())))))),
     getHand(), getIcons(), Promise.all(entries.map(([, v]) => loadImg(mediaUrl(v)).catch(() => null))),
-    document.fonts.load('29px Pangolin').catch(() => {}), loadSans(), spec.look === 'act' && spec.figures !== 'rig' ? loadPeeps() : null,
+    document.fonts.load('29px Pangolin').catch(() => {}), loadSans(), spec.figures !== 'rig' && (spec.look === 'act' || !spec.look) ? loadPeeps() : null,
   ]);
   const media = Object.fromEntries(entries.map(([k], i) => [k, pics[i]]).filter(([, v]) => v));
   const timeline = NV.buildTimeline(spec.scenes, spec.scenes.map((s) => NV.estimateVoice(s.lines)), { intro: !!spec.intro?.title && spec.look !== 'act' });

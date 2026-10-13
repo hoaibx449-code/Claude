@@ -42,7 +42,7 @@ export interface PanelSpec {
 }
 
 export interface DiagramSpec {
-  kind: 'bars' | 'compare' | 'steps' | 'flow' | 'number' | 'statement' | 'stick' | 'sketch' | 'plot';
+  kind: 'bars' | 'compare' | 'steps' | 'flow' | 'number' | 'statement' | 'stick' | 'sketch' | 'plot' | 'pie';
   /** plot: the shape of the curve (or explicit values), axis names */
   fn?: 'linear' | 'exp' | 'log' | 'sin' | 'square' | 'sqrt' | 'down' | 'wave'; xLabel?: string; yLabel?: string;
   /** Handwritten heading above the diagram. */
@@ -66,7 +66,7 @@ export type SketchItem = { id?: string; line?: number; /** words of the line: dr
   | { t: 'text'; text: string; x: number; y: number; size?: 's' | 'm' | 'l' | 'xl' | 'xxl'; color?: InkColor; w?: number; align?: 'center' | 'left' }
   | { t: 'icon'; name: string; x: number; y: number; w?: number; color?: InkColor; label?: string }
   | { t: 'person'; action?: string; x: number; y: number; h?: number; facing?: 1 | -1; label?: string; bubble?: string }
-  | { t: 'chart'; x: number; y: number; w?: number; h?: number; kind: 'bars' | 'flow' | 'compare' | 'steps' | 'number'; [k: string]: any }
+  | { t: 'chart'; x: number; y: number; w?: number; h?: number; kind: 'bars' | 'flow' | 'compare' | 'steps' | 'number' | 'plot' | 'pie'; [k: string]: any }
   | { t: 'arrow'; from: string | [number, number]; to: string | [number, number]; curve?: number; color?: InkColor; label?: string }
   | { t: 'circle' | 'underline' | 'box' | 'cross' | 'check'; on: string; color?: InkColor }
   /** a real picture (reference character, product photo); `src` is a key of ProjectSpec.media */

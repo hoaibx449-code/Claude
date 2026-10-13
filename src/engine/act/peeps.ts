@@ -75,11 +75,13 @@ export function peepPicture(env: Env, look: PeepLook, group: keyof PeepData, pos
   const head: [Piece, number, number][] = [[DATA.hair[look.hair] || [], 0, 0], [DATA.face[face] || DATA.face.Calm, 159, 186]];
   if (look.beard && DATA.facialHair[look.beard]) head.push([DATA.facialHair[look.beard], 123, 338]);
   if (look.glasses && DATA.accessories[look.glasses]) head.push([DATA.accessories[look.glasses], 47, 241]);
+  const hex = ink.replace('#', ''), light = hex.length >= 6 && parseInt(hex.slice(0, 2), 16) + parseInt(hex.slice(2, 4), 16) + parseInt(hex.slice(4, 6), 16) > 420;
   const draw = (c: any, s: number, ox: number, oy: number) => {
     const P2 = (globalThis as any).Path2D;
     const one = (list: Piece, dx: number, dy: number) => {
       for (const [d, fill, m, eo] of list) {
-        if (fill === 'none') continue;
+        // light ink (chalk on a dark board): the white fills are left out, the board shows through
+        if (fill === 'none' || (fill === 'bg' && light)) continue;
         c.save(); c.translate(ox, oy); c.scale(s, s); c.translate(dx, dy); c.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
         c.fillStyle = fill === 'ink' ? ink : fill === 'bg' ? '#ffffff' : fill;
         c.fill(new P2(d), eo ? 'evenodd' : 'nonzero'); c.restore();

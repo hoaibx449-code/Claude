@@ -10,6 +10,8 @@ import { wrapVi } from './textwrap.ts';
 import { extractStrokes, LINE_SHARE, pace, pathStroke, penState, strokeSpans, type StrokePlan } from './strokes.ts';
 import { buildLook, preparePhoto, renderLook, skinOf, type LookModel } from './looks.ts';
 import { buildAct, renderAct, type ActModel } from './act/director.ts';
+import { faceOf, hasPeeps, PEEP_LOOKS, peepPicture, poseOf } from './act/peeps.ts';
+import { drawReveal, makeReveal, revealPen } from './reveal.ts';
 
 /** Logical canvas size; the output size is a multiple of it (dpr). */
 export function logicalSize(ratio: Ratio) {
@@ -18,7 +20,13 @@ export function logicalSize(ratio: Ratio) {
 
 interface Box { x: number; y: number; w: number; h: number }
 
-export function panelBoxes(ratio: Ratio, n: number): Box[] {
+export function panelBoxes(ratio: Ratio, n: number, subtitles = true): Box[] {
+  if (ratio === '9:16' && !subtitles) {
+    // no subtitles: the picture has the whole page
+    if (n <= 1) return [{ x: 24, y: 120, w: 492, h: 720 }];
+    if (n === 2) return [{ x: 50, y: 104, w: 440, h: 370 }, { x: 50, y: 486, w: 440, h: 370 }];
+  }
+  if (ratio !== '9:16' && !subtitles && n <= 1) return [{ x: 200, y: 66, w: 560, h: 420 }];
   if (ratio === '9:16') {
     // one picture fills the space above the subtitles; two are stacked (one per spoken line)
     if (n <= 1) return [{ x: 30, y: 112, w: 480, h: 540 }];
@@ -121,6 +129,46 @@ export const SANS = 'NVSans';
 /** `t` is the frame time: animated parts (stick figures) keep moving after they are drawn. */
 export interface Unit { start: number; end: number; draw(c: Ctx, p: number, alpha: number, t: number): void; pen(p: number): [number, number] | [number, number, number] }
 
+// stick figure actions → the person's pose and face
+const PEEP_ACT: Record<string, [string, string]> = { idle: ['idle', 'calm'], walk: ['walk', 'calm'], run: ['walk', 'happy'], wave: ['wave', 'happy'], think: ['think', 'thinking'],
+  cheer: ['celebrate', 'laugh'], jump: ['celebrate', 'happy'], sad: ['sad', 'sad'], point: ['point', 'confident'], shrug: ['shrug', 'awkward'] };
+/**
+ * Hand-drawn people for the boards: the channel keeps one main character (the same person in
+ * every video of the channel), a second person on the board is someone else.
+ */
+function peepMaker(env: Env, project: ProjectSpec, dpr: number, ink: string) {
+  const names = Object.keys(PEEP_LOOKS), key = project.channel || project.title || '';
+  let h = 7; for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  // chalk on a dark board: the picture has no white fills, every mark is ink
+  const hex = ink.replace('#', ''), light = parseInt(hex.slice(0, 2), 16) + parseInt(hex.slice(2, 4), 16) + parseInt(hex.slice(4, 6), 16) > 420;
+  return (action: string, hpx: number, i: number) => {
+    const look = PEEP_LOOKS[names[(h + i * 3) % names.length]], [act, emo] = PEEP_ACT[action] || PEEP_ACT.idle;
+    const [g, pose] = poseOf(act, look);
+    const pic = peepPicture(env, look, g, pose, faceOf(emo, false, 1, 0), hpx / 2700, dpr, ink);
+    if (!pic) return null;
+    const R = makeReveal(env, pic.canvas, pic.w, pic.h, dpr, 2.2, { dark: !light });
+    return { w: pic.w, h: pic.h, ax: pic.ax, draw: (c: Ctx, p: number, x: number, y: number) => drawReveal(c, env, R, p, x, y), pen: (p: number) => revealPen(R, p) };
+  };
+}
+
+/**
+ * A panel picture "peep:<person>.<action>.<emotion>" (e.g. peep:lan.think.thinking): a
+ * hand-drawn person on white, filling the panel, for the classic boards beside the doodles.
+ */
+export function peepPanel(env: Env, ref: string, w: number, h: number) {
+  if (!hasPeeps()) return null;
+  const [who, action = 'idle', emo = 'calm'] = ref.slice(5).split('.');
+  const look = PEEP_LOOKS[who] || PEEP_LOOKS.minh, [g, pose] = poseOf(action, look);
+  const probe = peepPicture(env, look, g, pose, faceOf(emo, false, 1, 0), 0.1, 1);
+  if (!probe) return null;
+  const k = Math.min(w / probe.w, h / probe.h) * 0.94 * 0.1;
+  const pic = peepPicture(env, look, g, pose, faceOf(emo, false, 1, 0), k, 1)!;
+  const cv = env.createCanvas(Math.round(w), Math.round(h)), c = cv.getContext('2d');
+  c.fillStyle = '#fff'; c.fillRect(0, 0, w, h);
+  c.drawImage(pic.canvas, (w - pic.w) / 2, (h - pic.h) / 2, pic.w, pic.h);
+  return cv;
+}
+
 /** Area a diagram may use (above the subtitles when they are shown on the picture). */
 export function diagramBox(ratio: Ratio, subtitles = false): Box {
   if (ratio === '9:16') return subtitles ? { x: 40, y: 112, w: 460, h: 540 } : { x: 40, y: 112, w: 460, h: 640 };
@@ -149,18 +197,20 @@ export function prepare(opts: {
   b.setTransform(dpr, 0, 0, dpr, 0, 0); style.bg(b, W, H);
   const panels = project.scenes.map((sc, si) => {
     if (sc.diagram) return [];
-    const boxes = panelBoxes(project.ratio, sc.panels.length);
+    const boxes = panelBoxes(project.ratio, sc.panels.length, subs);
     return sc.panels.map((_, k) => {
       const box = boxes[k];
       const T = timeline.scenes[si].panels[k];
-      return { canvas: inkify(env, images[si][k], Math.round(box.w * dpr), Math.round(box.h * dpr), style.ink), box, zig: zigzag(box.w, box.h, si * 3 + k), seconds: T ? T.end - T.start : undefined };
+      const ref = sc.panels[k].image || '', src = ref.startsWith('peep:') ? peepPanel(env, ref, box.w * dpr, box.h * dpr) || images[si][k] : images[si][k];
+      return { canvas: inkify(env, src, Math.round(box.w * dpr), Math.round(box.h * dpr), style.ink), box, zig: zigzag(box.w, box.h, si * 3 + k), seconds: T ? T.end - T.start : undefined };
     });
   });
   const m: Model = { project, timeline, style, tool: project.tool ?? style.tool, W, H, dpr, background: bgc, panels, mask: new Map(), hand, env, units: [], mode, icons: opts.icons || {} };
   const measure = env.createCanvas(4, 4).getContext('2d');
   const colors = { ink: style.ink, accent: style.episode, accent2: style.accent2, good: style.good, fills: style.fills,
     font: mode === 'hand' ? 'Pangolin' : SANS, flat: mode === 'motion', images: opts.media || {}, qr: qrCells,
-    character: project.character ? opts.media?.[project.character] || undefined : undefined };
+    character: project.character ? opts.media?.[project.character] || undefined : undefined,
+    peep: mode === 'hand' && project.figures !== 'rig' && hasPeeps() ? peepMaker(env, project, dpr, style.ink) : undefined };
   // maths animation: crisp single strokes with a faint glow, no paper texture passes
   const pen: Pen = mode === 'math' ? { passes: [[0, 0, 0.22, 2.6], [0, 0, 1, 0.85]], width: style.width } : { passes: style.passes, brush: style.brush, width: style.width };
   m.units = project.scenes.map((sc, si) => {

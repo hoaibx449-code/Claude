@@ -70,13 +70,14 @@ export async function renderProject(o: RenderOptions) {
     for (const sc of project.scenes) {
       const row: string[] = [];
       for (const p of sc.panels) {
-        if (p.image) row.push(resolve(projDir, p.image));
+        if (p.image?.startsWith('peep:')) row.push('');
+        else if (p.image) row.push(resolve(projDir, p.image));
         else if (p.prompt && gen) row.push(await cachedImage(gen, p.prompt, join(projDir, '.cache', gen.name)));
         else throw new Error('Khung hình thiếu "image" và chưa chọn nhà cung cấp ảnh (--images openai|gemini)');
       }
       imagePaths.push(row);
     }
-    const images = await Promise.all(imagePaths.map((r) => Promise.all(r.map((p) => loadImage(p)))));
+    const images = await Promise.all(imagePaths.map((r) => Promise.all(r.map((p) => (p ? loadImage(p) : createCanvas(4, 3) as any)))));
 
     // 2. voice: generated (TTS), the user's own recording, or none (layout only)
     const mode = project.audio?.voice || 'tts';
@@ -119,7 +120,7 @@ export async function renderProject(o: RenderOptions) {
     const icons = JSON.parse(readFileSync(join(ROOT, 'assets/icons/tabler.json'), 'utf8'));
     const media: Record<string, any> = {};
     for (const [k, f] of Object.entries(project.media || {})) media[k] = await loadImage(resolve(projDir, f)).catch(() => null);
-    if (project.look === 'act' && project.figures !== 'rig' && !hasPeeps()) {
+    if (project.figures !== 'rig' && !hasPeeps()) {
       (globalThis as any).Path2D ||= Path2D;
       setPeeps(JSON.parse(readFileSync(join(ROOT, 'assets/peeps/peeps.json'), 'utf8')));
     }

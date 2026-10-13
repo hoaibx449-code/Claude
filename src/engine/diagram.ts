@@ -6,7 +6,11 @@ import { wrapVi } from './textwrap.ts';
 import { ACTIONS, actorAt, drawLines, lengthOf, pointAlong, type Action, type Actor } from './stick.ts';
 
 export interface Box { x: number; y: number; w: number; h: number }
-export interface Colors { ink: string; accent: string; accent2: string; good: string; fills?: string[]; /** canvas font family (handwriting or the sans of the modern modes) */ font?: string; /** motion graphics: icons sit on coloured discs */ flat?: boolean; /** loaded pictures for image items */ images?: Record<string, any>; /** QR matrix maker for qr items */ qr?: (text: string) => boolean[][] | null; /** reference character picture: replaces the stick figures */ character?: any }
+export interface Colors { ink: string; accent: string; accent2: string; good: string; fills?: string[]; /** canvas font family (handwriting or the sans of the modern modes) */ font?: string; /** motion graphics: icons sit on coloured discs */ flat?: boolean; /** loaded pictures for image items */ images?: Record<string, any>; /** QR matrix maker for qr items */ qr?: (text: string) => boolean[][] | null; /** reference character picture: replaces the stick figures */ character?: any;
+  /** hand-drawn people (Open Peeps): a person in the pose of an action, `hpx` tall, the i-th person of the board */
+  peep?: (action: string, hpx: number, i: number) => PeepEl | null }
+/** A drawn person ready to be revealed: picture, feet anchor (ax, h), how to draw it at progress p. */
+export interface PeepEl { w: number; h: number; ax: number; draw: (c: Ctx, p: number, x: number, y: number) => void; pen: (p: number) => { x: number; y: number } }
 /** How the tool marks the paper: extra offset passes (chalk, pencil) and brush pressure. */
 export interface Pen { passes: [number, number, number, number][]; brush?: boolean; width: number }
 
@@ -20,6 +24,8 @@ export type Element = { line?: number; item?: number; cue?: string } & (
   | { kind: 'fill'; pts: [number, number][]; color: string; anchor: [number, number]; weight: number }
   // stick figure: sketched in its first pose, then animated (tau = seconds since it was finished)
   | { kind: 'actor'; actor: Actor; first: [number, number][][]; len: number; color: string; width: number; weight: number }
+  // a hand-drawn person revealed along its own strokes (x: feet, y: ground), then breathing
+  | { kind: 'peep'; peep: PeepEl; x: number; y: number; flip: number; weight: number }
   // several strokes drawn one after another (icons)
   | { kind: 'lines'; lines: [number, number][][]; len: number; color: string; width: number; weight: number });
 
@@ -71,10 +77,10 @@ export function buildDiagram(c: Ctx, d: DiagramSpec, box: Box, col: Colors): Ele
   };
   // filled shape (kraft style colours bars after outlining them); the hand rests at `anchor`
   const fill = (pts: P[], color: string | undefined) => { if (color) els.push({ kind: 'fill', pts, color, anchor: pts[pts.length - 1], weight: 0.3 }); };
-  const text = (s: string, x: number, y: number, size: number, color = col.ink, align: 'left' | 'center' = 'left') => {
+  const text = (s: string, x: number, y: number, size: number, color = col.ink, align: 'left' | 'center' | 'right' = 'left') => {
     c.font = `${size}px ${F}`;
     const w = c.measureText(s).width;
-    els.push({ kind: 'text', font: F, text: s, x: align === 'center' ? x - w / 2 : x, y, size, w, color, weight: Math.max(0.35, s.length * 0.045) });
+    els.push({ kind: 'text', font: F, text: s, x: align === 'center' ? x - w / 2 : align === 'right' ? x - w : x, y, size, w, color, weight: Math.max(0.35, s.length * 0.045) });
     return w;
   };
   const portrait = box.h > box.w;
@@ -113,6 +119,34 @@ export function buildDiagram(c: Ctx, d: DiagramSpec, box: Box, col: Colors): Ele
       if (d.xLabel) text(d.xLabel, x1 - 4, y1 + ls + 10, ls, col.ink, 'center');
       if (d.yLabel) text(d.yLabel, x0 + 8, y0 - 6 + ls * 0.2, ls, col.ink, 'left');
       if (d.caption) text(wrap(c, d.caption, ls + 4, box.w * 0.6)[0] || '', Math.min(end[0], x1 - box.w * 0.25), Math.max(y0 + ls * 2, end[1] - 26), ls + 4, col.accent, 'center');
+      break;
+    }
+    case 'pie': {
+      // a hand-drawn pie: tinted slices, the circle, the cuts from the centre, then each share written beside it
+      const vals = (d.values || []).filter((v) => v > 0).slice(0, 5), labels = d.labels || [];
+      if (!vals.length) break;
+      const sum = vals.reduce((a, b) => a + b, 0), ls = portrait ? 24 : 21;
+      const r = Math.max(40, Math.min(box.w * (portrait ? 0.3 : 0.2), (avail - ls * 3) / 2)), cy = top + avail / 2;
+      const tints = col.fills?.length ? col.fills : [col.accent, col.accent2, col.good, col.ink];
+      const big = vals.indexOf(Math.max(...vals));
+      let a0 = -Math.PI / 2;
+      const cuts: number[] = [];
+      vals.forEach((v, i) => {
+        const a1 = a0 + (v / sum) * Math.PI * 2, n = Math.max(3, Math.ceil((a1 - a0) * 16)), pts: P[] = [[cx, cy]];
+        for (let k = 0; k <= n; k++) { const a = a0 + ((a1 - a0) * k) / n; pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); }
+        els.push({ kind: 'fill', pts, color: tints[i % tints.length] + (col.fills?.length ? '' : '40'), anchor: pts[pts.length - 1], weight: 0.25 });
+        cuts.push(a0); a0 = a1;
+      });
+      path(ellipse(cx, cy, r, r), col.ink, 3.4);
+      if (vals.length > 1) for (const a of cuts) path(line([cx, cy], [cx + Math.cos(a) * r, cy + Math.sin(a) * r]), col.ink, 2.8);
+      a0 = -Math.PI / 2;
+      vals.forEach((v, i) => {
+        const am = a0 + (v / sum) * Math.PI; a0 += (v / sum) * Math.PI * 2;
+        const pct = `${Math.round((v / sum) * 100)}%`, lx = cx + Math.cos(am) * (r + ls * 1.6), ly = cy + Math.sin(am) * (r + ls * 1.3);
+        text(pct, cx + Math.cos(am) * r * 0.6, cy + Math.sin(am) * r * 0.6 + ls * 0.35, ls + 2, i === big ? col.accent : col.ink, 'center');
+        if (labels[i]) text(labels[i].slice(0, 16), lx, ly + ls * 0.35, ls, col.ink, Math.abs(Math.cos(am)) < 0.3 ? 'center' : Math.cos(am) > 0 ? 'left' : 'right');
+      });
+      if (d.caption) text(wrap(c, d.caption, ls + 2, box.w)[0] || '', cx, Math.min(bottom - 4, cy + r + ls * 2.6), ls + 2, col.accent, 'center');
       break;
     }
     case 'bars': {
@@ -234,8 +268,8 @@ export function buildDiagram(c: Ctx, d: DiagramSpec, box: Box, col: Colors): Ele
         const x1 = slots[i], moving = action === 'walk' || action === 'run';
         const x0 = moving ? Math.max(box.x + 30 * k, Math.min(box.x + box.w - 30 * k, x1 - facing * box.w * (n === 2 ? 0.22 : 0.34))) : x1;
         const actor: Actor = { action, x0, x1, ground, scale: k, facing };
-        const first = actorAt(actor, 0), len = lengthOf(first);
-        els.push({ kind: 'actor', actor, first, len, color: col.ink, width: 3.6, weight: Math.max(0.6, len / 360) });
+        const first = actorAt(actor, 0), len = lengthOf(first), pe = col.peep?.(action, 172 * k, i);
+        els.push(pe ? { kind: 'peep', peep: pe, x: x1, y: ground, flip: facing, weight: 1.1 } : { kind: 'actor', actor, first, len, color: col.ink, width: 3.6, weight: Math.max(0.6, len / 360) });
         heads.push([x1, ground - 172 * k]);
         if (a.label) text(a.label.slice(0, 16), x1, ground + ls + 10, ls, col.accent2, 'center');
       });
@@ -286,6 +320,13 @@ export function drawElement(c: Ctx, e: Element, p: number, alpha: number, pen: P
     return;
   }
   c.save();
+  if (e.kind === 'peep') {
+    const P = e.peep, br = p >= 1 ? 1 + Math.sin(tau * 2.4 + e.x * 0.05) * 0.008 : 1, sway = p >= 1 ? Math.sin(tau * 0.9 + e.x) * 0.012 : 0;
+    c.globalAlpha *= alpha;
+    c.translate(e.x, e.y); c.rotate(sway); c.scale(e.flip, br);
+    P.draw(c, p, -P.ax, -P.h);
+    c.restore(); return;
+  }
   if (e.kind === 'image') {
     // the picture is revealed by a growing rounded window and a soft pop
     const q = Math.min(1, p * 1.15), k = 0.9 + 0.1 * q;
@@ -358,6 +399,7 @@ export function elementCentre(e: Element): [number, number] {
   if (e.kind === 'image') return [e.x + e.w / 2, e.y + e.h / 2];
   if (e.kind === 'qr') return [e.x + e.size / 2, e.y + e.size / 2];
   if (e.kind === 'text') return [e.x + e.w / 2, e.y - e.size * 0.35];
+  if (e.kind === 'peep') return [e.x, e.y - e.peep.h / 2];
   const all: [number, number][] = e.kind === 'path' || e.kind === 'fill' ? e.pts : e.kind === 'lines' ? e.lines.flat() : e.first.flat();
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const [x, y] of all) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
@@ -368,6 +410,7 @@ export function elementPen(e: Element, p: number): [number, number] {
   if (e.kind === 'image') return [e.x + e.w * p, e.y + e.h * Math.min(1, p * 1.15)];
   if (e.kind === 'qr') return [e.x + e.size, e.y + e.size * p];
   if (e.kind === 'fill') return e.anchor;
+  if (e.kind === 'peep') { const q = e.peep.pen(p); return [e.x + (q.x - e.peep.ax) * e.flip, e.y + q.y - e.peep.h]; }
   if (e.kind === 'actor') return pointAlong(e.first, e.len * p);
   if (e.kind === 'lines') return pointAlong(e.lines, e.len * p);
   if (e.kind === 'text') return [e.x + e.w * p, e.y - e.size * 0.3 + Math.sin(p * e.w * 0.2) * e.size * 0.18];

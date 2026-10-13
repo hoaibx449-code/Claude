@@ -41,6 +41,23 @@ export const DOODLES: [string, RegExp][] = [
 export const DOODLE_NAMES = DOODLES.map(([n]) => n);
 export const isDoodle = (ref: string) => /^doodle:[A-Za-z]{3,40}$/.test(ref) && DOODLE_NAMES.includes(ref.slice(7));
 
+/** Hand-drawn people (Open Peeps, drawn by the engine): pose and face called for by the words. */
+const PEEP_RULES: [string, string, RegExp][] = [
+  ['think', 'thinking', /suy nghĩ|băn khoăn|tự hỏi|tại sao|vì sao|liệu|có nên|lựa chọn/],
+  ['celebrate', 'laugh', /vui|ăn mừng|thành công|chiến thắng|tuyệt vời|đạt được/],
+  ['sad', 'sad', /buồn|mệt|chán|thất vọng|hết tiền|cạn|nợ|áp lực/],
+  ['point', 'confident', /hãy|nên|bí quyết|cách|mẹo|nhớ|quy tắc|bước/],
+  ['explain', 'happy', /vì|bởi|nghĩa là|tức là|hiểu|giải thích/],
+  ['walk', 'calm', /đi|bước|hành trình|bắt đầu|tiến/],
+  ['phone', 'neutral', /điện thoại|lướt|mạng|online|tin nhắn/],
+  ['sit', 'calm', /ngồi|nghỉ|chờ|thư giãn/],
+  ['cross', 'confident', /tự tin|quyết định|kiên định|kỷ luật/],
+  ['surprised', 'surprised', /bất ngờ|không ngờ|hoá ra|hóa ra|thật ra|sốc/],
+  ['shrug', 'awkward', /không biết|chẳng biết|chả hiểu|bối rối/],
+];
+const PEOPLE = ['minh', 'lan', 'an', 'khoa', 'linh', 'tuan', 'hoa', 'bao'];
+export const isPeep = (ref: string) => /^peep:[a-z]{2,8}\.[a-z-]{2,14}\.[a-z]{3,10}$/.test(ref) && PEOPLE.includes(ref.slice(5).split('.')[0]);
+
 const words = (s: string) => s.toLowerCase().normalize('NFC');
 function hash(s: string) { let h = 2166136261; for (const ch of s) { h ^= ch.codePointAt(0)!; h = Math.imul(h, 16777619); } return h >>> 0; }
 
@@ -49,11 +66,24 @@ function hash(s: string) { let h = 2166136261; for (const ch of s) { h ^= ch.cod
  * used in the video are skipped while unused ones remain, so boards never look the same.
  */
 export function doodlePanels(scenes: string[][]) {
-  const used = new Set<string>();
+  const used = new Set<string>(), poses = new Set<string>();
+  // one main character for the whole video (a second person when two lines talk to each other)
+  const all = scenes.flat().join(' '), who = PEOPLE[hash(all) % PEOPLE.length];
+  let spare = 0;
   return scenes.map((lines) => lines.slice(0, 2).map((line, li) => {
     const text = words(line);
     const fit = DOODLES.filter(([n, re]) => re.test(text) && !used.has(n)).map(([n]) => n);
+    // the person acts what the line says, unless a doodle fits it better; never the same pose twice in a row
+    const act = PEEP_RULES.find(([a, , re]) => re.test(text) && !poses.has(a));
+    if (act && (!fit[0] || hash(line) % 3 === 0)) {
+      poses.add(act[0]); if (poses.size > 4) poses.delete(poses.values().next().value!);
+      return { image: `peep:${who}.${act[0]}.${act[1]}`, prompt: '', line: li };
+    }
     let name = fit[0];
+    if (!name && spare++ % 2 === 1) {
+      const a = ['explain', 'idle', 'point', 'cross'][hash(line) % 4];
+      return { image: `peep:${li ? PEOPLE[(PEOPLE.indexOf(who) + 3) % PEOPLE.length] : who}.${a}.happy`, prompt: '', line: li };
+    }
     if (!name) {
       const free = DOODLE_NAMES.filter((n) => !used.has(n));
       const pool = free.length ? free : DOODLE_NAMES;
