@@ -806,3 +806,5 @@ details.brief textarea { margin: 8px 0; font-size: var(--fs-sm); }
 .look-demo canvas { width: 100%; max-width: 100%; aspect-ratio: 9 / 16; border-radius: 14px; border: 1px solid var(--line); background: var(--card); display: block; }
 .look-demo figcaption { font-size: .8125rem; color: var(--muted); text-align: center; }
 @media (max-width: 640px) { .lookpick { grid-template-columns: 1fr; } .look-demo { max-width: 240px; margin-inline: auto; width: 100%; } }
+
+.section .more { display: flex; justify-content: center; margin: var(--sp-4) 0 0; }

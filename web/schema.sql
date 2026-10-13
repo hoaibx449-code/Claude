@@ -185,3 +185,8 @@ CREATE TABLE IF NOT EXISTS credits (user_id TEXT PRIMARY KEY, balance INTEGER NO
 CREATE TABLE IF NOT EXISTS credit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, delta INTEGER NOT NULL, reason TEXT NOT NULL, ref TEXT, ts INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS credit_log_user ON credit_log (user_id, ts);
 CREATE TABLE IF NOT EXISTS doc_projects (project_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, charge_ref TEXT NOT NULL, images_left INTEGER NOT NULL, images_total INTEGER NOT NULL, created_at INTEGER NOT NULL);
+
+-- Web Push: devices that asked to be told when a video is ready, and the note they show
+CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS push_subs_user ON push_subs (user_id);
+CREATE TABLE IF NOT EXISTS push_notes (user_id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, url TEXT NOT NULL, ts INTEGER NOT NULL);

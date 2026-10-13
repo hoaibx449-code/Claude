@@ -9,7 +9,8 @@ import { qrCells } from './qr.ts';
 import { wrapVi } from './textwrap.ts';
 import { extractStrokes, LINE_SHARE, pace, pathStroke, penState, strokeSpans, type StrokePlan } from './strokes.ts';
 import { buildLook, preparePhoto, renderLook, skinOf, type LookModel } from './looks.ts';
-import { buildAct, renderAct, type ActModel } from './act/director.ts';
+import { buildAct, cameraAt, renderAct, type ActModel } from './act/director.ts';
+import { drawPosedHand, handAt as posedHandAt, planHand, type HandPlan, type HandTask, type PoseAsset } from './handpose.ts';
 import { faceOf, hasPeeps, PEEP_LOOKS, peepPicture, poseOf } from './act/peeps.ts';
 import { drawReveal, makeReveal, revealPen } from './reveal.ts';
 
@@ -100,7 +101,8 @@ function planOf(m: Model, P: Panel): StrokePlan | null {
   return P.plan;
 }
 
-export interface HandAsset { img: Img; fingers: Img; meta: HandMeta }
+/** The hand: the single classic photo, plus the photographed poses of adaptive positioning when loaded. */
+export interface HandAsset { img: Img; fingers: Img; meta: HandMeta; poses?: Record<string, PoseAsset> }
 
 export interface Model {
   project: ProjectSpec;
@@ -112,6 +114,8 @@ export interface Model {
   panels: Panel[][];
   mask: Map<string, any>;
   hand: HandAsset;
+  /** the way in of the hand for every stroke (adaptive positioning) */
+  handPlan?: HandPlan;
   env: Env;
   /** What gets drawn in each scene, in order, with its time window. */
   units: Unit[][];
@@ -247,6 +251,12 @@ export function prepare(opts: {
       start, end, draw: (c: Ctx, p: number, a: number, now: number) => drawElement(c, e, p, a, pen, now - end), pen: (p: number) => elementPen(e, p),
     }));
   });
+  if (mode === 'hand' && hand.poses) {
+    // adaptive positioning: one way in per drawn thing, chosen over the whole video
+    const tasks: HandTask[] = m.units.flatMap((us, si) => us.map((u) => ({ start: u.start, end: u.end, group: si, pen: (q: number) => u.pen(q) as [number, number, number?] })));
+    tasks.sort((a, b) => a.start - b.start);
+    m.handPlan = planHand(tasks, hand.poses, W, H);
+  }
   return m;
 }
 
@@ -266,8 +276,19 @@ function prepareAct(opts: Parameters<typeof prepare>[0]): Model {
   const { env, project, timeline, hand, dpr } = opts;
   const { W, H } = logicalSize(project.ratio);
   const act = buildAct({ project, timeline, font: SANS, hand: 'Pangolin', measure: env.createCanvas(4, 4).getContext('2d'), env, dpr });
+  let handPlan: HandPlan | undefined;
+  if (hand.poses) {
+    // the hand's tasks in screen space (the camera at that moment), grouped by scene
+    const tasks: HandTask[] = act.hand.map((k) => ({ start: k.start, end: k.end, group: timeline.scenes.findIndex((s) => k.start < s.end), pen: (q: number) => {
+      const p = k.pen(q);
+      if (k.space === 'screen') return [p.x, p.y, p.lift];
+      const cam = cameraAt(act, k.start + (k.end - k.start) * q);
+      return [(p.x - cam.x) * cam.z + act.SX, (p.y - cam.y) * cam.z + act.SY, p.lift];
+    } }));
+    handPlan = planHand(tasks, hand.poses, W, H);
+  }
   return { project, timeline, style: STYLES.notebook, tool: 'marker', W, H, dpr, background: env.createCanvas(4, 4), panels: project.scenes.map(() => []), mask: new Map(), hand, env,
-    units: project.scenes.map(() => []), mode: 'hand', icons: opts.icons || {}, act };
+    units: project.scenes.map(() => []), mode: 'hand', icons: opts.icons || {}, act, handPlan };
 }
 
 /** Sound cues of the video (formats and story animation). */
@@ -481,7 +502,8 @@ export function renderFrame(c: Ctx, m: Model, t: number, opts: { hand?: boolean 
   const { W, H, style, project, timeline } = m;
   c.setTransform(m.dpr, 0, 0, m.dpr, 0, 0);
   if (m.act) {
-    renderAct(c, m.act, t, opts.hand === false ? undefined : (x, y, lift, rot) => drawHand(c, m, x, y, lift, rot));
+    renderAct(c, m.act, t, opts.hand === false || m.handPlan ? undefined : (x, y, lift, rot) => drawHand(c, m, x, y, lift, rot));
+    if (opts.hand !== false && m.handPlan) drawPlannedHand(c, m, t);
     return;
   }
   if (m.look) {
@@ -640,7 +662,18 @@ function drawSubtitles(c: Ctx, m: Model, si: number, t: number) {
   });
 }
 
+/** The pen of the video, whatever the hand's pose. */
+const penInk = (m: Model) => (m.style.ink.startsWith('#f') || m.style.ink.startsWith('#e') ? '#1d1d1f' : m.style.ink);
+
+/** Adaptive hand: the way in chosen for the stroke being drawn (or none: the stroke draws itself). */
+function drawPlannedHand(c: Ctx, m: Model, t: number) {
+  const h = posedHandAt(m.handPlan!, t);
+  if (!h) return;
+  drawPosedHand(c, m.handPlan!, h.way, h.x, h.y, h.lift, Math.sin(t * 2.1) * 0.015, m.dpr, (k) => drawTool(k, m.tool, penInk(m)));
+}
+
 function drawHandAt(c: Ctx, m: Model, t: number, si: number, units: Unit[], prog: number[]) {
+  if (m.handPlan) { drawPlannedHand(c, m, t); return; }
   const { W, H, timeline } = m, scenes = timeline.scenes, S = scenes[si];
 
   // hand
