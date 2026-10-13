@@ -87,11 +87,9 @@ export async function zaloWebhook(req: Request, env: XEnv, rc: Rc): Promise<Resp
   if (!token) return refuse('Chưa có Zalo Bot token.');
   if (!env.RUNNER_TOKEN || env.RUNNER_TOKEN.length < 32) return refuse('RUNNER_TOKEN chưa hợp lệ.');
   const secret = await webhookSecret(env);
-  // The SDK example uses X-Zalo-Signature; its dispatcher compares the
-  // configured secret verbatim (it is not a body HMAC). Keep existing relays.
-  const supplied = [req.headers.get('x-zalo-signature'), req.headers.get('x-bot-api-secret-token'), new URL(req.url).searchParams.get('s')].filter((v): v is string => v !== null);
-  const given = supplied[0] || '';
-  if (!supplied.length || supplied.some((v) => !timingSafeEqual(v, secret))) return refuse(given ? 'sai mã bí mật: bấm "Kết nối webhook" lại' : 'thiếu mã bí mật: bấm "Kết nối webhook" lại');
+  // README names X-Zalo-Signature; the SDK dispatcher compares its value verbatim.
+  const given = req.headers.get('x-zalo-signature') || '';
+  if (!timingSafeEqual(given, secret)) return refuse(given ? 'sai mã bí mật: bấm "Kết nối webhook" lại' : 'thiếu X-Zalo-Signature: bấm "Kết nối webhook" lại');
   let b: any;
   try { b = await body<any>(req, 50_000); } catch { return refuse('Nội dung không phải JSON.'); }
   const event = normalizeMessage(b);
@@ -375,27 +373,20 @@ export async function zaloAdmin(req: Request, env: XEnv, rawEnv: Env, sub: strin
   const token = (env as any).ZALO_BOT_TOKEN;
   const url = new URL(req.url);
   if (sub === 'zalo/connect' && method === 'POST') {
-    if (env.config.zalo.receive === 'relay') throw new HttpError(400, 'Đang dùng chung bot với web khác (nhận chuyển tiếp): không đổi webhook của bot, nếu không web kia sẽ ngừng nhận tin.');
     if (!token) throw new HttpError(400, 'Nhập Zalo Bot token ở mục Khoá API trước.');
     if (!env.config.zalo.enabled) throw new HttpError(400, 'Bật tính năng Zalo và lưu cài đặt trước khi kết nối webhook.');
     if (url.protocol !== 'https:') throw new HttpError(400, 'Zalo chỉ gọi địa chỉ HTTPS. Mở trang quản trị bằng tên miền thật rồi kết nối.');
     const before = await zaloApi(token, 'getWebhookInfo');
     const secret = await webhookSecret(rawEnv);
-    // the secret also rides in the address: Zalo sends the header, the query is a fallback
-    const hook = `${url.origin}/api/zalo/webhook?s=${secret}`;
+    const hook = `${url.origin}/api/zalo/webhook`;
     const r = await zaloApi(token, 'setWebhook', { url: hook, secret_token: secret });
     const info = await zaloApi(token, 'getWebhookInfo');
     const saved = String(info.result?.url || '');
-    rc.log('admin.zalo.connect', { ok: r.ok, data: { error: r.error, before: hookPath(before.result?.url), url: hookPath(saved) } });
+    rc.log('admin.zalo.connect', { ok: r.ok && info.ok && saved === hook, data: { error: r.error || info.error, before: hookPath(before.result?.url), url: hookPath(saved) } });
     if (!r.ok) throw new HttpError(502, 'Zalo từ chối đăng ký webhook: ' + r.error);
-    if (info.ok && saved && hookPath(saved) !== hookPath(hook)) throw new HttpError(502, 'Zalo báo đã nhận nhưng webhook vẫn trỏ về: ' + hookPath(saved));
+    if (!info.ok || saved !== hook) throw new HttpError(502, 'Chưa xác minh được webhook trực tiếp: ' + (info.error || hookPath(saved) || 'Zalo chưa trả địa chỉ webhook.'));
     await recvState(env, { mode: 'webhook', connected: Date.now() });
     return json({ ok: true, url: hookPath(hook), before: hookPath(before.result?.url) || null, info: info.result ? { ...info.result, url: hookPath(saved) } : null });
-  }
-  if (sub === 'zalo/relay' && method === 'GET') {
-    // where the other site forwards the messages it does not handle (same secret as the webhook)
-    const secret = await webhookSecret(rawEnv);
-    return json({ url: `${url.origin}/api/zalo/webhook?s=${secret}` });
   }
   if (sub === 'zalo/check' && method === 'GET') {
     const me = token ? await zaloApi(token, 'getMe') : null;
@@ -406,23 +397,11 @@ export async function zaloAdmin(req: Request, env: XEnv, rawEnv: Env, sub: strin
     const inbox = await env.DB.prepare('SELECT id, chat_id, status, error, received_at FROM zalo_messages ORDER BY received_at DESC LIMIT 1').first<any>();
     const reply = await env.DB.prepare('SELECT status, error, updated_at FROM zalo_outbox ORDER BY created_at DESC LIMIT 1').first<any>();
     const lastCall = await env.DB.prepare("SELECT ts, ok, data FROM events WHERE type IN ('zalo.webhook','zalo.received','zalo.ignored') ORDER BY id DESC LIMIT 1").first<any>();
-    const mode = await receiveMode(env);
-    if (mode === 'relay') return json({
-      steps: [
-        { k: 'Bật tính năng Zalo', ok: env.config.zalo.enabled, fix: 'Bật ở mục Zalo rồi lưu.' },
-        { k: 'Token hợp lệ (cùng bot với web kia)', ok: !!me?.ok, detail: me?.result?.account_name || me?.result?.display_name || me?.error || 'chưa nhập token', fix: 'Dán đúng token của bot mà web kia đang dùng.' },
-        { k: 'Bot có webhook (do web kia giữ)', ok: !!info?.result?.url, detail: hookPath(info?.result?.url) || '(chưa có)', fix: 'Vào web kia (Apps Script) bấm kết nối webhook của nó. Web này không đổi webhook khi dùng chung.' },
-        { k: 'Web kia đã chuyển tiếp tin tới đây', ok: !!lastCall && lastCall.ok !== 0, detail: lastCall ? `${new Date(lastCall.ts).toLocaleString('vi-VN')} · ${lastCall.ok ? 'hợp lệ' : (JSON.parse(lastCall.data || '{}').error || 'bị từ chối')}` : 'Chưa có tin nào được chuyển tới.', fix: 'Dán đoạn mã chuyển tiếp vào Code.gs của web kia (mục "Dùng chung bot" ở trên), triển khai lại rồi nhắn HUONGDAN cho bot.' },
-        { k: 'Web đã ghi nhận tin nhắn', ok: !!inbox, detail: inbox ? `Tin gần nhất: ${inbox.status}${inbox.error ? ' — ' + inbox.error : ''}` : 'Chưa có tin nhắn được ghi nhận.', fix: 'Nhắn HUONGDAN cho bot rồi bấm Kiểm tra lại.' },
-        { k: 'Phản hồi gần nhất gửi thành công', ok: reply?.status === 'sent', detail: reply ? `${reply.status}${reply.error ? ' — ' + reply.error : ''}` : 'Chưa gửi phản hồi.', fix: 'Xem Hộp thư Zalo để thử gửi lại phản hồi lỗi.' },
-      ],
-      last: last.results, links, recv: { mode, status: await zaloRecvStatus(env) },
-    });
     return json({
       steps: [
         { k: 'Bật tính năng Zalo', ok: env.config.zalo.enabled, fix: 'Bật ở mục Zalo rồi lưu.' },
         { k: 'Token hợp lệ', ok: !!me?.ok, detail: me?.result?.account_name || me?.result?.display_name || me?.error || 'chưa nhập token', fix: 'Lấy token trong Zalo Bot Creator và dán vào Khoá API.' },
-        { k: 'Webhook trỏ về web này (bỏ qua nếu dùng hỏi định kỳ)', ok: hookPath(info?.result?.url) === expected || (await receiveMode(env)) === 'poll', detail: hookPath(info?.result?.url) || '(chưa có)', fix: 'Bấm "Kết nối webhook". Bot chỉ có một webhook: nếu đang trỏ về Apps Script/FACIUP hay web khác thì web này không nhận được tin.' },
+        { k: 'Webhook trỏ về web này (bỏ qua nếu dùng hỏi định kỳ)', ok: hookPath(info?.result?.url) === expected || (await receiveMode(env)) === 'poll', detail: hookPath(info?.result?.url) || '(chưa có)', fix: 'Bấm "Kết nối webhook". Bot chỉ có một webhook: nếu đang trỏ về web khác thì web này không nhận được tin.' },
         { k: 'Zalo đã gọi tới web này (bỏ qua nếu dùng hỏi định kỳ)', ok: (!!lastCall && lastCall.ok !== 0) || (await receiveMode(env)) === 'poll', detail: lastCall ? `${new Date(lastCall.ts).toLocaleString('vi-VN')} · ${lastCall.ok ? 'hợp lệ' : (JSON.parse(lastCall.data || '{}').error || 'bị từ chối')}` : 'Chưa có lần gọi nào.', fix: lastCall ? 'Sửa theo lỗi ở trên rồi nhắn lại GIUP.' : 'Zalo chưa gọi tới. Kiểm tra: (1) webhook đúng địa chỉ; (2) trong Zalo Bot Creator đã bật nhận sự kiện tin nhắn (message.text.received); (3) Cloudflare không chặn (tắt Bot Fight Mode / Under Attack cho /api/zalo/webhook); (4) bạn đang nhắn đúng bot có token này.' },
         { k: 'Web đã ghi nhận tin nhắn', ok: !!inbox, detail: inbox ? `Tin gần nhất: ${inbox.status}${inbox.error ? ' — ' + inbox.error : ''}` : 'Chưa có tin nhắn được ghi nhận.', fix: 'Nhắn GIUP cho bot rồi bấm Kiểm tra lại. Nếu không nhận, kiểm tra webhook và token.' },
         { k: 'Phản hồi gần nhất gửi thành công', ok: reply?.status === 'sent', detail: reply ? `${reply.status}${reply.error ? ' — ' + reply.error : ''}` : 'Chưa gửi phản hồi.', fix: 'Xem Hộp thư Zalo để thử gửi lại phản hồi lỗi.' },
@@ -492,16 +471,9 @@ export async function zaloRecvStatus(env: XEnv) {
 }
 
 /** Which way messages come in right now. */
-export async function receiveMode(env: XEnv): Promise<'webhook' | 'poll' | 'relay'> {
-  const want = env.config.zalo.receive || 'auto';
-  // a shared bot: the other site keeps the webhook; nothing here may poll or move it
-  if (want !== 'auto') return want;
-  // the admin just connected the webhook: it has 15 minutes to deliver a first message (Zalo's
-  // calls can be blocked on the way, e.g. by a firewall rule), after which polling takes over
-  const st = await zaloRecvStatus(env);
-  if (st?.mode === 'webhook' && st.connected && Date.now() - st.connected < 15 * 60_000) return 'webhook';
-  const ok = await env.DB.prepare("SELECT ts FROM events WHERE type IN ('zalo.received','zalo.ignored') AND channel = 'zalo' AND ts > ? AND json_extract(data, '$.via') IS NOT 'poll' ORDER BY id DESC LIMIT 1").bind(Date.now() - 3 * 86_400_000).first<any>();
-  return ok ? 'webhook' : 'poll';
+export async function receiveMode(env: XEnv): Promise<'webhook' | 'poll'> {
+  // Production uses direct webhooks, as recommended by the SDK. Polling is explicit.
+  return env.config.zalo.receive === 'poll' ? 'poll' : 'webhook';
 }
 
 /**
@@ -510,15 +482,15 @@ export async function receiveMode(env: XEnv): Promise<'webhook' | 'poll' | 'rela
  */
 export async function pollZalo(env: XEnv, rc: Rc, budgetMs = 45_000) {
   const token = (env as any).ZALO_BOT_TOKEN;
-  if (!env.config.zalo.enabled || !token) return { polled: 0 };
-  // a webhook and polling cannot both be on: drop a webhook that is set but not working
+  if (!env.config.zalo.enabled || !token || await receiveMode(env) !== 'poll') return { polled: 0 };
+  // Explicit polling cannot run alongside a webhook.
   const info = await zaloApi(token, 'getWebhookInfo');
   if (info.ok && info.result?.url) {
     // a webhook of another site (a shared bot): never remove it, that would silence the other site
     let host = ''; try { host = new URL(String(info.result.url)).host; } catch {}
     const mine = (() => { try { return new URL(origin(env)).host; } catch { return ''; } })();
     if (host && mine && host !== mine) {
-      await recvState(env, { mode: 'poll', ok: false, error: `Bot đang có webhook của web khác (${host}). Chọn chế độ "Dùng chung bot với web khác" để nhận chuyển tiếp.` });
+      await recvState(env, { mode: 'poll', ok: false, error: `Bot đang có webhook của web khác (${host}). Chọn Webhook trực tiếp, lưu rồi bấm Kết nối webhook để chuyển bot về web này.` });
       return { polled: 0, error: 'shared bot' };
     }
     const del = await zaloApi(token, 'deleteWebhook');

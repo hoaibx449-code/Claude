@@ -17,7 +17,7 @@ async function fixture(run: (f: any) => Promise<void>) {
   let response: any={ok:true,result:{message_id:'reply'}};
   globalThis.fetch=async (url: any, options: any)=>{assert.ok(String(url).startsWith('https://bot-api.zaloplatforms.com/bot'));sent.push({url:String(url),body:JSON.parse(options.body)});return new Response(JSON.stringify(response),{status:200,headers:{'content-type':'application/json'}});};
   const drain=async()=>{while(pending.length)await Promise.all(pending.splice(0));};
-  const receive=async (text: any, id='m1', secret?: string)=>zaloWebhook(new Request('https://studio.test/api/zalo/webhook',{method:'POST',headers:{'x-bot-api-secret-token':secret??await webhookSecret(env)},body:JSON.stringify({event_name:'message.text.received',message:{message_id:id,chat:{id:'chat-1'},from:{display_name:'Khách thử'},...(text===undefined?{}:{text})}})}),env,rc);
+  const receive=async (text: any, id='m1', secret?: string)=>zaloWebhook(new Request('https://studio.test/api/zalo/webhook',{method:'POST',headers:{'x-zalo-signature':secret??await webhookSecret(env)},body:JSON.stringify({event_name:'message.text.received',message:{message_id:id,chat:{id:'chat-1'},from:{display_name:'Khách thử'},...(text===undefined?{}:{text})}})}),env,rc);
   await run({env,rc,sent,log,receive,drain,setResponse:(value: any)=>{response=value;}});
  }finally{globalThis.fetch=originalFetch;rmSync(dir,{recursive:true,force:true});}
 }
@@ -36,11 +36,9 @@ test('Zalo answers 200 but refuses wrong secrets, disabled configuration and uns
  const refused=async (res: Response)=>{assert.equal(res.status,200);assert.equal((await res.json()).ok,false);};
  await refused(await f.receive('GIUP','m1','wrong'));assert.equal(await f.env.DB.prepare('SELECT * FROM zalo_messages').first(),null);
  f.env.config.zalo.enabled=false;await refused(await f.receive('GIUP'));f.env.config.zalo.enabled=true;
- await refused(await zaloWebhook(new Request('https://studio.test/api/zalo/webhook',{method:'POST',headers:{'x-bot-api-secret-token':await webhookSecret(f.env)},body:'{"event_name":"user_send_text"}'}),f.env,f.rc));
+ await refused(await zaloWebhook(new Request('https://studio.test/api/zalo/webhook',{method:'POST',headers:{'x-zalo-signature':await webhookSecret(f.env)},body:'{"event_name":"user_send_text"}'}),f.env,f.rc));
  assert.ok(f.log.some((e: any)=>e.type==='zalo.webhook'&&e.ok===false&&/sai mã/.test(e.data.error)));
- // the secret may also arrive in the webhook address
- const viaQuery=await zaloWebhook(new Request('https://studio.test/api/zalo/webhook?s='+await webhookSecret(f.env),{method:'POST',body:JSON.stringify({event_name:'message.text.received',message:{message_id:'q1',chat:{id:'chat-q'},from:{display_name:'Q'},text:'GIUP'}})}),f.env,f.rc);
- assert.equal((await viaQuery.json()).recorded,true);await f.drain();
+
 }));
 test('Zalo token cleanup strips pasted bot prefix and quotes',async()=>{
  const { cleanToken }=await import('../web/src/zalo.ts');
@@ -86,35 +84,47 @@ test('blocked Zalo accounts receive an explanation and cannot queue another vide
  await f.receive('KB Kịch bản khác đủ dài để dựng một video mới.','blocked');await f.drain();
  assert.match(f.sent.at(-1).body.text,/bị khóa/);assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM jobs').first()).n,1);
 }));
-test('a shared bot: messages forwarded by the other site (secret in the address, no header) are answered, and the webhook is left alone',async()=>fixture(async f=>{
- f.env.config.zalo.receive='relay';
- const { receiveMode, pollZalo } = await import('../web/src/zalo.ts');
- assert.equal(await receiveMode(f.env),'relay');
- // the Apps Script forwards the raw Zalo update to the address shown on the admin page
- const relay=await (await zaloAdmin(new Request('https://studio.test/api/admin/zalo/relay'),f.env,f.env,'zalo/relay','GET',f.rc)).json();
- assert.match(relay.url,/^https:\/\/studio\.test\/api\/zalo\/webhook\?s=[a-f0-9]{48}$/);
- const res=await zaloWebhook(new Request(relay.url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ok:true,result:{event_name:'message.text.received',message:{message_id:'r1',chat:{id:'chat-9'},from:{display_name:'Khách'},text:'GIUP'}}})}),f.env,f.rc);
- assert.equal((await res.json()).ok,true);await f.drain();
- assert.equal(f.sent.at(-1).body.chat_id,'chat-9');
- // connecting the webhook from this site is refused: it would take the bot away from the other site
- await assert.rejects(zaloAdmin(new Request('https://studio.test/api/admin/zalo/connect',{method:'POST'}),f.env,f.env,'zalo/connect','POST',f.rc),/Dùng chung|dùng chung/);
- // and polling never removes another site's webhook
- f.env.config.zalo.receive='poll';f.setResponse({ok:true,result:{url:'https://script.google.com/macros/s/abc/exec?zl=x'}});
- const before=f.sent.length;await pollZalo(f.env,f.rc,4000);
- assert.ok(!f.sent.slice(before).some((s: any)=>/deleteWebhook/.test(s.url)));
-}));
-
 test('SDK X-Zalo-Signature authenticates a received update and delivers exactly one reply',async()=>fixture(async f=>{
  const secret=await webhookSecret(f.env);
  const update={event_name:'message.text.received',message:{message_id:'sdk-1',date:1700000000,chat:{id:'sdk-chat',chat_type:'PRIVATE'},from:{id:'sdk-user',display_name:'SDK'},text:'GIUP'}};
  const send=async(headers: Record<string,string>,url='https://studio.test/api/zalo/webhook')=>zaloWebhook(new Request(url,{method:'POST',headers,body:JSON.stringify(update)}),f.env,f.rc);
  assert.equal((await (await send({'X-Zalo-Signature':'wrong'})).json()).ok,false);
  assert.equal((await (await send({'X-Zalo-Signature':'wrong'},'https://studio.test/api/zalo/webhook?s='+secret)).json()).ok,false);
- assert.equal((await (await send({'X-Zalo-Signature':secret,'X-Bot-Api-Secret-Token':'wrong'})).json()).ok,false);
  assert.equal(await f.env.DB.prepare('SELECT * FROM zalo_messages').first(),null);
  assert.equal((await (await send({'X-Zalo-Signature':secret})).json()).recorded,true);await f.drain();
  assert.equal((await f.env.DB.prepare("SELECT * FROM zalo_messages WHERE id='sdk-1'").first()).status,'handled');
  assert.equal(f.sent[0].body.chat_id,'sdk-chat');assert.match(f.sent[0].body.text,/HUONGDAN|KB/);
  await send({'X-Zalo-Signature':secret});await f.drain();assert.equal(f.sent.length,1);
  assert.ok(!JSON.stringify(f.log).includes(secret));
+}));
+
+test('direct webhook is default, legacy relay settings migrate, and polling never runs implicitly',async()=>fixture(async f=>{
+ const { receiveMode,pollZalo }=await import('../web/src/zalo.ts');
+ const { cleanConfig }=await import('../web/src/settings.ts');
+ assert.equal(await receiveMode(f.env),'webhook');
+ for(const receive of ['relay','auto']) {
+  const migrated=cleanConfig({...f.env.config,zalo:{...f.env.config.zalo,receive}},f.env.config);
+  assert.equal(migrated.zalo.receive,'webhook');
+ }
+ await pollZalo(f.env,f.rc,4000);assert.equal(f.sent.length,0);
+ const secret=await webhookSecret(f.env);
+ const refused=await zaloWebhook(new Request('https://studio.test/api/zalo/webhook?s='+secret,{method:'POST',body:'{}'}),f.env,f.rc);
+ assert.equal((await refused.json()).ok,false);
+ await assert.rejects(zaloAdmin(new Request('https://studio.test/api/admin/zalo/relay'),f.env,f.env,'zalo/relay','GET',f.rc),/Không tìm thấy/);
+}));
+test('SDK setWebhook registers a direct HTTPS URL and secret_token without relay query',async()=>fixture(async f=>{
+ f.setResponse({ok:true,result:{url:'https://studio.test/api/zalo/webhook'}});
+ const result=await zaloAdmin(new Request('https://studio.test/api/admin/zalo/connect',{method:'POST'}),f.env,f.env,'zalo/connect','POST',f.rc);
+ assert.equal((await result.json()).ok,true);
+ const registered=f.sent.find((s: any)=>s.url.endsWith('/setWebhook'));
+ assert.deepEqual(registered.body,{url:'https://studio.test/api/zalo/webhook',secret_token:await webhookSecret(f.env)});
+ assert.ok(!JSON.stringify(f.log).includes(registered.body.secret_token));
+}));
+
+test('connection does not report success until Zalo confirms the direct webhook URL',async()=>fixture(async f=>{
+ for(const result of [{url:'https://script.google.com/macros/s/old/exec'},{}]) {
+  f.setResponse({ok:true,result});
+  await assert.rejects(zaloAdmin(new Request('https://studio.test/api/admin/zalo/connect',{method:'POST'}),f.env,f.env,'zalo/connect','POST',f.rc),/Chưa xác minh/);
+ }
+ assert.equal(await f.env.DB.prepare("SELECT * FROM settings WHERE key='zalo:recv'").first(),null);
 }));
