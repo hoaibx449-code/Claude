@@ -1,0 +1,48 @@
+name: FACIUP Whiteboard bổ sung
+on:
+  push:
+    paths: ['addons/faciup-whiteboard/**', 'examples/faciup-whiteboard/**', '.github/workflows/faciup-whiteboard.yml']
+  workflow_dispatch:
+    inputs:
+      voice:
+        description: 'Demo: giọng thật EverAI hoặc chỉ kiểm tra hình'
+        type: choice
+        options: [everai, mock]
+        default: everai
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm}
+      - run: npm ci
+      - run: node --test addons/faciup-whiteboard/renderer.test.ts
+  demo:
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm}
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - run: npm ci
+      - name: Dựng bằng bộ bổ sung độc lập
+        env:
+          VOICE: ${{ inputs.voice }}
+          EVERAI_API_KEY: ${{ secrets.EVERAI_API_KEY }}
+        run: node addons/faciup-whiteboard/cli.ts examples/faciup-whiteboard/project.json --out out/faciup-whiteboard.mp4 --tts "$VOICE"
+      - name: Kiểm tra MP4
+        run: ffmpeg -v error -i out/faciup-whiteboard.mp4 -f null -
+      - uses: actions/upload-artifact@v4
+        with:
+          name: faciup-whiteboard-demo
+          path: |
+            out/faciup-whiteboard.mp4
+            out/faciup-whiteboard.srt
+          retention-days: 7

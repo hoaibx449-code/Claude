@@ -1,0 +1,92 @@
+{
+  "title": "Điều thật sự quan trọng",
+  "channel": "",
+  "ratio": "9:16",
+  "style": "whiteboard",
+  "look": "whiteboard",
+  "subtitles": false,
+  "sfx": false,
+  "intro": null,
+  "voice": {
+    "provider": "everai",
+    "voiceId": "vi_male_tridung_mb",
+    "model": "everai-v1.6"
+  },
+  "scenes": [
+    {
+      "lines": [
+        "Có một kiểu thất bại rất đáng sợ. Đó là dành cả cuộc đời để cố gắng, nhưng cuối cùng lại chẳng biết mình đang cố gắng vì điều gì."
+      ],
+      "panels": [],
+      "whiteboard": {
+        "title": "Cố gắng vì điều gì?",
+        "objects": [
+          {
+            "kind": "person",
+            "x": 0.25,
+            "y": 0.38,
+            "label": "Cố gắng"
+          },
+          {
+            "kind": "compass",
+            "x": 0.75,
+            "y": 0.38,
+            "label": "Hướng đi"
+          }
+        ]
+      }
+    },
+    {
+      "lines": [
+        "Mỗi sáng thức dậy, bạn lao vào công việc. Hết nhiệm vụ này đến trách nhiệm khác. Ai nhờ cũng giúp, ai giao việc cũng nhận, bởi bạn sợ làm người khác thất vọng."
+      ],
+      "panels": [],
+      "whiteboard": {
+        "title": "Bận rộn không ngừng",
+        "objects": [
+          {
+            "kind": "clock",
+            "x": 0.25,
+            "y": 0.25,
+            "label": "Mỗi sáng"
+          },
+          {
+            "kind": "bag",
+            "x": 0.75,
+            "y": 0.25,
+            "label": "Công việc"
+          },
+          {
+            "kind": "people",
+            "x": 0.5,
+            "y": 0.7,
+            "label": "Ai nhờ cũng nhận"
+          }
+        ]
+      }
+    },
+    {
+      "lines": [
+        "Bạn luôn bận rộn, nhưng những điều thực sự quan trọng với bản thân lại liên tục bị trì hoãn."
+      ],
+      "panels": [],
+      "whiteboard": {
+        "title": "Điều quan trọng bị trì hoãn",
+        "objects": [
+          {
+            "kind": "calendar",
+            "x": 0.25,
+            "y": 0.38,
+            "label": "Để ngày mai"
+          },
+          {
+            "kind": "heart",
+            "x": 0.75,
+            "y": 0.38,
+            "label": "Điều quý giá"
+          }
+        ]
+      }
+    }
+  ]
+}
