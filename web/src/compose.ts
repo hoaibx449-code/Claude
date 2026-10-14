@@ -285,6 +285,7 @@ export function numbersIn(s: string) {
 const iconFor = (s: string) => iconsIn(s)[0]?.name;
 const keysOf = (s: string) => [...iconsIn(s).map((x) => x.word), ...(s.match(/\d+(?:[.,]\d+)*\s*%?/g) || [])].slice(0, 4);
 
+import {planIllustrated} from '../../addons/faciup-illustrated/schema.ts';
 import { cleanWhiteboard } from '../../addons/faciup-whiteboard/faciup-schema.js';
 import { freeWhiteboard } from '../../addons/faciup-whiteboard/semantic.ts';
 export interface LookInput { look: string; scenes: { lines: string[]; x?: any; pause?: number; panels?: any[]; act?: any }[]; sides?: { a: string; b: string }; chatName?: string; cast?: any[] }
@@ -294,6 +295,7 @@ export function composeLook(input: LookInput): LookInput {
   const { look } = input, all = input.scenes.map((s) => s.lines.join(' ')).join(' ');
   let scenes = input.scenes.map((s) => ({ ...s, x: { ...(s.x || {}) } }));
   const out: LookInput = { ...input };
+  if(look==='illustrated'){out.scenes=scenes.map((s:any)=>{const d=planIllustrated(s.lines,s.illustrated||s.x?.illustrated)!;return {...s,illustrated:d,panels:d.layers.map((l:any,k:number)=>({...s.panels?.[k],prompt:s.panels?.[k]?.prompt||l.prompt,image:s.panels?.[k]?.image||'',line:l.line}))};});return out;}
   if(look==='whiteboard') {
     out.scenes=scenes.map((s:any)=>({...s,whiteboard:cleanWhiteboard(s.whiteboard||s.x?.whiteboard)||freeWhiteboard(s.lines),panels:[]}));
     return out;

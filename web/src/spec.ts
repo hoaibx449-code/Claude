@@ -1,5 +1,6 @@
 // Strict validation of project scripts coming from the browser or an AI model.
 // Anything not on these lists is dropped, so stored specs are always renderable.
+import {cleanIllustrated} from '../../addons/faciup-illustrated/schema.ts';
 import { cleanWhiteboard } from '../../addons/faciup-whiteboard/faciup-schema.js';
 import { HttpError } from './util.ts';
 import { composeScene } from './compose.ts';
@@ -9,9 +10,9 @@ import { isDoodle, isPeep } from './doodles.ts';
 export const STYLES = ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'pencil', 'blueprint', 'ricepaper', 'neon', 'pastel', 'newspaper', 'comic', 'darkboard', 'sunset', 'cosmos', 'manim', 'bold'] as const;
 export const MODES = ['hand', 'motion', 'math', 'kinetic'] as const;
 /** video formats (src/engine/looks.ts) */
-export const LOOKS = ['act', 'whiteboard', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
+export const LOOKS = ['act', 'whiteboard', 'illustrated', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
 export const SKIN_NAMES: Record<string, string[]> = {
-  act: ['giay'], whiteboard: ['sang'],
+  act: ['giay'], whiteboard: ['sang'], illustrated:['sang'],
   kinetic: ['dem', 'sang', 'tim'], split: ['do-xanh', 'sang', 'tim-vang'], chat: ['sang', 'toi', 'hong'], story: ['giay', 'bang-den', 'xanh'],
   data: ['dem', 'sang', 'xanh-la'], quiz: ['tim', 'xanh', 'cam'], doc: ['dien-anh', 'trang-den', 'lanh'],
 };
@@ -221,6 +222,7 @@ export function cleanSpec(input: any, userId: string) {
       const out: any = { lines, panels: [] };
       const x = cleanLook(sc?.x, look); if (x) out.x = x;
       if (look === 'whiteboard') { const d=cleanWhiteboard(sc?.whiteboard||sc?.x?.whiteboard); if(d)out.whiteboard=d; }
+      if(look==='illustrated'){const d=cleanIllustrated(sc?.illustrated||sc?.x?.illustrated);if(d){out.illustrated=d;out.panels=d.layers.map((layer:any,k:number)=>{const p=sc?.panels?.[k],image=str(p?.image,120);return {prompt:str(p?.prompt,900)||layer.prompt,image:ownImage.test(image)?image:'',line:layer.line};});}}
       if (look === 'act') { const a = cleanAct(sc?.act, castIds); if (a) out.act = a; }
       const pause = Number(sc?.pause); if (pause > 0) out.pause = Math.min(6, pause);
       if (look === 'doc') {

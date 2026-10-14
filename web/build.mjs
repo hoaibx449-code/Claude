@@ -12,6 +12,7 @@ await build({
   outfile: join(pub, 'engine.js'),
 });
 await build({entryPoints:[join(root,'addons/faciup-whiteboard/renderer.ts')],bundle:true,format:'iife',globalName:'FVWhiteboard',target:'es2020',minify:true,outfile:join(pub,'whiteboard-addon.js')});
+await build({entryPoints:[join(root,'addons/faciup-illustrated/renderer.ts')],bundle:true,format:'iife',globalName:'FVIllustrated',target:'es2020',minify:true,outfile:join(pub,'illustrated-addon.js')});
 mkdirSync(join(pub, 'assets'), { recursive: true });
 cpSync(join(root,'addons/faciup-whiteboard/assets'),join(pub,'assets/faciup-whiteboard'),{recursive:true});
 for (const dir of ['fonts', 'hands/default', 'hands/poses', 'icons', 'doodles', 'peeps']) cpSync(join(root, 'assets', dir), join(pub, 'assets', dir), { recursive: true });

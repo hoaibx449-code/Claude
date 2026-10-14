@@ -1,3 +1,4 @@
+import {ILLUSTRATED_BRIEF} from '../../addons/faciup-illustrated/schema.ts';
 import { ACT_BRIEF } from './act.ts';
 // Script writing (OpenAI or Gemini, chosen per request) and line-art images.
 // Model output is treated as data: it goes through cleanSpec() before use.
@@ -23,7 +24,7 @@ const ICON_HINT = 'Tên icon là tên bộ Tabler Icons tiếng Anh, viết thư
 /** What each format needs from the writer, and the per-scene "x" data it reads. */
 import {whiteboardDirections} from '../../addons/faciup-whiteboard/brief.js';
 export const LOOK_BRIEF: Record<string, string> = {
-  act: ACT_BRIEF,
+  act: ACT_BRIEF, illustrated:ILLUSTRATED_BRIEF,
   whiteboard: whiteboardDirections()+' Mỗi cảnh có x:{whiteboard:{title,meaning,objects}}, không panels. Giữ nguyên lời người dùng.',
   kinetic: 'ĐỊNH DẠNG: CHỮ BÙNG NỔ. Câu ngắn, mạnh, có con số cụ thể; mỗi câu ≤ 14 chữ. Mỗi cảnh có "x":{"icon":"icon chính","keys":["1-3 từ cần nhấn, đúng như trong câu"]}.',
   split: 'ĐỊNH DẠNG: HAI BÊN ĐỐI LẬP. Ở gốc JSON có "sides":{"a":"tên bên sai/nghèo/trước (≤ 20 ký tự)","b":"tên bên đúng/giàu/sau"}. Mỗi cảnh thân bài có đúng 2 câu: câu 1 nói bên A làm gì, câu 2 nói bên B làm gì, và "x":{"a":"bên A làm gì (≤ 40 ký tự)","b":"bên B làm gì","aIcon":"icon","bIcon":"icon","aValue":"(tuỳ chọn) kết quả bên A, vd 0đ","bValue":"(tuỳ chọn) kết quả bên B"}. Cảnh mở và kết chỉ cần "lines".',
@@ -174,8 +175,6 @@ export function noteFailure(provider: TextProvider, model: string, status: numbe
   const now = Date.now();
   if (status === 401 || status === 403) down.set(provider, now + 10 * 60_000);
   else if (status === 404 || /no longer available|not found|not supported/i.test(text)) down.set(provider + ':' + model, now + 30 * 60_000);
-  // "exceeded your current quota" is the whole key for the day, not one busy model
-  else if (status === 429 && /quota|billing/i.test(text)) down.set(provider, now + 30 * 60_000);
   else if (status === 429 || status === 503) down.set(provider + ':' + model, now + 60_000);
 }
 const isDown = (p: string, m: string) => [p, p + ':' + m].some((k) => (down.get(k) || 0) > Date.now());
@@ -258,16 +257,16 @@ export interface DrawnImage { bytes: Uint8Array; type: 'image/webp' | 'image/png
 
 // Images arrive as base64 inside JSON. Ask for compressed WebP and decode with the native
 // Buffer: decoding a multi-MB PNG in plain JS exceeds the Workers CPU limit.
-export async function drawImage(env: Env, provider: ImageProvider, prompt: string, kind: 'line' | 'photo' = 'line', portrait = true): Promise<DrawnImage> {
+export async function drawImage(env: Env, provider: ImageProvider, prompt: string, kind: 'line' | 'photo' | 'cartoon' = 'line', portrait = true): Promise<DrawnImage> {
   const photo = kind === 'photo';
-  const full = (kind === 'photo' ? PHOTO_STYLE : LINE_ART_STYLE) + prompt;
+  const full = (kind==='cartoon'?'Colorful expressive 2D cartoon illustration, clean organic outlines, subtle shading, full intact subject, isolated on pure white background, centered square composition, no text, no letters, no logos, no frame. Depict exactly this subject: ':kind === 'photo' ? PHOTO_STYLE : LINE_ART_STYLE) + prompt;
   const reason = async (res: Response) => ((await res.text()).match(/"message":\s*"([^"]{0,200})/)?.[1] || `HTTP ${res.status}`);
   if (provider === 'openai') {
     if (!env.OPENAI_API_KEY) throw new HttpError(503, 'Chủ trang chưa cấu hình khoá OpenAI.');
     const res = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: env.OPENAI_IMAGE_MODEL, prompt: full, size: photo && portrait ? '1024x1536' : '1536x1024', quality: env.OPENAI_IMAGE_QUALITY || 'medium', output_format: 'webp', output_compression: 85, n: 1 }),
+      body: JSON.stringify({ model: env.OPENAI_IMAGE_MODEL, prompt: full, size: kind==='cartoon'?'1024x1024':photo && portrait ? '1024x1536' : '1536x1024', quality: env.OPENAI_IMAGE_QUALITY || 'medium', output_format: 'webp', output_compression: 85, n: 1 }),
     });
     if (!res.ok) throw new HttpError(502, `OpenAI chưa vẽ được ảnh: ${await reason(res)}`);
     const b64 = ((await res.json()) as any).data?.[0]?.b64_json;
@@ -278,7 +277,7 @@ export async function drawImage(env: Env, provider: ImageProvider, prompt: strin
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_IMAGE_MODEL}:generateContent`, {
     method: 'POST',
     headers: { 'x-goog-api-key': env.GEMINI_API_KEY, 'content-type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [{ text: full }] }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: photo ? (portrait ? '9:16' : '16:9') : '4:3' } } }),
+    body: JSON.stringify({ contents: [{ parts: [{ text: full }] }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: kind==='cartoon'?'1:1':photo ? (portrait ? '9:16' : '16:9') : '4:3' } } }),
   });
   if (!res.ok) throw new HttpError(502, `Gemini chưa vẽ được ảnh: ${await reason(res)}`);
   const part = (((await res.json()) as any).candidates?.[0]?.content?.parts || []).find((p: any) => p.inlineData?.data);
@@ -357,7 +356,7 @@ export async function analyzeSample(env: Env, frames: string[], notes: string, p
 
 // ---------------------------------------------------------------- Zalo assistant
 export interface AssistantTurn { role: 'user' | 'bot'; text: string }
-export interface AssistantAnswer { reply: string; intent: 'chat' | 'make_video' | 'status' | 'human' | 'buy'; topic: string; plan: string; usage: { provider: string; model: string; tokensIn: number; tokensOut: number } }
+export interface AssistantAnswer { reply: string; intent: 'chat' | 'make_video' | 'status' | 'human'; topic: string; usage: { provider: string; model: string; tokensIn: number; tokensOut: number } }
 
 /**
  * One answer of the staff-like assistant: a short reply plus what the person wants (a video, their
@@ -376,8 +375,8 @@ export async function assistantAnswer(env: Env, sys: string, history: AssistantT
         const r = await callText(env, p, model, sys, user, 2048);
         const j = parseJson(r.text);
         if (!j || typeof j.reply !== 'string' || !j.reply.trim()) { last = `${model}: trả lời không đúng dạng`; break; }
-        const intent = ['chat', 'make_video', 'status', 'human', 'buy'].includes(j.intent) ? j.intent : 'chat';
-        return { reply: j.reply.trim().slice(0, 1500), intent, topic: typeof j.topic === 'string' ? j.topic.trim().slice(0, 300) : '', plan: typeof j.plan === 'string' ? j.plan.trim().slice(0, 40) : '', usage: { provider: p, model, tokensIn: r.tokensIn, tokensOut: r.tokensOut } };
+        const intent = ['chat', 'make_video', 'status', 'human'].includes(j.intent) ? j.intent : 'chat';
+        return { reply: j.reply.trim().slice(0, 1500), intent, topic: typeof j.topic === 'string' ? j.topic.trim().slice(0, 300) : '', usage: { provider: p, model, tokensIn: r.tokensIn, tokensOut: r.tokensOut } };
       } catch (e: any) {
         last = String(e.message || e).slice(0, 160);
         // a busy model is not waited for: the next one answers now

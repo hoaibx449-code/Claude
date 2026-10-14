@@ -22,7 +22,7 @@ export const KIND_KEYS = ['sketch', 'bars', 'flow', 'compare', 'steps', 'number'
 /** How the picture comes alive (the four genres of explainer video). */
 export const MODE_KEYS = ['hand', 'motion', 'math', 'kinetic'] as const;
 /** Video formats (src/engine/looks.ts). */
-export const LOOK_KEYS = ['act', 'whiteboard', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
+export const LOOK_KEYS = ['act', 'whiteboard', 'illustrated', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
 /** Ways a video made in Zalo can be drawn (the documentary needs pictures drawn on the web, so it is not one). */
 export const ZALO_WAYS = ['auto', 'classic-sketch', 'classic-diagram', 'classic', 'act', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz'] as const;
 export const GOOGLE_MODES = ['auto', 'popup', 'redirect'] as const;
@@ -172,8 +172,9 @@ export function defaultConfig(env: Env): Config {
       actions: { idle: 'Đứng', walk: 'Đi bộ', run: 'Chạy', wave: 'Vẫy tay', think: 'Suy nghĩ', cheer: 'Ăn mừng', sad: 'Buồn', point: 'Chỉ tay', shrug: 'Nhún vai', jump: 'Nhảy' },
       ai: { openai: 'OpenAI', gemini: 'Gemini' },
       modes: { hand: 'Bàn tay vẽ (whiteboard)', motion: 'Đồ hoạ chuyển động (motion graphics)', math: 'Toán học / học thuật (kiểu Manim)', kinetic: 'Chữ chuyển động (kinetic typography)' },
-      looks: { whiteboard:'Whiteboard vẽ tay đa sắc', act: 'Hoạt hình kể chuyện', kinetic: 'Chữ bùng nổ', split: 'Hai bên đối lập', chat: 'Tin nhắn drama', story: 'Kể chuyện người que', data: 'Con số biết nói', quiz: 'Đố vui đếm ngược', doc: 'Phim tài liệu AI' },
+      looks: { illustrated:'Hoạt hình minh họa nhiều lớp', whiteboard:'Whiteboard vẽ tay đa sắc', act: 'Hoạt hình kể chuyện', kinetic: 'Chữ bùng nổ', split: 'Hai bên đối lập', chat: 'Tin nhắn drama', story: 'Kể chuyện người que', data: 'Con số biết nói', quiz: 'Đố vui đếm ngược', doc: 'Phim tài liệu AI' },
       lookNotes: {
+        illustrated:'Nhân vật nguyên hình và đạo cụ riêng xuất hiện theo lời, chữ nhấn ý, chuyển động từng lớp. Dùng ảnh AI; có thể chỉnh từng cảnh trước khi dựng.',
         whiteboard:'Bàn tay thật vẽ từng nét, minh họa theo lời, chữ viết tay và màu đa sắc. Bộ dựng riêng, không phụ đề dưới mặc định.',
         act: 'Bàn tay vẽ nhân vật rồi nhân vật tự diễn: đi lại, trò chuyện, cảm xúc, ví dụ sai/đúng. Hợp kỹ năng sống, tâm lý, kể chuyện.',
         kinetic: 'Chữ to từng nhịp, từ khoá tô vàng. Hợp mẹo nhanh, động lực, câu mở đầu.', split: 'Màn hình chia đôi: sai và đúng, nghèo và giàu. Hợp tài chính, kỹ năng sống.',
@@ -233,11 +234,6 @@ export function defaultConfig(env: Env): Config {
         failed: 'Video "{tieuDe}" dựng chưa được: {loi}. Bạn gửi lại giúp mình, hoặc mở web để sửa.',
         unknown: 'Mình chưa hiểu. Gõ HUONGDAN để xem cách dùng, hoặc gửi KB + kịch bản để tạo video.',
         noAI: 'Hiện chỉ dựng từ kịch bản có sẵn. Hãy gửi: KB + kịch bản của bạn.',
-        welcome: 'Chào {ten} 👋 Mình là {troLy} của {thuongHieu}. Bên mình biến một chủ đề hoặc kịch bản của bạn thành video vẽ tay có giọng đọc tiếng Việt chỉ trong vài phút, dùng cho TikTok, Reels, YouTube.\nBạn muốn:\n1. Làm thử miễn phí: gửi TAO + chủ đề (vd: TAO 3 mẹo tiết kiệm)\n2. Xem bảng giá: gõ GIA\n3. Gặp nhân viên: gõ NV',
-        offer: 'Bảng giá {thuongHieu}:\n{goi}\n👉 Gõ MUA + số gói (vd: MUA 1) để nhận mã thanh toán ngay{goiNam}. Gói kích hoạt ngay khi nhận tiền.',
-        payment: 'Đơn {ma} — {tenGoi}: {soTien}\nChuyển khoản giúp mình:\n• Ngân hàng: {nganHang}\n• Số tài khoản: {stk}\n• Chủ tài khoản: {chuTk}\n• Số tiền: {soTien}\n• Nội dung: {ma}\n{kichHoat}',
-        paid: '✅ Đã nhận {soTien} cho đơn {ma}. Gói {tenGoi} đã được kích hoạt{han}. Cảm ơn bạn đã tin dùng! Gửi chủ đề để làm video ngay nhé.',
-        upsell: '💡 Gói {goiGoiY} ({giaGoiY}) cho {loiIch}. Gõ MUA {soGoiY} để nâng cấp ngay.',
       },
     },
     plans: [

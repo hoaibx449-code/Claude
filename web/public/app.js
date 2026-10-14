@@ -1,4 +1,4 @@
-function paintFrame(ctx,model,t,opts){return model.whiteboardAddon?FVWhiteboard.renderFrame(ctx,model,t,opts):NV.renderFrame(ctx,model,t,opts);}
+function paintFrame(ctx,model,t,opts){return model.illustratedAddon?FVIllustrated.renderFrame(ctx,model,t,opts):model.whiteboardAddon?FVWhiteboard.renderFrame(ctx,model,t,opts):NV.renderFrame(ctx,model,t,opts);}
 // Nét Vẽ Studio — browser app. All user text is inserted with textContent, never as HTML.
 'use strict';
 
@@ -758,7 +758,7 @@ const MODES = [
 ];
 const MODE_STYLE = Object.fromEntries(MODES.map(([k, , , st]) => [k, st]));
 // ---------- video formats (looks)
-const LOOK_KEYS = ['act', 'whiteboard', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'];
+const LOOK_KEYS = ['act', 'whiteboard', 'illustrated', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'];
 const SKIN_NAMES = { dem: 'Đêm', sang: 'Sáng', tim: 'Tím', 'do-xanh': 'Đỏ – xanh', 'tim-vang': 'Tím – vàng', toi: 'Tối', hong: 'Hồng', giay: 'Giấy', 'bang-den': 'Bảng đen', xanh: 'Xanh', 'xanh-la': 'Xanh lá', cam: 'Cam', 'dien-anh': 'Điện ảnh', 'trang-den': 'Trắng đen', lanh: 'Lạnh' };
 const looksOn = () => LOOK_KEYS.filter((k) => V('look:' + k) !== 'hidden');
 /**
@@ -766,7 +766,7 @@ const looksOn = () => LOOK_KEYS.filter((k) => V('look:' + k) !== 'hidden');
  * picks per video from the words and does not repeat the channel's last one; `classic*` are the
  * hand-drawn boards (sketchnote, hand-drawn charts, doodle pictures).
  */
-const LOOK_GROUPS = [['Vẽ tay', ['auto', 'act', 'whiteboard', 'classic-sketch', 'classic-diagram', 'classic']], ['Đồ hoạ chuyển động', ['kinetic', 'split', 'chat', 'data', 'quiz', 'story']], ['Điện ảnh', ['doc']]];
+const LOOK_GROUPS = [['Vẽ tay', ['auto', 'act', 'whiteboard', 'classic-sketch', 'classic-diagram', 'classic']], ['Đồ hoạ chuyển động', ['illustrated','kinetic', 'split', 'chat', 'data', 'quiz', 'story']], ['Điện ảnh', ['doc']]];
 const HAND = { auto: ['Tự động đa dạng', 'Mỗi video một cách vẽ hợp với nội dung: có số liệu thì vẽ biểu đồ, có đối thoại thì nhân vật diễn, còn lại sketchnote hoặc tranh lớn. Không lặp kiểu của video trước.'],
   'classic-sketch': ['Sketchnote theo lời', 'Vẽ đúng thứ đang được nói: nhân vật đổi tư thế theo động từ, đồ vật của câu thoại, mũi tên và bóng thoại.'],
   'classic-diagram': ['Biểu đồ vẽ tay', 'Biểu đồ tròn, đường xu hướng, cột số liệu được tay vẽ từng nét, khoanh đỏ chỗ quan trọng.'],
@@ -1037,6 +1037,7 @@ async function showCreate() {
     voice: h('select', { id: 'f-voice' }, options(voiceOptions(), D.voice)),
     channel: h('input', { id: 'f-channel', maxlength: 40, value: D.channel || '', placeholder: T('channel') }),
     episode: h('input', { id: 'f-episode', maxlength: 30, placeholder: T('episodeHint') }),
+    illustratedCharacter:h('textarea',{id:'f-illustrated-character',rows:2,maxlength:800,placeholder:'Mô tả nhân vật, trang phục, biểu cảm hoặc chủ thể bạn muốn. Không bắt buộc.'}),
     tone: h('input', { id: 'f-tone', maxlength: 200, value: D.tone || '', placeholder: T('toneHint') }),
     // hand drawing uses the picture library by default (no repeated stick figures)
     visual: h('select', { id: 'f-visual' }, options(Object.entries(ui.labels.visual).map(([k, v]) => [k, v, 'visual:' + k]), V('visual:doodle') === 'on' ? 'doodle' : D.visual || 'sketch')),
@@ -1048,6 +1049,7 @@ async function showCreate() {
     affPrice: h('input', { maxlength: 30, placeholder: 'Giá, vd 199.000đ' }),
     music: h('select', { id: 'f-music' }, options([['auto', 'Tự chọn'], ['none', 'Không nhạc'], ...(ui.music || []).map((m) => [m.id, m.title])], ui.defaults?.music || 'auto')),
   };
+  const illustratedOptions=h('div',{hidden:true},h('label',{},'Nhân vật / chủ thể theo ý bạn',f.illustratedCharacter),h('p',{class:'muted'},'Ảnh AI được tạo riêng cho từng lớp, tính lượt ảnh theo gói. Bạn có thể chỉnh mô tả, bố cục và nhịp xuất hiện trước khi xuất video.'));
   const skinBox = h('div');
   const creditNote = h('p', { class: 'notice', hidden: true });
   const showCredits = async () => {
@@ -1075,13 +1077,15 @@ async function showCreate() {
     f.topic.placeholder = mine ? T('scriptHint') : T('topicHint');
     only.seconds.hidden = mine; only.tone.hidden = mine; only.visual.hidden = mine;
     only.subs.hidden = V('feature:subtitles') === 'hidden';
-    if(only.intro)only.intro.hidden=look==='whiteboard';
+    if(only.intro)only.intro.hidden=['whiteboard','illustrated'].includes(look);
+    illustratedOptions.hidden=look!=='illustrated';
     tplBox.hidden = src !== 'template';
     if (src === 'template' && !tplBox.childNodes.length) tplBox.append(templatesCard(pick));
     tryBtn.hidden = !mine;
     go.textContent = src === 'mine-free' || src === 'template' ? (ui.beta ? 'Tạo video' : 'Tạo video (miễn phí)') : mine ? 'AI minh hoạ kịch bản' : T('write');
     go.disabled = src !== 'mine-free' && src !== 'template' && !hasAI;
-    if (go.disabled) go.textContent = 'AI chưa sẵn sàng — chọn "Kịch bản của tôi"';
+    if(look==='illustrated'&&['mine-free','template'].includes(src)){go.disabled=true;go.textContent='Chọn Kịch bản của tôi + AI minh họa để dùng kiểu này';}
+    if (go.disabled && !(look==='illustrated'&&['mine-free','template'].includes(src))) go.textContent = 'AI chưa sẵn sàng — chọn "Kịch bản của tôi"';
     only.aff.hidden = !f.affOn.checked;
     // format videos: the format sets the look; the classic board keeps its own options
     const classic = isClassic(look), auto = look === 'auto';
@@ -1111,7 +1115,7 @@ async function showCreate() {
     return { look: isClassic(look) ? '' : look, skin: skin || undefined, music: f.music.value,
       source: f.source.value === 'template' ? 'mine-free' : f.source.value, subtitles: f.subtitles.checked, topic: f.topic.value, seconds: Number(f.seconds.value), ratio: f.ratio.value, style: f.style.value,
       voiceId: f.voice.value, channel: f.channel.value, episode: f.episode.value, tone: f.tone.value, visual: f.visual.value, format: f.format.value, transition: f.transition.value,
-      mode: x.mode, intro: x.intro, character: x.character, affiliate: x.affiliate };
+      mode: x.mode, intro: x.intro, character: x.character, affiliate: x.affiliate, illustratedCharacter:look==='illustrated'?f.illustratedCharacter.value:undefined };
   };
   const feat = (k) => V('feature:' + k) !== 'hidden';
   // what the user gets and what it takes, updated as they choose
@@ -1136,7 +1140,7 @@ async function showCreate() {
       tplBox, h('label', { for: 'f-topic' }, topicLabel, f.topic), detect),
     step(2, 'Cách kể', 'Video trông thế nào? Mỗi cách kể có nhịp, bố cục và âm thanh riêng.',
       lookPicker(look, (k) => { look = k; skin = ''; track('look', { look: k }); sync(); paintSummary(); }, demos),
-      creditNote,
+      creditNote,illustratedOptions,
       only.looked = h('div', { class: 'grid wide-2' }, skinBox, h('label', {}, 'Nhạc nền', f.music))),
     step(3, 'Xuất video', 'Kiểm tra thông số và chi phí trước khi dựng.',
       h('div', { class: 'grid wide-2' }, h('label', {}, T('ratio'), f.ratio), h('label', {}, T('voice'), voiceField(f.voice)), only.seconds = h('label', {}, T('duration'), f.seconds)),
@@ -1544,7 +1548,7 @@ async function showEditor(id) {
       if (MODE_STYLE[k] && k !== 'hand' && ui.enabledStyles.includes(MODE_STYLE[k]) && ['sunset', 'cosmos', 'manim', 'bold'].includes(spec.style)) spec.style = MODE_STYLE[k];
       changed();
     })),
-    V('feature:intro') === 'hidden' || ['act','whiteboard'].includes(spec.look) ? null : h('label', { class: 'check' }, h('input', { type: 'checkbox', disabled: V('feature:intro') === 'dev', checked: !!spec.intro, onchange: (e) => {
+    V('feature:intro') === 'hidden' || ['act','whiteboard','illustrated'].includes(spec.look) ? null : h('label', { class: 'check' }, h('input', { type: 'checkbox', disabled: V('feature:intro') === 'dev', checked: !!spec.intro, onchange: (e) => {
       spec.intro = e.target.checked ? { title: spec.title, badge: BADGES[spec.format] || 'MỚI', icon: spec.scenes.flatMap((sc) => sc.diagram?.items || []).find((it) => it.t === 'icon')?.name } : null;
       paintIntro(); changed();
     } }), h('span', {}, h('b', {}, 'Mở đầu là ảnh bìa thu hút'), h('small', { class: 'muted' }, ' (cũng là ảnh thumbnail)'))),
@@ -1676,6 +1680,22 @@ async function showEditor(id) {
     return h('div', { class: 'sketch' }, ...rows,
       h('div', { class: 'row' }, h('button', { type: 'button', class: 'ghost small', 'data-ev': 'redesign', onclick: () => redesign(sc) }, 'Thiết kế lại theo lời (miễn phí)')));
   }
+  function illustratedEditor(sc,si){
+    const d=sc.illustrated;if(!d)return h('p',{},'Cảnh chưa có thiết kế.');
+    return h('div',{},h('span',{class:'tag'},'Hoạt hình minh họa nhiều lớp'),
+      field('Tiêu đề trên hình',d.headline,v=>{d.headline=v;changed();},{max:80}),
+      field('Từ nhấn',d.emphasis,v=>{d.emphasis=v;changed();},{max:30}),
+      h('label',{},'Bố cục',h('select',{onchange:e=>{d.layout=e.target.value;changed();}},options([['duo','Nhân vật và đạo cụ'],['reverse','Đảo vị trí'],['hero','Một hình chính'],['trio','Ba lớp']],d.layout))),
+      h('label',{},'Màu nhấn',h('input',{type:'color',value:d.accent,oninput:e=>{d.accent=e.target.value;changed();}})),
+      h('div',{class:'panels'},sc.panels.map((p,pi)=>{
+        const layer=d.layers[pi],img=h('img',{src:imageUrl(p.image)||BLANK,alt:layer.role==='character'?'Nhân vật':'Minh họa ý'});panelImgs.set(`${si}:${pi}`,img);
+        const btn=h('button',{type:'button',class:'small',hidden:!imageAI,onclick:()=>drawPanel(si,pi,btn)},p.image?'Vẽ lại lớp này':'Vẽ lớp này');
+        return h('div',{class:'panel'},img,field('Mô tả hình',p.prompt,v=>{p.prompt=v;layer.prompt=v;changed();},{area:true,max:900}),
+          field('Xuất hiện khi đọc cụm từ',layer.cue,v=>{layer.cue=v;changed();},{max:80}),
+          h('label',{},'Câu thoại',h('select',{onchange:e=>{layer.line=Number(e.target.value);changed();}},options(sc.lines.map((_,k)=>[String(k),`Câu ${k+1}`]),String(layer.line)))),
+          h('label',{},'Chuyển động vào',h('select',{onchange:e=>{layer.enter=e.target.value;changed();}},options([['rise','Đi lên nhẹ'],['pop','Nhấn xuất hiện'],['slide','Trượt nhẹ'],['fade','Mờ dần']],layer.enter))),btn);
+      })));
+  }
   const panelImgs = new Map();
   async function drawPanel(si, pi, btn) {
     const p = spec.scenes[si].panels[pi];
@@ -1694,6 +1714,7 @@ async function showEditor(id) {
     spec.scenes.forEach((sc, si) => sc.panels.forEach((p, pi) => { if (!sc.diagram && !/^(r2|doodle|peep):/.test(p.image || '')) todo.push([si, pi]); }));
     if (!todo.length) return true;
     if (!imgProvider.options.length || !imageAI) {
+      if(spec.look==='illustrated'){toast('Cần ảnh cho từng lớp. Hãy bật API tạo ảnh hoặc chọn phong cách khác. Kịch bản đã lưu vẫn được giữ.');return false;}
       // no image AI: turn picture scenes into hand-drawn boards instead of blocking the render
       for (const si of [...new Set(todo.map(([si]) => si))]) await redesign(spec.scenes[si]);
       return true;
@@ -1725,7 +1746,7 @@ async function showEditor(id) {
       sc.lines.map((line, li) => h('label', {}, `Câu ${li + 1}`, h('textarea', { class: 'line', rows: 2, maxlength: 160, value: line,
         oninput: (e) => { sc.lines[li] = e.target.value; changed(); } }))),
       sc.lines.length < 3 ? h('button', { type: 'button', class: 'ghost small', onclick: () => { sc.lines.push('Câu mới.'); drawScenes(); changed(); } }, '+ Thêm câu') : null,
-      spec.look && spec.look !== 'doc' ? lookEditor(sc) : sc.diagram ? diagramEditor(sc) : h('div', { class: 'panels' }, sc.panels.map((p, pi) => {
+      spec.look==='illustrated'?illustratedEditor(sc,si):spec.look && spec.look !== 'doc' ? lookEditor(sc) : sc.diagram ? diagramEditor(sc) : h('div', { class: 'panels' }, sc.panels.map((p, pi) => {
         const img = h('img', { src: imageUrl(p.image) || BLANK, alt: p.prompt || 'Chưa có tranh' });
         panelImgs.set(`${si}:${pi}`, img);
         const btn = h('button', { type: 'button', class: 'small', hidden: !imageAI, onclick: () => drawPanel(si, pi, btn) }, p.image?.startsWith('r2:') ? 'Vẽ lại bằng AI' : 'Vẽ bằng AI');
@@ -1766,7 +1787,7 @@ async function showEditor(id) {
   }
   function drawScenes() {
     panelImgs.clear();
-    drawAllBtn.hidden = !imageAI || (spec.look && spec.look !== 'doc') || !spec.scenes.some((sc) => !sc.diagram && sc.panels.some((p) => !/^(r2|doodle|peep):/.test(p.image || '')));
+    drawAllBtn.hidden = !imageAI || (spec.look && !['doc','illustrated'].includes(spec.look)) || !spec.scenes.some((sc) => !sc.diagram && sc.panels.some((p) => !/^(r2|doodle|peep):/.test(p.image || '')));
     paintList();
     cur = Math.min(cur, spec.scenes.length - 1);
     sceneDetail.replaceChildren(sceneCard(spec.scenes[cur], cur), addRow());
@@ -1946,6 +1967,7 @@ async function previewModel(spec, dpr) {
   const media = Object.fromEntries(entries.map(([k], i) => [k, pics[i]]).filter(([, v]) => v));
   const timeline = NV.buildTimeline(spec.scenes, spec.scenes.map((s) => NV.estimateVoice(s.lines)), { intro: !!spec.intro?.title && spec.look !== 'act' });
   const env = { createCanvas: (w, hgt) => { const c = document.createElement('canvas'); c.width = w; c.height = hgt; return c; } };
+  if(spec.look==='illustrated')return {...FVIllustrated.prepare({env,project:spec,timeline,images,hand,dpr,icons,media}),illustratedAddon:true};
   if(spec.look==='whiteboard') {
     hand.whiteboardImage=await loadImg('/assets/faciup-whiteboard/hand.png');
     return {...FVWhiteboard.prepare({env,project:spec,timeline,images,hand,dpr,icons,media}),whiteboardAddon:true};
