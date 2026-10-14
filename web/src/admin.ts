@@ -1,7 +1,7 @@
 // Admin API: settings, users, activity log, analytics. Every route here is admin-only
 // (checked in worker.ts before dispatch) and every change is itself logged.
 import { aiCost } from './log.ts';
-import { analyzeSample, LOOK_BRIEF } from './ai.ts';
+import { analyzeSample, geminiThinking, LOOK_BRIEF } from './ai.ts';
 import { testEverAI, voiceStatus, voicesWithStatus } from './voices.ts';
 import type { User } from './auth.ts';
 import { clearCache, isAdmin, save as saveSettings, secretStatus } from './settings.ts';
@@ -70,6 +70,30 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
       // every model's answer, so the log says which key or model is the problem
       rc.log('admin.train', { ok: false, data: { frames: frames.length, error: String(e.message).slice(0, 200), tried: e.extra?.tried } }); throw e; });
     rc.log('admin.train', { cost: aiCost(env.config, { model: '', tokensIn: out._usage.tokensIn, tokensOut: out._usage.tokensOut }), data: { frames: frames.length, base: out.base } });
+    return json(out);
+  }
+  if (sub === 'ai/check' && method === 'GET') {
+    // which Gemini text models this key may use, and how long a tiny JSON answer takes on the chosen ones
+    const out: any = { gemini: null, openai: null };
+    if (env.GEMINI_API_KEY) {
+      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': env.GEMINI_API_KEY } });
+      const j: any = await r.json().catch(() => ({}));
+      out.gemini = { status: r.status, error: j.error?.message, models: (j.models || []).filter((m: any) => (m.supportedGenerationMethods || []).includes('generateContent')).map((m: any) => String(m.name).replace('models/', '')).filter((n: string) => /gemini/.test(n)).slice(0, 60) };
+      out.gemini.timing = await Promise.all([env.config.models.geminiText, ...env.config.models.geminiFallback.split(',')].filter(Boolean).map(async (model) => {
+        const t0 = Date.now();
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, { method: 'POST', headers: { 'x-goog-api-key': env.GEMINI_API_KEY!, 'content-type': 'application/json' }, signal: AbortSignal.timeout(60_000),
+            body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Trả JSON {"ok":true}' }] }], generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 2048, ...geminiThinking(model) } }) });
+          const jj: any = await res.json().catch(() => ({}));
+          return { model, status: res.status, ms: Date.now() - t0, error: jj.error?.message?.slice(0, 160), finish: jj.candidates?.[0]?.finishReason };
+        } catch (e: any) { return { model, ms: Date.now() - t0, error: String(e.message).slice(0, 120) }; }
+      }));
+    }
+    if (env.OPENAI_API_KEY) {
+      const r = await fetch('https://api.openai.com/v1/models', { headers: { authorization: `Bearer ${env.OPENAI_API_KEY}` } });
+      const j: any = await r.json().catch(() => ({}));
+      out.openai = { status: r.status, error: j.error?.message?.slice(0, 160) };
+    }
     return json(out);
   }
   if (sub === 'voices/test' && method === 'POST') {
