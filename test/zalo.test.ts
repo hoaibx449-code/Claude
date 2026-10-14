@@ -129,7 +129,7 @@ test('natural commands get real answers, and a new chat typing a valid command i
  await f.receive('Định dạng','n6');await f.drain();assert.match(last(),/Chọn định dạng/);
  await f.receive('Tắt','n7');await f.drain();assert.match(last(),/tắt thông báo/);
  assert.ok(!f.sent.some((s: any)=>/chưa hiểu/.test(s.body.text)));
- await f.receive('blah blah','n8');await f.drain();assert.doesNotMatch(last(),/chưa hiểu/);assert.match(last(),/TAO|GIA/);
+ await f.receive('blah blah','n8');await f.drain();assert.doesNotMatch(last(),/chưa hiểu/);assert.match(last(),/1\. .+\n2\. .+bảng giá|Xem bảng giá/);
  // guests not allowed: told to link instead of "chưa hiểu"
  f.env.config.zalo.allowGuests=false;
  await f.env.DB.prepare("DELETE FROM zalo_links").run();
@@ -163,3 +163,73 @@ test('Zalo video format: the admin default is used, and DINHDANG offers only the
  c.zalo.formats={default:'split',allowed:[]};
  await f.receive('DINHDANG','d3');await f.drain();assert.match(f.sent.at(-1).body.text,/được dựng theo định dạng: Hai bên đối lập/);
 }));
+
+test('the webhook is never dropped for being quiet, and is put back when something else moves or deletes it',async()=>fixture(async f=>{
+ const { receiveMode, keepWebhook } = await import('../web/src/zalo.ts');
+ const { cleanConfig } = await import('../web/src/settings.ts');
+ // the old "auto" mode (which deleted the webhook after 15 quiet minutes) is now the plain webhook
+ assert.equal(cleanConfig({zalo:{receive:'auto'}},f.env.config).zalo.receive,'webhook');
+ f.env.config.zalo.receive='auto';assert.equal(await receiveMode(f.env),'webhook');f.env.config.zalo.receive='webhook';
+ f.env.config.zalo.ownerChat='owner-1';
+ const ours='https://studio.test/api/zalo/webhook?s='+await webhookSecret(f.env);
+ f.setResponse({ok:true,result:{url:ours}});
+ await zaloAdmin(new Request('https://studio.test/api/admin/zalo/connect',{method:'POST'}),f.env,f.env,'zalo/connect','POST',f.rc);
+ // someone else took it (an old Apps Script with the same token)
+ f.setResponse({ok:true,result:{url:'https://script.google.com/macros/s/abc/exec'}});
+ let before=f.sent.length;
+ const r=await keepWebhook(f.env,f.rc);
+ assert.equal(r.found,'https://script.google.com/macros/s/abc/exec');
+ const set=f.sent.slice(before).find((x: any)=>/setWebhook$/.test(x.url));assert.equal(set.body.url,ours);
+ assert.ok(f.sent.slice(before).some((x: any)=>x.body.chat_id==='owner-1'&&/Webhook Zalo vừa bị chuyển sang https:\/\/script\.google\.com/.test(x.body.text)));
+ assert.ok(!f.sent.slice(before).some((x: any)=>/deleteWebhook/.test(x.url)));
+ // still ours: nothing to do
+ f.setResponse({ok:true,result:{url:ours}});before=f.sent.length;
+ assert.equal((await keepWebhook(f.env,f.rc)).ok,true);assert.ok(!f.sent.slice(before).some((x: any)=>/setWebhook$/.test(x.url)));
+ // the admin can turn the keeper off
+ f.env.config.zalo.keepWebhook=false;assert.equal((await keepWebhook(f.env,f.rc)).checked,false);
+}));
+
+test('people answer the offered choices with a number, without any command',async()=>fixture(async f=>{
+ f.env.config.plans.find((p: any)=>p.price>0).visible=true;
+ await f.receive('chào shop','n1');await f.drain();
+ assert.match(f.sent.at(-1).body.text,/1\. Làm thử một video miễn phí\n2\. Xem video mẫu\n3\. Xem bảng giá/);
+ await f.receive('3','n2');await f.drain();
+ assert.match(f.sent.at(-1).body.text,/199\.000đ/);
+ const lead=await f.env.DB.prepare("SELECT stage, quoted_at FROM zalo_leads WHERE chat_id='chat-1'").first();
+ assert.equal(lead.stage,'quoted');assert.ok(lead.quoted_at);
+}));
+
+test('a member of staff answering a customer silences the assistant for that chat and receives the next messages',async()=>fixture(async f=>{
+ f.env.config.zalo.ownerChat='owner-1';
+ await f.env.DB.prepare("INSERT INTO zalo_leads (chat_id, stage, profile, followups, optout, human_until, updated_at) VALUES ('chat-1','interested','{}',0,0,?,?)").bind(Date.now()+600_000,Date.now()).run();
+ const before=f.sent.length;
+ await f.receive('cho mình hỏi thêm về gói năm','h1');await f.drain();
+ const out=f.sent.slice(before).filter((x: any)=>/sendMessage$/.test(x.url));
+ assert.ok(!out.some((x: any)=>x.body.chat_id==='chat-1'));
+ assert.ok(out.some((x: any)=>x.body.chat_id==='owner-1'&&/gói năm/.test(x.body.text)));
+}));
+
+test('one friendly follow-up to someone who saw prices and went quiet, never twice, never after they opted out',async()=>fixture(async f=>{
+ const { followUps } = await import('../web/src/zalo.ts');
+ f.env.config.zalo.followup={enabled:true,hours:20,text:'Chào {ten}, bạn còn phân vân gì về gói {goi} không?'};
+ const t=Date.now()-21*3600_000;
+ await f.env.DB.prepare("INSERT INTO zalo_leads (chat_id, stage, profile, quoted_at, followups, optout, updated_at) VALUES ('chat-1','quoted','{\"ten\":\"Lan\",\"goi\":\"Chuyên nghiệp\"}',?,0,0,?)").bind(t,t).run();
+ await f.env.DB.prepare("INSERT INTO zalo_leads (chat_id, stage, profile, quoted_at, followups, optout, updated_at) VALUES ('chat-2','quoted','{}',?,0,1,?)").bind(t,t).run();
+ assert.equal((await followUps(f.env,f.rc)).sent,1);
+ assert.equal(f.sent.at(-1).body.chat_id,'chat-1');assert.match(f.sent.at(-1).body.text,/Chào Lan, bạn còn phân vân gì về gói Chuyên nghiệp/);
+ assert.equal((await followUps(f.env,f.rc)).sent,0);
+ f.env.config.zalo.followup.enabled=false;
+}));
+
+test('a slow AI is cut off within the deadline so the customer still gets an answer',async()=>{
+ const { assistantAnswer } = await import('../web/src/ai.ts');
+ const originalFetch=globalThis.fetch;
+ // a model that never answers (it only stops when the request is aborted)
+ globalThis.fetch=((_u: any, o: any)=>new Promise((_ok, no)=>o?.signal?.addEventListener('abort',()=>no(new Error('The operation was aborted due to timeout'))))) as any;
+ try {
+  const env: any={GEMINI_API_KEY:'k',GEMINI_TEXT_MODEL:'m1',GEMINI_TEXT_FALLBACK:'m2,m3'};
+  const t0=Date.now(), alive=setInterval(()=>{},500); // AbortSignal.timeout does not keep Node's loop alive by itself
+  try { await assert.rejects(assistantAnswer(env,'sys',[],'chào','gemini',5000)); } finally { clearInterval(alive); }
+  assert.ok(Date.now()-t0<6500,'took '+(Date.now()-t0)+'ms');
+ } finally { globalThis.fetch=originalFetch; }
+});

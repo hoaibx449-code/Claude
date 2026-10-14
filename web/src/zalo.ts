@@ -166,6 +166,8 @@ export async function zaloWebhook(req: Request, env: XEnv, rc: Rc): Promise<Resp
   // X-Zalo-Signature; the address registered by "Kết nối webhook" also carries it (?s=) as a last resort
   const given = req.headers.get('x-bot-api-secret-token') || req.headers.get('x-zalo-signature') || new URL(req.url).searchParams.get('s') || '';
   if (!timingSafeEqual(given, secret)) return refuse(given ? 'sai mã bí mật: bấm "Kết nối webhook" lại' : 'thiếu mã bí mật: bấm "Kết nối webhook" lại');
+  // the address Zalo really calls is the one the keeper must restore (installs connected before it existed)
+  rc.wait((async () => { const st = (await zaloRecvStatus(env)) || {}, here = new URL(req.url).origin + '/api/zalo/webhook'; if (st.hook !== here) await recvState(env, { ...st, hook: here }); })());
   let b: any;
   try { b = await body<any>(req, 50_000); } catch { return refuse('Nội dung không phải JSON.'); }
   const event = normalizeMessage(b);
@@ -238,7 +240,11 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   // per chat: at most 60 messages a day
   try { await useQuota(env, 'z:' + chatId, 'zalo', 60); } catch { return reply('Bạn đã dùng hết lượt nhắn bot hôm nay. Thử lại vào ngày mai nhé.'); }
 
-  const raw = text.trim();
+  const lead = await getLead(env, chatId);
+  let raw = text.trim();
+  // "1", "số 2"… answers the numbered choices we offered last
+  const num = raw.match(/^\s*(?:s[oố]\s*)?([1-9])\s*[.)!]?\s*$/i);
+  if (num && lead.menu?.[Number(num[1]) - 1]) raw = lead.menu[Number(num[1]) - 1].say;
   const { cmd, rest, arg } = parseCommand(raw);
 
   // owner claims the bot (code from the admin page)
@@ -272,7 +278,8 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
 
   let user: User | null = link ? { id: link.user_id, email: link.email, name: link.name, picture: null } : null;
   if (user && await env.DB.prepare('SELECT 1 FROM blocked_users WHERE user_id = ?').bind(user.id).first()) return reply('Tài khoản đang bị khóa. Vui lòng liên hệ chủ web.');
-  const prefs = link ? JSON.parse(link.prefs || '{}') : {};
+  // choices made in conversation before an account existed live with the lead
+  const prefs = { ...(lead.profile.prefs || {}), ...(link ? JSON.parse(link.prefs || '{}') : {}) };
   const help = () => reply(fill(t.help, { ten: name || link?.name || 'bạn' }));
   // the owner answers a customer the assistant handed over: TL <mã khách> <lời nhắn>
   if (cmd === 'TL' && (await ownerChats(env)).chats.includes(chatId)) {
@@ -280,25 +287,37 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
     if (!/^[a-z0-9]{4,12}$/.test(code) || !msg) return reply('Gửi: TL <mã khách> <lời nhắn>. Mã khách có trong tin báo "Khách cần hỗ trợ".');
     const target = await env.DB.prepare("SELECT chat_id FROM zalo_messages WHERE lower(substr(chat_id, -6)) = ? ORDER BY received_at DESC LIMIT 1").bind(code).first<any>();
     if (!target) return reply('Không tìm thấy khách có mã ' + code + '.');
-    const r = await send(env, target.chat_id, `💬 ${z.assistant.name}: ${msg}`);
+    const r = await send(env, target.chat_id, msg);
+    // a person is answering this customer now: the assistant steps back for 30 minutes
+    await saveLead(env, target.chat_id, { human_until: Date.now() + 30 * 60_000 });
     rc.log('zalo.handoff.reply', { ok: r.ok, data: { chat: target.chat_id } });
     return reply(r.ok ? 'Đã gửi cho khách ' + code + '.' : 'Chưa gửi được: ' + r.error);
   }
   const assistantOn = z.assistant.enabled && !!(env.GEMINI_API_KEY || env.OPENAI_API_KEY);
   // greetings and "?" get the menu; a free question goes to the assistant when it is on
-  if (!cmd || ['GIUP', 'HUONGDAN', 'HELP', 'START', 'MENU', '?', 'HD'].includes(cmd) || (!assistantOn && ['XINCHAO', 'CHAO', 'HI', 'HELLO'].includes(cmd))) return help();
+  if (['GIUP', 'HUONGDAN', 'HELP', 'START', 'MENU', '?', 'HD'].includes(cmd)) return help();
+  if (!cmd || (!assistantOn && ['XINCHAO', 'CHAO', 'HI', 'HELLO'].includes(cmd))) return reply(await withMenu(env, chatId, fill(t.welcome, { ten: name || 'bạn', troLy: z.assistant.name, thuongHieu: brandOf(env.config) }), START_MENU));
 
   const known = COMMANDS.includes(cmd) && !(assistantOn && ['XINCHAO', 'CHAO', 'HI', 'HELLO'].includes(cmd));
   // a long message is a script to film; with the assistant on, a long question is a question
   const longScript = !known && raw.length >= 120 && !(assistantOn && /\?/.test(raw));
-  const ctx = (): AskCtx => ({ chatId, messageId, name, text: raw, user, link, prefs, reply });
+  const ctx = (): AskCtx => ({ chatId, messageId, name, text: raw, user, link, prefs, reply, lead });
   // a free message: the AI assistant, or (AI off) answers recognised from the words
-  const ask = () => (assistantOn ? assistantReply(env, rc, ctx()) : quickAnswer(env, rc, ctx(), 'trợ lý AI đang tắt'));
+  const ask = async () => {
+    // a member of staff took this chat over: pass the message on instead of answering over them
+    if (lead.human_until && lead.human_until > Date.now()) {
+      const code = chatId.slice(-6).toLowerCase();
+      await notifyOwner(env, 'support', `Khách [${code}] ${name || ''} nhắn: "${raw.slice(0, 300)}"\nTrả lời: TL ${code} <lời nhắn>`);
+      rc.log('zalo.handoff.forward', { data: { chat: chatId } });
+      return;
+    }
+    return assistantOn ? assistantReply(env, rc, ctx()) : quickAnswer(env, rc, ctx(), 'trợ lý AI đang tắt');
+  };
   if (!user) {
     // nothing to show or undo yet: answer without signing them up
     if (cmd === 'HUYKETNOI') return reply('Zalo này chưa kết nối tài khoản nào.');
     if (['TT', 'TRANGTHAI', 'DS', 'DANHSACH'].includes(cmd)) return reply('Zalo này chưa có video nào. Gửi KB + kịch bản (hoặc MAU để xem kịch bản mẫu) để bắt đầu.');
-    if (cmd === 'GIA') return reply(offerText(env));
+    if (cmd === 'GIA') return reply(await quote(env, { chatId }));
     if (cmd === 'NV') return quickAnswer(env, rc, { ...ctx(), text: 'gặp nhân viên ' + arg });
     if (!known && !longScript) return ask();
     // any other real command (a video, or a choice of frame/voice/format/notifications) needs an account
@@ -348,10 +367,10 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
       prefs.voice = voices[n - 1].code; await savePrefs(prefs);
       return reply('Đã chọn giọng: ' + voices[n - 1].label);
     }
-    case 'GIA': return reply(offerText(env, (await planOf(env, user.id)).plan.id));
+    case 'GIA': return reply(await quote(env, { chatId }, (await planOf(env, user.id)).plan.id));
     case 'MUA': {
       const want = arg ? wantedPlan(env.config, arg) : null;
-      if (!want) return reply(offerText(env, (await planOf(env, user.id)).plan.id));
+      if (!want) return reply(await quote(env, { chatId }, (await planOf(env, user.id)).plan.id));
       return closeSale(env, rc, chatId, name, user, want, messageId);
     }
     case 'NV': return quickAnswer(env, rc, { ...ctx(), text: 'gặp nhân viên ' + arg });
@@ -385,7 +404,60 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   return ask();
 }
 
-interface AskCtx { chatId: string; messageId: string; name: string; text: string; user: User | null; link: any; prefs: any; reply: (s: string) => Promise<any> }
+interface AskCtx { chatId: string; messageId: string; name: string; text: string; user: User | null; link: any; prefs: any; reply: (s: string) => Promise<any>; lead: Lead }
+
+// ---------------------------------------------------------------- what the assistant remembers about a person
+const STAGES = ['new', 'interested', 'trying', 'quoted', 'customer', 'lost'] as const;
+interface MenuItem { label: string; say: string }
+interface Lead { stage: string; profile: Record<string, any>; menu: MenuItem[] | null; quoted_at: number | null; followups: number; optout: number; human_until: number | null }
+async function getLead(env: XEnv, chatId: string): Promise<Lead> {
+  const r = await env.DB.prepare('SELECT stage, profile, menu, quoted_at, followups, optout, human_until FROM zalo_leads WHERE chat_id = ?').bind(chatId).first<any>();
+  const parse = (v: string | null, d: any) => { try { return v ? JSON.parse(v) : d; } catch { return d; } };
+  return r ? { ...r, profile: parse(r.profile, {}), menu: parse(r.menu, null) } : { stage: 'new', profile: {}, menu: null, quoted_at: null, followups: 0, optout: 0, human_until: null };
+}
+async function saveLead(env: XEnv, chatId: string, patch: Partial<Lead>) {
+  const l = { ...(await getLead(env, chatId)), ...patch };
+  await env.DB.prepare(`INSERT INTO zalo_leads (chat_id, stage, profile, menu, quoted_at, followups, optout, human_until, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (chat_id) DO UPDATE SET stage = excluded.stage, profile = excluded.profile, menu = excluded.menu, quoted_at = excluded.quoted_at, followups = excluded.followups,
+      optout = excluded.optout, human_until = excluded.human_until, updated_at = excluded.updated_at`)
+    .bind(chatId, STAGES.includes(l.stage as any) ? l.stage : 'new', JSON.stringify(l.profile || {}).slice(0, 3000), l.menu ? JSON.stringify(l.menu).slice(0, 2000) : null,
+      l.quoted_at ?? null, l.followups || 0, l.optout ? 1 : 0, l.human_until ?? null, Date.now()).run();
+}
+/** Numbered choices at the end of a message; "1" in the next message means the first one. */
+async function withMenu(env: XEnv, chatId: string, text: string, items: MenuItem[]) {
+  await saveLead(env, chatId, { menu: items.length ? items : null });
+  // a text that already lists numbered choices (an older welcome template) keeps its own wording
+  return items.length && !/\n\s*1[.)]/.test(text) ? text.trimEnd() + '\n' + items.map((x, i) => `${i + 1}. ${x.label}`).join('\n') : text;
+}
+const START_MENU: MenuItem[] = [
+  { label: 'Làm thử một video miễn phí', say: 'mình muốn làm thử video' },
+  { label: 'Xem video mẫu', say: 'cho mình xem video mẫu' },
+  { label: 'Xem bảng giá', say: 'bảng giá thế nào' },
+  { label: 'Nói chuyện với nhân viên', say: 'gặp nhân viên' },
+];
+/** The site's address, also from a scheduled job (where no request told it). */
+async function siteUrl(env: XEnv) {
+  if (origin(env)) return origin(env);
+  const st = await zaloRecvStatus(env);
+  try { return st?.hook ? new URL(st.hook).origin : ''; } catch { return ''; }
+}
+/** A few videos people made (community), each as a picture with its link: shows better than it tells. */
+async function sendSamples(env: XEnv, rc: Rc, chatId: string, messageId?: string) {
+  const token = (env as any).ZALO_BOT_TOKEN, web = await siteUrl(env);
+  const rows = (await env.DB.prepare('SELECT c.job_id, c.title, c.user_id FROM community c WHERE c.hidden = 0 ORDER BY c.likes DESC, c.created_at DESC LIMIT 6').all<any>().catch(() => ({ results: [] as any[] }))).results;
+  let sent = 0;
+  for (const v of rows) {
+    if (sent >= 3) break;
+    if (!(await env.BUCKET.head(`thumb/${v.user_id}/${v.job_id}.jpg`))) continue;
+    const link = await shareLink(env, web, v.job_id), photo = link.replace(`/api/share/${v.job_id}?`, `/api/share/${v.job_id}/thumb.jpg?`);
+    const r = token ? await zaloApi(token, 'sendPhoto', { chat_id: chatId, photo, caption: `🎬 ${v.title}\nXem video: ${link}` }, 10_000) : { ok: false };
+    if (r.ok) sent++;
+  }
+  rc.log('zalo.samples', { data: { chat: chatId, sent } });
+  const text = sent ? 'Đó là vài video mọi người làm bằng bên mình đó ạ. Bạn định làm video về chủ đề gì, mình làm thử cho bạn xem luôn nhé?'
+    : `Bạn xem video mẫu ngay trên trang chủ nhé: ${web}\nHoặc nhắn mình một chủ đề, mình làm thử miễn phí cho bạn xem luôn.`;
+  return send(env, chatId, text, messageId);
+}
 // ---------------------------------------------------------------- selling in Zalo
 const BANKS: Record<string, string> = { '970436': 'Vietcombank', '970415': 'VietinBank', '970418': 'BIDV', '970405': 'Agribank', '970422': 'MB Bank', '970407': 'Techcombank',
   '970416': 'ACB', '970432': 'VPBank', '970423': 'TPBank', '970403': 'Sacombank', '970437': 'HDBank', '970441': 'VIB', '970443': 'SHB', '970431': 'Eximbank', '970426': 'MSB',
@@ -404,6 +476,12 @@ export function offerText(env: XEnv, currentId?: string) {
     ...list.map((p, i) => `${i + 1}. ${p.name}: ${vnd(p.price)}${p.days === 30 ? '/tháng' : ` / ${p.days} ngày`}${p.listPrice > p.price ? ` (giá gốc ${vnd(p.listPrice)})` : ''}${p.yearPrice ? `, hoặc ${vnd(p.yearPrice)}/năm` : ''} — ${p.limits.render} video/ngày, mỗi video tới ${minutes(c, p.maxSeconds)} phút${p.limits.script ? `, ${p.limits.script} lượt AI viết kịch bản/ngày` : ''}${p.features.length ? ', ' + p.features.slice(0, 3).join(', ') : ''}${currentId === p.id ? ' (bạn đang dùng)' : ''}`),
   ];
   return fill(c.zalo.templates.offer, { thuongHieu: brandOf(c), goi: lines.join('\n'), goiNam: list.some((p) => p.yearPrice) ? ', thêm NAM để trả theo năm (vd: MUA 1 NAM)' : '' });
+}
+/** The price list as an answer: remembered as quoted (for the follow-up), and "1" then buys plan 1. */
+async function quote(env: XEnv, x: { chatId: string }, currentId?: string) {
+  const list = forSale(env.config);
+  await saveLead(env, x.chatId, { quoted_at: Date.now(), stage: 'quoted', menu: list.map((p, i) => ({ label: p.name, say: `MUA ${i + 1}` })) });
+  return offerText(env, currentId);
 }
 /** "1", "2 năm", "chuyên nghiệp", "pro:year" → the order key, or null. */
 export function wantedPlan(c: Config, words: string) {
@@ -453,6 +531,7 @@ export async function notifyCustomer(env: XEnv, userId: string, kind: 'paid', va
   if (!z.enabled || !(env as any).ZALO_BOT_TOKEN) return;
   const link = await env.DB.prepare('SELECT chat_id FROM zalo_links WHERE user_id = ?').bind(userId).first<any>();
   if (!link) return;
+  if (kind === 'paid') await saveLead(env, link.chat_id, { stage: 'customer' }).catch(() => {});
   await send(env, link.chat_id, fill(z.templates[kind], { ...vars, han: vars.han ? ' đến ' + vars.han : '' })).catch(() => {});
 }
 
@@ -463,6 +542,8 @@ export function guessIntent(text: string) {
   const t = ' ' + fold(text).toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ') + ' ';
   const has = (...w: string[]) => w.some((x) => t.includes(' ' + x + ' '));
   if (has('da chuyen', 'da ck', 'chuyen roi', 'ck roi', 'da thanh toan', 'thanh toan roi')) return 'paid';
+  if (has('dung nhan', 'khong can nua', 'dung lam phien', 'dung gui', 'khong nhan tin nua', 'huy theo doi')) return 'optout';
+  if (has('video mau', 'xem mau', 'vi du', 'demo', 'xem thu', 'cho xem', 'trong the nao', 'nhu the nao')) return 'samples';
   if (has('mua', 'chot', 'dang ky', 'nang cap', 'lay goi', 'muon mua', 'thanh toan', 'chuyen khoan', 'ck')) return 'buy';
   if (has('hoan tien', 'hoan lai', 'refund', 'tra lai tien')) return 'refund';
   if (has('nhan vien', 'nguoi that', 'tu van vien', 'gap admin', 'ad oi', 'admin oi', 'goi dien', 'hotline')) return 'human';
@@ -484,22 +565,25 @@ async function quickAnswer(env: XEnv, rc: Rc, x: AskCtx, why = '') {
     case 'buy': {
       const want = wantedPlan(c, x.text);
       if (want) return closeSale(env, rc, x.chatId, x.name, x.user, want, x.messageId);
-      return x.reply(forSale(c).length ? offerText(env, cur) : 'Hiện mọi người đang dùng miễn phí trong hạn mức mỗi ngày, chưa cần mua gói nhé.');
+      return x.reply(forSale(c).length ? await quote(env, x, cur) : 'Hiện mọi người đang dùng miễn phí trong hạn mức mỗi ngày, chưa cần mua gói nhé.');
     }
-    case 'price': return x.reply(forSale(c).length ? offerText(env, cur) : 'Hiện mọi người đang dùng miễn phí trong hạn mức mỗi ngày.');
+    case 'price': return x.reply(forSale(c).length ? await quote(env, x, cur) : 'Hiện mọi người đang dùng miễn phí trong hạn mức mỗi ngày.');
+    case 'samples': return sendSamples(env, rc, x.chatId, x.messageId);
+    case 'optout': await saveLead(env, x.chatId, { optout: 1 }); return x.reply('Dạ mình ghi nhận rồi, sẽ không nhắn trước cho bạn nữa. Khi cần làm video bạn cứ nhắn mình nhé.');
     case 'limit': { const up = await upsellText(env, x.user); return x.reply('Mỗi gói có hạn mức video mỗi ngày và độ dài tối đa mỗi video; lượt dựng được làm mới mỗi ngày. ' + (up || 'Gõ GIA để xem các gói.')); }
     case 'status': return x.reply(await statusText(env, x.user));
-    case 'make': return x.reply('Bạn gửi giúp mình theo 1 trong 2 cách nhé:\n• TAO + chủ đề → mình tự viết kịch bản và dựng (vd: TAO 5 thói quen buổi sáng)\n• KB + kịch bản của bạn → mình dựng đúng lời bạn viết\nVideo xong mình gửi link về đây.');
+    case 'make': return x.reply('Bạn muốn làm video về chủ đề gì ạ? Bạn chỉ cần nhắn chủ đề (vd: "5 thói quen buổi sáng") hoặc dán nguyên kịch bản của bạn, mình làm luôn và gửi link về đây.');
     case 'refund': await notifyOwner(env, 'support', `Khách hỏi hoàn tiền [${code}] ${x.name || ''}: "${x.text.slice(0, 200)}"\nTrả lời khách: TL ${code} <lời nhắn>`);
       return x.reply(`Chính sách hoàn tiền xem tại ${origin(env)}/#/hoan-tien. Mình đã báo nhân viên để hỗ trợ trường hợp của bạn, bạn chờ chút nhé.`);
     case 'paid': await notifyOwner(env, 'order', `Khách báo đã chuyển khoản [${code}] ${x.name || ''}: "${x.text.slice(0, 200)}"\nKiểm tra ở Quản trị → Đơn hàng. Trả lời: TL ${code} <lời nhắn>`);
       return x.reply('Cảm ơn bạn! Mình đã báo nhân viên kiểm tra giao dịch. Gói sẽ được kích hoạt ngay khi nhận tiền và mình báo bạn tại đây.');
     case 'human': await notifyOwner(env, 'support', `Khách cần gặp nhân viên [${code}] ${x.name || ''}: "${x.text.slice(0, 200)}"\nTrả lời khách: TL ${code} <lời nhắn>`);
       return x.reply('Mình đã báo nhân viên, bạn chờ chút sẽ có người trả lời ngay tại đây nhé.');
-    case 'who': case 'greet': return x.reply(welcome());
+    case 'who': case 'greet': return x.reply(await withMenu(env, x.chatId, welcome(), START_MENU));
     default:
       if (z.assistant.handoff) await notifyOwner(env, 'support', `Trợ lý chưa trả lời được [${code}] ${x.name || ''}: "${x.text.slice(0, 200)}"${why ? ' (' + why + ')' : ''}\nTrả lời khách: TL ${code} <lời nhắn>`);
-      return x.reply(`Mình đã ghi nhận câu hỏi và chuyển nhân viên trả lời bạn ngay tại đây nhé. Trong lúc chờ, bạn có thể:\n• Gửi TAO + chủ đề để làm video\n• Gõ GIA để xem bảng giá\n• Gõ TT để xem video đang dựng`);
+      // not sure what they want: ask, with a few easy choices, instead of guessing
+      return x.reply(await withMenu(env, x.chatId, `Mình chưa chắc đã hiểu đúng ý bạn${z.assistant.handoff ? ' (mình cũng đã báo nhân viên xem giúp)' : ''}. Bạn đang cần:`, [...START_MENU.slice(0, 3), { label: 'Hỏi video của mình tới đâu rồi', say: 'video của tôi tới đâu rồi' }]));
   }
 }
 async function statusText(env: XEnv, user: User | null) {
@@ -546,10 +630,10 @@ function siteFacts(env: XEnv) {
   const looks = LOOK_KEYS.filter((k) => vis(c, 'look:' + k) === 'on').map((k) => `${c.labels.looks[k]} (${c.labels.lookNotes[k]})`).join('; ');
   const web = origin(env);
   return [`Tên dịch vụ: ${brand}. ${c.brand.tagline}`, `Trang web: ${web}. Bảng giá: ${web}/#/goi. Điều khoản: ${web}/#/dieu-khoan. Hoàn tiền: ${web}/#/hoan-tien.`,
-    `Các gói:\n${plans}`, c.payment.enabled ? 'Thanh toán: trên web, mục Bảng giá, quét mã VietQR chuyển khoản; gói tự kích hoạt sau 1-2 phút khi tiền về. Không thanh toán qua Zalo, không nhận thẻ.' : 'Hiện chưa mở thanh toán trực tuyến.',
+    `Các gói:\n${plans}`, c.payment.enabled ? 'Thanh toán: chuyển khoản qua mã VietQR, ngay trong Zalo (hệ thống gửi mã khi khách đồng ý mua) hoặc trên web mục Bảng giá; gói tự kích hoạt sau 1-2 phút khi tiền về. Không nhận thẻ.' : 'Hiện chưa mở thanh toán trực tuyến.',
     `Định dạng video: ${looks}.`, `Định dạng khi tạo qua Zalo: ${zaloWays(c).length > 1 ? zaloWays(c).map((k) => wayName(c, k)).join(', ') + ' (gõ DINHDANG để chọn)' : wayName(c, c.zalo.formats.default)}; mặc định ${wayName(c, c.zalo.formats.default)}.`, 'Video MP4 1080p, khung dọc 9:16 hoặc ngang 16:9, giọng đọc tiếng Việt, phụ đề. Xem trước ngay trên web, dựng xong trong vài phút, link xem/tải gửi về Zalo.',
-    `Mã gói để chốt đơn: ${forSale(c).map((p, i) => `${p.id} = ${p.name} (MUA ${i + 1})`).join('; ') || 'không có gói trả phí'}. Thanh toán ngay trong Zalo: gõ MUA + số gói, nhận mã QR chuyển khoản.`,
-    `Lệnh trong Zalo:\n${c.zalo.templates.help}\n• GIA → bảng giá • MUA + số gói → mua • NV → gặp nhân viên`, c.legal.email && !/example\.(com|org)$/i.test(c.legal.email) ? `Email hỗ trợ: ${c.legal.email}` : ''].filter(Boolean).join('\n');
+    `Mã gói để chốt đơn: ${forSale(c).map((p) => `${p.id} = ${p.name}`).join('; ') || 'không có gói trả phí'}. Khách đồng ý mua là nhận ngay mã QR chuyển khoản trong Zalo, không cần lên web.`,
+    'Trong Zalo khách chỉ cần nói tự nhiên: nhắn chủ đề để làm video, dán kịch bản để dựng đúng lời, hỏi giá, hỏi video tới đâu. (Lệnh tắt như TAO, KB, GIA, TT vẫn dùng được nhưng không cần nhắc.)', c.legal.email && !/example\.(com|org)$/i.test(c.legal.email) ? `Email hỗ trợ: ${c.legal.email}` : ''].filter(Boolean).join('\n');
 }
 
 /** The customer, as far as this chat knows them. */
@@ -579,46 +663,74 @@ async function chatHistory(env: XEnv, chatId: string, exceptId: string): Promise
  * the chat to the owner (who answers with TL <mã> <lời>).
  */
 async function assistantReply(env: XEnv, rc: Rc, x: AskCtx) {
-  const z = env.config.zalo, a = z.assistant, code = x.chatId.slice(-6).toLowerCase();
+  const z = env.config.zalo, a = z.assistant, c = env.config, code = x.chatId.slice(-6).toLowerCase();
   try { await useQuota(env, 'z:' + x.chatId, 'chat', a.perDay); }
   catch { return quickAnswer(env, rc, x, 'hết lượt hỏi trợ lý hôm nay'); }
   if ((await budgetState(env)).over) return quickAnswer(env, rc, x, 'hết ngân sách AI');
+  const ways = zaloWays(c);
   const sys = [
-    `Bạn là ${a.name}, nhân viên chăm sóc khách hàng của dịch vụ dưới đây, đang trả lời khách qua Zalo.`,
+    `Bạn là ${a.name}, nhân viên tư vấn bán hàng và chăm sóc khách hàng của dịch vụ dưới đây, đang nhắn tin với khách qua Zalo.`,
     a.persona ? 'PHONG CÁCH: ' + a.persona : '',
     'SỰ THẬT VỀ DỊCH VỤ (chỉ nói những điều có ở đây, không bịa giá, khuyến mãi hay tính năng):\n' + siteFacts(env),
     a.knowledge ? 'GHI CHÚ CỦA CHỦ WEB (ưu tiên khi trả lời):\n' + a.knowledge : '',
     'THÔNG TIN KHÁCH:\n' + await customerFacts(env, x),
-    'QUY TẮC: trả lời tiếng Việt, tự nhiên như người thật, ngắn (tối đa 5 câu, dưới 700 ký tự), không dùng markdown hay dấu **, có thể dùng 1 emoji.',
-    'Hướng dẫn cụ thể bước tiếp theo (lệnh Zalo hoặc link web). Không xin mật khẩu, số thẻ, mã OTP. Không hứa hoàn tiền hay giảm giá nếu ghi chú của chủ web không nói.',
-    'Câu hỏi ngoài dịch vụ: trả lời ngắn lịch sự rồi đưa về việc làm video.',
-    'BÁN HÀNG: bạn còn là nhân viên kinh doanh. Khách chào hoặc hỏi chung chung: chào thân thiện, giới thiệu 1 câu dịch vụ làm được gì, hỏi khách làm video cho kênh/mục đích gì. Khách quan tâm giá hay hết lượt, video quá dài: tư vấn gói hợp nhu cầu (nêu giá, số video/ngày, độ dài), nêu lợi ích cụ thể, mời chốt ("gõ MUA 1" hoặc nói "mình lấy gói …"). Khách đồng ý mua / muốn thanh toán: intent "buy" và "plan" = mã gói (thêm ":year" nếu trả theo năm); hệ thống sẽ gửi mã QR và thông tin chuyển khoản ngay sau câu trả lời của bạn, nên chỉ cần xác nhận ngắn. Không tự bịa số tài khoản, không ép mua.',
-    'Trả DUY NHẤT JSON: {"reply":"lời trả lời","intent":"chat|make_video|status|human|buy","topic":"chủ đề video nếu intent là make_video","plan":"mã gói nếu intent là buy"}.',
-    `intent make_video: khách nhờ làm video về một chủ đề cụ thể${a.makeVideos ? '' : ' (hiện chưa tự làm được: hướng dẫn gõ TAO + chủ đề)'}. status: hỏi video của họ tới đâu. human: khiếu nại, lỗi thanh toán, hoàn tiền, cần người thật, hoặc bạn không chắc câu trả lời${a.handoff ? ' (nói rằng đã chuyển cho nhân viên)' : ''}. Còn lại: chat.`,
+    `ĐIỀU BẠN ĐÃ BIẾT VỀ KHÁCH (giai đoạn: ${x.lead.stage}): ${JSON.stringify({ ...x.lead.profile, prefs: undefined })}`,
+    'CÁCH NÓI CHUYỆN: như một người thật đang nhắn Zalo: tự nhiên, ấm áp, ngắn (2-4 câu, dưới 600 ký tự), mỗi lần chỉ hỏi MỘT câu. Không dùng markdown, không dấu **. Có thể dùng 1 emoji. ' +
+      'KHÔNG bắt khách gõ lệnh (không nói "gõ TAO…", "gõ MUA…"): khách cứ nói bình thường là bạn hiểu và làm. Không hỏi lại điều đã biết ở trên.',
+    'BÁN HÀNG KIỂU TƯ VẤN: (1) hiểu khách làm video để làm gì (kênh nào, lĩnh vực, bao nhiêu video/tuần); (2) gợi ý cách làm phù hợp, đề nghị LÀM THỬ MIỄN PHÍ ngay hoặc XEM MẪU; ' +
+      '(3) khi khách quan tâm giá, hết lượt hoặc cần video dài/nhiều: tư vấn đúng một gói hợp nhu cầu, nêu lợi ích cụ thể theo nhu cầu của họ; (4) khách đồng ý thì chốt. ' +
+      'Xử lý băn khoăn (đắt, chưa tin chất lượng, chưa cần) bằng lợi ích thật và mời làm thử. Không ép, không hứa điều không có. Không xin mật khẩu, số thẻ, OTP.',
+    'KHI CHƯA RÕ khách muốn gì: intent "clarify", hỏi lại một câu ngắn; nếu hợp thì đưa 2-4 lựa chọn ngắn trong "options" (hệ thống tự đánh số, khách trả lời bằng số; đừng tự đánh số trong reply).',
+    'Trả DUY NHẤT JSON: {"reply":"lời nhắn","intent":"chat|clarify|make_video|samples|settings|status|buy|human|optout","topic":"","plan":"","options":[],"ratio":"","voice":"","look":"","profile":{},"stage":""}',
+    `Ý nghĩa: make_video = khách nhờ làm video và ĐÃ RÕ chủ đề${a.makeVideos ? ' (hệ thống làm ngay, video xong tự gửi link; reply chỉ cần xác nhận vui vẻ)' : ' (hiện chưa tự làm: mời khách nhắn kịch bản)'}, "topic" = chủ đề đầy đủ bằng lời của khách; ` +
+      'samples = khách muốn xem video mẫu / xem trông thế nào (hệ thống gửi ảnh và link video mẫu sau reply); settings = khách muốn đổi khung, giọng hoặc định dạng cho video sau; status = hỏi video của họ tới đâu; ' +
+      `buy = khách đồng ý mua / muốn thanh toán, "plan" = mã gói (thêm ":year" nếu trả theo năm), hệ thống gửi mã QR ngay sau reply; human = khiếu nại, lỗi thanh toán, hoàn tiền, đòi gặp người thật, hoặc bạn không chắc${a.handoff ? ' (nói đã báo nhân viên)' : ''}; optout = khách không muốn được nhắn nữa.`,
+    'Nếu khách nói rõ: "ratio" = "9:16" (dọc: TikTok, Reels, Shorts) hoặc "16:9" (ngang: YouTube); "voice" = "nam" hoặc "nu"; ' + (ways.length > 1 ? `"look" = một mã định dạng trong: ${ways.map((k) => `${k} (${wayName(c, k)})`).join(', ')}. ` : '') + 'Không rõ thì để trống.',
+    '"profile": điều mới biết về khách, mỗi giá trị ≤ 10 chữ, khoá trong: ten, linhVuc, kenh, mucDich, soLuong, nganSach, banKhoan, goi. "stage": new|interested|trying|quoted|customer|lost.',
   ].filter(Boolean).join('\n\n');
   let ans;
   // the AI the admin chose: the assistant's own choice, otherwise the site's (AI viết kịch bản)
-  const provider = a.ai !== 'auto' ? a.ai : env.config.defaults.textAI === 'openai' ? 'openai' : 'gemini';
-  try { ans = await assistantAnswer(env, sys, await chatHistory(env, x.chatId, x.messageId), x.text, provider); }
+  const provider = a.ai !== 'auto' ? a.ai : c.defaults.textAI === 'openai' ? 'openai' : 'gemini';
+  // 18 seconds in all: a webhook call may only work about 30 seconds, and the customer is waiting
+  try { ans = await assistantAnswer(env, sys, await chatHistory(env, x.chatId, x.messageId), x.text, provider, 18_000); }
   catch (e: any) {
     rc.log('zalo.assistant', { ok: false, data: { chat: x.chatId, error: String(e.message).slice(0, 200) } });
-    // no AI right now (quota, wrong key, outage): still answer from the words, never "chưa hiểu"
-    return quickAnswer(env, rc, x, /quota|429/.test(e.message) ? 'AI hết hạn mức' : 'AI lỗi');
+    // no AI right now (slow, quota, wrong key, outage): still answer from the words, never silence
+    return quickAnswer(env, rc, x, /quota|429/.test(e.message) ? 'AI hết hạn mức' : /chậm|timeout|abort/i.test(e.message) ? 'AI quá chậm' : 'AI lỗi');
   }
-  rc.log('ai.chat', { cost: aiCost(env.config, { model: ans.usage.model, tokensIn: ans.usage.tokensIn, tokensOut: ans.usage.tokensOut }), data: { chat: x.chatId, intent: ans.intent, ...ans.usage } });
-  await x.reply(ans.reply.replace(/\*\*/g, ''));
+  rc.log('ai.chat', { cost: aiCost(c, { model: ans.usage.model, tokensIn: ans.usage.tokensIn, tokensOut: ans.usage.tokensOut }), data: { chat: x.chatId, intent: ans.intent, ...ans.usage } });
+  const ex = ans.extra || {};
+  // remember what was learned, and the choices made in conversation
+  const profile = { ...x.lead.profile };
+  if (ex.profile && typeof ex.profile === 'object') for (const [k, v] of Object.entries(ex.profile).slice(0, 12)) if (/^[a-zA-Z]{2,20}$/.test(k) && typeof v === 'string' && v.trim()) profile[k] = v.trim().slice(0, 80);
+  const prefs = { ...(profile.prefs || {}) };
+  if (ex.ratio === '9:16' || ex.ratio === '16:9') prefs.ratio = ex.ratio;
+  if (ex.voice === 'nam' || ex.voice === 'nu') {
+    const want = ex.voice === 'nam' ? /\bnam\b/i : /\bnữ\b/i, v = c.voices.filter((v) => vis(c, 'voice:' + v.code) === 'on').find((v) => want.test(v.label));
+    if (v) prefs.voice = v.code;
+  }
+  if (typeof ex.look === 'string' && ways.includes(ex.look)) prefs.look = ex.look;
+  profile.prefs = prefs;
+  if (x.link && JSON.stringify(prefs) !== JSON.stringify(x.prefs)) await env.DB.prepare('UPDATE zalo_links SET prefs = ? WHERE chat_id = ?').bind(JSON.stringify({ ...x.prefs, ...prefs }), x.chatId).run();
+  const options: MenuItem[] = Array.isArray(ex.options) ? ex.options.filter((o: unknown) => typeof o === 'string' && o.trim()).slice(0, 4).map((o: string) => ({ label: o.trim().slice(0, 80), say: o.trim().slice(0, 200) })) : [];
+  await saveLead(env, x.chatId, { profile, stage: STAGES.includes(ex.stage) ? ex.stage : x.lead.stage, menu: options.length ? options : null, ...(ans.intent === 'optout' ? { optout: 1 } : {}) });
+  const text = ans.reply.replace(/\*\*/g, '').trim();
+  await x.reply(options.length ? text + '\n' + options.map((o, i) => `${i + 1}. ${o.label}`).join('\n') : text);
+
   if (ans.intent === 'human' && a.handoff) await notifyOwner(env, 'support', `Khách cần hỗ trợ [${code}] ${x.name || ''}: "${x.text.slice(0, 300)}"\nTrợ lý đã trả lời: "${ans.reply.slice(0, 200)}"\nTrả lời khách: TL ${code} <lời nhắn>`);
+  if (ans.intent === 'samples') return sendSamples(env, rc, x.chatId);
   if (ans.intent === 'buy') {
-    const want = wantedPlan(env.config, ans.plan || x.text);
+    const want = wantedPlan(c, ans.plan || x.text);
     if (want) return closeSale(env, rc, x.chatId, x.name, x.user, want, x.messageId);
-    if (forSale(env.config).length) return x.reply(offerText(env));
+    if (forSale(c).length) return x.reply(await quote(env, x));
   }
   if (ans.intent === 'make_video' && a.makeVideos && ans.topic.length >= 5) {
-    if (!env.config.enabledSources.includes('topic')) return;
+    if (!c.enabledSources.includes('topic')) return;
     // the same path as "TAO <chủ đề>", done by the minute job (writing a script can take longer than a webhook may run)
     const now = Date.now();
     await env.DB.prepare("INSERT OR IGNORE INTO zalo_messages (id, chat_id, sender_name, text, is_text, status, received_at, updated_at) VALUES (?, ?, ?, ?, 1, 'received', ?, ?)")
       .bind(x.messageId + '-tao', x.chatId, x.name, 'TAO ' + ans.topic, now, now).run();
+    await saveLead(env, x.chatId, { stage: x.lead.stage === 'new' || x.lead.stage === 'interested' ? 'trying' : x.lead.stage });
     rc.log('zalo.assistant.video', { data: { chat: x.chatId, topic: ans.topic.slice(0, 120) } });
   }
 }
@@ -702,6 +814,13 @@ export async function notifyJob(env: XEnv, rc: Rc, job: any, ok: boolean, error:
     ? fill(z.templates.done, { tieuDe: spec.title, link: await shareLink(env, origin(env), job.id), hanNgay: SHARE_DAYS, giay: Math.round(seconds) || '?' })
     : fill(z.templates.failed, { tieuDe: spec.title, loi: error });
   const source = await env.DB.prepare('SELECT id FROM zalo_messages WHERE job_id = ? LIMIT 1').bind(job.id).first<any>();
+  if (ok && (await env.BUCKET.head(`thumb/${job.user_id}/${job.id}.jpg`))) {
+    const web = await siteUrl(env), share = await shareLink(env, web, job.id);
+    const photo = share.replace(`/api/share/${job.id}?`, `/api/share/${job.id}/thumb.jpg?`);
+    const p = await zaloApi((env as any).ZALO_BOT_TOKEN, 'sendPhoto', { chat_id: link.chat_id, photo, caption: text.slice(0, 1900) }, 10_000);
+    rc.log('zalo.notify', { ok: p.ok, projectId: job.project_id, data: { job: job.id, done: true, photo: true, error: p.ok ? undefined : p.error } });
+    if (p.ok) return;
+  }
   const r = await send(env, link.chat_id, text, source?.id);
   rc.log('zalo.notify', { ok: r.ok, projectId: job.project_id, data: { job: job.id, done: ok, error: r.ok ? undefined : r.error } });
 }
@@ -752,7 +871,7 @@ export async function zaloAdmin(req: Request, env: XEnv, rawEnv: Env, sub: strin
     rc.log('admin.zalo.connect', { ok: r.ok, data: { error: r.error, before: hookPath(before.result?.url), url: hookPath(saved) } });
     if (!r.ok) throw new HttpError(502, 'Zalo từ chối đăng ký webhook: ' + r.error);
     if (info.ok && saved && hookPath(saved) !== hookPath(hook)) throw new HttpError(502, 'Zalo báo đã nhận nhưng webhook vẫn trỏ về: ' + hookPath(saved));
-    await recvState(env, { mode: 'webhook', connected: Date.now() });
+    await recvState(env, { ...((await zaloRecvStatus(env)) || {}), mode: 'webhook', connected: Date.now(), hook: hookPath(hook), lost: false });
     return json({ ok: true, url: hookPath(hook), before: hookPath(before.result?.url) || null, info: info.result ? { ...info.result, url: hookPath(saved) } : null });
   }
   if (sub === 'zalo/check' && method === 'GET') {
@@ -846,14 +965,41 @@ export async function zaloRecvStatus(env: XEnv) {
 
 /** Which way messages come in right now. */
 export async function receiveMode(env: XEnv): Promise<'webhook' | 'poll'> {
-  const want = env.config.zalo.receive || 'webhook';
-  if (want !== 'auto') return want;
-  // the admin just connected the webhook: it has 15 minutes to deliver a first message (Zalo's
-  // calls can be blocked on the way, e.g. by a firewall rule), after which polling takes over
-  const st = await zaloRecvStatus(env);
-  if (st?.mode === 'webhook' && st.connected && Date.now() - st.connected < 15 * 60_000) return 'webhook';
-  const ok = await env.DB.prepare("SELECT ts FROM events WHERE type IN ('zalo.received','zalo.ignored') AND channel = 'zalo' AND ts > ? AND json_extract(data, '$.via') IS NOT 'poll' ORDER BY id DESC LIMIT 1").bind(Date.now() - 3 * 86_400_000).first<any>();
-  return ok ? 'webhook' : 'poll';
+  // A quiet bot is not a broken webhook: the old "auto" mode switched to polling (and deleted the
+  // webhook) after 15 minutes without messages, which is why the webhook kept disappearing.
+  // Now polling happens only when the admin chose it; the webhook is guarded by keepWebhook().
+  return env.config.zalo.receive === 'poll' ? 'poll' : 'webhook';
+}
+
+/**
+ * Every few minutes: is the bot's webhook still ours? Something else holding the same token (an old
+ * Apps Script, n8n, a test copy of the site) can move or delete it. Put it back at once, write down
+ * where it pointed (so the culprit is known), and tell the owner, at most once an hour.
+ */
+export async function keepWebhook(env: XEnv, rc: Rc) {
+  const token = (env as any).ZALO_BOT_TOKEN, z = env.config.zalo;
+  if (!z.enabled || !token || z.receive === 'poll' || !z.keepWebhook) return { checked: false };
+  const st = (await zaloRecvStatus(env)) || {};
+  const base = st.hook as string | undefined;
+  if (!base) return { checked: false }; // never connected from the admin page: nothing to restore
+  const info = await zaloApi(token, 'getWebhookInfo');
+  if (!info.ok) return { checked: false, error: info.error }; // Zalo unreachable: do not guess
+  const found = hookPath(info.result?.url);
+  if (found === base) {
+    if (st.lost) await recvState(env, { ...st, lost: false });
+    return { checked: true, ok: true };
+  }
+  const secret = await webhookSecret(env);
+  const r = await zaloApi(token, 'setWebhook', { url: `${base}?s=${secret}`, secret_token: secret });
+  rc.log('zalo.webhook.restore', { ok: r.ok, data: { found: found || '(đã bị xoá)', error: r.error || undefined } });
+  const now = Date.now(), tell = !st.toldAt || now - st.toldAt > 3600_000;
+  await recvState(env, { ...st, mode: 'webhook', lost: true, lostAt: now, found: found || '', restored: r.ok, error: r.ok ? undefined : r.error, toldAt: tell ? now : st.toldAt, losses: (st.losses || 0) + 1 });
+  if (tell) {
+    await notifyOwner(env, 'support', `⚠️ Webhook Zalo vừa bị ${found ? 'chuyển sang ' + found : 'xoá'}. ${r.ok ? 'Web đã tự kết nối lại, khách vẫn nhắn bình thường.' : 'Web chưa kết nối lại được: ' + r.error}`
+      + `
+Đã xảy ra ${(st.losses || 0) + 1} lần. Nguyên nhân thường là một hệ thống khác dùng chung token bot (Apps Script, n8n, bản chạy thử). Hãy gỡ token khỏi nơi đó.`).catch(() => {});
+  }
+  return { checked: true, ok: r.ok, found };
 }
 
 /**
@@ -922,4 +1068,31 @@ export async function pollZalo(env: XEnv, rc: Rc, budgetMs = 57_000) {
   await Promise.all(work);
   await recvState(env, { mode: 'poll', ok: !lastError, error: lastError || undefined, got });
   return { polled: got, error: lastError };
+}
+
+/**
+ * The one follow-up a good salesperson sends: to people who saw prices but did not buy, after
+ * some quiet hours, only once, never to someone who asked not to be messaged or already bought.
+ * Off unless the owner turns it on (Quản trị → Zalo).
+ */
+export async function followUps(env: XEnv, rc: Rc) {
+  const f = env.config.zalo.followup;
+  if (!f.enabled || !env.config.zalo.enabled || !(env as any).ZALO_BOT_TOKEN) return { sent: 0 };
+  const now = Date.now(), quiet = f.hours * 3600_000;
+  const rows = (await env.DB.prepare(`SELECT l.chat_id, l.profile FROM zalo_leads l
+    WHERE l.quoted_at < ? AND l.quoted_at > ? AND l.followups = 0 AND l.optout = 0 AND l.stage NOT IN ('customer','lost')
+      AND (l.human_until IS NULL OR l.human_until < ?)
+      AND NOT EXISTS (SELECT 1 FROM zalo_messages m WHERE m.chat_id = l.chat_id AND m.received_at > ?)
+      AND NOT EXISTS (SELECT 1 FROM zalo_links k JOIN user_plans p ON p.user_id = k.user_id WHERE k.chat_id = l.chat_id AND p.expires_at > ?)
+    LIMIT 20`).bind(now - quiet, now - 7 * 86_400_000, now, now - quiet, now).all<any>()).results;
+  let sent = 0;
+  for (const r of rows) {
+    const p = (() => { try { return JSON.parse(r.profile || '{}'); } catch { return {}; } })();
+    const name = (await env.DB.prepare('SELECT sender_name FROM zalo_messages WHERE chat_id = ? ORDER BY received_at DESC LIMIT 1').bind(r.chat_id).first<any>())?.sender_name;
+    await env.DB.prepare('UPDATE zalo_leads SET followups = followups + 1, last_followup = ? WHERE chat_id = ?').bind(now, r.chat_id).run();
+    const res = await send(env, r.chat_id, fill(f.text, { ten: p.ten || name || 'bạn', goi: p.goi || 'video' }));
+    if (res.ok) sent++;
+  }
+  if (rows.length) rc.log('zalo.followup', { data: { sent, due: rows.length } });
+  return { sent };
 }

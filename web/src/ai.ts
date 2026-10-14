@@ -195,12 +195,13 @@ export function textPlan(env: Env, provider: TextProvider): [TextProvider, strin
 }
 
 /** One chat call; throws an error carrying `status` so callers can decide to retry or switch model. */
-async function callText(env: Env, provider: TextProvider, model: string, sys: string, user: string, maxTokens = 16384) {
+async function callText(env: Env, provider: TextProvider, model: string, sys: string, user: string, maxTokens = 16384, timeoutMs?: number) {
   if (provider === 'openai') {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, 'content-type': 'application/json' },
       body: JSON.stringify({ model, response_format: { type: 'json_object' }, max_tokens: Math.min(maxTokens, 16000), messages: [{ role: 'system', content: sys }, { role: 'user', content: user }] }),
+      ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
     });
     if (!res.ok) { const t = await res.text().catch(() => ''); noteFailure('openai', model, res.status, t); throw Object.assign(new Error(`OpenAI ${model}: HTTP ${res.status}`), { status: res.status }); }
     const j: any = await res.json();
@@ -210,7 +211,7 @@ async function callText(env: Env, provider: TextProvider, model: string, sys: st
   const res = await geminiPost(env, model, {
     systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text: user }] }],
     generationConfig: { responseMimeType: 'application/json', maxOutputTokens: maxTokens, ...geminiThinking(model) },
-  }, maxTokens < 4000 ? 25_000 : 120_000);
+  }, timeoutMs || (maxTokens < 4000 ? 25_000 : 120_000));
   if (!res.ok) { const t = await res.text().catch(() => ''); noteFailure('gemini', model, res.status, t); throw Object.assign(new Error(`Gemini ${model}: HTTP ${res.status}`), { status: res.status }); }
   const j: any = await res.json();
   return { text: (j.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || '').join(''), tokensIn: j.usageMetadata?.promptTokenCount || 0, tokensOut: j.usageMetadata?.candidatesTokenCount || 0 };
@@ -358,27 +359,36 @@ export async function analyzeSample(env: Env, frames: string[], notes: string, p
 
 // ---------------------------------------------------------------- Zalo assistant
 export interface AssistantTurn { role: 'user' | 'bot'; text: string }
-export interface AssistantAnswer { reply: string; intent: 'chat' | 'make_video' | 'status' | 'human' | 'buy'; topic: string; plan: string; usage: { provider: string; model: string; tokensIn: number; tokensOut: number } }
+export interface AssistantAnswer { reply: string; intent: 'chat' | 'make_video' | 'status' | 'human' | 'buy' | 'clarify' | 'samples' | 'settings' | 'optout'; topic: string; plan: string; usage: { provider: string; model: string; tokensIn: number; tokensOut: number }
+  /** everything else the model returned (customer profile, stage, chosen frame/voice/format…) */ extra: Record<string, any> }
 
 /**
  * One answer of the staff-like assistant: a short reply plus what the person wants (a video, their
  * status, a human). Tries the text model, its fallbacks, then the other provider.
  */
-export async function assistantAnswer(env: Env, sys: string, history: AssistantTurn[], question: string, provider: TextProvider = 'gemini'): Promise<AssistantAnswer> {
-  const plan = textPlan(env, provider);
+/**
+ * A chat answer within `deadlineMs` in total: a webhook call may only work about 30 seconds after
+ * answering Zalo, so a slow or overloaded model is cut off and the caller answers without AI instead
+ * of the customer waiting for nothing.
+ */
+export async function assistantAnswer(env: Env, sys: string, history: AssistantTurn[], question: string, provider: TextProvider = 'gemini', deadlineMs = 18_000): Promise<AssistantAnswer> {
+  const plan = textPlan(env, provider), end = Date.now() + deadlineMs;
   if (!plan.length) throw new HttpError(503, 'Chưa có khoá AI.');
   const convo = history.slice(-10).map((t) => `${t.role === 'user' ? 'KHÁCH' : 'BẠN'}: ${t.text.slice(0, 600)}`).join('\n');
   const user = (convo ? 'HỘI THOẠI GẦN ĐÂY:\n' + convo + '\n\n' : '') + 'TIN MỚI CỦA KHÁCH: ' + question.slice(0, 2000);
   let last = '';
   for (const [p, model] of plan) {
     for (let attempt = 0; attempt < 2; attempt++) {
+      const left = end - Date.now();
+      if (left < 3000) throw new HttpError(504, 'AI trả lời quá chậm: ' + (last || 'hết thời gian'));
       try {
-        // a short answer: little to generate, and a 25-second cap so a stuck model is skipped quickly
-        const r = await callText(env, p, model, sys, user, 2048);
+        // a short answer: little to generate; one model may use at most 12 seconds of the budget
+        const r = await callText(env, p, model, sys, user, 2048, Math.min(left - 500, 12_000));
         const j = parseJson(r.text);
         if (!j || typeof j.reply !== 'string' || !j.reply.trim()) { last = `${model}: trả lời không đúng dạng`; break; }
-        const intent = ['chat', 'make_video', 'status', 'human', 'buy'].includes(j.intent) ? j.intent : 'chat';
-        return { reply: j.reply.trim().slice(0, 1500), intent, topic: typeof j.topic === 'string' ? j.topic.trim().slice(0, 300) : '', plan: typeof j.plan === 'string' ? j.plan.trim().slice(0, 40) : '', usage: { provider: p, model, tokensIn: r.tokensIn, tokensOut: r.tokensOut } };
+        const intent = ['chat', 'make_video', 'status', 'human', 'buy', 'clarify', 'samples', 'settings', 'optout'].includes(j.intent) ? j.intent : 'chat';
+        const { reply: _r, intent: _i, topic: _t, plan: _p, ...extra } = j;
+        return { reply: j.reply.trim().slice(0, 1500), intent, topic: typeof j.topic === 'string' ? j.topic.trim().slice(0, 300) : '', plan: typeof j.plan === 'string' ? j.plan.trim().slice(0, 40) : '', usage: { provider: p, model, tokensIn: r.tokensIn, tokensOut: r.tokensOut }, extra };
       } catch (e: any) {
         last = String(e.message || e).slice(0, 160);
         // a busy model is not waited for: the next one answers now

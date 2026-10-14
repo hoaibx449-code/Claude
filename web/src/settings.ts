@@ -102,6 +102,10 @@ export interface ZaloConfig {
   /** how messages reach the site: webhook (direct, as the Zalo Bot SDK recommends for production),
    *  poll (long polling every minute, no public address needed), auto (webhook while it works, else polling) */
   receive: 'webhook' | 'poll' | 'auto';
+  /** check the webhook every 5 minutes and put it back when something removed or moved it */
+  keepWebhook: boolean;
+  /** one friendly message to people who got a price but did not buy (off unless the owner turns it on) */
+  followup: { enabled: boolean; hours: number; text: string };
   /** People who message the bot without a web account get one automatically. */
   allowGuests: boolean;
   /** How a script sent by chat is illustrated: free rules or AI. */
@@ -222,7 +226,9 @@ export function defaultConfig(env: Env): Config {
     logDays: 180,
     visibility: { 'feature:music': 'dev', 'look:story': 'hidden' },
     zalo: {
-      enabled: false, botLink: '', receive: 'webhook', allowGuests: true, scriptSource: 'mine-free', autoRender: true, ownerChat: '',
+      enabled: false, botLink: '', receive: 'webhook', keepWebhook: true,
+      followup: { enabled: false, hours: 20, text: 'Chào {ten}, hôm trước bạn có hỏi về gói {goi} bên mình. Bạn còn phân vân điều gì không, mình giải đáp ngay nhé? Nếu muốn làm thử trước, bạn chỉ cần nhắn chủ đề video là mình làm luôn 😊' },
+      allowGuests: true, scriptSource: 'mine-free', autoRender: true, ownerChat: '',
       notifyOwner: { signup: true, failed: true, order: true, daily: false },
       formats: { default: 'web', allowed: [...ZALO_WAYS] },
       assistant: { enabled: true, name: 'Trợ lý', persona: 'Thân thiện, ngắn gọn, xưng "mình", gọi khách là "bạn". Trả lời đúng trọng tâm, tối đa 5 câu.', knowledge: '', makeVideos: true, handoff: true, perDay: 40, ai: 'auto' },
@@ -234,7 +240,7 @@ export function defaultConfig(env: Env): Config {
         failed: 'Video "{tieuDe}" dựng chưa được: {loi}. Bạn gửi lại giúp mình, hoặc mở web để sửa.',
         unknown: 'Mình chưa hiểu. Gõ HUONGDAN để xem cách dùng, hoặc gửi KB + kịch bản để tạo video.',
         noAI: 'Hiện chỉ dựng từ kịch bản có sẵn. Hãy gửi: KB + kịch bản của bạn.',
-        welcome: 'Chào {ten} 👋 Mình là {troLy} của {thuongHieu}. Bên mình biến một chủ đề hoặc kịch bản của bạn thành video vẽ tay có giọng đọc tiếng Việt chỉ trong vài phút, dùng cho TikTok, Reels, YouTube.\nBạn muốn:\n1. Làm thử miễn phí: gửi TAO + chủ đề (vd: TAO 3 mẹo tiết kiệm)\n2. Xem bảng giá: gõ GIA\n3. Gặp nhân viên: gõ NV',
+        welcome: 'Chào {ten} 👋 Mình là {troLy} của {thuongHieu}. Bên mình biến chủ đề hoặc kịch bản của bạn thành video vẽ tay có giọng đọc tiếng Việt chỉ trong vài phút, đăng TikTok, Reels, YouTube đều đẹp. Bạn đang cần:',
         offer: 'Bảng giá {thuongHieu}:\n{goi}\n👉 Gõ MUA + số gói (vd: MUA 1) để nhận mã thanh toán ngay{goiNam}. Gói kích hoạt ngay khi nhận tiền.',
         payment: 'Đơn {ma} — {tenGoi}: {soTien}\nChuyển khoản giúp mình:\n• Ngân hàng: {nganHang}\n• Số tài khoản: {stk}\n• Chủ tài khoản: {chuTk}\n• Số tiền: {soTien}\n• Nội dung: {ma}\n{kichHoat}',
         paid: '✅ Đã nhận {soTien} cho đơn {ma}. Gói {tenGoi} đã được kích hoạt{han}. Cảm ơn bạn đã tin dùng! Gửi chủ đề để làm video ngay nhé.',
@@ -355,7 +361,9 @@ export function cleanConfig(input: any, base: Config): Config {
       const tpl: Record<string, string> = {};
       for (const k of Object.keys(b.templates)) tpl[k] = typeof z.templates?.[k] === 'string' && z.templates[k].trim() ? z.templates[k].slice(0, 1500) : b.templates[k];
       return {
-        enabled: typeof z.enabled === 'boolean' ? z.enabled : b.enabled, receive: z.receive === 'poll' || z.receive === 'auto' ? z.receive : 'webhook', botLink: /^https:\/\/[^\s"<>]{4,200}$/.test(z.botLink || '') ? z.botLink : z.botLink === '' ? '' : b.botLink,
+        enabled: typeof z.enabled === 'boolean' ? z.enabled : b.enabled, receive: z.receive === 'poll' ? 'poll' : 'webhook',
+        keepWebhook: typeof z.keepWebhook === 'boolean' ? z.keepWebhook : b.keepWebhook,
+        followup: { enabled: z.followup?.enabled === true, hours: int(z.followup?.hours, 4, 168, b.followup.hours), text: str(z.followup?.text, 600, b.followup.text) || b.followup.text }, botLink: /^https:\/\/[^\s"<>]{4,200}$/.test(z.botLink || '') ? z.botLink : z.botLink === '' ? '' : b.botLink,
         allowGuests: typeof z.allowGuests === 'boolean' ? z.allowGuests : b.allowGuests, scriptSource: z.scriptSource === 'mine-ai' ? 'mine-ai' : 'mine-free',
         autoRender: typeof z.autoRender === 'boolean' ? z.autoRender : b.autoRender, ownerChat: /^[\w.-]{1,80}$/.test(z.ownerChat || '') ? z.ownerChat : z.ownerChat === '' ? '' : b.ownerChat,
         notifyOwner: { signup: z.notifyOwner?.signup ?? b.notifyOwner.signup, failed: z.notifyOwner?.failed ?? b.notifyOwner.failed, order: z.notifyOwner?.order ?? b.notifyOwner.order, daily: z.notifyOwner?.daily ?? b.notifyOwner.daily },

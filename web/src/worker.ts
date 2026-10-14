@@ -16,7 +16,7 @@ import { aiCost, clientIp, imageCost, logEvent, routeName, summarize, voiceCost,
 import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, vis } from './settings.ts';
 import { adminRoutes } from './admin.ts';
 import { budgetState, fitVoiceToBudget, requireBudget } from './budget.ts';
-import { checkShare, notifyJob, rememberOrigin, resumeZalo, shareLink, zaloUser, zaloWebhook, pollZalo, receiveMode } from './zalo.ts';
+import { checkShare, followUps, keepWebhook, notifyJob, rememberOrigin, resumeZalo, shareLink, zaloUser, zaloWebhook, pollZalo, receiveMode } from './zalo.ts';
 import { pushPublicKey, pushUser, validEndpoint } from './push.ts';
 import { checkAllowed, checkSource, expireOrders, limitsFor, planOf, planRoutes, sepayWebhook } from './plans.ts';
 import { affiliateScene, communityPublic, deleteVideo, introFor, serveObject, shareToCommunity, siteType, storedVideoKey, upload, videoKey } from './media.ts';
@@ -78,6 +78,11 @@ export default {
       const zrc: Rc = { userId: null, visitor: null, ip: '', ua: null, channel: 'zalo', quiet: true,
         log(type, extra = {}) { ctx.waitUntil(logEvent(env, { type, channel: 'zalo', ...extra })); }, wait(p) { ctx.waitUntil(p); } };
       ctx.waitUntil(resumeZalo(xenvZ, zrc).catch((err) => console.error('resumeZalo', err)));
+      const minute = new Date(e.scheduledTime).getUTCMinutes();
+      // every 5 minutes: the webhook is still ours (put back if something moved or deleted it)
+      if (minute % 5 === 0) ctx.waitUntil(keepWebhook(xenvZ, zrc).catch((err) => console.error('keepWebhook', err)));
+      // once an hour: the one friendly follow-up to people who saw prices (only when the owner turned it on)
+      if (minute === 17) ctx.waitUntil(followUps(xenvZ, zrc).catch((err) => console.error('followUps', err)));
     }
     // the rest runs every 10 minutes
     if (new Date(e.scheduledTime).getUTCMinutes() % 10 !== 0) return;
@@ -121,6 +126,16 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
   if (path === '/api/voices/preview' && method === 'GET') return voicePreview(req, env, rc);
   const sh = path.match(/^\/api\/share\/([a-f0-9]{24})$/);
   if (sh && method === 'GET') return shareVideo(env, rc, sh[1], url);
+  // the cover picture of a shared video (sent as a photo in Zalo), signed like the video link
+  const st = path.match(/^\/api\/share\/([a-f0-9]{24})\/thumb\.jpg$/);
+  if (st && method === 'GET') {
+    if (!(await checkShare(env, st[1], Number(url.searchParams.get('e')), url.searchParams.get('s') || ''))) throw new HttpError(403, 'Link đã hết hạn.');
+    const job = await env.DB.prepare("SELECT user_id FROM jobs WHERE id = ? AND status = 'done'").bind(st[1]).first<any>();
+    const obj = job ? await env.BUCKET.get(`thumb/${job.user_id}/${st[1]}.jpg`) : null;
+    if (!obj) throw new HttpError(404, 'Chưa có ảnh bìa.');
+    rc.quiet = true;
+    return new Response(obj.body, { headers: { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=86400' } });
+  }
 
   // Google sign-in by full-page redirect (works in installed apps and in-app browsers where popups hang)
   if (path === '/api/auth/google/start' && method === 'GET') {

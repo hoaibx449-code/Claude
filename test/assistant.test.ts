@@ -149,5 +149,5 @@ test('the AI closes a sale: intent buy sends the QR right after its answer', () 
   assert.equal(f.sent.at(-1).chat_id, 'customer-abc123');
   assert.match(f.sent.at(-1).text, /MB Bank/); assert.match(f.sent.at(-1).text, /199\.000đ/);
   const sys = f.prompts[0].systemInstruction.parts[0].text;
-  assert.match(sys, /BÁN HÀNG/); assert.match(sys, new RegExp(plan.id + ' = Chuyên nghiệp \\(MUA 1\\)'));
+  assert.match(sys, /BÁN HÀNG/); assert.match(sys, new RegExp(plan.id + ' = Chuyên nghiệp'));
 }));

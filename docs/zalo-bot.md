@@ -68,6 +68,24 @@ Việc cần AI (`TAO`, hoặc `KB` khi minh hoạ bằng AI) có thể mất h�
 - Tác vụ chạy mỗi phút làm tiếp phần AI.
 - Tin lỗi và phản hồi chưa gửi được cũng được thử lại mỗi phút, tối đa 5 lần.
 
+## Webhook tự giữ
+
+- Bot chỉ có **một** webhook. Hệ thống nào khác dùng chung token bot (Apps Script, n8n, bản chạy thử) có thể chuyển hoặc xoá webhook.
+- Web không bao giờ tự xoá webhook của mình. Chế độ "Tự động" cũ (xoá webhook sau 15 phút không có tin) đã bỏ; cài đặt cũ tự chuyển thành webhook.
+- Mỗi 5 phút web gọi `getWebhookInfo`. Nếu webhook bị xoá hoặc trỏ đi nơi khác, web tự `setWebhook` lại, ghi lại địa chỉ đã chiếm (Quản trị → Zalo) và báo chủ web qua Zalo (tối đa 1 lần/giờ).
+- Tắt được ở Quản trị → Zalo → "Tự giữ webhook".
+
+## Trò chuyện như nhân viên
+
+- Khách nói tự nhiên, không cần lệnh. Lệnh tắt (TAO, KB, GIA, TT…) vẫn dùng được.
+- Trợ lý nhớ hồ sơ khách (lĩnh vực, kênh, mục đích, băn khoăn) và giai đoạn: mới → quan tâm → làm thử → đã báo giá → khách hàng.
+- Chưa rõ ý khách thì hỏi lại kèm vài lựa chọn đánh số; khách trả lời "1", "2"… là được.
+- AI có tối đa 18 giây; chậm hoặc lỗi thì trả lời bằng luật ngay, không để khách chờ không.
+- Khách muốn xem mẫu: gửi ảnh bìa và link vài video Cộng đồng.
+- Video xong: gửi ảnh bìa kèm link.
+- Nhân viên trả lời bằng `TL <mã> <lời>` thì trợ lý im 30 phút ở cuộc chat đó; tin mới của khách được chuyển cho nhân viên.
+- Chăm sóc lại (tắt mặc định): một tin duy nhất cho khách đã xem giá mà chưa mua, sau số giờ im lặng cài đặt; không gửi cho khách đã mua hoặc đã nói không muốn được nhắn.
+
 ## Khi bot im lặng
 
 Mở Quản trị → Zalo → **Kiểm tra lại** và sửa theo mục báo ✗:

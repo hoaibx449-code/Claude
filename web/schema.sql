@@ -190,3 +190,16 @@ CREATE TABLE IF NOT EXISTS doc_projects (project_id TEXT PRIMARY KEY, user_id TE
 CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS push_subs_user ON push_subs (user_id);
 CREATE TABLE IF NOT EXISTS push_notes (user_id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, url TEXT NOT NULL, ts INTEGER NOT NULL);
+-- what the Zalo assistant knows about each person it talks to (a salesperson's notes)
+CREATE TABLE IF NOT EXISTS zalo_leads (
+  chat_id TEXT PRIMARY KEY,
+  stage TEXT NOT NULL DEFAULT 'new',  -- new · interested · trying · quoted · customer · lost
+  profile TEXT NOT NULL DEFAULT '{}', -- niche, goal, channel, volume, worries… as the assistant learned them
+  menu TEXT,                          -- numbered choices last offered ("1" means the first one)
+  quoted_at INTEGER,                  -- when they last saw prices
+  followups INTEGER NOT NULL DEFAULT 0,
+  last_followup INTEGER,
+  optout INTEGER NOT NULL DEFAULT 0,  -- asked not to be messaged first
+  human_until INTEGER,                -- a member of staff is answering: the assistant stays quiet
+  updated_at INTEGER NOT NULL
+);
