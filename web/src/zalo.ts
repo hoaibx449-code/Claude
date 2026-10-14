@@ -176,6 +176,7 @@ export async function zaloWebhook(req: Request, env: XEnv, rc: Rc): Promise<Resp
     .bind(id, event.chatId, event.name, event.text, event.isText ? 1 : 0, now, now).run();
   rc.log('zalo.received', { data: { message: id, chat: event.chatId, event: event.event } });
   rc.quiet = true;
+  if (event.isText) rc.wait(typing(env, event.chatId));
   if (event.isText && needsAI(env, event.text)
     && (env.config.zalo.allowGuests || await env.DB.prepare('SELECT 1 FROM zalo_links WHERE chat_id = ?').bind(event.chatId).first())) {
     // the AI may take longer than the 30 seconds a webhook call gets: tell them now, the minute job does the rest
@@ -376,7 +377,7 @@ const money = (n: number) => n.toLocaleString('vi-VN') + 'đ';
 /** What the assistant may say about the site: only real facts from the settings. */
 function siteFacts(env: XEnv) {
   const c = env.config, brand = `${c.brand.name} ${c.brand.accent}`.trim();
-  const plans = c.plans.filter((p) => p.visible).map((p) => `- ${p.name}: ${p.price ? money(p.price) + (p.days === 30 ? '/tháng' : ` cho ${p.days} ngày`) : 'miễn phí'}${p.yearPrice ? `, hoặc ${money(p.yearPrice)}/năm` : ''}; ${p.limits.render} video/ngày, mỗi video tối đa ${Math.round(p.maxSeconds / 6) / 10} phút${p.limits.script ? `, ${p.limits.script} lượt AI viết kịch bản/ngày` : ''}${p.features.length ? '; ' + p.features.join(', ') : ''}`).join('\n');
+  const plans = c.plans.filter((p) => p.visible).map((p) => `- ${p.name}: ${p.price ? money(p.price) + (p.days === 30 ? '/tháng' : ` cho ${p.days} ngày`) : 'miễn phí'}${p.yearPrice ? `, hoặc ${money(p.yearPrice)}/năm` : ''}; ${p.limits.render} video/ngày, mỗi video tối đa ${String(Math.round(Math.min(p.maxSeconds, c.limits.maxSeconds) / 6) / 10).replace('.', ',')} phút${p.limits.script ? `, ${p.limits.script} lượt AI viết kịch bản/ngày` : ''}${p.features.length ? '; ' + p.features.join(', ') : ''}`).join('\n');
   const looks = LOOK_KEYS.filter((k) => vis(c, 'look:' + k) === 'on').map((k) => `${c.labels.looks[k]} (${c.labels.lookNotes[k]})`).join('; ');
   const web = origin(env);
   return [`Tên dịch vụ: ${brand}. ${c.brand.tagline}`, `Trang web: ${web}. Bảng giá: ${web}/#/goi. Điều khoản: ${web}/#/dieu-khoan. Hoàn tiền: ${web}/#/hoan-tien.`,
@@ -472,7 +473,9 @@ async function makeVideo(env: XEnv, rc: Rc, user: User, chatId: string, source: 
   } catch (e: any) {
     rc.log('zalo.create', { ok: false, data: { error: e.message } });
     await env.DB.prepare('UPDATE zalo_messages SET error = ? WHERE id = ?').bind(String(e.message || 'Lỗi tạo video').slice(0, 300), messageId).run();
-    await send(env, chatId, 'Chưa tạo được video: ' + (e instanceof HttpError ? e.message : 'máy chủ đang bận, thử lại sau ít phút.'), messageId);
+    // AI outages are told plainly, without model names or HTTP codes
+    const busy = !(e instanceof HttpError) || e.status >= 500;
+    await send(env, chatId, 'Chưa tạo được video: ' + (busy ? 'AI đang quá tải, bạn thử lại sau ít phút, hoặc gửi KB + kịch bản của bạn để dựng ngay (không cần AI).' : e.message), messageId);
   }
 }
 
@@ -682,7 +685,19 @@ export async function receiveMode(env: XEnv): Promise<'webhook' | 'poll'> {
  * Ask Zalo for new messages for about `budgetMs` (long polling), record and answer each.
  * Called every minute by the scheduled job when the mode is "poll".
  */
-export async function pollZalo(env: XEnv, rc: Rc, budgetMs = 45_000) {
+/** Shows "đang nhập…" in the customer's chat at once, while the answer is prepared. */
+function typing(env: XEnv, chatId: string) {
+  const token = (env as any).ZALO_BOT_TOKEN;
+  return token ? zaloApi(token, 'sendChatAction', { chat_id: chatId, action: 'typing' }, 4000).then(() => {}, () => {}) : Promise.resolve();
+}
+
+/**
+ * Listen for about `budgetMs` (long polling). The minute job calls this every minute: it listens
+ * for almost the whole minute (a message is picked up the moment it arrives), answers each message
+ * alongside instead of in turn (so listening never stops while the AI writes), and a lock keeps two
+ * minutes from listening at once.
+ */
+export async function pollZalo(env: XEnv, rc: Rc, budgetMs = 57_000) {
   const token = (env as any).ZALO_BOT_TOKEN;
   if (!env.config.zalo.enabled || !token) return { polled: 0 };
   // a webhook and polling cannot both be on: drop a webhook that is set but not working
@@ -699,9 +714,14 @@ export async function pollZalo(env: XEnv, rc: Rc, budgetMs = 45_000) {
     rc.log('zalo.poll.unhook', { ok: del.ok, data: { url: hookPath(info.result.url), error: del.error || undefined } });
   }
   const until = Date.now() + budgetMs;
+  // one listener at a time: the next minute starts listening right when this one stops
+  const lock = await env.DB.prepare(`INSERT INTO settings (key, value, updated_at) VALUES ('zalo:poll-lock', ?, ?)
+    ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at WHERE CAST(settings.value AS INTEGER) < ? RETURNING value`).bind(String(until), Date.now(), Date.now()).first();
+  if (!lock) return { polled: 0, error: 'busy' };
   let got = 0, lastError = '';
-  while (Date.now() < until - 3000) {
-    const wait = Math.max(1, Math.min(25, Math.floor((until - Date.now()) / 1000) - 3));
+  const work: Promise<unknown>[] = [];
+  while (Date.now() < until - 2500) {
+    const wait = Math.max(1, Math.min(25, Math.floor((until - Date.now()) / 1000) - 2));
     const r = await zaloApi(token, 'getUpdates', { timeout: wait }, (wait + 5) * 1000);
     if (!r.ok) {
       // "no updates" ends a long poll quietly on some versions of the API
@@ -719,9 +739,12 @@ export async function pollZalo(env: XEnv, rc: Rc, budgetMs = 45_000) {
       if (!ins.meta.changes) continue;
       got++;
       rc.log('zalo.received', { data: { message: id, chat: event.chatId, event: event.event, via: 'poll' } });
-      await processMessage(env, rc, id);
+      if (event.isText) work.push(typing(env, event.chatId));
+      work.push(processMessage(env, rc, id).catch((e) => console.error('zalo message', e)));
     }
   }
+  await env.DB.prepare("UPDATE settings SET value = '0' WHERE key = 'zalo:poll-lock' AND value = ?").bind(String(until)).run().catch(() => {});
+  await Promise.all(work);
   await recvState(env, { mode: 'poll', ok: !lastError, error: lastError || undefined, got });
   return { polled: got, error: lastError };
 }

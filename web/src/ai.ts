@@ -165,6 +165,17 @@ const list = (v?: string) => (v || '').split(',').map((x) => x.trim()).filter(Bo
  * admin picked (Quản trị → Cài đặt → AI viết kịch bản, or a feature's own choice), its main model then
  * its fallback models (Cài đặt → Mô hình AI), and only then the other provider if it has a key.
  */
+// A provider whose key is refused, or a model that is overloaded or gone, is skipped for a while
+// instead of being asked (and failing) before every answer.
+const down = new Map<string, number>();
+export function noteFailure(provider: TextProvider, model: string, status: number, text = '') {
+  const now = Date.now();
+  if (status === 401 || status === 403) down.set(provider, now + 10 * 60_000);
+  else if (status === 404 || /no longer available|not found|not supported/i.test(text)) down.set(provider + ':' + model, now + 30 * 60_000);
+  else if (status === 429 || status === 503) down.set(provider + ':' + model, now + 60_000);
+}
+const isDown = (p: string, m: string) => [p, p + ':' + m].some((k) => (down.get(k) || 0) > Date.now());
+
 export function textPlan(env: Env, provider: TextProvider): [TextProvider, string][] {
   const has = (p: TextProvider) => !!(p === 'openai' ? env.OPENAI_API_KEY : env.GEMINI_API_KEY);
   const plan: [TextProvider, string][] = [];
@@ -173,27 +184,29 @@ export function textPlan(env: Env, provider: TextProvider): [TextProvider, strin
     const models = p === 'openai' ? [env.OPENAI_TEXT_MODEL, ...list(env.OPENAI_TEXT_FALLBACK)] : [env.GEMINI_TEXT_MODEL, ...list(env.GEMINI_TEXT_FALLBACK)];
     for (const m of [...new Set(models.filter(Boolean))]) plan.push([p, m]);
   }
-  return plan;
+  // working ones first; if everything is marked down, still try them all
+  const up = plan.filter(([p, m]) => !isDown(p, m));
+  return up.length ? up : plan;
 }
 
 /** One chat call; throws an error carrying `status` so callers can decide to retry or switch model. */
-async function callText(env: Env, provider: TextProvider, model: string, sys: string, user: string) {
+async function callText(env: Env, provider: TextProvider, model: string, sys: string, user: string, maxTokens = 16384) {
   if (provider === 'openai') {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: sys }, { role: 'user', content: user }] }),
+      body: JSON.stringify({ model, response_format: { type: 'json_object' }, max_tokens: Math.min(maxTokens, 16000), messages: [{ role: 'system', content: sys }, { role: 'user', content: user }] }),
     });
-    if (!res.ok) throw Object.assign(new Error(`OpenAI ${model}: HTTP ${res.status}`), { status: res.status });
+    if (!res.ok) { const t = await res.text().catch(() => ''); noteFailure('openai', model, res.status, t); throw Object.assign(new Error(`OpenAI ${model}: HTTP ${res.status}`), { status: res.status }); }
     const j: any = await res.json();
     return { text: j.choices?.[0]?.message?.content || '', tokensIn: j.usage?.prompt_tokens || 0, tokensOut: j.usage?.completion_tokens || 0 };
   }
   // little hidden "thinking": faster and cheaper, the brief is explicit enough
   const res = await geminiPost(env, model, {
     systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text: user }] }],
-    generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 16384, ...geminiThinking(model) },
-  }, 120_000);
-  if (!res.ok) throw Object.assign(new Error(`Gemini ${model}: HTTP ${res.status}`), { status: res.status });
+    generationConfig: { responseMimeType: 'application/json', maxOutputTokens: maxTokens, ...geminiThinking(model) },
+  }, maxTokens < 4000 ? 25_000 : 120_000);
+  if (!res.ok) { const t = await res.text().catch(() => ''); noteFailure('gemini', model, res.status, t); throw Object.assign(new Error(`Gemini ${model}: HTTP ${res.status}`), { status: res.status }); }
   const j: any = await res.json();
   return { text: (j.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || '').join(''), tokensIn: j.usageMetadata?.promptTokenCount || 0, tokensOut: j.usageMetadata?.candidatesTokenCount || 0 };
 }
@@ -285,7 +298,7 @@ async function callVision(env: Env, provider: TextProvider, model: string, sys: 
         { role: 'user', content: [{ type: 'text', text }, ...imgs.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.data}`, detail: 'low' } }))] }] }),
     });
     const j: any = await res.json().catch(() => ({}));
-    if (!res.ok) throw Object.assign(new Error(`OpenAI ${model}: ${j.error?.message || 'HTTP ' + res.status}`), { status: res.status });
+    if (!res.ok) { noteFailure('openai', model, res.status, j.error?.message); throw Object.assign(new Error(`OpenAI ${model}: ${j.error?.message || 'HTTP ' + res.status}`), { status: res.status }); }
     return { text: j.choices?.[0]?.message?.content || '', finish: j.choices?.[0]?.finish_reason || '', tokensIn: j.usage?.prompt_tokens || 0, tokensOut: j.usage?.completion_tokens || 0 };
   }
   // models "think" first and that counts against the output limit: with pictures it used to eat the
@@ -293,7 +306,7 @@ async function callVision(env: Env, provider: TextProvider, model: string, sys: 
   const res = await geminiPost(env, model, { systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text }, ...imgs.map((i) => ({ inlineData: { mimeType: i.mime, data: i.data } }))] }],
     generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 16384, ...geminiThinking(model) } }, 120_000);
   const j: any = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(`Gemini ${model}: ${j.error?.message || 'HTTP ' + res.status}`), { status: res.status });
+  if (!res.ok) { noteFailure('gemini', model, res.status, j.error?.message); throw Object.assign(new Error(`Gemini ${model}: ${j.error?.message || 'HTTP ' + res.status}`), { status: res.status }); }
   const c = j.candidates?.[0];
   if (!c) throw Object.assign(new Error(`Gemini ${model}: không có câu trả lời${j.promptFeedback?.blockReason ? ' (chặn: ' + j.promptFeedback.blockReason + ')' : ''}`), { status: 400 });
   return { text: (c.content?.parts || []).map((p: any) => p.text || '').join(''), finish: c.finishReason === 'STOP' ? '' : c.finishReason || '', tokensIn: j.usageMetadata?.promptTokenCount || 0, tokensOut: j.usageMetadata?.candidatesTokenCount || 0 };
@@ -355,14 +368,15 @@ export async function assistantAnswer(env: Env, sys: string, history: AssistantT
   for (const [p, model] of plan) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const r = await callText(env, p, model, sys, user);
+        // a short answer: little to generate, and a 25-second cap so a stuck model is skipped quickly
+        const r = await callText(env, p, model, sys, user, 2048);
         const j = parseJson(r.text);
         if (!j || typeof j.reply !== 'string' || !j.reply.trim()) { last = `${model}: trả lời không đúng dạng`; break; }
         const intent = ['chat', 'make_video', 'status', 'human'].includes(j.intent) ? j.intent : 'chat';
         return { reply: j.reply.trim().slice(0, 1500), intent, topic: typeof j.topic === 'string' ? j.topic.trim().slice(0, 300) : '', usage: { provider: p, model, tokensIn: r.tokensIn, tokensOut: r.tokensOut } };
       } catch (e: any) {
         last = String(e.message || e).slice(0, 160);
-        if (e.status === 429 || e.status >= 500) { await sleep(1200); continue; }
+        // a busy model is not waited for: the next one answers now
         break;
       }
     }

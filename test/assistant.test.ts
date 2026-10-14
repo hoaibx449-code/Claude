@@ -74,3 +74,37 @@ test('asking for a video in plain words queues it like TAO', () => fixture(async
   const q = await f.env.DB.prepare("SELECT text, status FROM zalo_messages WHERE id = 'm1-tao'").first();
   assert.equal(q.text, 'TAO sức mạnh của lãi kép'); assert.equal(q.status, 'received');
 }));
+
+test('a refused AI key is skipped for a while instead of failing before every answer', async () => {
+  const { textPlan, noteFailure } = await import('../web/src/ai.ts');
+  const env: any = { GEMINI_API_KEY: 'g', OPENAI_API_KEY: 'bad', GEMINI_TEXT_MODEL: 'gemini-3.5-flash', OPENAI_TEXT_MODEL: 'gpt-4o-mini' };
+  assert.equal(textPlan(env, 'openai')[0][0], 'openai');
+  noteFailure('openai', 'gpt-4o-mini', 401);
+  assert.deepEqual(textPlan(env, 'openai').map(([p]) => p), ['gemini']);
+});
+
+test('polling answers messages alongside listening and shows "typing" first', () => fixture(async (f) => {
+  const { pollZalo } = await import('../web/src/zalo.ts');
+  f.env.config.zalo.receive = 'poll';
+  const calls: string[] = []; let served = false;
+  const orig = globalThis.fetch;
+  globalThis.fetch = (async (url: any, o: any) => {
+    const u = String(url), m = u.split('/').pop()!;
+    calls.push(m);
+    if (u.includes('generativelanguage')) { await new Promise((r) => setTimeout(r, 300)); return new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify({ reply: 'Chào bạn!', intent: 'chat', topic: '' }) }] } }] })); }
+    if (m === 'getUpdates') {
+      if (!served) { served = true; return new Response(JSON.stringify({ ok: true, result: { event_name: 'message.text.received', message: { message_id: 'p1', chat: { id: 'c-poll' }, from: { display_name: 'A' }, text: 'Shop ơi cho hỏi' } } })); }
+      await new Promise((r) => setTimeout(r, 200)); return new Response(JSON.stringify({ ok: false, error_code: 408, description: 'timeout' }), { status: 408 });
+    }
+    if (m === 'sendMessage') f.sent.push(JSON.parse(o.body));
+    return new Response(JSON.stringify({ ok: true, result: {} }));
+  }) as any;
+  try {
+    const r = await pollZalo(f.env, { log() {}, wait() {} } as any, 4000);
+    assert.equal(r.polled, 1);
+    assert.ok(calls.indexOf('sendChatAction') < calls.lastIndexOf('sendMessage'));
+    assert.ok(f.sent.some((m: any) => m.chat_id === 'c-poll' && m.text === 'Chào bạn!'));
+    // listening went on while the AI was answering
+    assert.ok(calls.filter((c) => c === 'getUpdates').length >= 2);
+  } finally { globalThis.fetch = orig; }
+}));
