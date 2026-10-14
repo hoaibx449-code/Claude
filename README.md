@@ -164,6 +164,6 @@ Trước triển khai cập nhật thanh toán, áp `web/schema.sql` để thêm
 
 ## Tích hợp dự án tham khảo và Zalo
 
-[Chi tiết tích hợp FACIUP v3.3.8, ảnh giao diện và hướng dẫn kết nối bot](docs/reference-integration.md). Bàn dựng mới lấy tiến độ thực từ máy chủ; quản trị có tab Máy dựng và hộp thư Zalo có retry. Áp schema trước cập nhật Worker/runner. Connector Zalo dùng Bot Platform, không phải OA API.
+[Chi tiết tích hợp FACIUP v3.3.8, ảnh giao diện và hướng dẫn kết nối bot](docs/reference-integration.md). Bàn dựng mới lấy tiến độ thực từ máy chủ; quản trị có tab Máy dựng và hộp thư Zalo có retry. Áp schema trước cập nhật Worker/runner. Connector Zalo dùng Bot Platform, không phải OA API, và chạy độc lập (webhook trực tiếp hoặc hỏi định kỳ): [docs/zalo-bot.md](docs/zalo-bot.md).
 
 Chạy kiểm tra giao diện local bằng `npm run test:ui` (cần Wrangler dev và Chromium); dùng `NV_API_URL` để chọn cổng local khác. Test dùng mock TTS và không gửi tin Zalo thật.

@@ -86,20 +86,66 @@ test('blocked Zalo accounts receive an explanation and cannot queue another vide
  await f.receive('KB Kịch bản khác đủ dài để dựng một video mới.','blocked');await f.drain();
  assert.match(f.sent.at(-1).body.text,/bị khóa/);assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM jobs').first()).n,1);
 }));
-test('a shared bot: messages forwarded by the other site (secret in the address, no header) are answered, and the webhook is left alone',async()=>fixture(async f=>{
- f.env.config.zalo.receive='relay';
+test('standalone bot like the Zalo Bot SDK: direct webhook, SDK header accepted, old shared-bot setting becomes webhook',async()=>fixture(async f=>{
  const { receiveMode, pollZalo } = await import('../web/src/zalo.ts');
- assert.equal(await receiveMode(f.env),'relay');
- // the Apps Script forwards the raw Zalo update to the address shown on the admin page
- const relay=await (await zaloAdmin(new Request('https://studio.test/api/admin/zalo/relay'),f.env,f.env,'zalo/relay','GET',f.rc)).json();
- assert.match(relay.url,/^https:\/\/studio\.test\/api\/zalo\/webhook\?s=[a-f0-9]{48}$/);
- const res=await zaloWebhook(new Request(relay.url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ok:true,result:{event_name:'message.text.received',message:{message_id:'r1',chat:{id:'chat-9'},from:{display_name:'Khách'},text:'GIUP'}}})}),f.env,f.rc);
- assert.equal((await res.json()).ok,true);await f.drain();
+ const { cleanConfig } = await import('../web/src/settings.ts');
+ // the removed Apps Script relay setting turns into the direct webhook
+ assert.equal(cleanConfig({zalo:{receive:'relay'}},f.env.config).zalo.receive,'webhook');
+ assert.equal(defaultConfig(f.env).zalo.receive,'webhook');
+ assert.equal(await receiveMode(f.env),'webhook');
+ // X-Zalo-Signature (SDK example) carries the same secret
+ const res=await zaloWebhook(new Request('https://studio.test/api/zalo/webhook',{method:'POST',headers:{'content-type':'application/json','x-zalo-signature':await webhookSecret(f.env)},body:JSON.stringify({event_name:'message.text.received',message:{message_id:'s1',chat:{id:'chat-9',chat_type:'PRIVATE'},from:{id:'u9',display_name:'Khách'},text:'GIUP'}})}),f.env,f.rc);
+ assert.equal((await res.json()).recorded,true);await f.drain();
  assert.equal(f.sent.at(-1).body.chat_id,'chat-9');
- // connecting the webhook from this site is refused: it would take the bot away from the other site
- await assert.rejects(zaloAdmin(new Request('https://studio.test/api/admin/zalo/connect',{method:'POST'}),f.env,f.env,'zalo/connect','POST',f.rc),/Dùng chung|dùng chung/);
- // and polling never removes another site's webhook
- f.env.config.zalo.receive='poll';f.setResponse({ok:true,result:{url:'https://script.google.com/macros/s/abc/exec?zl=x'}});
- const before=f.sent.length;await pollZalo(f.env,f.rc,4000);
- assert.ok(!f.sent.slice(before).some((s: any)=>/deleteWebhook/.test(s.url)));
+ // no forwarding address any more
+ await assert.rejects(zaloAdmin(new Request('https://studio.test/api/admin/zalo/relay'),f.env,f.env,'zalo/relay','GET',f.rc),/Không tìm thấy/);
+ // "Kết nối webhook" moves the bot here with url + secret_token, as SetWebhookRequest does
+ f.setResponse({ok:true,result:{url:'https://studio.test/api/zalo/webhook?s='+await webhookSecret(f.env)}});
+ const before=f.sent.length;
+ const connected=await (await zaloAdmin(new Request('https://studio.test/api/admin/zalo/connect',{method:'POST'}),f.env,f.env,'zalo/connect','POST',f.rc)).json();
+ assert.equal(connected.url,'https://studio.test/api/zalo/webhook');
+ const set=f.sent.slice(before).find((x: any)=>/setWebhook$/.test(x.url));assert.equal(set.body.secret_token,await webhookSecret(f.env));
+ // polling never removes another site's webhook by itself: the admin moves it with "Kết nối webhook"
+ f.env.config.zalo.receive='poll';f.setResponse({ok:true,result:{url:'https://script.google.com/macros/s/abc/exec'}});
+ const b2=f.sent.length;const r=await pollZalo(f.env,f.rc,4000);
+ assert.equal(r.error,'foreign webhook');assert.ok(!f.sent.slice(b2).some((x: any)=>/deleteWebhook/.test(x.url)));
+}));
+test('commands typed the way people speak: Vietnamese words with spaces, accents and punctuation',async()=>{
+ const { parseCommand }=await import('../web/src/zalo.ts');
+ const c=(t: string)=>parseCommand(t).cmd;
+ assert.equal(c('Hướng dẫn'),'HUONGDAN');assert.equal(c('trạng thái?'),'TT');assert.equal(c('Danh sách'),'DS');assert.equal(c('Hủy kết nối'),'HUYKETNOI');
+ assert.equal(c('Định dạng 2'),'DINHDANG');assert.deepEqual(parseCommand('Định dạng 2').rest,['2']);assert.equal(c('GIUP!'),'GIUP');assert.equal(c('/start'),'START');
+ assert.deepEqual(parseCommand('KETNOI: abc123'),{cmd:'KETNOI',rest:['abc123'],arg:'abc123'});
+ assert.equal(parseCommand('Kịch bản mẫu 3').cmd,'MAU');assert.equal(parseCommand('Kịch bản: Một câu.\nHai câu.').arg,'Một câu.\nHai câu.');
+ assert.equal(parseCommand('Tạo video vì sao lương không tăng').arg,'vì sao lương không tăng');
+});
+test('natural commands get real answers, and a new chat typing a valid command is never told "chưa hiểu"',async()=>fixture(async f=>{
+ const last=()=>f.sent.at(-1).body.text;
+ await f.receive('Trạng thái','n1');await f.drain();assert.match(last(),/chưa có video/);
+ await f.receive('Hủy kết nối','n2');await f.drain();assert.match(last(),/chưa kết nối/);
+ await f.receive('Hướng dẫn','n3');await f.drain();assert.match(last(),/KB/);
+ await f.receive('Khung ngang','n4');await f.drain();assert.match(last(),/ngang 16:9/);
+ await f.receive('KHUNG 9:16','n5');await f.drain();assert.match(last(),/dọc 9:16/);
+ await f.receive('Định dạng','n6');await f.drain();assert.match(last(),/Chọn định dạng/);
+ await f.receive('Tắt','n7');await f.drain();assert.match(last(),/tắt thông báo/);
+ assert.ok(!f.sent.some((s: any)=>/chưa hiểu/.test(s.body.text)));
+ await f.receive('blah blah','n8');await f.drain();assert.match(last(),/chưa hiểu/);
+ // guests not allowed: told to link instead of "chưa hiểu"
+ f.env.config.zalo.allowGuests=false;
+ await f.env.DB.prepare("DELETE FROM zalo_links").run();
+ await f.receive('Giọng đọc','n9');await f.drain();assert.match(last(),/kết nối tài khoản/);
+}));
+test('AI work is left to the minute job (a webhook call only lives 30 seconds), acknowledged once',async()=>fixture(async f=>{
+ f.env.GEMINI_API_KEY='g';f.env.config.zalo.scriptSource='mine-ai';
+ const res=await (await f.receive('KB Bắt đầu từ một bước nhỏ. Bạn có thể làm ngay hôm nay.','ai')).json();await f.drain();
+ assert.equal(res.deferred,true);
+ assert.equal((await f.env.DB.prepare("SELECT status FROM zalo_messages WHERE id='ai'").first()).status,'received');
+ assert.equal(f.sent.filter((s: any)=>/Đã nhận/.test(s.body.text)).length,1);
+ await resumeZalo(f.env,f.rc);await f.drain();
+ assert.equal((await f.env.DB.prepare("SELECT status FROM zalo_messages WHERE id='ai'").first()).status,'handled');
+ assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM jobs').first()).n,1);
+ assert.equal(f.sent.filter((s: any)=>/^Đã nhận, mình đang/.test(s.body.text)).length,1);
+ assert.match(f.sent.at(-1).body.text,/đang được dựng/);
+ // quick commands are still answered straight away
+ const quick=await (await f.receive('GIUP','fast')).json();await f.drain();assert.equal(quick.deferred,undefined);
 }));

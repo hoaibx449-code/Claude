@@ -24,14 +24,14 @@ Quản trị hiện có về gói, thanh toán, người dùng, khóa API mã h�
 - Hết quota trước đây không phản hồi. Nay thông báo cụ thể. Tài khoản bị khóa cũng không được tạo video qua bot.
 - Preview tiến độ chỉ có phần trăm; nay runner báo phase/message thực qua `job_progress`, gồm cả TTS và upload. Polling lỗi không xóa lịch sử hoặc tự tạo job mới.
 
-Inbox có checkpoint project/job và kiểm tra job hiện có khi khôi phục, giúp không queue lại video đã tạo. Không gọi đây là exactly-once trên mọi lỗi phân tán: vẫn có cửa sổ giữa commit tạo project và ghi checkpoint; gửi tin bị mất phản hồi có thể được gửi lại. Cron chỉ phục hồi tối đa 2 tin và 5 phản hồi mỗi lần, tối đa 5 lần tự động. Cấu hình cron hiện tại là 10 phút/lần; retry không được hứa là tức thời.
+Inbox có checkpoint project/job và kiểm tra job hiện có khi khôi phục, giúp không queue lại video đã tạo. Không gọi đây là exactly-once trên mọi lỗi phân tán: vẫn có cửa sổ giữa commit tạo project và ghi checkpoint; gửi tin bị mất phản hồi có thể được gửi lại. Cron chỉ phục hồi tối đa 5 tin và 5 phản hồi mỗi lần, tối đa 5 lần tự động. Cron chạy mỗi phút; retry không được hứa là tức thời.
 
 ## Vì sao bot vẫn im lặng (cập nhật)
 
 Dán đường dẫn bot (`https://zalo.me/...`) chỉ giúp người dùng mở bot; **không** làm Zalo gửi tin về web. Tin chỉ về khi webhook của bot trỏ đúng `https://<tên miền>/api/zalo/webhook`. Các nguyên nhân thường gặp, theo thứ tự kiểm tra trong Quản trị → Zalo:
 
 1. Tính năng Zalo chưa bật hoặc chưa lưu token. Trước đây webhook trả 503; Zalo có thể ngừng gọi hoặc từ chối lưu webhook. Nay luôn trả 200 và ghi lý do.
-2. Webhook vẫn trỏ về Apps Script FACIUP hoặc web khác (bot chỉ có một webhook). Bấm **Kết nối webhook**; kết quả hiện địa chỉ cũ và địa chỉ mới.
+2. Webhook vẫn trỏ về Apps Script hoặc web khác (bot chỉ có một webhook). Bấm **Kết nối webhook**; kết quả hiện địa chỉ cũ và địa chỉ mới. Bot chạy độc lập trên Nét Vẽ, xem [docs/zalo-bot.md](zalo-bot.md).
 3. Trong Zalo Bot Creator chưa bật nhận sự kiện tin nhắn (`message.text.received`).
 4. Cloudflare chặn máy chủ Zalo (Bot Fight Mode, Under Attack, WAF). Mục "Zalo đã gọi tới web này" báo *chưa có lần gọi nào* là dấu hiệu chính.
 5. Token dán thừa khoảng trắng, dấu nháy hoặc tiền tố `bot`: nay được tự làm sạch.
