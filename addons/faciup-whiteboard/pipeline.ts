@@ -104,8 +104,8 @@ export async function renderProject(o: RenderOptions) {
       for (let i = 0; i < project.scenes.length; i++) voice.push(await mockTTS.synth(project.scenes[i].lines, join(work, `scene${i}`)));
       tts = { name: 'none' };
     } else {
-      // a paid voice that fails (no key, quota, outage) is replaced by the free voice instead of failing the video
-      const engine = name && name !== 'mock' && name !== 'free' ? withFallback(await pickTTS(name, project.voice).catch(() => pickTTS('free', project.voice)), project.voice?.voiceId) : await pickTTS(name, project.voice);
+      // Add-on: preserve the chosen voice; never silently replace it with a different provider.
+      const engine = await pickTTS(name, project.voice);
       for (let i = 0; i < project.scenes.length; i++) {
         await o.onStage?.('voice', `Chuẩn bị lời đọc: cảnh ${i + 1}/${project.scenes.length}`);
         o.signal?.throwIfAborted();
