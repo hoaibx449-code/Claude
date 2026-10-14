@@ -12,6 +12,11 @@ const web = dirname(fileURLToPath(import.meta.url));
 const NAME = 'net-ve-studio';
 const wrangler = (args, opts = {}) =>
   execFileSync('npx', ['wrangler', ...args], { cwd: web, encoding: 'utf8', stdio: ['pipe', 'pipe', 'inherit'], ...opts });
+
+for (const k of ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) {
+  if (!process.env[k]) { console.error(`Thiếu secret ${k} (xem hướng dẫn triển khai).`); process.exit(1); }
+}
+
 // The Cloudflare API sometimes answers 504; deploy and secret upload are idempotent, so retry them.
 const retry = async (what, fn) => {
   for (let i = 1; ; i++) {
@@ -23,10 +28,6 @@ const retry = async (what, fn) => {
   }
 };
 
-for (const k of ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) {
-  if (!process.env[k]) { console.error(`Thiếu secret ${k} (xem hướng dẫn triển khai).`); process.exit(1); }
-}
-
 // 1. database
 const findDb = () => JSON.parse(wrangler(['d1', 'list', '--json'])).find((d) => d.name === NAME);
 let db = findDb();
@@ -34,7 +35,10 @@ if (!db) { console.log('Tạo cơ sở dữ liệu D1…'); wrangler(['d1', 'cre
 if (!db?.uuid) throw new Error('Không tạo được cơ sở dữ liệu D1.');
 
 // 2. storage
-if (!wrangler(['r2', 'bucket', 'list']).includes(NAME)) { console.log('Tạo kho lưu trữ R2…'); wrangler(['r2', 'bucket', 'create', NAME]); }
+// the bucket listing API sometimes fails on its own; the bucket then most likely exists already (deploy checks the binding)
+let buckets = null;
+try { buckets = await retry('r2 list', () => wrangler(['r2', 'bucket', 'list'])); } catch { console.log('Không đọc được danh sách R2, coi như kho đã có.'); }
+if (buckets !== null && !buckets.includes(NAME)) { console.log('Tạo kho lưu trữ R2…'); wrangler(['r2', 'bucket', 'create', NAME]); }
 
 // 3. config with the real database id (kept out of git)
 const base = readFileSync(join(web, 'wrangler.jsonc'), 'utf8').replace(/^\s*\/\/.*$/gm, '');
