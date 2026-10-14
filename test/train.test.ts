@@ -48,6 +48,6 @@ test('retired Gemini models saved in settings move to the current ones', async (
   const { cleanConfig, defaultConfig } = await import('../web/src/settings.ts');
   const base = defaultConfig({} as any);
   const c = cleanConfig({ models: { geminiText: 'gemini-2.5-flash', geminiFallback: 'gemini-2.5-flash-lite,gemini-2.0-flash,gemini-3.5-flash' } }, base);
-  assert.equal(c.models.geminiText, 'gemini-3.8-flash');
+  assert.equal(c.models.geminiText, 'gemini-3.5-flash');
   assert.equal(c.models.geminiFallback, 'gemini-3.5-flash');
 });

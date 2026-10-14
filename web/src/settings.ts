@@ -185,8 +185,8 @@ export function defaultConfig(env: Env): Config {
       ] as Voice[]),
     models: {
       openaiText: env.OPENAI_TEXT_MODEL || 'gpt-4o-mini', openaiImage: env.OPENAI_IMAGE_MODEL || 'gpt-image-1', openaiImageQuality: env.OPENAI_IMAGE_QUALITY || 'medium',
-      geminiText: env.GEMINI_TEXT_MODEL || 'gemini-3.8-flash', geminiImage: env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
-      openaiFallback: 'gpt-4.1-mini', geminiFallback: 'gemini-3.5-flash',
+      geminiText: env.GEMINI_TEXT_MODEL || 'gemini-3.5-flash', geminiImage: env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
+      openaiFallback: 'gpt-4.1-mini', geminiFallback: 'gemini-flash-latest,gemini-3.8-flash',
     },
     limits: { script: Number(env.DAILY_SCRIPTS) || 20, image: Number(env.DAILY_IMAGES) || 60, render: Number(env.DAILY_RENDERS) || 5, maxSeconds: 600 },
     promptExtra: '',

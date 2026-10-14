@@ -304,7 +304,7 @@ export async function analyzeSample(env: Env, frames: string[], notes: string): 
   if (!env.GEMINI_API_KEY && !env.OPENAI_API_KEY) throw new HttpError(503, 'Cần khoá Gemini hoặc OpenAI để phân tích mẫu.');
   // every model in turn (main, then fallbacks, then the other provider); one retry when busy
   const plan: [TextProvider, string][] = [];
-  if (env.GEMINI_API_KEY) for (const m of new Set([env.GEMINI_TEXT_MODEL || 'gemini-3.8-flash', ...list(env.GEMINI_TEXT_FALLBACK)])) plan.push(['gemini', m]);
+  if (env.GEMINI_API_KEY) for (const m of new Set([env.GEMINI_TEXT_MODEL || 'gemini-3.5-flash', ...list(env.GEMINI_TEXT_FALLBACK)])) plan.push(['gemini', m]);
   if (env.OPENAI_API_KEY) for (const m of new Set([env.OPENAI_TEXT_MODEL || 'gpt-4o-mini', ...list(env.OPENAI_TEXT_FALLBACK)])) plan.push(['openai', m]);
   const errors: string[] = [];
   for (const [p, model] of plan) {
