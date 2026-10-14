@@ -151,3 +151,22 @@ test('the AI closes a sale: intent buy sends the QR right after its answer', () 
   const sys = f.prompts[0].systemInstruction.parts[0].text;
   assert.match(sys, /BÁN HÀNG/); assert.match(sys, new RegExp(plan.id + ' = Chuyên nghiệp'));
 }));
+
+test('a slow or failing AI is not covered with a canned menu: the minute job asks again, rules only as a last resort, and an upset customer gets an apology', () => fixture(async (f) => {
+  const { resumeZalo } = await import('../web/src/zalo.ts');
+  f.setAnswer({ nothing: true }); // the model answers nothing usable
+  const before = f.sent.length;
+  await f.say('Ngu như bò');
+  // no canned reply from the webhook: the message waits for the minute job
+  assert.ok(!f.sent.slice(before).some((m: any) => m.chat_id === 'customer-abc123'));
+  const row = await f.env.DB.prepare("SELECT status, error FROM zalo_messages ORDER BY received_at DESC LIMIT 1").first();
+  assert.equal(row.status, 'received'); assert.match(row.error, /chờ AI/);
+  // the minute job: still no AI, so the rules answer, and they read the mood
+  await resumeZalo(f.env, { userId: null, channel: 'zalo', quiet: true, log() {}, wait() {} } as any);
+  const reply = f.sent.filter((m: any) => m.chat_id === 'customer-abc123').at(-1);
+  assert.match(reply.text, /xin lỗi/i); assert.doesNotMatch(reply.text, /1\. Làm thử/);
+  // and with the AI back, the minute job gives the real answer
+  f.setAnswer({ hieu: 'khách hỏi giá', reply: 'Gói **Chuyên nghiệp** 199.000đ/tháng nhé.', intent: 'chat' });
+  await f.say('giá sao em');
+  assert.match(f.sent.filter((m: any) => m.chat_id === 'customer-abc123').at(-1).text, /<b>Chuyên nghiệp<\/b>/);
+}));

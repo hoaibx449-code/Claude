@@ -399,6 +399,26 @@ function zaloFormatsCard(c, z) {
       h('button', { type: 'button', class: 'ghost small', onclick: (e) => { z.formats.allowed = WAYS.filter((k) => !off(k)); e.target.closest('.card').querySelectorAll('input[type=checkbox]').forEach((x) => { if (!x.disabled) x.checked = true; }); paintNote(); } }, 'Cho chọn tất cả')),
     note);
 }
+/** Ask the bot anything as a customer would and see how it answered: the AI (which model) or the prepared answers, and why. */
+function assistantTestCard() {
+  const q = h('input', { placeholder: 'Ví dụ: làm video bán mỹ phẩm được không? / ngu như bò / 1 tháng làm mấy video', maxlength: 500 });
+  const out = h('div');
+  const go = h('button', { type: 'button', class: 'small', onclick: async () => {
+    if (!q.value.trim()) return toast('Nhập một câu để thử.');
+    go.disabled = true; out.replaceChildren(h('p', { class: 'muted' }, 'Đang hỏi bot (tối đa 45 giây)…'));
+    try {
+      const r = await api('/api/admin/zalo/simulate', { method: 'POST', body: { text: q.value } });
+      out.replaceChildren(
+        h('p', { class: r.path === 'ai' ? 'ok' : 'bad' }, r.path === 'ai' ? `✓ AI trả lời (${r.model || ''}, ${Math.round(r.ms / 100) / 10} giây, ý định: ${r.intent || '?'})`
+          : r.path === 'rules' ? `✗ Câu soạn sẵn, không phải AI — lý do: ${r.why || (r.assistantOn ? 'không rõ' : 'trợ lý AI đang tắt hoặc chưa có khoá AI')}` : 'Đây là một lệnh, bot xử lý theo lệnh.'),
+        ...r.replies.map((x) => h('p', { class: 'caption' }, x.text)));
+    } catch (e) { out.replaceChildren(h('p', { class: 'bad' }, e.message)); }
+    go.disabled = false;
+  } }, 'Hỏi thử');
+  return card('Thử trợ lý', 'Gõ một câu như khách nhắn. Câu trả lời được gửi về Zalo chủ web và hiện bên dưới, kèm cho biết bot dùng AI hay câu soạn sẵn (và vì sao). Cần có Zalo chủ web (CHUWEB).',
+    h('div', { class: 'row' }, q, go), out);
+}
+
 function zaloTab(c, secrets, secretInput, zcheck, inbox) {
   const z = c.zalo;
   const action = (label, fn) => h('button', { type: 'button', class: 'ghost small', onclick: async (event) => { const button = event.currentTarget; button.disabled = true; try { await fn(); } catch (e) { fail(e); } finally { button.disabled = false; } } }, label);
@@ -419,11 +439,12 @@ function zaloTab(c, secrets, secretInput, zcheck, inbox) {
       h('div', { class: 'row' },
         action('Kiểm tra lại', async () => { const check = await api('/api/admin/zalo/check'); out.replaceChildren(h('ul', {}, check.steps.map((step) => h('li', { class: step.ok ? 'ok' : 'bad' }, (step.ok ? '✓ ' : '✗ ') + step.k, h('p', { class: 'muted' }, step.detail || step.fix || ''))))); }),
         action('Kết nối webhook', async () => { const r = await api('/api/admin/zalo/connect', { method: 'POST' }); out.replaceChildren(h('p', {}, '✓ Webhook trỏ về: ', h('b', {}, r.url)), r.before && r.before !== r.url ? h('p', { class: 'muted' }, 'Trước đó bot trỏ về: ' + r.before + ' (đã chuyển sang web này).') : null, h('p', { class: 'muted' }, 'Giờ nhắn GIUP cho bot rồi bấm Kiểm tra lại.')); }),
-        action('Mô phỏng tin "GIUP"', async () => { const r = await api('/api/admin/zalo/simulate', { method: 'POST', body: { text: 'GIUP' } }); out.replaceChildren(h('p', { class: r.ok ? 'ok' : 'bad' }, r.ok ? '✓ Bot xử lý và gửi phản hồi về Zalo chủ web thành công. Nếu khách vẫn không nhận được, lỗi nằm ở chiều Zalo → web (webhook/sự kiện/Cloudflare).' : '✗ Gửi phản hồi lỗi: ' + (r.reply?.error || 'không rõ'))); }),
+        action('Mô phỏng tin "GIUP"', async () => { const r = await api('/api/admin/zalo/simulate', { method: 'POST', body: { text: 'GIUP' } }); out.replaceChildren(h('p', { class: r.ok ? 'ok' : 'bad' }, r.ok ? '✓ Bot xử lý và gửi phản hồi về Zalo chủ web thành công. Nếu khách vẫn không nhận được, lỗi nằm ở chiều Zalo → web (webhook/sự kiện/Cloudflare).' : '✗ Gửi phản hồi lỗi: ' + (r.replies?.[0]?.error || 'không rõ'))); }),
         action('Tạo mã chủ web', async () => { const r = await api('/api/admin/zalo/owner-code', { method: 'POST' }); out.replaceChildren('Gửi cho bot: ', h('b', { class: 'memo' }, r.command), ` (hạn ${r.expiresMin} phút)`); }),
         action('Gửi tin thử cho chủ web', async () => { await api('/api/admin/zalo/test', { method: 'POST' }); toast('Đã gửi.'); })),
       out,
       zcheck?.last?.length ? h('details', {}, h('summary', {}, 'Hoạt động Zalo gần đây'), table(['Lúc', 'Kết quả', 'Chi tiết'], zcheck.last.map((e) => h('tr', {}, h('td', {}, fmtDate(e.ts)), h('td', { class: e.ok ? 'ok' : 'bad' }, e.ok ? 'OK' : 'Lỗi'), h('td', { class: 'data' }, e.data || ''))))) : null),
+    assistantTestCard(),
     zaloInboxCard(inbox),
     keysCard(secrets, secretInput, ['ZALO_BOT_TOKEN']),
     card('Cài đặt Zalo', null, h('div', { class: 'grid' },

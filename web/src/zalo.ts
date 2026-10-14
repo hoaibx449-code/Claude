@@ -224,7 +224,10 @@ export function normalizeMessage(payload: any) {
     event: ev };
 }
 
-export async function processMessage(env: XEnv, rc: Rc, id: string, force = false) {
+/** Thrown when the AI needs more time than a webhook call has: the minute job answers instead. */
+class Defer extends Error {}
+
+export async function processMessage(env: XEnv, rc: Rc, id: string, force = false, patient = false) {
   // (each message is counted once against the daily limit, on its first attempt)
   const row = await env.DB.prepare(`UPDATE zalo_messages SET status = 'processing', attempts = attempts + 1, updated_at = ?, error = NULL
     WHERE id = ? AND (attempts < 5 OR ?) AND (status IN ('received','failed') OR (status = 'processing' AND updated_at < ?)) RETURNING *`)
@@ -232,9 +235,15 @@ export async function processMessage(env: XEnv, rc: Rc, id: string, force = fals
   if (!row) return;
   const messageRc: Rc = { ...rc, userId: null, log(type, extra = {}) { rc.log(type, { userId: messageRc.userId, ...extra }); } };
   try {
-    await handleMessage(env, messageRc, row.chat_id, row.text, row.sender_name, !!row.is_text, id, row.attempts === 1);
+    await handleMessage(env, messageRc, row.chat_id, row.text, row.sender_name, !!row.is_text, id, row.attempts === 1, patient);
     await env.DB.prepare("UPDATE zalo_messages SET status = 'handled', updated_at = ? WHERE id = ? AND status = 'processing' AND attempts = ?").bind(Date.now(), id, row.attempts).run();
   } catch (error: any) {
+    if (error instanceof Defer) {
+      // back in the queue for the minute job (no "sorry" message: the real answer is coming)
+      await env.DB.prepare("UPDATE zalo_messages SET status = 'received', error = ?, updated_at = ? WHERE id = ? AND status = 'processing'").bind('chờ AI trả lời (' + error.message + ')', Date.now(), id).run();
+      messageRc.log('zalo.assistant.defer', { data: { message: id, why: error.message } });
+      return;
+    }
     const changed = await env.DB.prepare("UPDATE zalo_messages SET status = 'failed', error = ?, updated_at = ? WHERE id = ? AND status = 'processing' AND attempts = ?").bind(String(error.message || 'Lỗi xử lý tin nhắn.').slice(0, 300), Date.now(), id, row.attempts).run();
     if (!changed.meta.changes) return;
     messageRc.log('zalo.processing', { ok: false, data: { message: id, error: String(error.message || 'Lỗi xử lý').slice(0, 200) } });
@@ -246,12 +255,13 @@ export async function processMessage(env: XEnv, rc: Rc, id: string, force = fals
 export async function resumeZalo(env: XEnv, rc: Rc) {
   if (!env.config.zalo.enabled || !(env as any).ZALO_BOT_TOKEN) return;
   const messages = await env.DB.prepare("SELECT id FROM zalo_messages WHERE attempts < 5 AND (status IN ('received','failed') OR (status = 'processing' AND updated_at < ?)) ORDER BY received_at LIMIT 5").bind(Date.now() - 120_000).all<any>();
-  for (const row of messages.results) await processMessage(env, rc, row.id);
+  // the minute job has time: the AI gets a long deadline here
+  for (const row of messages.results) await processMessage(env, rc, row.id, false, true);
   const replies = await env.DB.prepare("SELECT id FROM zalo_outbox WHERE attempts < 5 AND (status IN ('pending','failed') OR (status = 'sending' AND updated_at < ?)) ORDER BY created_at LIMIT 5").bind(Date.now() - 120_000).all<any>();
   for (const row of replies.results) await deliverReply(env, row.id);
 }
 
-async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, name: string, isText: boolean, messageId: string, firstTry = true) {
+async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, name: string, isText: boolean, messageId: string, firstTry = true, patient = false) {
   const z = env.config.zalo, t = z.templates;
   const reply = async (s: string) => { const r = await send(env, chatId, s, messageId); rc.log('zalo.reply', { ok: r.ok, data: { chat: chatId, message: messageId, error: r.ok ? undefined : r.error } }); return r; };
   const link = await env.DB.prepare('SELECT l.user_id, l.prefs, l.notify, u.email, u.name FROM zalo_links l JOIN users u ON u.id = l.user_id WHERE l.chat_id = ?').bind(chatId).first<any>();
@@ -332,7 +342,7 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   const known = COMMANDS.includes(cmd) && !(assistantOn && ['XINCHAO', 'CHAO', 'HI', 'HELLO'].includes(cmd));
   // a long message is a script to film; with the assistant on, a long question is a question
   const longScript = !known && raw.length >= 120 && !(assistantOn && /\?/.test(raw));
-  const ctx = (): AskCtx => ({ chatId, messageId, name, text: raw, user, link, prefs, reply, lead });
+  const ctx = (): AskCtx => ({ chatId, messageId, name, text: raw, user, link, prefs, reply, lead, firstTry, patient });
   // a free message: the AI assistant, or (AI off) answers recognised from the words
   const ask = async () => {
     // a member of staff took this chat over: pass the message on instead of answering over them
@@ -435,7 +445,9 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   return ask();
 }
 
-interface AskCtx { chatId: string; messageId: string; name: string; text: string; user: User | null; link: any; prefs: any; reply: (s: string) => Promise<any>; lead: Lead }
+interface AskCtx { chatId: string; messageId: string; name: string; text: string; user: User | null; link: any; prefs: any; reply: (s: string) => Promise<any>; lead: Lead;
+  /** first time this message is handled (limits count once) */ firstTry?: boolean;
+  /** handled by the minute job: the AI may take longer, and there is no later chance to defer to */ patient?: boolean }
 
 // ---------------------------------------------------------------- what the assistant remembers about a person
 const STAGES = ['new', 'interested', 'trying', 'quoted', 'customer', 'lost'] as const;
@@ -577,6 +589,9 @@ export function guessIntent(text: string) {
   const has = (...w: string[]) => w.some((x) => t.includes(' ' + x + ' '));
   if (has('da chuyen', 'da ck', 'chuyen roi', 'ck roi', 'da thanh toan', 'thanh toan roi')) return 'paid';
   if (has('dung nhan', 'khong can nua', 'dung lam phien', 'dung gui', 'khong nhan tin nua', 'huy theo doi')) return 'optout';
+  // upset or rude: read with the accents (folded, "ngu" would also catch "ngủ" in a video topic)
+  const low = ' ' + String(text).toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, ' ').replace(/\s+/g, ' ') + ' ';
+  if (/ (ngu|đần|dốt|ngáo|tệ quá|quá tệ|chán quá|lừa đảo|vô dụng|bực|thất vọng|chậm quá|ba láp|vớ vẩn|nhảm nhí|đm|dm|vl|vcl|cút) /.test(low) || / (không|ko|k) hiểu (gì|j) /.test(low)) return 'upset';
   if (has('video mau', 'xem mau', 'vi du', 'demo', 'xem thu', 'cho xem', 'trong the nao', 'nhu the nao')) return 'samples';
   if (has('mua', 'chot', 'dang ky', 'nang cap', 'lay goi', 'muon mua', 'thanh toan', 'chuyen khoan', 'ck')) return 'buy';
   if (has('hoan tien', 'hoan lai', 'refund', 'tra lai tien')) return 'refund';
@@ -603,6 +618,11 @@ async function quickAnswer(env: XEnv, rc: Rc, x: AskCtx, why = '') {
     }
     case 'price': return x.reply(forSale(c).length ? await quote(env, x, cur) : 'Hiện mọi người đang dùng miễn phí trong hạn mức mỗi ngày.');
     case 'samples': return sendSamples(env, rc, x.chatId, x.messageId);
+    case 'upset': {
+      // like a person would: own it, ask what went wrong, bring in a human
+      await notifyOwner(env, 'support', `Khách đang không hài lòng [${code}] ${x.name || ''}: "${x.text.slice(0, 200)}"\nTrả lời khách: TL ${code} <lời nhắn>`);
+      return x.reply(`Mình xin lỗi vì đã làm bạn khó chịu 🙏 Chắc mình trả lời chưa đúng ý bạn rồi. Bạn nói giúp mình đang cần gì hoặc chỗ nào chưa ổn nhé, mình cũng đã báo nhân viên vào hỗ trợ bạn ngay.`);
+    }
     case 'optout': await saveLead(env, x.chatId, { optout: 1 }); return x.reply('Dạ mình ghi nhận rồi, sẽ không nhắn trước cho bạn nữa. Khi cần làm video bạn cứ nhắn mình nhé.');
     case 'limit': { const up = await upsellText(env, x.user); return x.reply('Mỗi gói có hạn mức video mỗi ngày và độ dài tối đa mỗi video; lượt dựng được làm mới mỗi ngày. ' + (up || 'Gõ GIA để xem các gói.')); }
     case 'status': return x.reply(await statusText(env, x.user));
@@ -701,10 +721,11 @@ async function chatHistory(env: XEnv, chatId: string, exceptId: string): Promise
 async function assistantReply(env: XEnv, rc: Rc, x: AskCtx) {
   const z = env.config.zalo, a = z.assistant, c = env.config, code = x.chatId.slice(-6).toLowerCase();
   const owner = (await ownerChats(env)).chats.includes(x.chatId);
-  try { if (!owner) await useQuota(env, 'z:' + x.chatId, 'chat', a.perDay); }
+  try { if (!owner && x.firstTry !== false) await useQuota(env, 'z:' + x.chatId, 'chat', a.perDay); }
   catch { rc.log('zalo.limit', { ok: false, data: { chat: x.chatId, kind: 'ai', limit: a.perDay } }); return quickAnswer(env, rc, x, `khách đã dùng hết ${a.perDay} câu AI hôm nay (Quản trị → Zalo → Số câu AI trả lời)`); }
   if ((await budgetState(env)).over) return quickAnswer(env, rc, x, 'hết ngân sách AI');
   const ways = zaloWays(c);
+  if (x.patient) await typing(env, x.chatId); // still preparing: keep "đang nhập…" on screen
   const sys = [
     `Bạn là ${a.name}, nhân viên tư vấn bán hàng và chăm sóc khách hàng của dịch vụ dưới đây, đang nhắn tin với khách qua Zalo.`,
     a.persona ? 'PHONG CÁCH: ' + a.persona : '',
@@ -716,7 +737,8 @@ async function assistantReply(env: XEnv, rc: Rc, x: AskCtx) {
       'KHÔNG bắt khách gõ lệnh (không nói "gõ TAO…", "gõ MUA…"): khách cứ nói bình thường là bạn hiểu và làm. Không hỏi lại điều đã biết ở trên.',
     'SÁT Ý KHÁCH (quan trọng nhất): câu đầu tiên trả lời THẲNG điều khách vừa hỏi, bằng thông tin cụ thể (giá, số video, thời lượng, cách làm) lấy từ SỰ THẬT ở trên. Nhắc lại đúng chi tiết khách nói (chủ đề, sản phẩm, kênh, số lượng) để khách thấy được lắng nghe. ' +
       'Khách hỏi nhiều ý thì trả lời đủ từng ý. CẤM câu chung chung kiểu "bên mình có nhiều gói phù hợp", "bạn cần gì cứ nhắn", "mình hỗ trợ nhiều loại video" mà không nói cụ thể. ' +
-      'Khách hỏi bạn là người hay máy: nói thật bạn là trợ lý AI của dịch vụ, có nhân viên thật hỗ trợ khi cần.',
+      'Khách hỏi bạn là người hay máy: nói thật bạn là trợ lý AI của dịch vụ, có nhân viên thật hỗ trợ khi cần. ' +
+      'Khách bực bội, chê bai hay nói nặng lời: không cãi, không đưa menu; nhận lỗi ngắn gọn, đoán điều khiến khách bực từ hội thoại (trả lời sai, chậm, video lỗi…) và hỏi lại đúng chỗ đó; nếu khách vẫn bực thì intent "human".',
     'VÍ DỤ. Khách: "làm video bán mỹ phẩm được ko". TỐT: "Được bạn nhé! Với mỹ phẩm mình hay làm video 30-45 giây theo mạch **nỗi lo về da → giải pháp → sản phẩm**, có ảnh sản phẩm thật và mã QR mua hàng ở cuối. Bạn đang bán dòng sản phẩm nào, mình làm thử một video miễn phí cho bạn xem luôn?" ' +
       'XẤU: "Dạ được ạ, bên mình hỗ trợ làm nhiều loại video, bạn cần gì cứ nhắn mình nhé." Khách: "1 tháng làm được bao nhiêu video". TỐT: nêu đúng số video/ngày của từng gói theo SỰ THẬT và gợi ý gói hợp với nhu cầu khách đã nói.',
     'BÁN HÀNG KIỂU TƯ VẤN: (1) hiểu khách làm video để làm gì (kênh nào, lĩnh vực, bao nhiêu video/tuần); (2) gợi ý cách làm phù hợp, đề nghị LÀM THỬ MIỄN PHÍ ngay hoặc XEM MẪU; ' +
@@ -733,12 +755,15 @@ async function assistantReply(env: XEnv, rc: Rc, x: AskCtx) {
   let ans;
   // the AI the admin chose: the assistant's own choice, otherwise the site's (AI viết kịch bản)
   const provider = a.ai !== 'auto' ? a.ai : c.defaults.textAI === 'openai' ? 'openai' : 'gemini';
-  // 18 seconds in all: a webhook call may only work about 30 seconds, and the customer is waiting
-  try { ans = await assistantAnswer(env, sys, await chatHistory(env, x.chatId, x.messageId), x.text, provider, 18_000); }
+  // a webhook call may only work about 30 seconds: 22 of them for the AI; the minute job allows 45
+  try { ans = await assistantAnswer(env, sys, await chatHistory(env, x.chatId, x.messageId), x.text, provider, x.patient ? 45_000 : 22_000); }
   catch (e: any) {
-    rc.log('zalo.assistant', { ok: false, data: { chat: x.chatId, error: String(e.message).slice(0, 200) } });
-    // no AI right now (slow, quota, wrong key, outage): still answer from the words, never silence
-    return quickAnswer(env, rc, x, /quota|429/.test(e.message) ? 'AI hết hạn mức' : /chậm|timeout|abort/i.test(e.message) ? 'AI quá chậm' : 'AI lỗi');
+    const why = String(e.message || e).slice(0, 200);
+    rc.log('zalo.assistant', { ok: false, data: { chat: x.chatId, error: why, patient: !!x.patient } });
+    // slow or briefly overloaded: the minute job asks again with more time (a real answer within a minute)
+    if (!x.patient && !/quota|429|401|403|key|khoá/i.test(why)) throw new Defer(why);
+    // no AI at all (quota, wrong key, outage): still answer from the words, never silence
+    return quickAnswer(env, rc, x, /quota|429/.test(why) ? 'AI hết hạn mức' : /chậm|timeout|abort/i.test(why) ? 'AI quá chậm' : 'AI lỗi: ' + why.slice(0, 80));
   }
   rc.log('ai.chat', { cost: aiCost(c, { model: ans.usage.model, tokensIn: ans.usage.tokensIn, tokensOut: ans.usage.tokensOut }), data: { chat: x.chatId, intent: ans.intent, ...ans.usage } });
   const ex = ans.extra || {};
@@ -984,12 +1009,18 @@ export async function zaloAdmin(req: Request, env: XEnv, rawEnv: Env, sub: strin
     // run a message through the same path as a real one, answering in the owner's chat
     if (!env.config.zalo.ownerChat) throw new HttpError(400, 'Chưa có Zalo chủ web: tạo mã chủ web và nhắn CHUWEB <mã> cho bot trước.');
     const text = String((await body<any>(req, 2000)).text || 'GIUP').slice(0, 1000);
-    const id = 'sim-' + randomId(8), now = Date.now();
+    const id = 'sim-' + randomId(8), now = Date.now(), t0 = Date.now();
     await env.DB.prepare("INSERT INTO zalo_messages (id, chat_id, sender_name, text, is_text, status, received_at, updated_at) VALUES (?, ?, 'Mô phỏng', ?, 1, 'received', ?, ?)")
       .bind(id, env.config.zalo.ownerChat, text, now, now).run();
-    await processMessage(env, rc, id);
-    const reply = await env.DB.prepare('SELECT status, error, text FROM zalo_outbox WHERE message_id = ? ORDER BY created_at DESC LIMIT 1').bind(id).first<any>();
-    return json({ ok: reply?.status === 'sent', reply });
+    // watch which way the answer came: the AI, or the prepared answers (and why)
+    const seen: { type: string; data?: any }[] = [];
+    const watch: Rc = { ...rc, log(type, extra = {}) { seen.push({ type, data: (extra as any).data }); rc.log(type, extra); } };
+    await processMessage(env, watch, id, false, true);
+    const replies = (await env.DB.prepare('SELECT status, error, text FROM zalo_outbox WHERE message_id = ? ORDER BY created_at').bind(id).all<any>()).results;
+    const ai = seen.find((e) => e.type === 'ai.chat'), quick = seen.find((e) => e.type === 'zalo.quick'), fail = seen.find((e) => e.type === 'zalo.assistant');
+    return json({ ok: replies.some((r) => r.status === 'sent'), replies: replies.map((r) => ({ ...r, text: String(r.text).replace(/^\u0002H/, '') })), ms: Date.now() - t0,
+      path: ai ? 'ai' : quick ? 'rules' : 'command', model: ai?.data?.model, intent: ai?.data?.intent || quick?.data?.intent, why: quick?.data?.why || fail?.data?.error || null,
+      assistantOn: env.config.zalo.assistant.enabled && !!(env.GEMINI_API_KEY || env.OPENAI_API_KEY) });
   }
   if (sub === 'zalo/test' && method === 'POST') {
     await notifyOwner(env, 'support', 'Tin nhắn thử từ trang quản trị: thông báo cho chủ web hoạt động ✅');
