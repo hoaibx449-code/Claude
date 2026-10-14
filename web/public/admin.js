@@ -377,6 +377,27 @@ function musicCard(c) {
     list, h('button', { type: 'button', class: 'ghost small', onclick: () => { c.music.push({ id: 'nhac-' + Date.now().toString(36).slice(-5), title: '', file: '' }); draw(); } }, '+ Thêm bản nhạc'));
 }
 
+/** Video formats for videos made in Zalo: one default, and which ones people may pick with DINHDANG. */
+function zaloFormatsCard(c, z) {
+  const WAYS = ['auto', 'classic-sketch', 'classic-diagram', 'classic', 'act', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz'];
+  const CL = { web: 'Mặc định của web', auto: 'Tự động đa dạng', 'classic-sketch': 'Sketchnote theo lời', 'classic-diagram': 'Biểu đồ vẽ tay', classic: 'Tranh doodle' };
+  const name = (k) => CL[k] || c.labels.looks?.[k] || k;
+  const off = (k) => (k in CL ? (k === 'auto' ? false : (c.visibility['visual:' + ({ 'classic-sketch': 'sketch', 'classic-diagram': 'diagram', classic: 'doodle' })[k]] || 'on') !== 'on') : (c.visibility['look:' + k] || 'on') !== 'on');
+  z.formats ||= { default: 'web', allowed: [...WAYS] };
+  const note = h('p', { class: 'muted' });
+  const paintNote = () => { const n = z.formats.allowed.filter((k) => !off(k)).length; note.textContent = n >= 2 ? `Người dùng gõ DINHDANG để chọn 1 trong ${n} định dạng đã tick; chưa chọn thì dùng định dạng mặc định.` : 'Tick ít hơn 2 định dạng: mọi video qua Zalo dùng định dạng mặc định, người dùng không chọn được.'; };
+  const boxes = WAYS.map((k) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: z.formats.allowed.includes(k), disabled: off(k), onchange: (e) => {
+    z.formats.allowed = e.target.checked ? [...new Set([...z.formats.allowed, k])].sort((a, b) => WAYS.indexOf(a) - WAYS.indexOf(b)) : z.formats.allowed.filter((x) => x !== k); paintNote();
+  } }), name(k) + (off(k) ? ' (đang tắt ở Định dạng & hiển thị)' : '')));
+  paintNote();
+  return card('Định dạng video qua Zalo', 'Chọn định dạng mặc định cho video tạo qua Zalo, và tick các định dạng người dùng được chọn bằng lệnh DINHDANG. Phim tài liệu AI cần vẽ ảnh trên web nên không có ở đây.',
+    h('label', {}, 'Định dạng mặc định', select([['web', CL.web], ...WAYS.map((k) => [k, name(k)])], z.formats.default || 'web', (v) => { z.formats.default = v; })),
+    h('span', { class: 'plabel' }, 'Người dùng được chọn'),
+    h('div', { class: 'grid' }, ...boxes),
+    h('div', { class: 'row' }, h('button', { type: 'button', class: 'ghost small', onclick: (e) => { z.formats.allowed = []; e.target.closest('.card').querySelectorAll('input[type=checkbox]').forEach((x) => { x.checked = false; }); paintNote(); } }, 'Chỉ dùng mặc định (bỏ tick hết)'),
+      h('button', { type: 'button', class: 'ghost small', onclick: (e) => { z.formats.allowed = WAYS.filter((k) => !off(k)); e.target.closest('.card').querySelectorAll('input[type=checkbox]').forEach((x) => { if (!x.disabled) x.checked = true; }); paintNote(); } }, 'Cho chọn tất cả')),
+    note);
+}
 function zaloTab(c, secrets, secretInput, zcheck, inbox) {
   const z = c.zalo;
   const action = (label, fn) => h('button', { type: 'button', class: 'ghost small', onclick: async (event) => { const button = event.currentTarget; button.disabled = true; try { await fn(); } catch (e) { fail(e); } finally { button.disabled = false; } } }, label);
@@ -409,6 +430,7 @@ function zaloTab(c, secrets, secretInput, zcheck, inbox) {
       h('div', { class: 'grid' },
         check(z.notifyOwner.signup, (v) => { z.notifyOwner.signup = v; }, 'Người dùng mới qua Zalo'), check(z.notifyOwner.failed, (v) => { z.notifyOwner.failed = v; }, 'Video dựng lỗi'),
         check(z.notifyOwner.order, (v) => { z.notifyOwner.order = v; }, 'Đơn hàng và thanh toán'))),
+    zaloFormatsCard(c, z),
     card('Trợ lý AI trả lời như nhân viên', 'Tin nhắn không phải lệnh (câu hỏi, tư vấn gói, hỏi video tới đâu…) được AI trả lời dựa trên đúng giá gói, định dạng, tình trạng video của khách và ghi chú dưới đây. Câu khó, khiếu nại, lỗi thanh toán được chuyển về Zalo chủ web; chủ web trả lời bằng TL <mã khách> <lời nhắn>.',
       h('div', { class: 'grid' },
         check(z.assistant.enabled, (v) => { z.assistant.enabled = v; }, 'Bật trợ lý AI'),

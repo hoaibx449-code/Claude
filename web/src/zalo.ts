@@ -7,7 +7,7 @@
 // (github.com/hvduong2k5/zalo-bot-java-sdk): a direct webhook in production, long polling when the
 // webhook cannot be used. The webhook is verified with the secret token Zalo sends back on every call.
 import type { User } from './auth.ts';
-import { LOOK_KEYS, vis, type Config } from './settings.ts';
+import { LOOK_KEYS, vis, ZALO_WAYS, type Config } from './settings.ts';
 import { body, type Env, HttpError, json, randomId, sha256, timingSafeEqual, useQuota } from './util.ts';
 import { assistantAnswer, type AssistantTurn } from './ai.ts';
 import { budgetState } from './budget.ts';
@@ -324,14 +324,16 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
       return reply(`Đã chọn khung ${prefs.ratio === '16:9' ? 'ngang 16:9 (YouTube)' : 'dọc 9:16 (TikTok, Reels)'}.`);
     }
     case 'DINHDANG': case 'DD': case 'PHONGCACH': case 'PC': {
-      // video formats; the documentary needs pictures drawn on the web first, so it is not offered here
-      const looks = LOOK_KEYS.filter((k) => k !== 'doc' && vis(env.config, 'look:' + k) === 'on');
+      // the formats the admin lets people pick in Zalo (Quản trị → Zalo → Định dạng video qua Zalo)
+      const c = env.config, looks = zaloWays(c), def = c.zalo.formats.default;
+      if (looks.length < 2) return reply(`Video qua Zalo được dựng theo định dạng: ${wayName(c, wayFor(c, prefs))}.`);
       const n = Number(rest[0]);
-      if (!rest.length) return reply('Chọn định dạng video (gõ DINHDANG + số):\n0. Mặc định của web\n' + looks.map((k, i) => `${i + 1}. ${env.config.labels.looks[k]} — ${env.config.labels.lookNotes[k]}`).join('\n'));
+      if (!rest.length) return reply(`Chọn định dạng video (gõ DINHDANG + số):\n0. ${wayName(c, def)} (mặc định)\n` + looks.map((k, i) => `${i + 1}. ${wayName(c, k)} — ${wayNote(c, k)}`).join('\n') + `\nĐang dùng: ${wayName(c, wayFor(c, prefs))}`);
       const want = fold(rest.join(' ')).toLowerCase();
-      prefs.look = n === 0 ? undefined : looks[n - 1] || looks.find((k) => fold(env.config.labels.looks[k]).toLowerCase().includes(want));
-      await savePrefs(prefs);
-      return reply('Đã chọn định dạng: ' + (prefs.look ? env.config.labels.looks[prefs.look] : 'mặc định của web'));
+      const pick = n === 0 && /^0$/.test(rest[0]) ? undefined : looks[n - 1] || looks.find((k) => fold(wayName(c, k)).toLowerCase().includes(want));
+      if (n !== 0 && !pick) return reply('Không có định dạng đó. Gõ DINHDANG để xem danh sách.');
+      prefs.look = pick; await savePrefs(prefs);
+      return reply('Đã chọn định dạng: ' + wayName(c, wayFor(c, prefs)));
     }
     case 'GIONG': {
       const voices = env.config.voices.filter((v) => vis(env.config, 'voice:' + v.code) === 'on');
@@ -372,6 +374,32 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
 }
 
 interface AskCtx { chatId: string; messageId: string; name: string; text: string; user: User | null; link: any; prefs: any; reply: (s: string) => Promise<any> }
+// ---------------------------------------------------------------- video formats in Zalo
+const CLASSIC: Record<string, [string, string, string]> = {
+  auto: ['Tự động đa dạng', 'mỗi video một cách vẽ hợp với nội dung', ''],
+  'classic-sketch': ['Sketchnote theo lời', 'vẽ đúng thứ đang được nói, nhân vật đổi tư thế theo lời', 'sketch'],
+  'classic-diagram': ['Biểu đồ vẽ tay', 'biểu đồ, số liệu được tay vẽ từng nét', 'diagram'],
+  classic: ['Tranh doodle', 'mỗi câu một bức tranh vẽ tay lớn', 'doodle'],
+};
+export const wayName = (c: Config, k: string) => (k === 'web' ? 'Mặc định của web' : CLASSIC[k]?.[0] || c.labels.looks[k] || k);
+const wayNote = (c: Config, k: string) => CLASSIC[k]?.[1] || c.labels.lookNotes[k] || '';
+/** A way still switched on for the site (an admin may have hidden a format or a kind of picture). */
+const wayOn = (c: Config, k: string) => (k === 'auto' ? true : CLASSIC[k] ? vis(c, 'visual:' + CLASSIC[k][2]) === 'on' : vis(c, 'look:' + k) === 'on');
+/** The formats people may pick in Zalo, in the admin's order. */
+export function zaloWays(c: Config) { return c.zalo.formats.allowed.filter((k) => ZALO_WAYS.includes(k as any) && wayOn(c, k)); }
+/** What createProject needs for a way: a format, "auto", or the classic board with its kind of picture. */
+function wayOptions(k: string): { look?: string; visual?: string } {
+  if (k === 'auto') return { look: 'auto' };
+  if (CLASSIC[k]) return { look: '', visual: CLASSIC[k][2] };
+  return k === 'web' ? {} : { look: k };
+}
+/** The way for this person's next video: their own pick if still allowed, otherwise the admin's default. */
+function wayFor(c: Config, prefs: any) {
+  const ways = zaloWays(c), d = c.zalo.formats.default;
+  if (prefs?.look && ways.includes(prefs.look) && ways.length > 1) return prefs.look;
+  return d === 'web' || wayOn(c, d) ? d : 'web';
+}
+
 const money = (n: number) => n.toLocaleString('vi-VN') + 'đ';
 
 /** What the assistant may say about the site: only real facts from the settings. */
@@ -382,7 +410,7 @@ function siteFacts(env: XEnv) {
   const web = origin(env);
   return [`Tên dịch vụ: ${brand}. ${c.brand.tagline}`, `Trang web: ${web}. Bảng giá: ${web}/#/goi. Điều khoản: ${web}/#/dieu-khoan. Hoàn tiền: ${web}/#/hoan-tien.`,
     `Các gói:\n${plans}`, c.payment.enabled ? 'Thanh toán: trên web, mục Bảng giá, quét mã VietQR chuyển khoản; gói tự kích hoạt sau 1-2 phút khi tiền về. Không thanh toán qua Zalo, không nhận thẻ.' : 'Hiện chưa mở thanh toán trực tuyến.',
-    `Định dạng video: ${looks}.`, 'Video MP4 1080p, khung dọc 9:16 hoặc ngang 16:9, giọng đọc tiếng Việt, phụ đề. Xem trước ngay trên web, dựng xong trong vài phút, link xem/tải gửi về Zalo.',
+    `Định dạng video: ${looks}.`, `Định dạng khi tạo qua Zalo: ${zaloWays(c).length > 1 ? zaloWays(c).map((k) => wayName(c, k)).join(', ') + ' (gõ DINHDANG để chọn)' : wayName(c, c.zalo.formats.default)}; mặc định ${wayName(c, c.zalo.formats.default)}.`, 'Video MP4 1080p, khung dọc 9:16 hoặc ngang 16:9, giọng đọc tiếng Việt, phụ đề. Xem trước ngay trên web, dựng xong trong vài phút, link xem/tải gửi về Zalo.',
     `Lệnh trong Zalo:\n${c.zalo.templates.help}`, c.legal.email && !/example\.(com|org)$/i.test(c.legal.email) ? `Email hỗ trợ: ${c.legal.email}` : ''].filter(Boolean).join('\n');
 }
 
@@ -459,7 +487,7 @@ async function makeVideo(env: XEnv, rc: Rc, user: User, chatId: string, source: 
     // one "received" per message, even when it is retried or was already acknowledged by the webhook
     if (!(await env.DB.prepare('SELECT 1 FROM zalo_outbox WHERE message_id = ? LIMIT 1').bind(messageId).first())) await send(env, chatId, 'Đã nhận, mình đang chuẩn bị kịch bản và hình…', messageId);
     const existing = checkpoint?.project_id ? await env.DB.prepare('SELECT id, spec FROM projects WHERE id = ? AND user_id = ?').bind(checkpoint.project_id, user.id).first<any>() : null;
-    const p = existing ? { id: existing.id, spec: JSON.parse(existing.spec), note: '' } : await createProject(env, rc, user, { source, topic: text, ratio: prefs.ratio, style: prefs.style || 'auto', voiceId: prefs.voice, visual: 'sketch', channel: '', look: prefs.look && prefs.look !== 'doc' ? prefs.look : undefined });
+    const p = existing ? { id: existing.id, spec: JSON.parse(existing.spec), note: '' } : await createProject(env, rc, user, { source, topic: text, ratio: prefs.ratio, style: prefs.style || 'auto', voiceId: prefs.voice, channel: '', visual: 'sketch', ...wayOptions(wayFor(env.config, prefs)) });
     await env.DB.prepare('UPDATE zalo_messages SET project_id = ? WHERE id = ?').bind(p.id, messageId).run();
     if (!env.config.zalo.autoRender) return send(env, chatId, `Kịch bản "${p.spec.title}" đã sẵn sàng (${p.spec.scenes.length} cảnh). Mở web để xem và dựng: ${origin(env)}/#/p/${p.id}`, messageId);
     const queued = await env.DB.prepare("SELECT id FROM jobs WHERE project_id = ? AND user_id = ? AND status IN ('queued','running','done') ORDER BY created_at DESC LIMIT 1").bind(p.id, user.id).first<any>();

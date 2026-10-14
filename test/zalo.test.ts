@@ -149,3 +149,17 @@ test('AI work is left to the minute job (a webhook call only lives 30 seconds), 
  // quick commands are still answered straight away
  const quick=await (await f.receive('GIUP','fast')).json();await f.drain();assert.equal(quick.deferred,undefined);
 }));
+test('Zalo video format: the admin default is used, and DINHDANG offers only the ticked formats',async()=>fixture(async f=>{
+ const c=f.env.config; c.zalo.formats={default:'kinetic',allowed:['kinetic','classic-sketch']};
+ await f.receive('DINHDANG','d1');await f.drain();
+ const list=f.sent.at(-1).body.text;assert.match(list,/1\. Chữ bùng nổ/);assert.match(list,/2\. Sketchnote theo lời/);assert.doesNotMatch(list,/Tin nhắn drama/);
+ await f.receive('KB Bắt đầu từ một bước nhỏ. Bạn có thể làm ngay hôm nay.','v1');await f.drain();
+ let spec=JSON.parse((await f.env.DB.prepare('SELECT spec FROM projects ORDER BY created_at DESC').first()).spec);assert.equal(spec.look,'kinetic');
+ await f.receive('DINHDANG 2','d2');await f.drain();assert.match(f.sent.at(-1).body.text,/Sketchnote theo lời/);
+ await f.env.DB.prepare('DELETE FROM jobs').run();
+ await f.receive('KB Một câu khác đủ dài để dựng thành video mới nhé.','v2');await f.drain();
+ spec=JSON.parse((await f.env.DB.prepare('SELECT spec FROM projects ORDER BY created_at DESC').first()).spec);assert.equal(spec.look,undefined);assert.equal(spec.visual,'sketch');
+ // one format only: no choice, the default is used whatever was picked before
+ c.zalo.formats={default:'split',allowed:[]};
+ await f.receive('DINHDANG','d3');await f.drain();assert.match(f.sent.at(-1).body.text,/được dựng theo định dạng: Hai bên đối lập/);
+}));
