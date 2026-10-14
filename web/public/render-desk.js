@@ -31,10 +31,10 @@ const RenderDesk = (() => {
     previewModel(spec, 0.5).then((model) => {
       if (version !== generation || !dialog) return;
       canvas.width = model.W * 0.5; canvas.height = model.H * 0.5;
-      NV.renderFrame(canvas.getContext('2d'), model, model.timeline.scenes[0].end - 0.2, { hand: false });
+      paintFrame(canvas.getContext('2d'), model, model.timeline.scenes[0].end - 0.2, { hand: false });
       thumbs.forEach((thumb, i) => {
         thumb.width = canvas.width; thumb.height = canvas.height;
-        NV.renderFrame(thumb.getContext('2d'), model, model.timeline.scenes[i].end - 0.2, { hand: false });
+        paintFrame(thumb.getContext('2d'), model, model.timeline.scenes[i].end - 0.2, { hand: false });
       });
     }).catch(() => { canvas.replaceWith(h('p', { class: 'muted' }, 'Không tải được ảnh nháp. Việc dựng trên máy chủ vẫn tiếp tục.')); });
     async function poll() {
