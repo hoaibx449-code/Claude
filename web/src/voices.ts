@@ -32,6 +32,23 @@ export async function recordVoiceFallback(env: XEnv, provider: string, error = '
   await env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('runner:voicefail', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(v, Date.now()).run();
 }
 
+export async function clearVoiceFallback(env: XEnv) {
+  await env.DB.prepare("DELETE FROM settings WHERE key = 'runner:voicefail'").run();
+}
+
+/** Admin "Thử EverAI": read a short sample with the saved key and say exactly what EverAI answered. */
+export async function testEverAI(env: XEnv, code = 'vi_female_thuytrang_mb') {
+  const key = (await runnerSecrets(env)).EVERAI_API_KEY;
+  if (!key) return { ok: false, error: 'Chưa có khoá EverAI (Quản trị → Giọng đọc → Khoá API).' };
+  const t0 = Date.now();
+  try {
+    const audio = await everaiSample(key, code);
+    if (audio.byteLength < 1000) return { ok: false, error: `EverAI trả về tệp âm thanh rỗng (${audio.byteLength} byte).` };
+    await clearVoiceFallback(env);
+    return { ok: true, bytes: audio.byteLength, ms: Date.now() - t0 };
+  } catch (e: any) { return { ok: false, error: String(e.message || e).slice(0, 300), ms: Date.now() - t0 }; }
+}
+
 /** Voices users can pick, each with whether it really reads with its own voice right now. */
 export async function voicesWithStatus(env: XEnv) {
   const st = await voiceStatus(env);
@@ -61,13 +78,14 @@ async function everaiSample(key: string, code: string) {
   const j: any = await r.json().catch(() => ({}));
   const find = (o: any, k: string): any => { if (!o || typeof o !== 'object') return undefined; if (o[k] != null && o[k] !== '') return o[k]; for (const x of Object.keys(o)) { const v = find(o[x], k); if (v != null) return v; } };
   const id = find(j.result, 'request_id');
-  if (!r.ok || !id) throw new Error('EverAI từ chối: ' + (j.error_message || r.status));
+  if (r.status === 401 || r.status === 403) throw new Error(`Khoá EverAI không hợp lệ hoặc đã hết hạn (HTTP ${r.status}${j.error_message ? ': ' + j.error_message : ''})`);
+  if (!r.ok || !id) throw new Error(`EverAI từ chối (HTTP ${r.status}): ${j.error_message || j.message || j.error_code || JSON.stringify(j).slice(0, 160)}`);
   for (let i = 0; i < 12; i++) {
     await new Promise((ok) => setTimeout(ok, 1500));
     const s: any = await (await fetch(`${url}/${encodeURIComponent(id)}`, { headers })).json().catch(() => ({}));
     const link = find(s, 'audio_link');
     if (link) return new Uint8Array(await (await fetch(String(link))).arrayBuffer());
-    if (/FAIL|ERROR|CANCEL/i.test(String(find(s, 'status') || ''))) throw new Error('EverAI báo thất bại');
+    if (/FAIL|ERROR|CANCEL/i.test(String(find(s, 'status') || ''))) throw new Error('EverAI báo thất bại' + (find(s, 'error_message') ? ': ' + find(s, 'error_message') : ` (mã giọng ${code})`));
   }
   throw new Error('EverAI quá thời gian chờ');
 }

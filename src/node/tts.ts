@@ -181,6 +181,8 @@ export function withFallback(primary: TTS, voiceId?: string): TTS {
         console.error(`Giọng ${primary.name} lỗi (${(e as Error).message}), chuyển sang giọng miễn phí.`);
         const r = await freeTTS(voiceId).synth(lines, outBase + '-free');
         (this as TTS).name = primary.name + '→free';
+        // why the chosen voice was not used: shown on the admin page
+        (this as TTS & { error?: string }).error = String((e as Error).message || e).slice(0, 200);
         return r;
       }
     },

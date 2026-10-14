@@ -222,7 +222,7 @@ export async function renderProject(o: RenderOptions) {
     }
     writeFileSync(out.replace(/\.mp4$/i, '.srt'), toSrt(project, timeline));
     writeStems(out, stems, timeline.duration);
-    return { out, srt: out.replace(/\.mp4$/i, '.srt'), duration: timeline.duration, frames, width: PW, height: PH, seconds: (Date.now() - t0) / 1000, voice: tts.name };
+    return { out, srt: out.replace(/\.mp4$/i, '.srt'), duration: timeline.duration, frames, width: PW, height: PH, seconds: (Date.now() - t0) / 1000, voice: tts.name, voiceError: (tts as { error?: string }).error || '' };
   } finally { rmSync(work, { recursive: true, force: true }); }
 }
 

@@ -678,7 +678,12 @@ function voiceTab(c, secrets, secretInput, data) {
         h('dt', {}, 'Google Text-to-Speech'), h('dd', {}, state(true, st.google ? 'Có khoá riêng' : 'Dùng tài khoản máy dựng', '')),
         h('dt', {}, 'Giọng miễn phí'), h('dd', {}, state(true, 'Luôn sẵn sàng', '')),
         h('dt', {}, 'Máy dựng báo lần cuối'), h('dd', {}, st.runnerSeen ? fmtDate(st.runnerSeen) : 'Chưa có video nào được dựng'),
-        st.failing ? h('dt', {}, 'Lần gần nhất phải đọc thay') : null, st.failing ? h('dd', {}, `${fmtDate(st.failing.at)} · ${st.failing.provider}${st.failing.error ? ' · ' + st.failing.error : ''}`) : null)),
+        st.failing ? h('dt', {}, 'Lần gần nhất phải đọc thay') : null, st.failing ? h('dd', {}, `${fmtDate(st.failing.at)} · ${st.failing.provider}${st.failing.error ? ' · ' + st.failing.error : ' · (máy dựng chưa gửi lý do)'}`) : null),
+      st.everai ? h('div', { class: 'row' }, h('button', { type: 'button', class: 'ghost small', onclick: async (e) => {
+        const b = e.currentTarget, out = b.nextElementSibling; b.disabled = true; out.textContent = 'Đang gọi EverAI…';
+        try { const r = await api('/api/admin/voices/test', { method: 'POST', body: {} }); out.className = r.ok ? 'ok' : 'bad'; out.textContent = r.ok ? `✓ EverAI đọc được (${Math.round(r.bytes / 1024)} KB, ${(r.ms / 1000).toFixed(1)} giây). Đã bỏ trạng thái lỗi.` : '✗ ' + r.error; }
+        catch (err) { out.className = 'bad'; out.textContent = '✗ ' + err.message; }
+        b.disabled = false; } }, 'Thử EverAI ngay'), h('span', { class: 'muted' }, 'Đọc một câu ngắn bằng khoá đã lưu, báo đúng lỗi EverAI trả về.')) : null),
     keysCard(secrets, secretInput, ['EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'ELEVENLABS_API_KEY']),
     card('Giọng đang có', null, list.length ? table(['Giọng', 'Nhà cung cấp', 'Tình trạng', 'Nghe'], list.map((v) => h('tr', {}, h('td', {}, v.label), h('td', {}, v.provider), h('td', {}, v.ready ? state(true, 'Đọc thật', '') : h('span', { class: 'pill' }, 'Đọc thay bằng ' + (v.standIn || 'giọng miễn phí'))), h('td', {}, audioBtn(v.code)))))
       : h('p', { class: 'muted' }, 'Chưa tải được danh sách.')),

@@ -251,6 +251,32 @@ export interface FormatProposal { name: string; summary: string; base: string; s
  * Look at a sample video (a few frames the admin's browser took from it, plus notes) and propose
  * a new format: what makes it work, which built-in format it builds on, and the brief to add.
  */
+/** One call with pictures (training page). Throws with `status`; `finish` tells why an answer stopped. */
+async function callVision(env: Env, provider: TextProvider, model: string, sys: string, text: string, imgs: { mime: string; data: string }[]) {
+  if (provider === 'openai') {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST', headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, 'content-type': 'application/json' }, signal: AbortSignal.timeout(90_000),
+      body: JSON.stringify({ model, response_format: { type: 'json_object' }, max_tokens: 4096, messages: [{ role: 'system', content: sys },
+        { role: 'user', content: [{ type: 'text', text }, ...imgs.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.data}`, detail: 'low' } }))] }] }),
+    });
+    const j: any = await res.json().catch(() => ({}));
+    if (!res.ok) throw Object.assign(new Error(`OpenAI ${model}: ${j.error?.message || 'HTTP ' + res.status}`), { status: res.status });
+    return { text: j.choices?.[0]?.message?.content || '', finish: j.choices?.[0]?.finish_reason || '', tokensIn: j.usage?.prompt_tokens || 0, tokensOut: j.usage?.completion_tokens || 0 };
+  }
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: 'POST', headers: { 'x-goog-api-key': env.GEMINI_API_KEY!, 'content-type': 'application/json' }, signal: AbortSignal.timeout(90_000),
+    body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text }, ...imgs.map((i) => ({ inlineData: { mimeType: i.mime, data: i.data } }))] }],
+      // 2.5 models "think" first and that counts against the output limit: with pictures it used to eat
+      // the whole budget, leaving a cut JSON ("chưa phân tích được"). Flash thinks not at all, Pro a little.
+      generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 8192, ...(/2\.5/.test(model) ? { thinkingConfig: { thinkingBudget: /flash/.test(model) ? 0 : 1024 } } : {}) } }),
+  });
+  const j: any = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(`Gemini ${model}: ${j.error?.message || 'HTTP ' + res.status}`), { status: res.status });
+  const c = j.candidates?.[0];
+  if (!c) throw Object.assign(new Error(`Gemini ${model}: không có câu trả lời${j.promptFeedback?.blockReason ? ' (chặn: ' + j.promptFeedback.blockReason + ')' : ''}`), { status: 400 });
+  return { text: (c.content?.parts || []).map((p: any) => p.text || '').join(''), finish: c.finishReason === 'STOP' ? '' : c.finishReason || '', tokensIn: j.usageMetadata?.promptTokenCount || 0, tokensOut: j.usageMetadata?.candidatesTokenCount || 0 };
+}
+
 export async function analyzeSample(env: Env, frames: string[], notes: string): Promise<FormatProposal & { _usage: { provider: string; tokensIn: number; tokensOut: number } }> {
   const looks = Object.entries(LOOK_BRIEF).map(([k, v]) => `- ${k}: ${v.slice(0, 160)}`).join('\n');
   const sys = [
@@ -263,23 +289,28 @@ export async function analyzeSample(env: Env, frames: string[], notes: string): 
   const text = 'GHI CHÚ CỦA CHỦ TRANG: ' + (notes || '(không có)') + (frames.length ? `\nCó ${frames.length} khung hình đính kèm theo thứ tự.` : '\nKhông có khung hình, chỉ dựa vào ghi chú.');
   const imgs = frames.slice(0, 6).map((d) => { const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(d); return m ? { mime: m[1], data: m[2] } : null; }).filter(Boolean) as { mime: string; data: string }[];
   let out: any = null, usage = { provider: '', tokensIn: 0, tokensOut: 0 };
-  if (env.GEMINI_API_KEY) {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_TEXT_MODEL || 'gemini-2.5-flash'}:generateContent`, {
-      method: 'POST', headers: { 'x-goog-api-key': env.GEMINI_API_KEY, 'content-type': 'application/json' },
-      body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text }, ...imgs.map((i) => ({ inlineData: { mimeType: i.mime, data: i.data } }))] }],
-        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 4096 } }),
-    });
-    if (res.ok) { const j: any = await res.json(); out = parseJson((j.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || '').join('')); usage = { provider: 'gemini', tokensIn: j.usageMetadata?.promptTokenCount || 0, tokensOut: j.usageMetadata?.candidatesTokenCount || 0 }; }
+  if (!env.GEMINI_API_KEY && !env.OPENAI_API_KEY) throw new HttpError(503, 'Cần khoá Gemini hoặc OpenAI để phân tích mẫu.');
+  // every model in turn (main, then fallbacks, then the other provider); one retry when busy
+  const plan: [TextProvider, string][] = [];
+  if (env.GEMINI_API_KEY) for (const m of new Set([env.GEMINI_TEXT_MODEL || 'gemini-2.5-flash', ...list(env.GEMINI_TEXT_FALLBACK), 'gemini-2.5-flash'])) plan.push(['gemini', m]);
+  if (env.OPENAI_API_KEY) for (const m of new Set([env.OPENAI_TEXT_MODEL || 'gpt-4o-mini', ...list(env.OPENAI_TEXT_FALLBACK)])) plan.push(['openai', m]);
+  const errors: string[] = [];
+  for (const [p, model] of plan) {
+    for (let attempt = 0; attempt < 2 && !out; attempt++) {
+      try {
+        const r = await callVision(env, p, model, sys, text, imgs);
+        usage = { provider: p, tokensIn: usage.tokensIn + r.tokensIn, tokensOut: usage.tokensOut + r.tokensOut };
+        out = parseJson(r.text);
+        if (!out) { errors.push(`${model}: trả lời không phải JSON${r.finish ? ' (' + r.finish + ')' : ''}`); break; }
+      } catch (e: any) {
+        errors.push(String(e.message || e).slice(0, 160));
+        if (e.status === 429 || e.status >= 500) { await sleep(1500); continue; }
+        break;
+      }
+    }
+    if (out) break;
   }
-  if (!out && env.OPENAI_API_KEY) {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST', headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: env.OPENAI_TEXT_MODEL || 'gpt-4o-mini', response_format: { type: 'json_object' }, messages: [{ role: 'system', content: sys },
-        { role: 'user', content: [{ type: 'text', text }, ...imgs.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.data}`, detail: 'low' } }))] }] }),
-    });
-    if (res.ok) { const j: any = await res.json(); out = parseJson(j.choices?.[0]?.message?.content || ''); usage = { provider: 'openai', tokensIn: j.usage?.prompt_tokens || 0, tokensOut: j.usage?.completion_tokens || 0 }; }
-  }
-  if (!out) throw new HttpError(env.GEMINI_API_KEY || env.OPENAI_API_KEY ? 502 : 503, env.GEMINI_API_KEY || env.OPENAI_API_KEY ? 'AI chưa phân tích được mẫu, thử lại sau ít phút.' : 'Cần khoá Gemini hoặc OpenAI để phân tích mẫu.');
+  if (!out) throw new HttpError(502, 'AI chưa phân tích được mẫu: ' + (errors.at(-1) || 'không rõ lý do') + '. Thử lại sau ít phút, hoặc bớt khung hình / thêm ghi chú.', { tried: errors.slice(0, 6) });
   const s = (v: unknown, n: number) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
   const arr = (v: unknown) => (Array.isArray(v) ? v.map((x) => s(x, 200)).filter(Boolean).slice(0, 10) : []);
   return { name: s(out.name, 40) || 'Định dạng mới', summary: s(out.summary, 600), base: Object.keys(LOOK_BRIEF).includes(out.base) && out.base !== 'doc' ? out.base : 'act',

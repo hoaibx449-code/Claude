@@ -2,7 +2,7 @@
 // (checked in worker.ts before dispatch) and every change is itself logged.
 import { aiCost } from './log.ts';
 import { analyzeSample, LOOK_BRIEF } from './ai.ts';
-import { voiceStatus, voicesWithStatus } from './voices.ts';
+import { testEverAI, voiceStatus, voicesWithStatus } from './voices.ts';
 import type { User } from './auth.ts';
 import { clearCache, isAdmin, save as saveSettings, secretStatus } from './settings.ts';
 import { body, type Env, HttpError, json, today } from './util.ts';
@@ -69,6 +69,11 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
     const out = await analyzeSample(env, frames, String(b.notes || '').slice(0, 2000));
     rc.log('admin.train', { cost: aiCost(env.config, { model: '', tokensIn: out._usage.tokensIn, tokensOut: out._usage.tokensOut }), data: { frames: frames.length, base: out.base } });
     return json(out);
+  }
+  if (sub === 'voices/test' && method === 'POST') {
+    const r = await testEverAI(env, String((await body<any>(req, 500)).code || '') || undefined);
+    rc.log('admin.voice.test', { ok: r.ok, data: { error: r.error } });
+    return json(r);
   }
   if (sub === 'voices' && method === 'GET') return json({ status: await voiceStatus(env), voices: await voicesWithStatus(env) });
   if (sub === 'settings' && method === 'PUT') {

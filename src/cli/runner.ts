@@ -98,7 +98,7 @@ async function runJob(job: { id: string; lease: string; spec: ProjectSpec }) {
       const x = spawnSync('ffmpeg', ['-v', 'error', '-y', '-ss', String(Math.min(2, Math.max(0.3, r.duration / 3))), '-i', r.out, '-frames:v', '1', '-vf', 'scale=360:-2', '-q:v', '5', thumb]);
       if (x.status === 0) await call(`/api/runner/jobs/${job.id}/thumb`, { method: 'PUT', headers: { 'content-type': 'image/jpeg' }, body: readFileSync(thumb) });
     } catch (e: any) { console.error('Bỏ ảnh xem trước:', e.message); }
-    await post(`/api/runner/jobs/${job.id}/done`, { seconds: Math.round(r.seconds), duration: Math.round(r.duration), voice: r.voice, chars: spec.scenes.reduce((n, sc) => n + sc.lines.join(' ').length, 0) });
+    await post(`/api/runner/jobs/${job.id}/done`, { seconds: Math.round(r.seconds), duration: Math.round(r.duration), voice: r.voice, voiceError: r.voiceError, chars: spec.scenes.reduce((n, sc) => n + sc.lines.join(' ').length, 0) });
     console.log(`Xong ${job.id}: ${r.duration.toFixed(1)}s video trong ${r.seconds.toFixed(1)}s`);
     return true;
   } catch (e: any) {

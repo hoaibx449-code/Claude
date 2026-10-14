@@ -4,7 +4,7 @@ import { drawImage, type ImageProvider, type TextProvider, writeScript } from '.
 import { startRunner } from './gcp.ts';
 import { cleanSpec, LOOKS, STYLES } from './spec.ts';
 import { LOOK_BRIEF } from './ai.ts';
-import { recordRunnerCaps, recordVoiceFallback, voicePreview, voicesWithStatus, voiceUpload } from './voices.ts';
+import { clearVoiceFallback, recordRunnerCaps, recordVoiceFallback, voicePreview, voicesWithStatus, voiceUpload } from './voices.ts';
 import { composeLook, composeScene, splitScript } from './compose.ts';
 import { doodlePanels } from './doodles.ts';
 import { chargeDoc, closeDocProject, creditRoutes, giveBackDocImage, openDocProject, refundDoc, useDocImage } from './credits.ts';
@@ -629,6 +629,8 @@ export async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Prom
     const spec = JSON.parse(job.spec), provider = String(r.voice || spec.voice?.provider || '');
     // a chosen voice that could not be used was read by its stand-in: tell the admin page
     if (provider.includes('→')) await recordVoiceFallback(env, provider, String(r.voiceError || ''));
+    // the voice read for real again: it is no longer shown as failing
+    else if (provider === 'everai') await clearVoiceFallback(env);
     const chars = Number(r.chars) || spec.scenes.reduce((n: number, sc: any) => n + sc.lines.join(' ').length, 0);
     rc.log('render.done', { projectId: job.project_id, ms: (Number(r.seconds) || 0) * 1000, cost: r.cachedVoice ? 0 : voiceCost(env.config, provider, chars),
       data: { job: job.id, videoSec: r.duration, renderSec: r.seconds, totalSec: Math.round((now - job.created_at) / 1000), voice: provider, chars, cachedVoice: !!r.cachedVoice } });
