@@ -11,7 +11,9 @@ await build({
   bundle: true, format: 'iife', globalName: 'NV', target: 'es2020', minify: true,
   outfile: join(pub, 'engine.js'),
 });
+await build({entryPoints:[join(root,'addons/faciup-whiteboard/renderer.ts')],bundle:true,format:'iife',globalName:'FVWhiteboard',target:'es2020',minify:true,outfile:join(pub,'whiteboard-addon.js')});
 mkdirSync(join(pub, 'assets'), { recursive: true });
+cpSync(join(root,'addons/faciup-whiteboard/assets'),join(pub,'assets/faciup-whiteboard'),{recursive:true});
 for (const dir of ['fonts', 'hands/default', 'hands/poses', 'icons', 'doodles', 'peeps']) cpSync(join(root, 'assets', dir), join(pub, 'assets', dir), { recursive: true });
 
 // app icons (PNG for phones that do not take SVG)
@@ -36,6 +38,7 @@ const demos = [...picks.map((p, i) => make(p, i === 0)), ...genres.slice(1).map(
 // one demo per video format, in the niches the site is made for: finance, philosophy, life skills, motivation
 const { composeLook } = await import('./src/compose.ts');
 const LOOK_DEMOS = {
+  whiteboard:['Dành thời gian cho gia đình thay vì nhận thêm công việc.','Đọc một trang sách mỗi ngày để bắt đầu thói quen.'],
   kinetic: ['Đừng chờ có động lực mới bắt đầu.', 'Bắt đầu đi, động lực sẽ tới sau.', 'Mỗi ngày chỉ cần 1% tốt hơn.', 'Một năm sau, bạn giỏi gấp 37 lần.'],
   split: ['Người nghèo nhận lương là đi mua sắm.', 'Người giàu nhận lương là cất 20% trước.', 'Người nghèo hết tiền thì vay.', 'Người giàu có quỹ dự phòng 6 tháng.'],
   chat: ['Anh ơi lương về chưa?', 'Về rồi em, 15 triệu.', 'Sao tài khoản giờ còn 2 triệu?', 'Trà sữa với Shopee chắc 4 triệu.', 'Mẹo: nhận lương là cất 20% trước nhé.'],

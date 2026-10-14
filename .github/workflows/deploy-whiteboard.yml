@@ -1,0 +1,50 @@
+name: Triển khai máy Whiteboard bổ sung
+on: {workflow_dispatch: {}}
+permissions: {contents: read}
+concurrency: deploy-whiteboard-addon
+env:
+  REGION: asia-southeast1
+  REPO: net-ve
+  JOB: faciup-whiteboard-runner
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with: {credentials_json: '${{ secrets.GCP_SA_KEY }}'}
+      - uses: google-github-actions/setup-gcloud@v2
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Build bộ bổ sung
+        run: |
+          test "$JOB" = faciup-whiteboard-runner
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" -q
+          IMAGE="$REGION-docker.pkg.dev/$GCP_PROJECT/$REPO/faciup-whiteboard:$GITHUB_SHA"
+          docker build -f addons/faciup-whiteboard/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - name: Tạo máy riêng, giữ máy net-ve-runner hiện có
+        env:
+          NV_API_URL: ${{ secrets.NV_API_URL }}
+          RUNNER_TOKEN: ${{ secrets.RUNNER_TOKEN }}
+          EVERAI_API_KEY: ${{ secrets.EVERAI_API_KEY }}
+          GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+        run: |
+          test -n "$NV_API_URL"
+          umask 077
+          node -e 'const fs=require("fs"),names=["NV_API_URL","RUNNER_TOKEN","EVERAI_API_KEY","GOOGLE_TTS_API_KEY","ELEVENLABS_API_KEY","ELEVENLABS_VOICE_ID"];fs.writeFileSync("whiteboard-env.json",JSON.stringify(Object.fromEntries(names.filter(k=>process.env[k]).map(k=>[k,process.env[k]]))));'
+          gcloud run jobs deploy "$JOB" --image "$IMAGE" --region "$REGION" \
+            --service-account "nv-render@$GCP_PROJECT.iam.gserviceaccount.com" \
+            --tasks 1 --max-retries 0 --task-timeout 3600 --cpu 2 --memory 2Gi \
+            --env-vars-file whiteboard-env.json
+          rm -f whiteboard-env.json
+      - name: Cho bộ gọi hiện có bật đúng máy Whiteboard mới
+        run: |
+          gcloud run jobs add-iam-policy-binding "$JOB" --region "$REGION" \
+            --member "serviceAccount:nv-trigger@$GCP_PROJECT.iam.gserviceaccount.com" \
+            --role roles/run.invoker >/dev/null
+          echo "Whiteboard dùng job riêng; không đổi image, quyền, khóa hay cấu hình net-ve-runner."

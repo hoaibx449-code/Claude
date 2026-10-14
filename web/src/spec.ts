@@ -1,5 +1,6 @@
 // Strict validation of project scripts coming from the browser or an AI model.
 // Anything not on these lists is dropped, so stored specs are always renderable.
+import { cleanWhiteboard } from '../../addons/faciup-whiteboard/faciup-schema.js';
 import { HttpError } from './util.ts';
 import { composeScene } from './compose.ts';
 import { detectIntent, FORMATS, NICHES } from './intent.ts';
@@ -8,9 +9,9 @@ import { isDoodle, isPeep } from './doodles.ts';
 export const STYLES = ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'pencil', 'blueprint', 'ricepaper', 'neon', 'pastel', 'newspaper', 'comic', 'darkboard', 'sunset', 'cosmos', 'manim', 'bold'] as const;
 export const MODES = ['hand', 'motion', 'math', 'kinetic'] as const;
 /** video formats (src/engine/looks.ts) */
-export const LOOKS = ['act', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
+export const LOOKS = ['act', 'whiteboard', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
 export const SKIN_NAMES: Record<string, string[]> = {
-  act: ['giay'],
+  act: ['giay'], whiteboard: ['sang'],
   kinetic: ['dem', 'sang', 'tim'], split: ['do-xanh', 'sang', 'tim-vang'], chat: ['sang', 'toi', 'hong'], story: ['giay', 'bang-den', 'xanh'],
   data: ['dem', 'sang', 'xanh-la'], quiz: ['tim', 'xanh', 'cam'], doc: ['dien-anh', 'trang-den', 'lanh'],
 };
@@ -219,6 +220,7 @@ export function cleanSpec(input: any, userId: string) {
       // format videos: the words carry the picture; only the documentary needs a picture per scene
       const out: any = { lines, panels: [] };
       const x = cleanLook(sc?.x, look); if (x) out.x = x;
+      if (look === 'whiteboard') { const d=cleanWhiteboard(sc?.whiteboard||sc?.x?.whiteboard); if(d)out.whiteboard=d; }
       if (look === 'act') { const a = cleanAct(sc?.act, castIds); if (a) out.act = a; }
       const pause = Number(sc?.pause); if (pause > 0) out.pause = Math.min(6, pause);
       if (look === 'doc') {
@@ -252,7 +254,7 @@ export function cleanSpec(input: any, userId: string) {
     channel: str(input.channel, 40),
     episode: str(input.episode, 30),
     ratio,
-    subtitles: look ? input.subtitles !== false : input.subtitles === true,
+    subtitles: look && look!=='whiteboard' ? input.subtitles !== false : input.subtitles === true,
     ...(look ? {
       look, skin: (SKIN_NAMES[look] || []).includes(input.skin) ? input.skin : SKIN_NAMES[look][0],
       sides: look === 'split' && input.sides ? { a: str(input.sides.a, 24) || 'Cách sai', b: str(input.sides.b, 24) || 'Cách đúng' } : undefined,

@@ -43,6 +43,8 @@ export function toSrt(project: ProjectSpec, tl: Timeline) {
 
 export interface RenderOptions {
   project: ProjectSpec;
+  cachedVoiceFiles?:string[];
+  onVoice?:(index:number,voice:VoiceResult)=>Promise<void>;
   /** Folder that relative image/hand paths are resolved against. */
   projDir: string;
   out: string;
@@ -96,6 +98,7 @@ export async function renderProject(o: RenderOptions) {
     let tts = { name: 'none' } as { name: string };
     let voice: VoiceResult[] = [];
     let continuous = false;
+    if(mode==='upload'&&(!project.audio?.voiceFile||!existsSync(resolve(projDir,project.audio.voiceFile))))throw new Error('Chưa tải được giọng đọc gốc; không đổi sang giọng khác. Hãy thử lại.');
     if (mode === 'upload' && project.audio?.voiceFile && existsSync(resolve(projDir, project.audio.voiceFile))) {
       await o.onStage?.('voice', 'Khớp lời đọc tải lên với các cảnh');
       voice = splitUploaded(project, resolve(projDir, project.audio.voiceFile));
@@ -109,7 +112,9 @@ export async function renderProject(o: RenderOptions) {
       for (let i = 0; i < project.scenes.length; i++) {
         await o.onStage?.('voice', `Chuẩn bị lời đọc: cảnh ${i + 1}/${project.scenes.length}`);
         o.signal?.throwIfAborted();
-        voice.push(await engine.synth(project.scenes[i].lines, join(work, `scene${i}`)));
+        const cached=o.cachedVoiceFiles?.[i];
+        const v=cached&&existsSync(cached)?{file:cached,duration:audioDuration(cached),lines:fitVoice(project.scenes[i].lines,audioDuration(cached))}:await engine.synth(project.scenes[i].lines, join(work, `scene${i}`));
+        voice.push(v);await o.onVoice?.(i,v);
       }
       tts = engine;
     }

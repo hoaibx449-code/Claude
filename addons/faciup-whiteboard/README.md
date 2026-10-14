@@ -15,7 +15,11 @@ Node >=22.18, dependency Canvas của repository, FFmpeg và ffprobe. Giọng l�
 
 Ảnh bàn tay do chủ FACIUP cung cấp. Font Patrick Hand có giấy phép OFL kèm assets. Không tự thêm thương hiệu/tập/nhân vật hoặc phụ đề bên dưới.
 
-Workflow `FACIUP Whiteboard bổ sung` là kiểm thử độc lập và dựng demo thủ công. Không tự lấy hàng chờ của máy dựng cũ. Việc nối bộ dựng này vào web/hàng đợi phải là một bước bổ sung riêng, chỉ định Whiteboard rõ ràng; không đổi tuyến của video hiện có.
+Web có lựa chọn **Whiteboard vẽ tay đa sắc**. API `/api/whiteboard-runner/claim` chỉ giao video `look=whiteboard` cho job `faciup-whiteboard-runner`. Claim của máy cũ bỏ qua riêng loại mới này; tất cả định dạng cũ giữ tuyến cũ. Hai máy dùng chung giao thức lease, tiến độ, lưu MP4/SRT và thông báo để người dùng vẫn có một thư viện video.
+
+Workflow `Triển khai máy Whiteboard bổ sung` tạo Cloud Run Job và image riêng, dùng tài khoản runtime hiện có; cấp `nv-trigger` quyền bật riêng job mới. Không xoay khóa, đổi image hoặc cập nhật máy `net-ve-runner`. Sau đó chạy workflow triển khai web hiện có để đưa lựa chọn và bộ xem trước bổ sung lên. GitHub Actions chỉ kiểm thử/triển khai, máy phục vụ khách chạy Cloud Run.
+
+Giọng đọc mỗi cảnh được lưu kín trong R2 theo tài khoản, dự án và hash nội dung + cài đặt giọng. Dựng lại dùng bản này; thay lời hoặc giọng không dùng nhầm bản cũ. Lease hết hạn không được ghi cache hoặc hoàn tất video.
 
 Máy chủ dùng thời lượng giọng đọc thực đo bằng ffprobe. Thiết kế và MP3 không bị xóa khi lỗi; file MP4 chỉ báo hoàn tất sau FFmpeg. Tái sử dụng TTS cache của thư viện hiện có. Không phải căn hành động chính xác từng từ.
 

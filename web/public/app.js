@@ -1,3 +1,4 @@
+function paintFrame(ctx,model,t,opts){return model.whiteboardAddon?FVWhiteboard.renderFrame(ctx,model,t,opts):NV.renderFrame(ctx,model,t,opts);}
 // Nét Vẽ Studio — browser app. All user text is inserted with textContent, never as HTML.
 'use strict';
 
@@ -388,13 +389,13 @@ function playDemo(canvas, spec, { dpr = 0.6 } = {}) {
     const s = run.spec, { W, H } = NV.logicalSize(s.ratio);
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
     run.model = await previewModel(s, dpr); run.t = Math.min(run.t, run.model.timeline.duration);
-    if (!run.visible) NV.renderFrame(canvas.getContext('2d'), run.model, Math.min(run.model.timeline.duration - 0.6, run.model.timeline.scenes[0].end - 0.4));
+    if (!run.visible) paintFrame(canvas.getContext('2d'), run.model, Math.min(run.model.timeline.duration - 0.6, run.model.timeline.scenes[0].end - 0.4));
   } };
   const loop = (ts) => {
     if (!run.visible || !run.model) return;
     run.t += run.last ? Math.min(0.1, (ts - run.last) / 1000) : 0; run.last = ts;
     if (run.t > run.model.timeline.duration) run.t = 0;
-    NV.renderFrame(canvas.getContext('2d'), run.model, run.t);
+    paintFrame(canvas.getContext('2d'), run.model, run.t);
     run.raf = requestAnimationFrame(loop);
   };
   run.restyle = async (style) => { run.spec = { ...run.spec, style }; delete run.spec.tool; run.t = 0; await run.build(); };
@@ -607,7 +608,7 @@ function stylePicker(spec, current, onPick) {
       c, L('styles', k) + (V('style:' + k) === 'dev' ? DEV : ''));
     box.append(b);
     const s = { ...spec, style: k, scenes: spec.scenes.slice(0, 1) }; delete s.tool;
-    previewModel(s, 0.3).then((m) => { c.width = m.W * 0.3; c.height = m.H * 0.3; NV.renderFrame(c.getContext('2d'), m, m.timeline.scenes[0].end - 0.3, { hand: false }); }).catch(() => {});
+    previewModel(s, 0.3).then((m) => { c.width = m.W * 0.3; c.height = m.H * 0.3; paintFrame(c.getContext('2d'), m, m.timeline.scenes[0].end - 0.3, { hand: false }); }).catch(() => {});
   }
   return box;
 }
@@ -757,7 +758,7 @@ const MODES = [
 ];
 const MODE_STYLE = Object.fromEntries(MODES.map(([k, , , st]) => [k, st]));
 // ---------- video formats (looks)
-const LOOK_KEYS = ['act', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'];
+const LOOK_KEYS = ['act', 'whiteboard', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'];
 const SKIN_NAMES = { dem: 'Đêm', sang: 'Sáng', tim: 'Tím', 'do-xanh': 'Đỏ – xanh', 'tim-vang': 'Tím – vàng', toi: 'Tối', hong: 'Hồng', giay: 'Giấy', 'bang-den': 'Bảng đen', xanh: 'Xanh', 'xanh-la': 'Xanh lá', cam: 'Cam', 'dien-anh': 'Điện ảnh', 'trang-den': 'Trắng đen', lanh: 'Lạnh' };
 const looksOn = () => LOOK_KEYS.filter((k) => V('look:' + k) !== 'hidden');
 /**
@@ -765,7 +766,7 @@ const looksOn = () => LOOK_KEYS.filter((k) => V('look:' + k) !== 'hidden');
  * picks per video from the words and does not repeat the channel's last one; `classic*` are the
  * hand-drawn boards (sketchnote, hand-drawn charts, doodle pictures).
  */
-const LOOK_GROUPS = [['Vẽ tay', ['auto', 'act', 'classic-sketch', 'classic-diagram', 'classic']], ['Đồ hoạ chuyển động', ['kinetic', 'split', 'chat', 'data', 'quiz', 'story']], ['Điện ảnh', ['doc']]];
+const LOOK_GROUPS = [['Vẽ tay', ['auto', 'act', 'whiteboard', 'classic-sketch', 'classic-diagram', 'classic']], ['Đồ hoạ chuyển động', ['kinetic', 'split', 'chat', 'data', 'quiz', 'story']], ['Điện ảnh', ['doc']]];
 const HAND = { auto: ['Tự động đa dạng', 'Mỗi video một cách vẽ hợp với nội dung: có số liệu thì vẽ biểu đồ, có đối thoại thì nhân vật diễn, còn lại sketchnote hoặc tranh lớn. Không lặp kiểu của video trước.'],
   'classic-sketch': ['Sketchnote theo lời', 'Vẽ đúng thứ đang được nói: nhân vật đổi tư thế theo động từ, đồ vật của câu thoại, mũi tên và bóng thoại.'],
   'classic-diagram': ['Biểu đồ vẽ tay', 'Biểu đồ tròn, đường xu hướng, cột số liệu được tay vẽ từng nét, khoanh đỏ chỗ quan trọng.'],
@@ -939,7 +940,7 @@ function projectList(projects) {
           const dpr = 0.4, model = await previewModel(spec, dpr), { W, H } = NV.logicalSize(spec.ratio);
           media.width = Math.round(W * dpr); media.height = Math.round(H * dpr);
           const T0 = model.timeline.scenes[0];
-          NV.renderFrame(media.getContext('2d'), model, Math.max(0.5, Math.min(model.timeline.duration - 0.2, T0.end - 0.5)), { hand: false });
+          paintFrame(media.getContext('2d'), model, Math.max(0.5, Math.min(model.timeline.duration - 0.2, T0.end - 0.5)), { hand: false });
         } catch {}
       };
       io.observe(media);
@@ -1074,6 +1075,7 @@ async function showCreate() {
     f.topic.placeholder = mine ? T('scriptHint') : T('topicHint');
     only.seconds.hidden = mine; only.tone.hidden = mine; only.visual.hidden = mine;
     only.subs.hidden = V('feature:subtitles') === 'hidden';
+    if(only.intro)only.intro.hidden=look==='whiteboard';
     tplBox.hidden = src !== 'template';
     if (src === 'template' && !tplBox.childNodes.length) tplBox.append(templatesCard(pick));
     tryBtn.hidden = !mine;
@@ -1144,7 +1146,7 @@ async function showCreate() {
           only.visual = h('label', {}, T('visual'), f.visual), only.style = h('label', {}, T('style'), f.style), only.transition = h('label', {}, 'Chuyển cảnh', f.transition)),
         only.mode = h('div', {}, h('span', { class: 'plabel' }, 'Kiểu vẽ tay'), modePicker(mode, (k) => { mode = k; track('mode', { mode: k }); })),
         h('div', { class: 'toggles' },
-          feat('intro') ? h('label', { class: 'check' }, f.intro, h('span', {}, h('b', {}, 'Mở đầu là ảnh bìa'), h('small', { class: 'muted' }, ' khung đầu tiên làm thumbnail: tiêu đề lớn, nhãn nổi bật.'))) : null,
+          feat('intro') ? only.intro=h('label', { class: 'check' }, f.intro, h('span', {}, h('b', {}, 'Mở đầu là ảnh bìa'), h('small', { class: 'muted' }, ' khung đầu tiên làm thumbnail: tiêu đề lớn, nhãn nổi bật.'))) : null,
           only.subs = h('label', { class: 'check' }, f.subtitles, T('subsOnPicture')),
           feat('affiliate') ? h('label', { class: 'check' }, f.affOn, h('span', {}, h('b', {}, 'Video tiếp thị liên kết'), h('small', { class: 'muted' }, ' thêm cảnh cuối có ảnh sản phẩm, giá và mã QR.'))) : null),
         only.aff = h('div', { class: 'card inner' }, h('div', { class: 'grid' }, h('label', {}, 'Link tiếp thị', f.affLink), h('label', {}, 'Sản phẩm', f.affProduct), h('label', {}, 'Giá', f.affPrice)), product),
@@ -1542,7 +1544,7 @@ async function showEditor(id) {
       if (MODE_STYLE[k] && k !== 'hand' && ui.enabledStyles.includes(MODE_STYLE[k]) && ['sunset', 'cosmos', 'manim', 'bold'].includes(spec.style)) spec.style = MODE_STYLE[k];
       changed();
     })),
-    V('feature:intro') === 'hidden' || spec.look === 'act' ? null : h('label', { class: 'check' }, h('input', { type: 'checkbox', disabled: V('feature:intro') === 'dev', checked: !!spec.intro, onchange: (e) => {
+    V('feature:intro') === 'hidden' || ['act','whiteboard'].includes(spec.look) ? null : h('label', { class: 'check' }, h('input', { type: 'checkbox', disabled: V('feature:intro') === 'dev', checked: !!spec.intro, onchange: (e) => {
       spec.intro = e.target.checked ? { title: spec.title, badge: BADGES[spec.format] || 'MỚI', icon: spec.scenes.flatMap((sc) => sc.diagram?.items || []).find((it) => it.t === 'icon')?.name } : null;
       paintIntro(); changed();
     } }), h('span', {}, h('b', {}, 'Mở đầu là ảnh bìa thu hút'), h('small', { class: 'muted' }, ' (cũng là ảnh thumbnail)'))),
@@ -1560,7 +1562,7 @@ async function showEditor(id) {
         options([['0.9', 'Chậm'], ['1', 'Vừa'], ['1.1', 'Hơi nhanh'], ['1.2', 'Nhanh']], String(spec.voice?.speed ?? 1)))),
       h('label', {}, 'Tên kênh', h('input', { value: spec.channel || '', maxlength: 40, oninput: (e) => { spec.channel = e.target.value; changed(); } })),
       h('label', {}, 'Số tập', h('input', { value: spec.episode || '', maxlength: 30, oninput: (e) => { spec.episode = e.target.value; changed(); } })),
-      V('feature:subtitles') === 'hidden' ? null : h('label', { class: 'check' }, h('input', { type: 'checkbox', disabled: V('feature:subtitles') === 'dev', checked: spec.look ? spec.subtitles !== false : !!spec.subtitles, onchange: (e) => { spec.subtitles = e.target.checked; changed(); } }), T('subsOnPicture'))));
+      V('feature:subtitles') === 'hidden' ? null : h('label', { class: 'check' }, h('input', { type: 'checkbox', disabled: V('feature:subtitles') === 'dev', checked: spec.look && spec.look!=='whiteboard' ? spec.subtitles !== false : !!spec.subtitles, onchange: (e) => { spec.subtitles = e.target.checked; changed(); } }), T('subsOnPicture'))));
 
   const scenesBox = h('div', { class: 'scenes' });
   const DIAGRAM_KINDS = Object.entries(ui.labels.kinds).map(([k, v]) => [k, v, 'kind:' + k]);
@@ -1603,6 +1605,12 @@ async function showEditor(id) {
     const icon = (label, k) => field(label + ' (tên hình tiếng Anh, vd pig-money)', x[k], (v) => set(k, v.trim().toLowerCase() || undefined), { max: 40 });
     const actions = (label, k) => h('label', {}, label, h('select', { onchange: (e) => set(k, e.target.value || undefined) }, options([['', 'Tự chọn'], ...Object.entries(ui.labels.actions)], x[k] || '')));
     const f = [];
+    if(spec.look==='whiteboard'){
+      const d=(sc.whiteboard ||= sc.x?.whiteboard||{title:'',objects:[]});
+      f.push(field('Tiêu đề trên bảng',d.title,v=>{d.title=v;changed();},{max:90}));
+      d.objects.forEach((o,i)=>f.push(h('div',{class:'grid'},field(`Nhãn hình ${i+1}`,o.label,v=>{o.label=v;changed();},{max:60}),
+        h('label',{},'Màu hình',h('input',{type:'color',value:o.color||'#7155bd',onchange:e=>{o.color=e.target.value;changed();}})))));
+    }
     if (spec.look === 'kinetic') f.push(icon('Hình chính', 'icon'), field('Từ cần nhấn (cách nhau bởi dấu phẩy)', (x.keys || []).join(', '), (v) => set('keys', v.split(',').map((t) => t.trim()).filter(Boolean)), { max: 120 }));
     if (spec.look === 'split') f.push(field('Bên A làm gì', x.a, (v) => set('a', v), { max: 60 }), field('Bên B làm gì', x.b, (v) => set('b', v), { max: 60 }),
       field('Kết quả bên A (vd 0đ)', x.aValue, (v) => set('aValue', v), { max: 18 }), field('Kết quả bên B (vd 36 triệu)', x.bValue, (v) => set('bValue', v), { max: 18 }),
@@ -1784,7 +1792,7 @@ async function showEditor(id) {
     thumbs.forEach((th, si) => {
       const span = m.timeline.scenes[si]; if (!span) return;
       th.width = 96; th.height = Math.round(96 * off.height / off.width);
-      try { NV.renderFrame(octx, m, Math.max(span.start + 0.1, span.end - 0.35), { hand: false }); th.getContext('2d').drawImage(off, 0, 0, th.width, th.height); } catch {}
+      try { paintFrame(octx, m, Math.max(span.start + 0.1, span.end - 0.35), { hand: false }); th.getContext('2d').drawImage(off, 0, 0, th.width, th.height); } catch {}
     });
   }
   // ---- timeline: scenes, words, pictures, music, voice; a playhead that follows the preview
@@ -1876,7 +1884,7 @@ async function showEditor(id) {
     try {
       const m = await previewModel(spec, 2), c = document.createElement('canvas');
       c.width = m.W * 2; c.height = m.H * 2;
-      NV.renderFrame(c.getContext('2d'), m, spec.intro?.title ? 0 : Math.max(0.5, m.timeline.scenes[0].end - 0.45), { hand: false });
+      paintFrame(c.getContext('2d'), m, spec.intro?.title ? 0 : Math.max(0.5, m.timeline.scenes[0].end - 0.45), { hand: false });
       c.toBlob((b) => { const a = h('a', { href: URL.createObjectURL(b), download: (spec.title || 'anh-bia').slice(0, 60) + '.png' }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }, 'image/png');
     } catch (e) { fail(e); }
   } }, 'Tải ảnh bìa' + (coverVis === 'dev' ? DEV : ''));
@@ -1933,11 +1941,15 @@ async function previewModel(spec, dpr) {
   const [images, hand, icons, pics] = await Promise.all([
     Promise.all(spec.scenes.map((sc) => Promise.all(sc.panels.map((p) => (imageUrl(p.image) ? loadImg(imageUrl(p.image)).catch(blankCanvas) : Promise.resolve(blankCanvas())))))),
     getHand(), getIcons(), Promise.all(entries.map(([, v]) => loadImg(mediaUrl(v)).catch(() => null))),
-    document.fonts.load('29px Pangolin').catch(() => {}), loadSans(), spec.figures !== 'rig' && (spec.look === 'act' || !spec.look) ? loadPeeps() : null,
+    document.fonts.load('29px Pangolin').catch(() => {}), spec.look==='whiteboard'?document.fonts.load('36px "WB Hand"'):null, loadSans(), spec.figures !== 'rig' && (spec.look === 'act' || !spec.look) ? loadPeeps() : null,
   ]);
   const media = Object.fromEntries(entries.map(([k], i) => [k, pics[i]]).filter(([, v]) => v));
   const timeline = NV.buildTimeline(spec.scenes, spec.scenes.map((s) => NV.estimateVoice(s.lines)), { intro: !!spec.intro?.title && spec.look !== 'act' });
   const env = { createCanvas: (w, hgt) => { const c = document.createElement('canvas'); c.width = w; c.height = hgt; return c; } };
+  if(spec.look==='whiteboard') {
+    hand.whiteboardImage=await loadImg('/assets/faciup-whiteboard/hand.png');
+    return {...FVWhiteboard.prepare({env,project:spec,timeline,images,hand,dpr,icons,media}),whiteboardAddon:true};
+  }
   return NV.prepare({ env, project: spec, timeline, images, hand, dpr, icons, media });
 }
 
@@ -1956,7 +1968,7 @@ async function buildPreview(spec, canvas, playBtn) {
     if (!pv) return;
     if (pv.playing) { pv.t += pv.last ? (ts - pv.last) / 1000 : 0; if (pv.t > timeline.duration) pv.t = 0; }
     pv.last = ts;
-    NV.renderFrame(ctx, pv.model, pv.t);
+    paintFrame(ctx, pv.model, pv.t);
     pv.raf = requestAnimationFrame(loop);
   };
   pv.raf = requestAnimationFrame(loop);

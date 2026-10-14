@@ -285,6 +285,8 @@ export function numbersIn(s: string) {
 const iconFor = (s: string) => iconsIn(s)[0]?.name;
 const keysOf = (s: string) => [...iconsIn(s).map((x) => x.word), ...(s.match(/\d+(?:[.,]\d+)*\s*%?/g) || [])].slice(0, 4);
 
+import { cleanWhiteboard } from '../../addons/faciup-whiteboard/faciup-schema.js';
+import { freeWhiteboard } from '../../addons/faciup-whiteboard/semantic.ts';
 export interface LookInput { look: string; scenes: { lines: string[]; x?: any; pause?: number; panels?: any[]; act?: any }[]; sides?: { a: string; b: string }; chatName?: string; cast?: any[] }
 
 /** Fill the format data of every scene (keeps what is already there). */
@@ -292,6 +294,10 @@ export function composeLook(input: LookInput): LookInput {
   const { look } = input, all = input.scenes.map((s) => s.lines.join(' ')).join(' ');
   let scenes = input.scenes.map((s) => ({ ...s, x: { ...(s.x || {}) } }));
   const out: LookInput = { ...input };
+  if(look==='whiteboard') {
+    out.scenes=scenes.map((s:any)=>({...s,whiteboard:cleanWhiteboard(s.whiteboard||s.x?.whiteboard)||freeWhiteboard(s.lines),panels:[]}));
+    return out;
+  }
   if (look === 'act') {
     // story animation: the AI's storyboard where it gave one, a storyboard from the words elsewhere
     const c = composeAct(scenes);

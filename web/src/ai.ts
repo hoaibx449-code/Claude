@@ -21,8 +21,10 @@ export const PHOTO_STYLE =
 
 const ICON_HINT = 'Tên icon là tên bộ Tabler Icons tiếng Anh, viết thường, gạch nối (vd cash, pig-money, wallet, brain, clock, home, briefcase, coffee, shopping-cart, building-bank, trending-up, trending-down, heart, target-arrow, bulb, mood-sad, mood-happy, school, book).';
 /** What each format needs from the writer, and the per-scene "x" data it reads. */
+import {whiteboardDirections} from '../../addons/faciup-whiteboard/brief.js';
 export const LOOK_BRIEF: Record<string, string> = {
   act: ACT_BRIEF,
+  whiteboard: whiteboardDirections()+' Mỗi cảnh có x:{whiteboard:{title,meaning,objects}}, không panels. Giữ nguyên lời người dùng.',
   kinetic: 'ĐỊNH DẠNG: CHỮ BÙNG NỔ. Câu ngắn, mạnh, có con số cụ thể; mỗi câu ≤ 14 chữ. Mỗi cảnh có "x":{"icon":"icon chính","keys":["1-3 từ cần nhấn, đúng như trong câu"]}.',
   split: 'ĐỊNH DẠNG: HAI BÊN ĐỐI LẬP. Ở gốc JSON có "sides":{"a":"tên bên sai/nghèo/trước (≤ 20 ký tự)","b":"tên bên đúng/giàu/sau"}. Mỗi cảnh thân bài có đúng 2 câu: câu 1 nói bên A làm gì, câu 2 nói bên B làm gì, và "x":{"a":"bên A làm gì (≤ 40 ký tự)","b":"bên B làm gì","aIcon":"icon","bIcon":"icon","aValue":"(tuỳ chọn) kết quả bên A, vd 0đ","bValue":"(tuỳ chọn) kết quả bên B"}. Cảnh mở và kết chỉ cần "lines".',
   chat: 'ĐỊNH DẠNG: TIN NHẮN DRAMA. Kể câu chuyện bằng tin nhắn giữa "mình" và một người thân. Ở gốc JSON có "chatName":"tên người kia (vd Vợ yêu, Sếp, Mẹ, Bạn thân)". Mỗi câu thoại là một tin nhắn ngắn, văn nói; "x":{"chat":[{"who":"a hoặc b","text":"đúng nguyên câu thoại"}]} với a là người kia, b là mình. Cảnh cuối thêm "x":{"card":"câu bài học, là một trong các câu thoại của cảnh"}.',

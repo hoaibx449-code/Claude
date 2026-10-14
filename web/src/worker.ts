@@ -1,6 +1,7 @@
 // Nét Vẽ Studio API (Cloudflare Worker). Static pages are served from ./public.
 import { consumeNonce, currentUser, endSession, newNonce, startSession, type User, verifyGoogleToken } from './auth.ts';
 import { drawImage, type ImageProvider, type TextProvider, writeScript } from './ai.ts';
+import {claimWhiteboard,startWhiteboard,assertWhiteboard,voiceCache} from '../../addons/faciup-whiteboard/web.ts';
 import { startRunner } from './gcp.ts';
 import { cleanSpec, LOOKS, STYLES } from './spec.ts';
 import { LOOK_BRIEF } from './ai.ts';
@@ -91,8 +92,10 @@ export default {
       env.DB.prepare('DELETE FROM zalo_messages WHERE received_at < ?').bind(Date.now() - config.logDays * 86_400_000).run(),
       env.DB.prepare('DELETE FROM zalo_outbox WHERE created_at < ?').bind(Date.now() - config.logDays * 86_400_000).run(),
     ]).then(() => {}, (e) => console.error(e)));
-    const waiting = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'queued' AND created_at < ?").bind(Date.now() - 90_000).first<any>();
+    const waiting = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'queued' AND COALESCE(json_extract(spec,'$.look'),'') != 'whiteboard' AND created_at < ?").bind(Date.now() - 90_000).first<any>();
     if (waiting?.n) ctx.waitUntil(startRunner(env).catch((e) => console.error(e)));
+    const wb=await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status='queued' AND json_extract(spec,'$.look')='whiteboard'").first<any>();
+    if(wb?.n)ctx.waitUntil(startWhiteboard(env).catch(e=>console.error(e)));
   },
 };
 
@@ -102,6 +105,7 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
   const url = new URL(req.url), path = url.pathname, method = req.method;
   if (!path.startsWith('/api/')) return rawEnv.ASSETS.fetch(req);
   const env = await effectiveEnv(rawEnv);
+  if(path.startsWith('/api/whiteboard-runner/')) {const sub=path.slice('/api/whiteboard-runner/'.length);const v=sub.match(/^voice\/([a-f0-9]{24})\/(\d+)$/);if(v)return voiceCache(req,env,v[1],Number(v[2]));return sub==='claim'?claimWhiteboard(req,env,rc):runner(req,env,sub,rc);}
   if (path.startsWith('/api/runner/')) return runner(req, env, path.slice('/api/runner/'.length), rc);
 
   // called by other services (verified inside), and the no-login share link for finished videos
@@ -573,7 +577,7 @@ export async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Prom
     await env.DB.prepare("UPDATE jobs SET status = 'queued', runner = NULL WHERE status = 'running' AND started_at < ?").bind(now - STALE_JOB_MS).run();
     const job = await env.DB.prepare(
       `UPDATE jobs SET status = 'running', started_at = ?, runner = ?, progress = 0
-       WHERE id = (SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at LIMIT 1) AND status = 'queued'
+       WHERE id = (SELECT id FROM jobs WHERE status = 'queued' AND COALESCE(json_extract(spec,'$.look'),'') != 'whiteboard' ORDER BY created_at LIMIT 1) AND status = 'queued'
        RETURNING id, spec, user_id, project_id, created_at`,
     ).bind(now, lease).first<any>();
     if (!job) { rc.quiet = true; return json({ job: null }); }
@@ -782,7 +786,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
       style: !look && visual === 'doodle' && (!b.style || b.style === 'auto') && env.config.enabledStyles.includes('notebook') ? 'notebook' : style, tool: b.tool, channel: b.channel ?? D.channel, episode: b.episode, mode, media, character: media.nv ? 'nv' : undefined, affiliate: aff,
       voice: voiceFor(env.config, b.voiceId, Number(b.speed) || 1), look, skin: b.skin, music, sfx: b.sfx !== false }, user.id);
     const wantIntro = typeof b.intro === 'boolean' ? b.intro : D.intro;
-    if (wantIntro && on('feature:intro')) spec.intro = introFor(spec);
+    if (wantIntro && look!=='whiteboard' && on('feature:intro')) spec.intro = introFor(spec);
     if (usage) rc.log('ai.script', { cost: aiCost(env.config, usage), data: { source, format, niche, ...usage } });
     const id = randomId(12), now = Date.now();
     await env.DB.prepare('INSERT INTO projects (id, user_id, title, spec, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
@@ -816,6 +820,7 @@ const hashText = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) 
 
 /** Put a project in the render queue and wake the render machine. */
 export async function queueRender(env: XEnv, rc: Rc, user: User, id: string, spec: any) {
+  if(spec.look==='whiteboard')assertWhiteboard(spec);
   const missing = spec.scenes.reduce((n: number, sc: any) => n + sc.panels.filter((x: any) => !/^(r2|doodle|peep):/.test(String(x.image))).length, 0);
   if (missing) throw new HttpError(409, `Còn ${missing} khung chưa có tranh AI. Bấm "Vẽ tất cả bằng AI" hoặc đổi cảnh đó sang bảng vẽ.`);
   await checkAllowed(env, user, spec);
@@ -833,7 +838,7 @@ export async function queueRender(env: XEnv, rc: Rc, user: User, id: string, spe
       .bind(jobId, id, user.id, JSON.stringify({ ...spec, _via: rc.channel }), Date.now(), user.id, MAX_ACTIVE_JOBS).run();
     if (!inserted.meta.changes) throw new HttpError(429, 'Bạn đang có video chờ dựng. Đợi xong rồi dựng tiếp nhé.');
   } catch (error) { await refundQuota(env, user.id, 'render'); throw error; }
-  rc.wait(startRunner(env).catch((e) => { rc.log('render.trigger', { ok: false, data: { error: String(e.message || e) } }); }));
+  rc.wait((spec.look==='whiteboard'?startWhiteboard(env):startRunner(env)).catch((e) => { rc.log('render.trigger', { ok: false, data: { error: String(e.message || e) } }); }));
   rc.log('render.queue', { projectId: id, data: { job: jobId, scenes: spec.scenes.length, chars: spec.scenes.reduce((n: number, sc: any) => n + sc.lines.join(' ').length, 0), voice: spec.voice, style: spec.style, via: rc.channel } });
   return { id: jobId, status: 'queued', progress: 0, note };
 }
