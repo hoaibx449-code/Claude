@@ -185,8 +185,8 @@ export function defaultConfig(env: Env): Config {
       ] as Voice[]),
     models: {
       openaiText: env.OPENAI_TEXT_MODEL || 'gpt-4o-mini', openaiImage: env.OPENAI_IMAGE_MODEL || 'gpt-image-1', openaiImageQuality: env.OPENAI_IMAGE_QUALITY || 'medium',
-      geminiText: env.GEMINI_TEXT_MODEL || 'gemini-2.5-flash', geminiImage: env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
-      openaiFallback: 'gpt-4.1-mini', geminiFallback: 'gemini-2.5-flash-lite,gemini-2.0-flash',
+      geminiText: env.GEMINI_TEXT_MODEL || 'gemini-3.8-flash', geminiImage: env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
+      openaiFallback: 'gpt-4.1-mini', geminiFallback: 'gemini-3.5-flash',
     },
     limits: { script: Number(env.DAILY_SCRIPTS) || 20, image: Number(env.DAILY_IMAGES) || 60, render: Number(env.DAILY_RENDERS) || 5, maxSeconds: 600 },
     promptExtra: '',
@@ -246,6 +246,7 @@ function labels(v: any, keys: readonly string[], def: Record<string, string>, ma
   return out;
 }
 
+const RETIRED = /^gemini-(1\.5|2\.0|2\.5)-flash(-lite)?$/;
 export function cleanConfig(input: any, base: Config): Config {
   const i = input && typeof input === 'object' ? input : {};
   const L = i.labels || {}, d = i.defaults || {}, m = i.models || {}, lim = i.limits || {};
@@ -288,9 +289,10 @@ export function cleanConfig(input: any, base: Config): Config {
     models: {
       openaiText: MODEL.test(m.openaiText) ? m.openaiText : base.models.openaiText, openaiImage: MODEL.test(m.openaiImage) ? m.openaiImage : base.models.openaiImage,
       openaiImageQuality: pick(m.openaiImageQuality, ['low', 'medium', 'high'], base.models.openaiImageQuality),
-      geminiText: MODEL.test(m.geminiText) ? m.geminiText : base.models.geminiText, geminiImage: MODEL.test(m.geminiImage) ? m.geminiImage : base.models.geminiImage,
+      // Google retired these text models for new keys ("no longer available"): saved settings move on
+      geminiText: MODEL.test(m.geminiText) && !RETIRED.test(m.geminiText) ? m.geminiText : base.models.geminiText, geminiImage: MODEL.test(m.geminiImage) ? m.geminiImage : base.models.geminiImage,
       openaiFallback: typeof m.openaiFallback === 'string' ? m.openaiFallback.split(',').map((x: string) => x.trim()).filter((x: string) => MODEL.test(x)).slice(0, 4).join(',') : base.models.openaiFallback,
-      geminiFallback: typeof m.geminiFallback === 'string' ? m.geminiFallback.split(',').map((x: string) => x.trim()).filter((x: string) => MODEL.test(x)).slice(0, 4).join(',') : base.models.geminiFallback,
+      geminiFallback: typeof m.geminiFallback === 'string' ? m.geminiFallback.split(',').map((x: string) => x.trim()).filter((x: string) => MODEL.test(x) && !RETIRED.test(x)).slice(0, 4).join(',') : base.models.geminiFallback,
     },
     limits: { script: int(lim.script, 0, 1000, base.limits.script), image: int(lim.image, 0, 5000, base.limits.image), render: int(lim.render, 0, 500, base.limits.render), maxSeconds: int(lim.maxSeconds, 30, 1800, base.limits.maxSeconds) },
     promptExtra: str(i.promptExtra, 1500, base.promptExtra),

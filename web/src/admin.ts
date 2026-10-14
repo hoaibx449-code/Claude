@@ -66,7 +66,9 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
   if (sub === 'train/analyze' && method === 'POST') {
     const b = await body<any>(req, 6_000_000);
     const frames = (Array.isArray(b.frames) ? b.frames : []).filter((f: unknown) => typeof f === 'string' && f.length < 1_500_000).slice(0, 6);
-    const out = await analyzeSample(env, frames, String(b.notes || '').slice(0, 2000));
+    const out = await analyzeSample(env, frames, String(b.notes || '').slice(0, 2000)).catch((e) => {
+      // every model's answer, so the log says which key or model is the problem
+      rc.log('admin.train', { ok: false, data: { frames: frames.length, error: String(e.message).slice(0, 200), tried: e.extra?.tried } }); throw e; });
     rc.log('admin.train', { cost: aiCost(env.config, { model: '', tokensIn: out._usage.tokensIn, tokensOut: out._usage.tokensOut }), data: { frames: frames.length, base: out.base } });
     return json(out);
   }

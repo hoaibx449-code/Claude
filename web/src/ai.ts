@@ -138,6 +138,26 @@ function parseJson(text: string) {
 export interface AiUsage { provider: TextProvider; model: string; tokensIn: number; tokensOut: number; tries: number }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/**
+ * How much hidden "thinking" a Gemini model may do before answering (it counts against the output
+ * limit and the wait): none on 2.5 Flash, a little on 2.5 Pro, "low" on Gemini 3.
+ */
+export function geminiThinking(model: string): Record<string, unknown> {
+  if (/2\.5/.test(model)) return { thinkingConfig: { thinkingBudget: /flash/.test(model) ? 0 : 1024 } };
+  if (/gemini-3/.test(model)) return { thinkingConfig: { thinkingLevel: 'low' } };
+  return {};
+}
+/** POST to Gemini; when a model refuses the thinking setting, ask again without it. */
+async function geminiPost(env: Env, model: string, body: any, timeoutMs: number) {
+  const go = (b: any) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: 'POST', headers: { 'x-goog-api-key': env.GEMINI_API_KEY!, 'content-type': 'application/json' }, signal: AbortSignal.timeout(timeoutMs), body: JSON.stringify(b) });
+  let res = await go(body);
+  if (res.status === 400 && body.generationConfig?.thinkingConfig) {
+    const t = await res.clone().text();
+    if (/thinking/i.test(t)) { const { thinkingConfig, ...gc } = body.generationConfig; res = await go({ ...body, generationConfig: gc }); }
+  }
+  return res;
+}
 const list = (v?: string) => (v || '').split(',').map((x) => x.trim()).filter(Boolean);
 
 /** One chat call; throws an error carrying `status` so callers can decide to retry or switch model. */
@@ -152,16 +172,11 @@ async function callText(env: Env, provider: TextProvider, model: string, sys: st
     const j: any = await res.json();
     return { text: j.choices?.[0]?.message?.content || '', tokensIn: j.usage?.prompt_tokens || 0, tokensOut: j.usage?.completion_tokens || 0 };
   }
-  const flash = /flash/.test(model);
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: 'POST',
-    headers: { 'x-goog-api-key': env.GEMINI_API_KEY!, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text: user }] }],
-      // no hidden "thinking" on flash models: faster and cheaper, the brief is explicit enough
-      generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 8192, ...(flash && /2\.5/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {}) },
-    }),
-  });
+  // little hidden "thinking": faster and cheaper, the brief is explicit enough
+  const res = await geminiPost(env, model, {
+    systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text: user }] }],
+    generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 16384, ...geminiThinking(model) },
+  }, 120_000);
   if (!res.ok) throw Object.assign(new Error(`Gemini ${model}: HTTP ${res.status}`), { status: res.status });
   const j: any = await res.json();
   return { text: (j.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || '').join(''), tokensIn: j.usageMetadata?.promptTokenCount || 0, tokensOut: j.usageMetadata?.candidatesTokenCount || 0 };
@@ -263,13 +278,10 @@ async function callVision(env: Env, provider: TextProvider, model: string, sys: 
     if (!res.ok) throw Object.assign(new Error(`OpenAI ${model}: ${j.error?.message || 'HTTP ' + res.status}`), { status: res.status });
     return { text: j.choices?.[0]?.message?.content || '', finish: j.choices?.[0]?.finish_reason || '', tokensIn: j.usage?.prompt_tokens || 0, tokensOut: j.usage?.completion_tokens || 0 };
   }
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: 'POST', headers: { 'x-goog-api-key': env.GEMINI_API_KEY!, 'content-type': 'application/json' }, signal: AbortSignal.timeout(90_000),
-    body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text }, ...imgs.map((i) => ({ inlineData: { mimeType: i.mime, data: i.data } }))] }],
-      // 2.5 models "think" first and that counts against the output limit: with pictures it used to eat
-      // the whole budget, leaving a cut JSON ("chưa phân tích được"). Flash thinks not at all, Pro a little.
-      generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 8192, ...(/2\.5/.test(model) ? { thinkingConfig: { thinkingBudget: /flash/.test(model) ? 0 : 1024 } } : {}) } }),
-  });
+  // models "think" first and that counts against the output limit: with pictures it used to eat the
+  // whole budget, leaving a cut JSON ("chưa phân tích được"). Keep thinking low, leave room to answer.
+  const res = await geminiPost(env, model, { systemInstruction: { parts: [{ text: sys }] }, contents: [{ role: 'user', parts: [{ text }, ...imgs.map((i) => ({ inlineData: { mimeType: i.mime, data: i.data } }))] }],
+    generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 16384, ...geminiThinking(model) } }, 120_000);
   const j: any = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(`Gemini ${model}: ${j.error?.message || 'HTTP ' + res.status}`), { status: res.status });
   const c = j.candidates?.[0];
@@ -292,7 +304,7 @@ export async function analyzeSample(env: Env, frames: string[], notes: string): 
   if (!env.GEMINI_API_KEY && !env.OPENAI_API_KEY) throw new HttpError(503, 'Cần khoá Gemini hoặc OpenAI để phân tích mẫu.');
   // every model in turn (main, then fallbacks, then the other provider); one retry when busy
   const plan: [TextProvider, string][] = [];
-  if (env.GEMINI_API_KEY) for (const m of new Set([env.GEMINI_TEXT_MODEL || 'gemini-2.5-flash', ...list(env.GEMINI_TEXT_FALLBACK), 'gemini-2.5-flash'])) plan.push(['gemini', m]);
+  if (env.GEMINI_API_KEY) for (const m of new Set([env.GEMINI_TEXT_MODEL || 'gemini-3.8-flash', ...list(env.GEMINI_TEXT_FALLBACK)])) plan.push(['gemini', m]);
   if (env.OPENAI_API_KEY) for (const m of new Set([env.OPENAI_TEXT_MODEL || 'gpt-4o-mini', ...list(env.OPENAI_TEXT_FALLBACK)])) plan.push(['openai', m]);
   const errors: string[] = [];
   for (const [p, model] of plan) {

@@ -30,3 +30,24 @@ test('a cut answer moves to the next model, and a final failure says why', async
     await assert.rejects(analyzeSample(env, [frame], ''), /API key not valid/);
   } finally { globalThis.fetch = orig; }
 });
+
+test('Gemini 3 thinks "low"; a model that refuses the setting is asked again without it', async () => {
+  const orig = globalThis.fetch, bodies: any[] = [];
+  globalThis.fetch = (async (_u: string, o: any) => { const b = JSON.parse(o.body); bodies.push(b);
+    if (b.generationConfig.thinkingConfig) return new Response(JSON.stringify({ error: { message: 'Unknown name "thinkingLevel" at generation_config.thinking_config' } }), { status: 400 });
+    return new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(proposal) }] } }] })); }) as any;
+  try {
+    const r = await analyzeSample({ GEMINI_API_KEY: 'g', GEMINI_TEXT_MODEL: 'gemini-3.8-flash' } as any, [], 'mẫu');
+    assert.equal(r.base, 'act');
+    assert.equal(bodies[0].generationConfig.thinkingConfig.thinkingLevel, 'low');
+    assert.equal(bodies[1].generationConfig.thinkingConfig, undefined);
+  } finally { globalThis.fetch = orig; }
+});
+
+test('retired Gemini models saved in settings move to the current ones', async () => {
+  const { cleanConfig, defaultConfig } = await import('../web/src/settings.ts');
+  const base = defaultConfig({} as any);
+  const c = cleanConfig({ models: { geminiText: 'gemini-2.5-flash', geminiFallback: 'gemini-2.5-flash-lite,gemini-2.0-flash,gemini-3.5-flash' } }, base);
+  assert.equal(c.models.geminiText, 'gemini-3.8-flash');
+  assert.equal(c.models.geminiFallback, 'gemini-3.5-flash');
+});
