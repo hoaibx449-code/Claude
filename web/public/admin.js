@@ -402,7 +402,10 @@ function zaloTab(c, secrets, secretInput, zcheck, inbox) {
   const z = c.zalo;
   const action = (label, fn) => h('button', { type: 'button', class: 'ghost small', onclick: async (event) => { const button = event.currentTarget; button.disabled = true; try { await fn(); } catch (e) { fail(e); } finally { button.disabled = false; } } }, label);
   const out = h('div');
-  const tplNames = { help: 'Hướng dẫn (HUONGDAN)', linked: 'Khi kết nối xong', queued: 'Khi nhận yêu cầu dựng', done: 'Khi video xong', failed: 'Khi dựng lỗi', unknown: 'Khi không hiểu tin nhắn', noAI: 'Khi chưa có AI (lệnh TAO)' };
+  const tplNames = { help: 'Hướng dẫn (HUONGDAN)', linked: 'Khi kết nối xong', queued: 'Khi nhận yêu cầu dựng', done: 'Khi video xong', failed: 'Khi dựng lỗi', unknown: 'Khi không hiểu tin nhắn', noAI: 'Khi chưa có AI (lệnh TAO)',
+    welcome: 'Bán hàng · Lời chào khách mới / khách chào ({ten} {troLy} {thuongHieu})', offer: 'Bán hàng · Bảng giá khi khách hỏi giá ({goi} {goiNam} {thuongHieu})',
+    payment: 'Bán hàng · Khi khách chốt: thông tin chuyển khoản ({ma} {tenGoi} {soTien} {nganHang} {stk} {chuTk} {kichHoat})', paid: 'Bán hàng · Khi đã nhận tiền ({soTien} {ma} {tenGoi} {han})',
+    upsell: 'Bán hàng · Mời nâng cấp khi hết lượt / video quá dài ({goiGoiY} {giaGoiY} {loiIch} {soGoiY})' };
   return [
     card('Cách nhận tin nhắn', 'Bot chạy độc lập trên web này. Webhook trực tiếp: Zalo gọi thẳng về web, trả lời ngay (khuyên dùng). Hỏi định kỳ: web tự hỏi Zalo mỗi phút, không cần webhook, trả lời chậm hơn tối đa khoảng 1 phút. Tự động: webhook khi nó chạy, nếu không thì hỏi định kỳ.',
       h('div', { class: 'grid' }, h('label', {}, 'Chế độ', select([['webhook', 'Webhook trực tiếp (khuyên dùng)'], ['poll', 'Hỏi định kỳ (không cần webhook)'], ['auto', 'Tự động']], z.receive === 'poll' || z.receive === 'auto' ? z.receive : 'webhook', (v) => { z.receive = v; }))),

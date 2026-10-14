@@ -7,7 +7,7 @@ import type { User } from './auth.ts';
 import { type Plan, selling } from './settings.ts';
 import { body, type Env, HttpError, json, timingSafeEqual } from './util.ts';
 import type { Rc, XEnv } from './worker.ts';
-import { notifyOwner } from './zalo.ts';
+import { notifyCustomer, notifyOwner } from './zalo.ts';
 
 const DAY = 86_400_000;
 
@@ -112,6 +112,7 @@ async function confirmOrder(env: XEnv, rc: Rc, code: string, paid: number, ref: 
   const until = (await env.DB.prepare('SELECT expires_at FROM user_plans WHERE user_id = ?').bind(o.user_id).first<any>())?.expires_at;
   rc.userId = o.user_id;
   rc.log('order.paid', { data: { code, plan: o.plan, amount: o.amount, via, until } });
+  await notifyCustomer(env, o.user_id, 'paid', { tenGoi: bought.name, soTien: o.amount.toLocaleString('vi-VN') + 'đ', han: until ? new Date(until).toLocaleDateString('vi-VN') : '', ma: code });
   await notifyOwner(env, 'order', `Đã nhận ${o.amount.toLocaleString('vi-VN')}đ cho đơn ${code} (gói ${bought.name}).`);
   return o;
 }
@@ -135,8 +136,34 @@ async function confirmCredits(env: XEnv, rc: Rc, o: any, paid: number, ref: stri
   if (!results[3].meta.changes) return null;
   rc.userId = o.user_id;
   rc.log('order.paid', { data: { code: o.code, pack: pack.id, credits: pack.credits, amount: o.amount, via } });
+  await notifyCustomer(env, o.user_id, 'paid', { tenGoi: pack.name, soTien: o.amount.toLocaleString('vi-VN') + 'đ', han: '', ma: o.code });
   await notifyOwner(env, 'order', `Đã nhận ${o.amount.toLocaleString('vi-VN')}đ cho đơn ${o.code} (${pack.name}).`);
   return o;
+}
+
+/**
+ * A pending order for a plan ("pro", "pro:year") or a credit pack, with what the payer needs: the
+ * VietQR picture, bank, account, amount and the memo that identifies it. A pending order for the same
+ * thing is reused. Used by the web page and by the Zalo bot when a customer closes a sale.
+ */
+export async function createOrder(env: XEnv, rc: Rc, user: User, want: string) {
+  const p = env.config.payment;
+  if (!p.enabled || !p.account) throw new HttpError(503, 'Thanh toán đang tạm đóng. Liên hệ quản trị viên.');
+  const pack = want.startsWith('credit:') ? env.config.doc.packs.find((x) => 'credit:' + x.id === want) : null;
+  const pick = pack ? null : planOrder(env.config.plans, want);
+  const plan = pack ? { id: want, name: pack.name, price: pack.price } : pick && pick.plan.visible && pick.price > 0 ? pick : null;
+  if (!plan) throw new HttpError(400, 'Gói không hợp lệ.');
+  // reuse a pending order for the same plan instead of piling up new ones
+  let o = await env.DB.prepare("SELECT * FROM orders WHERE user_id = ? AND plan = ? AND status = 'pending' AND created_at > ?").bind(user.id, plan.id, Date.now() - p.expiryDays * DAY).first<any>();
+  if (!o) {
+    const code = p.prefix + Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => CODE[b % CODE.length]).join('');
+    o = { code, plan: plan.id, amount: plan.price, status: 'pending', created_at: Date.now() };
+    await env.DB.prepare("INSERT INTO orders (code, user_id, plan, amount, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)").bind(code, user.id, plan.id, plan.price, o.created_at).run();
+    rc.log('order.create', { data: { code, plan: plan.id, amount: plan.price, via: rc.channel } });
+    rc.wait(notifyOwner(env, 'order', `Đơn mới ${code}: gói ${plan.name}, ${plan.price.toLocaleString('vi-VN')}đ — ${user.email}${rc.channel === 'zalo' ? ' (chốt qua Zalo)' : ''}`));
+  }
+  return { ...o, qr: qrUrl(env, o.amount, o.code), bank: p.bank, account: p.account, accountName: p.accountName, memo: o.code, expires: o.created_at + p.expiryDays * DAY,
+    note: p.note, holdMinutes: p.holdMinutes, planName: plan.name, auto: !!(env as any).SEPAY_API_KEY };
 }
 
 // ---------------------------------------------------------------- user
@@ -147,23 +174,8 @@ export async function planRoutes(req: Request, env: XEnv, rc: Rc, user: User, pa
     return json({ current: { id: plan.id, name: plan.name, expires, limits: plan.limits }, orders, payment: env.config.payment.enabled ? { note: env.config.payment.note } : null });
   }
   if (path === '/api/orders' && method === 'POST') {
-    const p = env.config.payment;
-    if (!p.enabled || !p.account) throw new HttpError(503, 'Thanh toán đang tạm đóng. Liên hệ quản trị viên.');
     const want = String((await body<any>(req, 500)).plan);
-    const pack = want.startsWith('credit:') ? env.config.doc.packs.find((x) => 'credit:' + x.id === want) : null;
-    const pick = pack ? null : planOrder(env.config.plans, want);
-    const plan = pack ? { id: want, name: pack.name, price: pack.price } : pick && pick.plan.visible && pick.price > 0 ? pick : null;
-    if (!plan) throw new HttpError(400, 'Gói không hợp lệ.');
-    // reuse a pending order for the same plan instead of piling up new ones
-    let o = await env.DB.prepare("SELECT * FROM orders WHERE user_id = ? AND plan = ? AND status = 'pending' AND created_at > ?").bind(user.id, plan.id, Date.now() - p.expiryDays * DAY).first<any>();
-    if (!o) {
-      const code = p.prefix + Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => CODE[b % CODE.length]).join('');
-      o = { code, plan: plan.id, amount: plan.price, status: 'pending', created_at: Date.now() };
-      await env.DB.prepare("INSERT INTO orders (code, user_id, plan, amount, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)").bind(code, user.id, plan.id, plan.price, o.created_at).run();
-      rc.log('order.create', { data: { code, plan: plan.id, amount: plan.price } });
-      rc.wait(notifyOwner(env, 'order', `Đơn mới ${code}: gói ${plan.name}, ${plan.price.toLocaleString('vi-VN')}đ — ${user.email}`));
-    }
-    return json({ order: { ...o, qr: qrUrl(env, o.amount, o.code), bank: p.bank, account: p.account, accountName: p.accountName, memo: o.code, expires: o.created_at + p.expiryDays * DAY, note: p.note, holdMinutes: p.holdMinutes, planName: plan.name } });
+    return json({ order: await createOrder(env, rc, user, want) });
   }
   const m = path.match(/^\/api\/orders\/([A-Z0-9]{6,12})(\/cancel)?$/);
   if (m) {

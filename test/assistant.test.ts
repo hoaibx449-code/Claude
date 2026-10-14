@@ -108,3 +108,46 @@ test('polling answers messages alongside listening and shows "typing" first', ()
     assert.ok(calls.filter((c) => c === 'getUpdates').length >= 2);
   } finally { globalThis.fetch = orig; }
 }));
+
+test('no AI (out of quota): the bot still greets, gives prices, and sells with a payment code', () => fixture(async (f) => {
+  f.env.config.payment = { ...f.env.config.payment, enabled: true, account: '0123456789', accountName: 'NGUYEN VAN A', bank: '970436' };
+  const plan = f.env.config.plans.find((p: any) => p.price > 0); plan.yearPrice = 1_990_000;
+  // every AI call is refused for quota
+  const orig = globalThis.fetch;
+  globalThis.fetch = (async (url: any, o: any) => {
+    const u = String(url);
+    if (u.includes('generativelanguage')) return new Response(JSON.stringify({ error: { message: 'You exceeded your current quota' } }), { status: 429 });
+    if (u.endsWith('/sendMessage') || u.endsWith('/sendPhoto')) f.sent.push({ ...JSON.parse(o.body), m: u.split('/').pop() });
+    return new Response(JSON.stringify({ ok: true, result: {} }));
+  }) as any;
+  try {
+    await f.say('Chào shop');
+    assert.match(f.sent.at(-1).text, /Mình là Trợ lý/);
+    await f.say('tôi muốn mua gói cước');
+    assert.match(f.sent.at(-1).text, /Bảng giá/); assert.match(f.sent.at(-1).text, /1\. Chuyên nghiệp: 199\.000đ\/tháng/); assert.match(f.sent.at(-1).text, /MUA 1 NAM/);
+    await f.say('MUA 1 năm');
+    const photo = f.sent.find((m: any) => m.m === 'sendPhoto');
+    assert.match(photo.photo, /img\.vietqr\.io\/image\/970436-0123456789/); assert.match(photo.photo, /amount=1990000/);
+    const pay = f.sent.at(-1).text;
+    assert.match(pay, /Vietcombank/); assert.match(pay, /0123456789/); assert.match(pay, /1\.990\.000đ/);
+    const o = await f.env.DB.prepare('SELECT * FROM orders').first();
+    assert.equal(o.plan, plan.id + ':year'); assert.match(pay, new RegExp(o.code));
+    assert.ok(f.sent.some((m: any) => m.chat_id === 'owner-chat' && /chốt qua Zalo/.test(m.text)));
+    // paid → the customer hears it on Zalo
+    f.env.config.payment.account = '0123456789';
+    await sepayWebhook(new Request('https://t/api/sepay/webhook', { method: 'POST', headers: { authorization: 'Apikey sk' }, body: JSON.stringify({ id: 7, transferType: 'in', accountNumber: '0123456789', transferAmount: 1_990_000, content: o.code }) }), f.env, { log() {}, wait() {} } as any);
+    assert.ok(f.sent.some((m: any) => m.chat_id === 'customer-abc123' && /Đã nhận 1\.990\.000đ/.test(m.text) && /kích hoạt đến/.test(m.text)));
+    assert.ok(!f.sent.some((m: any) => /chưa hiểu/.test(m.text || '')));
+  } finally { globalThis.fetch = orig; }
+}));
+
+test('the AI closes a sale: intent buy sends the QR right after its answer', () => fixture(async (f) => {
+  f.env.config.payment = { ...f.env.config.payment, enabled: true, account: '999', accountName: 'B', bank: '970422' };
+  const plan = f.env.config.plans.find((p: any) => p.price > 0);
+  f.setAnswer({ reply: 'Dạ, mình lên đơn gói Chuyên nghiệp cho bạn nhé!', intent: 'buy', topic: '', plan: plan.id });
+  await f.say('ok lấy gói pro cho mình');
+  assert.equal(f.sent.at(-1).chat_id, 'customer-abc123');
+  assert.match(f.sent.at(-1).text, /MB Bank/); assert.match(f.sent.at(-1).text, /199\.000đ/);
+  const sys = f.prompts[0].systemInstruction.parts[0].text;
+  assert.match(sys, /BÁN HÀNG/); assert.match(sys, new RegExp(plan.id + ' = Chuyên nghiệp \\(MUA 1\\)'));
+}));

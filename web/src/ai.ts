@@ -174,6 +174,8 @@ export function noteFailure(provider: TextProvider, model: string, status: numbe
   const now = Date.now();
   if (status === 401 || status === 403) down.set(provider, now + 10 * 60_000);
   else if (status === 404 || /no longer available|not found|not supported/i.test(text)) down.set(provider + ':' + model, now + 30 * 60_000);
+  // "exceeded your current quota" is the whole key for the day, not one busy model
+  else if (status === 429 && /quota|billing/i.test(text)) down.set(provider, now + 30 * 60_000);
   else if (status === 429 || status === 503) down.set(provider + ':' + model, now + 60_000);
 }
 const isDown = (p: string, m: string) => [p, p + ':' + m].some((k) => (down.get(k) || 0) > Date.now());
@@ -355,7 +357,7 @@ export async function analyzeSample(env: Env, frames: string[], notes: string, p
 
 // ---------------------------------------------------------------- Zalo assistant
 export interface AssistantTurn { role: 'user' | 'bot'; text: string }
-export interface AssistantAnswer { reply: string; intent: 'chat' | 'make_video' | 'status' | 'human'; topic: string; usage: { provider: string; model: string; tokensIn: number; tokensOut: number } }
+export interface AssistantAnswer { reply: string; intent: 'chat' | 'make_video' | 'status' | 'human' | 'buy'; topic: string; plan: string; usage: { provider: string; model: string; tokensIn: number; tokensOut: number } }
 
 /**
  * One answer of the staff-like assistant: a short reply plus what the person wants (a video, their
@@ -374,8 +376,8 @@ export async function assistantAnswer(env: Env, sys: string, history: AssistantT
         const r = await callText(env, p, model, sys, user, 2048);
         const j = parseJson(r.text);
         if (!j || typeof j.reply !== 'string' || !j.reply.trim()) { last = `${model}: trả lời không đúng dạng`; break; }
-        const intent = ['chat', 'make_video', 'status', 'human'].includes(j.intent) ? j.intent : 'chat';
-        return { reply: j.reply.trim().slice(0, 1500), intent, topic: typeof j.topic === 'string' ? j.topic.trim().slice(0, 300) : '', usage: { provider: p, model, tokensIn: r.tokensIn, tokensOut: r.tokensOut } };
+        const intent = ['chat', 'make_video', 'status', 'human', 'buy'].includes(j.intent) ? j.intent : 'chat';
+        return { reply: j.reply.trim().slice(0, 1500), intent, topic: typeof j.topic === 'string' ? j.topic.trim().slice(0, 300) : '', plan: typeof j.plan === 'string' ? j.plan.trim().slice(0, 40) : '', usage: { provider: p, model, tokensIn: r.tokensIn, tokensOut: r.tokensOut } };
       } catch (e: any) {
         last = String(e.message || e).slice(0, 160);
         // a busy model is not waited for: the next one answers now

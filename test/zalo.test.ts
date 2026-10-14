@@ -129,7 +129,7 @@ test('natural commands get real answers, and a new chat typing a valid command i
  await f.receive('Định dạng','n6');await f.drain();assert.match(last(),/Chọn định dạng/);
  await f.receive('Tắt','n7');await f.drain();assert.match(last(),/tắt thông báo/);
  assert.ok(!f.sent.some((s: any)=>/chưa hiểu/.test(s.body.text)));
- await f.receive('blah blah','n8');await f.drain();assert.match(last(),/chưa hiểu/);
+ await f.receive('blah blah','n8');await f.drain();assert.doesNotMatch(last(),/chưa hiểu/);assert.match(last(),/TAO|GIA/);
  // guests not allowed: told to link instead of "chưa hiểu"
  f.env.config.zalo.allowGuests=false;
  await f.env.DB.prepare("DELETE FROM zalo_links").run();

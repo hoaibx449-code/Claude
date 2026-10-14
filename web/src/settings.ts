@@ -233,6 +233,11 @@ export function defaultConfig(env: Env): Config {
         failed: 'Video "{tieuDe}" dựng chưa được: {loi}. Bạn gửi lại giúp mình, hoặc mở web để sửa.',
         unknown: 'Mình chưa hiểu. Gõ HUONGDAN để xem cách dùng, hoặc gửi KB + kịch bản để tạo video.',
         noAI: 'Hiện chỉ dựng từ kịch bản có sẵn. Hãy gửi: KB + kịch bản của bạn.',
+        welcome: 'Chào {ten} 👋 Mình là {troLy} của {thuongHieu}. Bên mình biến một chủ đề hoặc kịch bản của bạn thành video vẽ tay có giọng đọc tiếng Việt chỉ trong vài phút, dùng cho TikTok, Reels, YouTube.\nBạn muốn:\n1. Làm thử miễn phí: gửi TAO + chủ đề (vd: TAO 3 mẹo tiết kiệm)\n2. Xem bảng giá: gõ GIA\n3. Gặp nhân viên: gõ NV',
+        offer: 'Bảng giá {thuongHieu}:\n{goi}\n👉 Gõ MUA + số gói (vd: MUA 1) để nhận mã thanh toán ngay{goiNam}. Gói kích hoạt ngay khi nhận tiền.',
+        payment: 'Đơn {ma} — {tenGoi}: {soTien}\nChuyển khoản giúp mình:\n• Ngân hàng: {nganHang}\n• Số tài khoản: {stk}\n• Chủ tài khoản: {chuTk}\n• Số tiền: {soTien}\n• Nội dung: {ma}\n{kichHoat}',
+        paid: '✅ Đã nhận {soTien} cho đơn {ma}. Gói {tenGoi} đã được kích hoạt{han}. Cảm ơn bạn đã tin dùng! Gửi chủ đề để làm video ngay nhé.',
+        upsell: '💡 Gói {goiGoiY} ({giaGoiY}) cho {loiIch}. Gõ MUA {soGoiY} để nâng cấp ngay.',
       },
     },
     plans: [
