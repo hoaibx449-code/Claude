@@ -224,7 +224,7 @@ export function defaultConfig(env: Env): Config {
     notice: '',
     templates: DEFAULT_TEMPLATES,
     beta: { enabled: true, label: 'Beta', note: 'Đang thử nghiệm: tính năng và giao diện có thể thay đổi. Góp ý giúp chúng tôi làm video hay hơn.' },
-    site: { heroTitle: 'Tạo video giải thích có giọng đọc tiếng Việt', heroText: 'Dành cho người làm TikTok, giáo viên, chủ shop và người chia sẻ kiến thức: dán kịch bản hoặc một chủ đề, nhận video hoàn chỉnh sau vài phút.', heroMedia: '', heroPoster: '', tutorial: '', showcase: [] },
+    site: { heroTitle: 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút', heroText: '', heroMedia: '', heroPoster: '', tutorial: '', showcase: [] },
     budget: { dailyVnd: 200_000, monthlyVnd: 3_000_000, warnPct: 80, perVideoVnd: 15_000 },
     // one documentary ≈ 10 AI pictures + voice ≈ 11.000đ cost; 1 credit = 1 video, packs priced with margin
     doc: { creditsPerVideo: 1, imagesPerVideo: 14, packs: [{ id: 'doc1', name: '1 phim tài liệu', credits: 1, price: 29000 }, { id: 'doc5', name: '5 phim tài liệu', credits: 5, price: 119000 }, { id: 'doc20', name: '20 phim tài liệu', credits: 20, price: 399000 }] },

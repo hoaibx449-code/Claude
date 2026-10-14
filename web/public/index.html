@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Nét Vẽ Studio</title>
 <meta name="description" content="Biến kịch bản thành video giải thích có giọng đọc tiếng Việt và phụ đề.">
-<meta name="theme-color" content="#7c3aed">
+<meta name="theme-color" content="#1f5eff">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -28,6 +28,22 @@
 <script src="/admin.js" defer></script>
 </head>
 <body>
+<aside class="appside" id="appside" aria-label="Thanh bên">
+  <a class="brand" href="#/"><span class="logo" aria-hidden="true">✎</span><span class="brand-text"><span id="sideBrand">Nét Vẽ</span> <span class="accent" id="sideAccent">Studio</span></span></a>
+  <nav class="sidenav" aria-label="Điều hướng ứng dụng">
+    <a href="#/" data-route="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>Trang chủ</a>
+    <a href="#/tao" data-route="tao"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><path d="M12 8v8M8 12h8"/></svg>Tạo video</a>
+    <a href="#/mau" data-route="mau"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>Định dạng</a>
+    <a href="#/cong-dong" data-route="cong-dong"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16.5 14.6c2.6.1 4.4 1.8 5 4.4"/></svg>Cộng đồng</a>
+    <a href="#/video" data-route="video"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9l5 3-5 3z"/></svg>Video của tôi</a>
+    <a href="#/goi" data-route="goi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>Bảng giá</a>
+    <a href="#/admin" data-route="admin" id="sideAdmin" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>Quản trị</a>
+  </nav>
+  <nav class="sidenav bottom" aria-label="Hỗ trợ">
+    <a href="#/tro-giup" data-route="tro-giup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14"/><path d="M12 17h.01"/></svg>Trợ giúp</a>
+    <a href="#/tai-khoan" data-route="tai-khoan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Cài đặt</a>
+  </nav>
+</aside>
 <header class="top">
   <a class="brand" href="#/"><span class="logo" aria-hidden="true">✎</span><span id="brandName">Nét Vẽ</span> <span class="accent" id="brandAccent">Studio</span><span class="beta" id="betaBadge" hidden>Beta</span></a>
   <nav class="nav" id="nav" aria-label="Điều hướng chính">
@@ -37,7 +53,9 @@
     <a href="#/goi" data-route="goi">Bảng giá</a>
     <a href="#/video" data-route="video">Video của tôi</a>
   </nav>
+  <form class="topsearch" id="topSearch" role="search"><label class="sr" for="topSearchInput">Tìm kiếm</label><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input id="topSearchInput" type="search" placeholder="Tìm kiếm mẫu, chủ đề…" autocomplete="off" enterkeyhint="search"></form>
   <div class="who">
+    <a class="iconbtn" id="bellBtn" href="#/video" aria-label="Thông báo: video của tôi" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><i class="dot" id="bellDot" hidden></i></a>
     <button class="ghost small" id="loginBtn" type="button" hidden>Đăng nhập</button>
     <a class="btn small" id="createBtn" href="#/tao" data-ev="header-create">Tạo video</a>
     <div class="usermenu">
