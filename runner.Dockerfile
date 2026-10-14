@@ -8,4 +8,6 @@ COPY src ./src
 COPY assets ./assets
 USER node
 ENV NODE_ENV=production
+# /app belongs to root: caches go to a folder this user can write
+ENV NV_VOICE_CACHE_DIR=/tmp/nv-voice
 CMD ["node", "src/cli/runner.ts", "--drain"]

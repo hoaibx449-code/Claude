@@ -72,3 +72,23 @@ test('EverAI chunks paragraphs at sentence boundaries within the provider limit'
   assert.throws(() => narrationChunks(['x'.repeat(5001)]));
   assert.throws(() => narrationChunks([]));
 });
+
+test('EverAI still reads when the cache folder next to the code cannot be created (runner container)', async () => {
+  const { everAITTS } = await import('../src/node/everai.ts');
+  const { mkdtempSync, writeFileSync: w } = await import('node:fs');
+  const { tmpdir: td } = await import('node:os');
+  const { join: j } = await import('node:path');
+  const dir = mkdtempSync(j(td(), 'ev-'));
+  const blocker = j(dir, 'file'); w(blocker, 'x');
+  process.env.EVERAI_API_KEY = 'k';
+  const orig = globalThis.fetch;
+  let called = 0;
+  globalThis.fetch = (async () => { called++; throw new Error('network off in test'); }) as any;
+  try {
+    // a path under a regular file can never be created: before the fix this threw ENOTDIR before any request
+    await assert.rejects(everAITTS({ voiceCode: 'vi_female_thuytrang_mb', cacheDir: undefined, pollMs: 1 } as any).synth(['Xin chào.'], j(dir, 'out')), /EverAI/);
+    process.env.NV_VOICE_CACHE_DIR = j(blocker, 'cache');
+    await assert.rejects(everAITTS({ voiceCode: 'vi_female_thuytrang_mb', pollMs: 1 }).synth(['Xin chào.'], j(dir, 'out')), /EverAI/);
+    assert.ok(called >= 1);
+  } finally { globalThis.fetch = orig; delete process.env.NV_VOICE_CACHE_DIR; }
+});

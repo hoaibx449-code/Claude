@@ -13,6 +13,7 @@
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { audioDuration, fitVoice, joinLineClips, need, type TTS } from './tts.ts';
 import { describe, fetchRetry } from './net.ts';
 
@@ -83,8 +84,12 @@ export function everAITTS(opts: EverAIOptions = {}): TTS {
       // Work folders are per render and runner jobs are deleted after completion.
       // Keep voice reuse outside those folders. Cloud Run instances still need a
       // shared cache for reuse across machines; this is a local persistent cache.
-      const cacheDir = opts.cacheDir ?? process.env.NV_VOICE_CACHE_DIR ?? resolve('.cache', 'everai');
-      mkdirSync(cacheDir, { recursive: true });
+      // the render container runs as a user that cannot write next to the code (/app): a cache folder
+      // that cannot be made used to throw before EverAI was even called, so every video fell back to
+      // the free voice. Use the system temp folder then.
+      let cacheDir = opts.cacheDir ?? process.env.NV_VOICE_CACHE_DIR ?? resolve('.cache', 'everai');
+      try { mkdirSync(cacheDir, { recursive: true }); }
+      catch { cacheDir = join(tmpdir(), 'nv-everai-cache'); mkdirSync(cacheDir, { recursive: true }); }
 
       const clips: string[] = [];
       const spans = [];
