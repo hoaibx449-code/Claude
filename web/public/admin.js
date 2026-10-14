@@ -415,6 +415,7 @@ function zaloTab(c, secrets, secretInput, zcheck, inbox) {
         check(z.assistant.makeVideos, (v) => { z.assistant.makeVideos = v; }, 'Tự làm video khi khách nhờ bằng lời'),
         check(z.assistant.handoff, (v) => { z.assistant.handoff = v; }, 'Chuyển câu khó cho chủ web'),
         h('label', {}, 'Tên trợ lý', input(z.assistant.name, (v) => { z.assistant.name = v; }, { maxlength: 40 })),
+        h('label', {}, 'AI trả lời', select([['auto', `Theo cài đặt chung (${c.labels.ai?.[c.defaults.textAI] || c.defaults.textAI})`], ...Object.entries(c.labels.ai)], z.assistant.ai || 'auto', (v) => { z.assistant.ai = v; })),
         h('label', {}, 'Số câu AI trả lời / khách / ngày', input(z.assistant.perDay, (v) => { z.assistant.perDay = v; }, { type: 'number', min: 1 }))),
       h('label', {}, 'Phong cách trả lời', area(z.assistant.persona, (v) => { z.assistant.persona = v; }, 2)),
       h('label', {}, 'Kiến thức riêng (chính sách, khuyến mãi đang chạy, giờ hỗ trợ, câu hỏi thường gặp…). Trợ lý chỉ nói những gì có ở đây và trong cài đặt gói.', area(z.assistant.knowledge, (v) => { z.assistant.knowledge = v; }, 8))),

@@ -429,7 +429,9 @@ async function assistantReply(env: XEnv, rc: Rc, x: AskCtx) {
     `intent make_video: khách nhờ làm video về một chủ đề cụ thể${a.makeVideos ? '' : ' (hiện chưa tự làm được: hướng dẫn gõ TAO + chủ đề)'}. status: hỏi video của họ tới đâu. human: khiếu nại, lỗi thanh toán, hoàn tiền, cần người thật, hoặc bạn không chắc câu trả lời${a.handoff ? ' (nói rằng đã chuyển cho nhân viên)' : ''}. Còn lại: chat.`,
   ].filter(Boolean).join('\n\n');
   let ans;
-  try { ans = await assistantAnswer(env, sys, await chatHistory(env, x.chatId, x.messageId), x.text); }
+  // the AI the admin chose: the assistant's own choice, otherwise the site's (AI viết kịch bản)
+  const provider = a.ai !== 'auto' ? a.ai : env.config.defaults.textAI === 'openai' ? 'openai' : 'gemini';
+  try { ans = await assistantAnswer(env, sys, await chatHistory(env, x.chatId, x.messageId), x.text, provider); }
   catch (e: any) {
     rc.log('zalo.assistant', { ok: false, data: { chat: x.chatId, error: String(e.message).slice(0, 200) } });
     return x.reply(z.templates.unknown);

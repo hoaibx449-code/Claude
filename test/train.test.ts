@@ -51,3 +51,15 @@ test('retired Gemini models saved in settings move to the current ones', async (
   assert.equal(c.models.geminiText, 'gemini-3.5-flash');
   assert.equal(c.models.geminiFallback, 'gemini-3.5-flash');
 });
+
+test('the AI the admin chose is asked first; the other one only when it fails', async () => {
+  const { textPlan } = await import('../web/src/ai.ts');
+  const env: any = { GEMINI_API_KEY: 'g', OPENAI_API_KEY: 'o', GEMINI_TEXT_MODEL: 'gemini-3.5-flash', GEMINI_TEXT_FALLBACK: 'gemini-flash-latest', OPENAI_TEXT_MODEL: 'gpt-4o-mini', OPENAI_TEXT_FALLBACK: 'gpt-4.1-mini' };
+  assert.deepEqual(textPlan(env, 'openai').map(([p, m]) => p + ':' + m), ['openai:gpt-4o-mini', 'openai:gpt-4.1-mini', 'gemini:gemini-3.5-flash', 'gemini:gemini-flash-latest']);
+  assert.deepEqual(textPlan(env, 'gemini')[0], ['gemini', 'gemini-3.5-flash']);
+  assert.deepEqual(textPlan({ ...env, OPENAI_API_KEY: '' }, 'openai').map(([p]) => p), ['gemini', 'gemini']);
+  const orig = globalThis.fetch, hosts: string[] = [];
+  globalThis.fetch = (async (url: string) => { hosts.push(new URL(url).host);
+    return new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(proposal) } }] })); }) as any;
+  try { await analyzeSample(env, [], 'mẫu', 'openai'); assert.equal(hosts[0], 'api.openai.com'); } finally { globalThis.fetch = orig; }
+});

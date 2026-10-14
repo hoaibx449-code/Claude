@@ -116,6 +116,7 @@ export interface ZaloConfig {
     /** it may start a video when someone asks for one in plain words */ makeVideos: boolean;
     /** questions it cannot answer go to the owner's Zalo; the owner answers with TL <mã> <lời> */ handoff: boolean;
     /** AI answers per chat per day */ perDay: number;
+    /** which AI answers: 'auto' = the site's choice (AI viết kịch bản), or a provider of its own */ ai: 'auto' | 'gemini' | 'openai';
   };
 }
 export interface Plan {
@@ -215,7 +216,7 @@ export function defaultConfig(env: Env): Config {
     zalo: {
       enabled: false, botLink: '', receive: 'webhook', allowGuests: true, scriptSource: 'mine-free', autoRender: true, ownerChat: '',
       notifyOwner: { signup: true, failed: true, order: true, daily: false },
-      assistant: { enabled: true, name: 'Trợ lý', persona: 'Thân thiện, ngắn gọn, xưng "mình", gọi khách là "bạn". Trả lời đúng trọng tâm, tối đa 5 câu.', knowledge: '', makeVideos: true, handoff: true, perDay: 40 },
+      assistant: { enabled: true, name: 'Trợ lý', persona: 'Thân thiện, ngắn gọn, xưng "mình", gọi khách là "bạn". Trả lời đúng trọng tâm, tối đa 5 câu.', knowledge: '', makeVideos: true, handoff: true, perDay: 40, ai: 'auto' },
       templates: {
         help: 'Chào {ten}! Gửi cho mình:\n• KB + kịch bản của bạn → mình dựng video\n• TAO + chủ đề → AI viết kịch bản rồi dựng\n• TT → xem video đang dựng\n• DS → video gần đây\n• KHUNG DOC hoặc KHUNG NGANG → đổi khung hình\n• DINHDANG → chọn định dạng video\n• GIONG → chọn giọng đọc\n• TAT / BAT → tắt/bật thông báo\n• HUYKETNOI → bỏ liên kết',
         linked: 'Đã kết nối Zalo với tài khoản {email}. Video dựng xong sẽ được gửi về đây. Gõ HUONGDAN để xem lệnh.',
@@ -349,7 +350,7 @@ export function cleanConfig(input: any, base: Config): Config {
           const a = z.assistant || {}, d = b.assistant;
           return { enabled: typeof a.enabled === 'boolean' ? a.enabled : d.enabled, name: str(a.name, 40, d.name) || d.name, persona: str(a.persona, 600, d.persona),
             knowledge: typeof a.knowledge === 'string' ? a.knowledge.replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').trim().slice(0, 6000) : d.knowledge, makeVideos: typeof a.makeVideos === 'boolean' ? a.makeVideos : d.makeVideos,
-            handoff: typeof a.handoff === 'boolean' ? a.handoff : d.handoff, perDay: int(a.perDay, 1, 500, d.perDay) };
+            handoff: typeof a.handoff === 'boolean' ? a.handoff : d.handoff, perDay: int(a.perDay, 1, 500, d.perDay), ai: a.ai === 'gemini' || a.ai === 'openai' ? a.ai : 'auto' };
         })(),
       };
     })(),

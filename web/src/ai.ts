@@ -160,6 +160,22 @@ async function geminiPost(env: Env, model: string, body: any, timeoutMs: number)
 }
 const list = (v?: string) => (v || '').split(',').map((x) => x.trim()).filter(Boolean);
 
+/**
+ * The order in which text models are tried, following the system's own choice: the provider the
+ * admin picked (Quản trị → Cài đặt → AI viết kịch bản, or a feature's own choice), its main model then
+ * its fallback models (Cài đặt → Mô hình AI), and only then the other provider if it has a key.
+ */
+export function textPlan(env: Env, provider: TextProvider): [TextProvider, string][] {
+  const has = (p: TextProvider) => !!(p === 'openai' ? env.OPENAI_API_KEY : env.GEMINI_API_KEY);
+  const plan: [TextProvider, string][] = [];
+  for (const p of [provider, provider === 'openai' ? 'gemini' : 'openai'] as TextProvider[]) {
+    if (!has(p)) continue;
+    const models = p === 'openai' ? [env.OPENAI_TEXT_MODEL, ...list(env.OPENAI_TEXT_FALLBACK)] : [env.GEMINI_TEXT_MODEL, ...list(env.GEMINI_TEXT_FALLBACK)];
+    for (const m of [...new Set(models.filter(Boolean))]) plan.push([p, m]);
+  }
+  return plan;
+}
+
 /** One chat call; throws an error carrying `status` so callers can decide to retry or switch model. */
 async function callText(env: Env, provider: TextProvider, model: string, sys: string, user: string) {
   if (provider === 'openai') {
@@ -190,13 +206,7 @@ async function callText(env: Env, provider: TextProvider, model: string, sys: st
 export async function writeScript(env: Env, provider: TextProvider, r: ScriptRequest): Promise<any> {
   const sys = systemPrompt(r);
   const user = r.scenes ? 'KỊCH BẢN:\n' + r.scenes.map((l, i) => `Cảnh ${i + 1}: ` + l.map((x, k) => `[câu ${k}] ${x}`).join(' ')).join('\n') : 'CHỦ ĐỀ: ' + r.topic;
-  const has = (p: TextProvider) => !!(p === 'openai' ? env.OPENAI_API_KEY : env.GEMINI_API_KEY);
-  const plan: [TextProvider, string][] = [];
-  for (const p of [provider, provider === 'openai' ? 'gemini' : 'openai'] as TextProvider[]) {
-    if (!has(p)) continue;
-    const models = p === 'openai' ? [env.OPENAI_TEXT_MODEL, ...list(env.OPENAI_TEXT_FALLBACK)] : [env.GEMINI_TEXT_MODEL, ...list(env.GEMINI_TEXT_FALLBACK)];
-    for (const m of [...new Set(models.filter(Boolean))]) plan.push([p, m]);
-  }
+  const plan = textPlan(env, provider);
   if (!plan.length) throw new HttpError(503, 'Chưa có khoá AI nào. Hãy dùng "Kịch bản của tôi + tự minh hoạ" (miễn phí) hoặc nhờ quản trị nhập khoá.');
   const usage: AiUsage = { provider, model: '', tokensIn: 0, tokensOut: 0, tries: 0 };
   let lastErr = '';
@@ -289,7 +299,7 @@ async function callVision(env: Env, provider: TextProvider, model: string, sys: 
   return { text: (c.content?.parts || []).map((p: any) => p.text || '').join(''), finish: c.finishReason === 'STOP' ? '' : c.finishReason || '', tokensIn: j.usageMetadata?.promptTokenCount || 0, tokensOut: j.usageMetadata?.candidatesTokenCount || 0 };
 }
 
-export async function analyzeSample(env: Env, frames: string[], notes: string): Promise<FormatProposal & { _usage: { provider: string; tokensIn: number; tokensOut: number } }> {
+export async function analyzeSample(env: Env, frames: string[], notes: string, provider: TextProvider = 'gemini'): Promise<FormatProposal & { _usage: { provider: string; tokensIn: number; tokensOut: number } }> {
   const looks = Object.entries(LOOK_BRIEF).map(([k, v]) => `- ${k}: ${v.slice(0, 160)}`).join('\n');
   const sys = [
     'Bạn là đạo diễn video ngắn (TikTok, Reels, Shorts) và nhà thiết kế hệ thống dựng video tự động.',
@@ -303,9 +313,7 @@ export async function analyzeSample(env: Env, frames: string[], notes: string): 
   let out: any = null, usage = { provider: '', tokensIn: 0, tokensOut: 0 };
   if (!env.GEMINI_API_KEY && !env.OPENAI_API_KEY) throw new HttpError(503, 'Cần khoá Gemini hoặc OpenAI để phân tích mẫu.');
   // every model in turn (main, then fallbacks, then the other provider); one retry when busy
-  const plan: [TextProvider, string][] = [];
-  if (env.GEMINI_API_KEY) for (const m of new Set([env.GEMINI_TEXT_MODEL || 'gemini-3.5-flash', ...list(env.GEMINI_TEXT_FALLBACK)])) plan.push(['gemini', m]);
-  if (env.OPENAI_API_KEY) for (const m of new Set([env.OPENAI_TEXT_MODEL || 'gpt-4o-mini', ...list(env.OPENAI_TEXT_FALLBACK)])) plan.push(['openai', m]);
+  const plan = textPlan(env, provider);
   const errors: string[] = [];
   for (const [p, model] of plan) {
     for (let attempt = 0; attempt < 2 && !out; attempt++) {
@@ -338,10 +346,8 @@ export interface AssistantAnswer { reply: string; intent: 'chat' | 'make_video' 
  * One answer of the staff-like assistant: a short reply plus what the person wants (a video, their
  * status, a human). Tries the text model, its fallbacks, then the other provider.
  */
-export async function assistantAnswer(env: Env, sys: string, history: AssistantTurn[], question: string): Promise<AssistantAnswer> {
-  const plan: [TextProvider, string][] = [];
-  if (env.GEMINI_API_KEY) for (const m of new Set([env.GEMINI_TEXT_MODEL || 'gemini-3.5-flash', ...list(env.GEMINI_TEXT_FALLBACK)])) plan.push(['gemini', m]);
-  if (env.OPENAI_API_KEY) for (const m of new Set([env.OPENAI_TEXT_MODEL || 'gpt-4o-mini', ...list(env.OPENAI_TEXT_FALLBACK)])) plan.push(['openai', m]);
+export async function assistantAnswer(env: Env, sys: string, history: AssistantTurn[], question: string, provider: TextProvider = 'gemini'): Promise<AssistantAnswer> {
+  const plan = textPlan(env, provider);
   if (!plan.length) throw new HttpError(503, 'Chưa có khoá AI.');
   const convo = history.slice(-10).map((t) => `${t.role === 'user' ? 'KHÁCH' : 'BẠN'}: ${t.text.slice(0, 600)}`).join('\n');
   const user = (convo ? 'HỘI THOẠI GẦN ĐÂY:\n' + convo + '\n\n' : '') + 'TIN MỚI CỦA KHÁCH: ' + question.slice(0, 2000);
