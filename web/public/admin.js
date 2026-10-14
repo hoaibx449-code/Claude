@@ -204,9 +204,10 @@ async function adminSettings(body, tab) {
   const saveBtn = h('button', { type: 'button', 'data-ev': 'admin-save', onclick: async () => {
     saveBtn.disabled = true; saveBtn.textContent = 'Đang lưu…';
     try {
-      await api('/api/admin/settings', { method: 'PUT', body: { config: c, secrets: secretInput } });
+      const saved = await api('/api/admin/settings', { method: 'PUT', body: { config: c, secrets: secretInput } });
       me = await api('/api/me'); applyUI(me.ui);
-      toast('Đã lưu cài đặt.');
+      // webhook mode is registered with Zalo on save: say whether it took
+      toast(saved.zalo ? (saved.zalo.ok ? 'Đã lưu cài đặt. Webhook Zalo đã kết nối: ' + saved.zalo.url : 'Đã lưu cài đặt, nhưng chưa kết nối được webhook Zalo: ' + saved.zalo.error) : 'Đã lưu cài đặt.');
       return adminSettings(body, tab);
     } catch (e) { fail(e); }
     saveBtn.disabled = false; saveBtn.textContent = 'Lưu cài đặt';
@@ -448,7 +449,11 @@ function zaloTab(c, secrets, secretInput, zcheck, inbox) {
         check(z.assistant.handoff, (v) => { z.assistant.handoff = v; }, 'Chuyển câu khó cho chủ web'),
         h('label', {}, 'Tên trợ lý', input(z.assistant.name, (v) => { z.assistant.name = v; }, { maxlength: 40 })),
         h('label', {}, 'AI trả lời', select([['auto', `Theo cài đặt chung (${c.labels.ai?.[c.defaults.textAI] || c.defaults.textAI})`], ...Object.entries(c.labels.ai)], z.assistant.ai || 'auto', (v) => { z.assistant.ai = v; })),
-        h('label', {}, 'Số câu AI trả lời / khách / ngày', input(z.assistant.perDay, (v) => { z.assistant.perDay = v; }, { type: 'number', min: 1 }))),
+        h('label', {}, 'Số câu AI trả lời / khách / ngày', input(z.assistant.perDay, (v) => { z.assistant.perDay = v; }, { type: 'number', min: 1 })),
+        h('label', {}, 'Số tin một khách được nhắn / ngày (0 = không giới hạn)', input(z.perDay, (v) => { z.perDay = v; }, { type: 'number', min: 0 })),
+        h('label', {}, 'Sticker chào (mã từ stickers.zaloapp.com, để trống = không gửi)', input(z.stickers.welcome, (v) => { z.stickers.welcome = v.trim(); })),
+        h('label', {}, 'Sticker cảm ơn khi khách thanh toán', input(z.stickers.thanks, (v) => { z.stickers.thanks = v.trim(); }))),
+      h('p', { class: 'muted' }, 'Zalo của chủ web không bị giới hạn. Mỗi tin chỉ tính một lần (hệ thống thử lại không trừ thêm). Quá số câu AI, bot vẫn trả lời bằng câu soạn sẵn và ghi lý do vào nhật ký.'),
       h('label', {}, 'Phong cách trả lời', area(z.assistant.persona, (v) => { z.assistant.persona = v; }, 2)),
       h('label', {}, 'Kiến thức riêng (chính sách, khuyến mãi đang chạy, giờ hỗ trợ, câu hỏi thường gặp…). Trợ lý chỉ nói những gì có ở đây và trong cài đặt gói.', area(z.assistant.knowledge, (v) => { z.assistant.knowledge = v; }, 8))),
     card('Mẫu tin nhắn', 'Biến dùng được: {ten} {email} {tieuDe} {canh} {dang} {hangCho} {suaWeb} {link} {hanNgay} {giay} {loi}.',

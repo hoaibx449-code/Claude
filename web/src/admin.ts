@@ -4,10 +4,10 @@ import { aiCost } from './log.ts';
 import { analyzeSample, geminiThinking, LOOK_BRIEF } from './ai.ts';
 import { testEverAI, voiceStatus, voicesWithStatus } from './voices.ts';
 import type { User } from './auth.ts';
-import { clearCache, isAdmin, save as saveSettings, secretStatus } from './settings.ts';
+import { clearCache, effectiveEnv, isAdmin, save as saveSettings, secretStatus } from './settings.ts';
 import { body, type Env, HttpError, json, today } from './util.ts';
 import type { Rc, XEnv } from './worker.ts';
-import { zaloAdmin } from './zalo.ts';
+import { connectWebhook, zaloAdmin } from './zalo.ts';
 import { plansAdmin } from './plans.ts';
 import { communityAdmin, uploadSite } from './media.ts';
 import { queueRender } from './worker.ts';
@@ -111,7 +111,13 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
     const changed = Object.keys(config).filter((k) => JSON.stringify((config as any)[k]) !== JSON.stringify((before as any)[k]));
     const keys = Object.entries(b.secrets || {}).map(([k, v]) => `${k}:${v === null ? 'xoá' : v ? 'đặt' : ''}`).filter((x) => !x.endsWith(':'));
     rc.log('admin.settings', { data: { changed, keys } });
-    return json({ config, secrets: await secretStatus(rawEnv) });
+    // webhook mode: register it with Zalo right away (choosing the mode alone used to leave the bot deaf)
+    let zalo: any = null;
+    const fresh = await effectiveEnv(rawEnv);
+    if (fresh.config.zalo.enabled && fresh.config.zalo.receive !== 'poll' && (fresh as any).ZALO_BOT_TOKEN && url.protocol === 'https:') {
+      try { zalo = await connectWebhook(fresh, rc, url.origin); } catch (e: any) { zalo = { ok: false, error: e.message }; }
+    }
+    return json({ config, secrets: await secretStatus(rawEnv), zalo });
   }
 
   // ---- analytics overview

@@ -19,7 +19,7 @@ Zalo ──webhook (X-Bot-Api-Secret-Token)──▶ Nét Vẽ /api/zalo/webhook
    - Lưu.
 3. **Cách nhận tin nhắn:** chọn **Webhook trực tiếp**, rồi lưu.
 4. Bấm **Kết nối webhook** khi đang mở trang quản trị bằng tên miền HTTPS thật.
-   - Web gọi `setWebhook` với `url` và `secret_token`, giống `SetWebhookRequest` của SDK.
+   - Web gọi `setWebhook` với `url` (không kèm mã bí mật trong địa chỉ) và `secret_token`; Zalo gửi lại mã ở header `X-Bot-Api-Secret-Token`.
    - Bot chỉ có **một** webhook. Nếu trước đây webhook trỏ về Apps Script hay web khác, thao tác này chuyển bot về Nét Vẽ.
    - Không cần sửa Apps Script nào.
 5. Nhắn `HUONGDAN` cho bot, rồi bấm **Kiểm tra lại**.
@@ -74,6 +74,19 @@ Việc cần AI (`TAO`, hoặc `KB` khi minh hoạ bằng AI) có thể mất h�
 - Web không bao giờ tự xoá webhook của mình. Chế độ "Tự động" cũ (xoá webhook sau 15 phút không có tin) đã bỏ; cài đặt cũ tự chuyển thành webhook.
 - Mỗi 5 phút web gọi `getWebhookInfo`. Nếu webhook bị xoá hoặc trỏ đi nơi khác, web tự `setWebhook` lại, ghi lại địa chỉ đã chiếm (Quản trị → Zalo) và báo chủ web qua Zalo (tối đa 1 lần/giờ).
 - Tắt được ở Quản trị → Zalo → "Tự giữ webhook".
+
+## Giới hạn tin nhắn
+
+- **Số tin một khách được nhắn / ngày** (Quản trị → Zalo, mặc định 300, 0 = không giới hạn). Mỗi tin chỉ tính một lần; Zalo của chủ web không bị giới hạn.
+- **Số câu AI trả lời / khách / ngày** (mặc định 150). Quá số này bot vẫn trả lời bằng câu soạn sẵn và ghi lý do vào nhật ký (`zalo.limit`).
+- Lưu cài đặt ở chế độ webhook là web tự đăng ký webhook với Zalo (không cần bấm thêm nút).
+
+## Định dạng theo tài liệu Zalo Bot
+
+- `sendMessage` với `parse_mode: "html"`: bảng giá, thông tin chuyển khoản và chỗ trợ lý đánh dấu `**…**` được in đậm. Zalo từ chối định dạng thì gửi lại chữ thường.
+- `sendPhoto`: mã QR, ảnh mẫu, ảnh bìa video. `sendSticker`: sticker chào và cảm ơn (mã nhập ở Quản trị → Zalo).
+- Ảnh có chú thích được đọc như tin chữ; ảnh không chú thích, sticker, tin thoại, tin không hỗ trợ đều được trả lời tự nhiên.
+- Bot tự giới thiệu là trợ lý AI (điều khoản Zalo Bot yêu cầu người dùng biết họ đang nói chuyện với phần mềm).
 
 ## Trò chuyện như nhân viên
 

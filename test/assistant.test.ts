@@ -124,7 +124,7 @@ test('no AI (out of quota): the bot still greets, gives prices, and sells with a
     await f.say('Chào shop');
     assert.match(f.sent.at(-1).text, /Mình là Trợ lý/);
     await f.say('tôi muốn mua gói cước');
-    assert.match(f.sent.at(-1).text, /Bảng giá/); assert.match(f.sent.at(-1).text, /1\. Chuyên nghiệp: 199\.000đ\/tháng/); assert.match(f.sent.at(-1).text, /MUA 1 NAM/);
+    assert.match(f.sent.at(-1).text, /Bảng giá/); assert.match(f.sent.at(-1).text, /1\. <b>Chuyên nghiệp<\/b>: 199\.000đ\/tháng/); assert.equal(f.sent.at(-1).parse_mode, 'html'); assert.match(f.sent.at(-1).text, /MUA 1 NAM/);
     await f.say('MUA 1 năm');
     const photo = f.sent.find((m: any) => m.m === 'sendPhoto');
     assert.match(photo.photo, /img\.vietqr\.io\/image\/970436-0123456789/); assert.match(photo.photo, /amount=1990000/);

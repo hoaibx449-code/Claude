@@ -54,9 +54,11 @@ test('Zalo HTTP 200 without ok:true is a failed reply; retry persists the actual
  assert.equal((await f.env.DB.prepare('SELECT * FROM zalo_outbox').first()).status,'sent');
 }));
 test('non-text and quota exhaustion both receive an explicit response',async()=>fixture(async f=>{
- await f.receive(undefined,'photo');await f.drain();assert.match(f.sent[0].body.text,/tin nhắn chữ/);
- await f.env.DB.prepare("INSERT INTO usage(user_id,day,kind,n) VALUES('z:chat-1',?,'zalo',60)").bind(new Date().toISOString().slice(0,10)).run();
- await f.receive('GIUP','over-limit');await f.drain();assert.match(f.sent.at(-1).body.text,/hết lượt/);
+ await f.receive(undefined,'photo');await f.drain();assert.match(f.sent[0].body.text,/nhắn chữ/);
+ await f.env.DB.prepare("INSERT INTO usage(user_id,day,kind,n) VALUES('z:chat-1',?,'zalo',?)").bind(new Date().toISOString().slice(0,10),f.env.config.zalo.perDay).run();
+ await f.receive('GIUP','over-limit');await f.drain();assert.match(f.sent.at(-1).body.text,/Hôm nay bạn đã nhắn 300 tin/);
+ // the admin's limit is the one used, and raising it lets the person continue at once
+ f.env.config.zalo.perDay=1000;await f.receive('GIUP','after-raise');await f.drain();assert.doesNotMatch(f.sent.at(-1).body.text,/Hôm nay bạn đã nhắn/);
 }));
 test('multiline KB creates and queues a video; replay uses the saved checkpoint',async()=>fixture(async f=>{
  await f.receive('KB\nBắt đầu từ một bước nhỏ. Bạn có thể làm ngay hôm nay.','script');await f.drain();
@@ -171,7 +173,7 @@ test('the webhook is never dropped for being quiet, and is put back when somethi
  assert.equal(cleanConfig({zalo:{receive:'auto'}},f.env.config).zalo.receive,'webhook');
  f.env.config.zalo.receive='auto';assert.equal(await receiveMode(f.env),'webhook');f.env.config.zalo.receive='webhook';
  f.env.config.zalo.ownerChat='owner-1';
- const ours='https://studio.test/api/zalo/webhook?s='+await webhookSecret(f.env);
+ const ours='https://studio.test/api/zalo/webhook';
  f.setResponse({ok:true,result:{url:ours}});
  await zaloAdmin(new Request('https://studio.test/api/admin/zalo/connect',{method:'POST'}),f.env,f.env,'zalo/connect','POST',f.rc);
  // someone else took it (an old Apps Script with the same token)
@@ -233,3 +235,15 @@ test('a slow AI is cut off within the deadline so the customer still gets an ans
   assert.ok(Date.now()-t0<6500,'took '+(Date.now()-t0)+'ms');
  } finally { globalThis.fetch=originalFetch; }
 });
+
+test('rich text goes with parse_mode html, and falls back to plain words if Zalo refuses the formatting',async()=>fixture(async f=>{
+ f.env.config.plans.find((p: any)=>p.price>0).visible=true;
+ const calls: any[]=[];
+ globalThis.fetch=async (url: any, o: any)=>{const b=JSON.parse(o.body);calls.push({url:String(url),body:b});
+  const ok=!(String(url).endsWith('/sendMessage')&&b.parse_mode);return new Response(JSON.stringify(ok?{ok:true,result:{}}:{ok:false,description:'parse error'}),{status:200});};
+ await f.receive('bảng giá','p1');await f.drain();
+ const sends=calls.filter((c)=>c.url.endsWith('/sendMessage'));
+ assert.equal(sends.at(-2).body.parse_mode,'html');assert.match(sends.at(-2).body.text,/<b>Chuyên nghiệp<\/b>/);
+ assert.equal(sends.at(-1).body.parse_mode,undefined);assert.doesNotMatch(sends.at(-1).body.text,/<b>/);
+ assert.equal((await f.env.DB.prepare("SELECT status FROM zalo_outbox ORDER BY created_at DESC LIMIT 1").first()).status,'sent');
+}));

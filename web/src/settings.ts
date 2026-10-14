@@ -104,6 +104,10 @@ export interface ZaloConfig {
   receive: 'webhook' | 'poll' | 'auto';
   /** check the webhook every 5 minutes and put it back when something removed or moved it */
   keepWebhook: boolean;
+  /** messages one person may send the bot per day (0 = no limit); the owner's own chat is never limited */
+  perDay: number;
+  /** sticker ids (stickers.zaloapp.com) sent with the welcome and with a thank-you after payment; empty = none */
+  stickers: { welcome: string; thanks: string };
   /** one friendly message to people who got a price but did not buy (off unless the owner turns it on) */
   followup: { enabled: boolean; hours: number; text: string };
   /** People who message the bot without a web account get one automatically. */
@@ -226,12 +230,12 @@ export function defaultConfig(env: Env): Config {
     logDays: 180,
     visibility: { 'feature:music': 'dev', 'look:story': 'hidden' },
     zalo: {
-      enabled: false, botLink: '', receive: 'webhook', keepWebhook: true,
+      enabled: false, botLink: '', receive: 'webhook', keepWebhook: true, perDay: 300, stickers: { welcome: '', thanks: '' },
       followup: { enabled: false, hours: 20, text: 'Chào {ten}, hôm trước bạn có hỏi về gói {goi} bên mình. Bạn còn phân vân điều gì không, mình giải đáp ngay nhé? Nếu muốn làm thử trước, bạn chỉ cần nhắn chủ đề video là mình làm luôn 😊' },
       allowGuests: true, scriptSource: 'mine-free', autoRender: true, ownerChat: '',
       notifyOwner: { signup: true, failed: true, order: true, daily: false },
       formats: { default: 'web', allowed: [...ZALO_WAYS] },
-      assistant: { enabled: true, name: 'Trợ lý', persona: 'Thân thiện, ngắn gọn, xưng "mình", gọi khách là "bạn". Trả lời đúng trọng tâm, tối đa 5 câu.', knowledge: '', makeVideos: true, handoff: true, perDay: 40, ai: 'auto' },
+      assistant: { enabled: true, name: 'Trợ lý', persona: 'Thân thiện, ngắn gọn, xưng "mình", gọi khách là "bạn". Trả lời đúng trọng tâm, tối đa 5 câu.', knowledge: '', makeVideos: true, handoff: true, perDay: 150, ai: 'auto' },
       templates: {
         help: 'Chào {ten}! Gửi cho mình:\n• KB + kịch bản của bạn → mình dựng video\n• TAO + chủ đề → AI viết kịch bản rồi dựng\n• TT → xem video đang dựng\n• DS → video gần đây\n• KHUNG DOC hoặc KHUNG NGANG → đổi khung hình\n• DINHDANG → chọn định dạng video\n• GIONG → chọn giọng đọc\n• TAT / BAT → tắt/bật thông báo\n• HUYKETNOI → bỏ liên kết',
         linked: 'Đã kết nối Zalo với tài khoản {email}. Video dựng xong sẽ được gửi về đây. Gõ HUONGDAN để xem lệnh.',
@@ -240,7 +244,7 @@ export function defaultConfig(env: Env): Config {
         failed: 'Video "{tieuDe}" dựng chưa được: {loi}. Bạn gửi lại giúp mình, hoặc mở web để sửa.',
         unknown: 'Mình chưa hiểu. Gõ HUONGDAN để xem cách dùng, hoặc gửi KB + kịch bản để tạo video.',
         noAI: 'Hiện chỉ dựng từ kịch bản có sẵn. Hãy gửi: KB + kịch bản của bạn.',
-        welcome: 'Chào {ten} 👋 Mình là {troLy} của {thuongHieu}. Bên mình biến chủ đề hoặc kịch bản của bạn thành video vẽ tay có giọng đọc tiếng Việt chỉ trong vài phút, đăng TikTok, Reels, YouTube đều đẹp. Bạn đang cần:',
+        welcome: 'Chào {ten} 👋 Mình là {troLy} (trợ lý AI) của {thuongHieu}. Bên mình biến chủ đề hoặc kịch bản của bạn thành video vẽ tay có giọng đọc tiếng Việt chỉ trong vài phút, đăng TikTok, Reels, YouTube đều đẹp. Bạn đang cần:',
         offer: 'Bảng giá {thuongHieu}:\n{goi}\n👉 Gõ MUA + số gói (vd: MUA 1) để nhận mã thanh toán ngay{goiNam}. Gói kích hoạt ngay khi nhận tiền.',
         payment: 'Đơn {ma} — {tenGoi}: {soTien}\nChuyển khoản giúp mình:\n• Ngân hàng: {nganHang}\n• Số tài khoản: {stk}\n• Chủ tài khoản: {chuTk}\n• Số tiền: {soTien}\n• Nội dung: {ma}\n{kichHoat}',
         paid: '✅ Đã nhận {soTien} cho đơn {ma}. Gói {tenGoi} đã được kích hoạt{han}. Cảm ơn bạn đã tin dùng! Gửi chủ đề để làm video ngay nhé.',
@@ -363,6 +367,8 @@ export function cleanConfig(input: any, base: Config): Config {
       return {
         enabled: typeof z.enabled === 'boolean' ? z.enabled : b.enabled, receive: z.receive === 'poll' ? 'poll' : 'webhook',
         keepWebhook: typeof z.keepWebhook === 'boolean' ? z.keepWebhook : b.keepWebhook,
+        perDay: int(z.perDay, 0, 100_000, b.perDay),
+        stickers: { welcome: /^[\w-]{4,80}$/.test(z.stickers?.welcome || '') ? z.stickers.welcome : '', thanks: /^[\w-]{4,80}$/.test(z.stickers?.thanks || '') ? z.stickers.thanks : '' },
         followup: { enabled: z.followup?.enabled === true, hours: int(z.followup?.hours, 4, 168, b.followup.hours), text: str(z.followup?.text, 600, b.followup.text) || b.followup.text }, botLink: /^https:\/\/[^\s"<>]{4,200}$/.test(z.botLink || '') ? z.botLink : z.botLink === '' ? '' : b.botLink,
         allowGuests: typeof z.allowGuests === 'boolean' ? z.allowGuests : b.allowGuests, scriptSource: z.scriptSource === 'mine-ai' ? 'mine-ai' : 'mine-free',
         autoRender: typeof z.autoRender === 'boolean' ? z.autoRender : b.autoRender, ownerChat: /^[\w.-]{1,80}$/.test(z.ownerChat || '') ? z.ownerChat : z.ownerChat === '' ? '' : b.ownerChat,
@@ -376,7 +382,7 @@ export function cleanConfig(input: any, base: Config): Config {
           const a = z.assistant || {}, d = b.assistant;
           return { enabled: typeof a.enabled === 'boolean' ? a.enabled : d.enabled, name: str(a.name, 40, d.name) || d.name, persona: str(a.persona, 600, d.persona),
             knowledge: typeof a.knowledge === 'string' ? a.knowledge.replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').trim().slice(0, 6000) : d.knowledge, makeVideos: typeof a.makeVideos === 'boolean' ? a.makeVideos : d.makeVideos,
-            handoff: typeof a.handoff === 'boolean' ? a.handoff : d.handoff, perDay: int(a.perDay, 1, 500, d.perDay), ai: a.ai === 'gemini' || a.ai === 'openai' ? a.ai : 'auto' };
+            handoff: typeof a.handoff === 'boolean' ? a.handoff : d.handoff, perDay: int(a.perDay, 1, 10_000, d.perDay), ai: a.ai === 'gemini' || a.ai === 'openai' ? a.ai : 'auto' };
         })(),
       };
     })(),
