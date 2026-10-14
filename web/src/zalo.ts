@@ -9,6 +9,11 @@
 import type { User } from './auth.ts';
 import { LOOK_KEYS, vis, type Config } from './settings.ts';
 import { body, type Env, HttpError, json, randomId, sha256, timingSafeEqual, useQuota } from './util.ts';
+import { assistantAnswer, type AssistantTurn } from './ai.ts';
+import { budgetState } from './budget.ts';
+import { aiCost, logEvent } from './log.ts';
+import { pushUser } from './push.ts';
+import { planOf } from './plans.ts';
 import { createProject, queueRender, type Rc, type XEnv } from './worker.ts';
 
 const API = 'https://bot-api.zaloplatforms.com/bot';
@@ -113,10 +118,37 @@ async function deliverReply(env: XEnv, id: string, force = false) {
   return result;
 }
 
-/** Tell the owner about something (if they claimed the bot and want this kind of news). */
-export async function notifyOwner(env: XEnv, kind: keyof Config['zalo']['notifyOwner'], text: string) {
+/** Web accounts of the site's admins (the admin list, or ADMIN_EMAIL). */
+async function adminUsers(env: XEnv): Promise<string[]> {
+  const emails = (env.config.admins.length ? env.config.admins : [env.ADMIN_EMAIL || '']).map((e) => e.trim().toLowerCase()).filter(Boolean);
+  if (!emails.length) return [];
+  return (await env.DB.prepare(`SELECT id FROM users WHERE lower(email) IN (${emails.map(() => '?').join(',')})`).bind(...emails).all<any>()).results.map((r) => r.id);
+}
+/** Zalo chats that get the owner's news: the claimed owner chat and every admin's linked Zalo. */
+async function ownerChats(env: XEnv) {
+  const chats = new Set<string>(env.config.zalo.ownerChat ? [env.config.zalo.ownerChat] : []);
+  const admins = await adminUsers(env);
+  if (admins.length) for (const r of (await env.DB.prepare(`SELECT chat_id FROM zalo_links WHERE user_id IN (${admins.map(() => '?').join(',')})`).bind(...admins).all<any>()).results) chats.add(r.chat_id);
+  return { chats: [...chats], admins };
+}
+
+/**
+ * Tell the owner about something they asked to hear about: on Zalo (claimed owner chat and admins'
+ * linked chats) and as a notification on the admins' phones/computers (Web Push). Before, only a
+ * claimed owner chat was told, so without CHUWEB nobody heard about orders. Every attempt is logged.
+ */
+export async function notifyOwner(env: XEnv, kind: keyof Config['zalo']['notifyOwner'] | 'support', text: string) {
   const z = env.config.zalo;
-  if (z.enabled && z.ownerChat && z.notifyOwner[kind]) await send(env, z.ownerChat, '🔔 ' + text).catch(() => {});
+  if (kind !== 'support' && !z.notifyOwner[kind]) return;
+  let zalo = 0, push = 0, error = '';
+  try {
+    const { chats, admins } = await ownerChats(env);
+    if (z.enabled && (env as any).ZALO_BOT_TOKEN) for (const c of chats) { const r = await send(env, c, '🔔 ' + text).catch((e) => ({ ok: false, error: String(e.message) })); if (r.ok) zalo++; else error = r.error || error; }
+    for (const id of admins) { try { push += (await pushUser(env, id, { title: kind === 'order' ? 'Đơn hàng' : kind === 'support' ? 'Khách cần hỗ trợ' : 'Thông báo', body: text.slice(0, 200), url: kind === 'order' ? '/#/admin/don-hang' : '/#/admin/zalo' }, 'mailto:' + env.config.legal.email)).sent; } catch {} }
+    if (!chats.length && !admins.length) error = 'Chưa có nơi nhận: nhắn CHUWEB <mã> cho bot, hoặc kết nối Zalo bằng tài khoản quản trị.';
+    else if (!zalo && !push) error ||= chats.length ? 'Zalo chưa nhận tin' : 'Chưa có Zalo chủ web và chưa bật thông báo trên thiết bị của quản trị viên.';
+  } catch (e: any) { error = String(e.message || e).slice(0, 200); }
+  await logEvent(env, { type: 'owner.notify', channel: 'system', ok: !!(zalo || push), data: { kind, zalo, push, error: error || undefined, text: text.slice(0, 120) } }).catch(() => {});
 }
 
 // ---------------------------------------------------------------- webhook
@@ -210,12 +242,14 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   // owner claims the bot (code from the admin page)
   if (cmd === 'CHUWEB') {
     const code = pickCode(rest);
-    const row = await env.DB.prepare("SELECT user_id FROM zalo_codes WHERE code = ? AND user_id = 'owner' AND expires_at > ?").bind(code, Date.now()).first();
-    if (!row) return reply('Mã chủ web không đúng hoặc đã hết hạn. Tạo mã mới trong trang Quản trị → Zalo.');
+    const row = code ? await env.DB.prepare("SELECT user_id FROM zalo_codes WHERE code = ? AND user_id = 'owner' AND expires_at > ?").bind(code, Date.now()).first() : null;
+    // an admin's own linked Zalo needs no code
+    const admin = !row && link && (await adminUsers(env)).includes(link.user_id);
+    if (!row && !admin) return reply('Mã chủ web không đúng hoặc đã hết hạn. Tạo mã mới trong trang Quản trị → Zalo.');
     await saveOwnerChat(env, chatId);
-    await env.DB.prepare('DELETE FROM zalo_codes WHERE code = ?').bind(code).run();
+    if (code) await env.DB.prepare('DELETE FROM zalo_codes WHERE code = ?').bind(code).run();
     rc.log('zalo.owner', { data: { chat: chatId } });
-    return reply('Đã nhận bạn là chủ web. Mình sẽ báo người dùng mới, video lỗi và đơn hàng ở đây.');
+    return reply('Đã nhận bạn là chủ web. Mình sẽ báo người dùng mới, video lỗi, đơn hàng và khách cần hỗ trợ ở đây.\nTrả lời khách: TL <mã khách> <lời nhắn>.');
   }
   // link to a web account
   if (cmd === 'KETNOI') {
@@ -229,6 +263,8 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
     ]);
     const u = await env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(row.user_id).first<any>();
     rc.userId = row.user_id; rc.log('zalo.link', { data: { chat: chatId } });
+    // the owner linking their own Zalo: owner news comes here from now on
+    if (!z.ownerChat && (await adminUsers(env)).includes(row.user_id)) { await saveOwnerChat(env, chatId); await reply('Tài khoản quản trị: từ giờ đơn hàng, người dùng mới và khách cần hỗ trợ sẽ được báo ở đây.'); }
     return reply(fill(t.linked, { email: u?.email || '', ten: name }));
   }
 
@@ -236,15 +272,29 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   if (user && await env.DB.prepare('SELECT 1 FROM blocked_users WHERE user_id = ?').bind(user.id).first()) return reply('Tài khoản đang bị khóa. Vui lòng liên hệ chủ web.');
   const prefs = link ? JSON.parse(link.prefs || '{}') : {};
   const help = () => reply(fill(t.help, { ten: name || link?.name || 'bạn' }));
-  if (!cmd || ['GIUP', 'HUONGDAN', 'HELP', 'START', 'MENU', '?', 'HD', 'XINCHAO', 'CHAO', 'HI', 'HELLO'].includes(cmd)) return help();
+  // the owner answers a customer the assistant handed over: TL <mã khách> <lời nhắn>
+  if (cmd === 'TL' && (await ownerChats(env)).chats.includes(chatId)) {
+    const code = (rest[0] || '').toLowerCase(), msg = raw.replace(/^\s*\S+\s+\S+\s*/, '').trim();
+    if (!/^[a-z0-9]{4,12}$/.test(code) || !msg) return reply('Gửi: TL <mã khách> <lời nhắn>. Mã khách có trong tin báo "Khách cần hỗ trợ".');
+    const target = await env.DB.prepare("SELECT chat_id FROM zalo_messages WHERE lower(substr(chat_id, -6)) = ? ORDER BY received_at DESC LIMIT 1").bind(code).first<any>();
+    if (!target) return reply('Không tìm thấy khách có mã ' + code + '.');
+    const r = await send(env, target.chat_id, `💬 ${z.assistant.name}: ${msg}`);
+    rc.log('zalo.handoff.reply', { ok: r.ok, data: { chat: target.chat_id } });
+    return reply(r.ok ? 'Đã gửi cho khách ' + code + '.' : 'Chưa gửi được: ' + r.error);
+  }
+  const assistantOn = z.assistant.enabled && !!(env.GEMINI_API_KEY || env.OPENAI_API_KEY);
+  // greetings and "?" get the menu; a free question goes to the assistant when it is on
+  if (!cmd || ['GIUP', 'HUONGDAN', 'HELP', 'START', 'MENU', '?', 'HD'].includes(cmd) || (!assistantOn && ['XINCHAO', 'CHAO', 'HI', 'HELLO'].includes(cmd))) return help();
 
-  const known = COMMANDS.includes(cmd);
-  const longScript = !known && raw.length >= 120;
+  const known = COMMANDS.includes(cmd) && !(assistantOn && ['XINCHAO', 'CHAO', 'HI', 'HELLO'].includes(cmd));
+  // a long message is a script to film; with the assistant on, a long question is a question
+  const longScript = !known && raw.length >= 120 && !(assistantOn && /\?/.test(raw));
+  const ask = () => assistantReply(env, rc, { chatId, messageId, name, text: raw, user, link, prefs, reply });
   if (!user) {
     // nothing to show or undo yet: answer without signing them up
     if (cmd === 'HUYKETNOI') return reply('Zalo này chưa kết nối tài khoản nào.');
     if (['TT', 'TRANGTHAI', 'DS', 'DANHSACH'].includes(cmd)) return reply('Zalo này chưa có video nào. Gửi KB + kịch bản (hoặc MAU để xem kịch bản mẫu) để bắt đầu.');
-    if (!known && !longScript) return reply(t.unknown);
+    if (!known && !longScript) return assistantOn ? ask() : reply(t.unknown);
     // any other real command (a video, or a choice of frame/voice/format/notifications) needs an account
     if (!z.allowGuests) return reply('Bạn cần kết nối tài khoản trước: mở web → Kết nối Zalo, rồi gửi mã cho mình.');
     user = await guestUser(env, chatId, name);
@@ -317,7 +367,84 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
     const src = z.scriptSource === 'mine-ai' && (env.GEMINI_API_KEY || env.OPENAI_API_KEY) ? 'mine-ai' : 'mine-free';
     return makeVideo(env, rc, user, chatId, src, script, prefs, !link, messageId);
   }
-  return reply(t.unknown);
+  return assistantOn ? ask() : reply(t.unknown);
+}
+
+interface AskCtx { chatId: string; messageId: string; name: string; text: string; user: User | null; link: any; prefs: any; reply: (s: string) => Promise<any> }
+const money = (n: number) => n.toLocaleString('vi-VN') + 'đ';
+
+/** What the assistant may say about the site: only real facts from the settings. */
+function siteFacts(env: XEnv) {
+  const c = env.config, brand = `${c.brand.name} ${c.brand.accent}`.trim();
+  const plans = c.plans.filter((p) => p.visible).map((p) => `- ${p.name}: ${p.price ? money(p.price) + (p.days === 30 ? '/tháng' : ` cho ${p.days} ngày`) : 'miễn phí'}${p.yearPrice ? `, hoặc ${money(p.yearPrice)}/năm` : ''}; ${p.limits.render} video/ngày, mỗi video tối đa ${Math.round(p.maxSeconds / 6) / 10} phút${p.limits.script ? `, ${p.limits.script} lượt AI viết kịch bản/ngày` : ''}${p.features.length ? '; ' + p.features.join(', ') : ''}`).join('\n');
+  const looks = LOOK_KEYS.filter((k) => vis(c, 'look:' + k) === 'on').map((k) => `${c.labels.looks[k]} (${c.labels.lookNotes[k]})`).join('; ');
+  const web = origin(env);
+  return [`Tên dịch vụ: ${brand}. ${c.brand.tagline}`, `Trang web: ${web}. Bảng giá: ${web}/#/goi. Điều khoản: ${web}/#/dieu-khoan. Hoàn tiền: ${web}/#/hoan-tien.`,
+    `Các gói:\n${plans}`, c.payment.enabled ? 'Thanh toán: trên web, mục Bảng giá, quét mã VietQR chuyển khoản; gói tự kích hoạt sau 1-2 phút khi tiền về. Không thanh toán qua Zalo, không nhận thẻ.' : 'Hiện chưa mở thanh toán trực tuyến.',
+    `Định dạng video: ${looks}.`, 'Video MP4 1080p, khung dọc 9:16 hoặc ngang 16:9, giọng đọc tiếng Việt, phụ đề. Xem trước ngay trên web, dựng xong trong vài phút, link xem/tải gửi về Zalo.',
+    `Lệnh trong Zalo:\n${c.zalo.templates.help}`, c.legal.email && !/example\.(com|org)$/i.test(c.legal.email) ? `Email hỗ trợ: ${c.legal.email}` : ''].filter(Boolean).join('\n');
+}
+
+/** The customer, as far as this chat knows them. */
+async function customerFacts(env: XEnv, x: AskCtx) {
+  if (!x.user) return `Khách ${x.name || ''} chưa có tài khoản (chưa tạo video nào, chưa kết nối web).`;
+  const { plan, expires } = await planOf(env, x.user.id);
+  const used = await env.DB.prepare("SELECT n FROM usage WHERE user_id = ? AND day = ? AND kind = 'render'").bind(x.user.id, new Date().toISOString().slice(0, 10)).first<any>();
+  const jobs = (await env.DB.prepare('SELECT j.status, j.progress, j.error, j.created_at, p.title FROM jobs j JOIN projects p ON p.id = j.project_id WHERE j.user_id = ? ORDER BY j.created_at DESC LIMIT 3').bind(x.user.id).all<any>()).results;
+  const names: Record<string, string> = { queued: 'đang chờ dựng', running: 'đang dựng', done: 'đã xong (gõ TT để nhận link)', failed: 'lỗi' };
+  return [`Khách: ${x.name || x.user.name || ''}${x.user.email.startsWith('zalo:') ? ' (chỉ dùng Zalo)' : ` (tài khoản web ${x.user.email})`}.`,
+    `Gói hiện tại: ${plan.name}${expires ? ' đến ' + new Date(expires).toLocaleDateString('vi-VN') : ''}; hôm nay đã dựng ${used?.n || 0}/${plan.limits.render} video.`,
+    jobs.length ? 'Video gần đây: ' + jobs.map((j) => `"${j.title}" ${names[j.status] || j.status}${j.status === 'running' ? ' ' + j.progress + '%' : ''}${j.status === 'failed' && j.error ? ' (' + String(j.error).slice(0, 80) + ')' : ''}`).join('; ') : 'Chưa có video nào.'].join('\n');
+}
+
+/** The last few turns of this chat (what the customer said, what we answered), oldest first. */
+async function chatHistory(env: XEnv, chatId: string, exceptId: string): Promise<AssistantTurn[]> {
+  const since = Date.now() - 24 * 3600_000;
+  const ins = (await env.DB.prepare('SELECT id, text, received_at AS ts FROM zalo_messages WHERE chat_id = ? AND id != ? AND is_text = 1 AND received_at > ? ORDER BY received_at DESC LIMIT 8').bind(chatId, exceptId, since).all<any>()).results;
+  const outs = (await env.DB.prepare("SELECT text, created_at AS ts FROM zalo_outbox WHERE chat_id = ? AND created_at > ? AND status = 'sent' ORDER BY created_at DESC LIMIT 8").bind(chatId, since).all<any>()).results;
+  return [...ins.map((r) => ({ role: 'user' as const, text: String(r.text || ''), ts: r.ts })), ...outs.map((r) => ({ role: 'bot' as const, text: String(r.text || ''), ts: r.ts }))]
+    .sort((a, b) => a.ts - b.ts).slice(-10).map(({ role, text }) => ({ role, text }));
+}
+
+/**
+ * A free question answered like a member of staff: real facts about the site and the customer,
+ * the recent conversation, the owner's own notes. It can start a video, report status, or hand
+ * the chat to the owner (who answers with TL <mã> <lời>).
+ */
+async function assistantReply(env: XEnv, rc: Rc, x: AskCtx) {
+  const z = env.config.zalo, a = z.assistant, code = x.chatId.slice(-6).toLowerCase();
+  try { await useQuota(env, 'z:' + x.chatId, 'chat', a.perDay); }
+  catch { return x.reply('Hôm nay bạn đã hỏi trợ lý nhiều rồi. Gõ HUONGDAN để xem lệnh, hoặc để lại lời nhắn, chủ web sẽ trả lời sớm.'); }
+  if ((await budgetState(env)).over) return x.reply(z.templates.unknown);
+  const sys = [
+    `Bạn là ${a.name}, nhân viên chăm sóc khách hàng của dịch vụ dưới đây, đang trả lời khách qua Zalo.`,
+    a.persona ? 'PHONG CÁCH: ' + a.persona : '',
+    'SỰ THẬT VỀ DỊCH VỤ (chỉ nói những điều có ở đây, không bịa giá, khuyến mãi hay tính năng):\n' + siteFacts(env),
+    a.knowledge ? 'GHI CHÚ CỦA CHỦ WEB (ưu tiên khi trả lời):\n' + a.knowledge : '',
+    'THÔNG TIN KHÁCH:\n' + await customerFacts(env, x),
+    'QUY TẮC: trả lời tiếng Việt, tự nhiên như người thật, ngắn (tối đa 5 câu, dưới 700 ký tự), không dùng markdown hay dấu **, có thể dùng 1 emoji.',
+    'Hướng dẫn cụ thể bước tiếp theo (lệnh Zalo hoặc link web). Không xin mật khẩu, số thẻ, mã OTP. Không hứa hoàn tiền hay giảm giá nếu ghi chú của chủ web không nói.',
+    'Câu hỏi ngoài dịch vụ: trả lời ngắn lịch sự rồi đưa về việc làm video.',
+    'Trả DUY NHẤT JSON: {"reply":"lời trả lời","intent":"chat|make_video|status|human","topic":"chủ đề video nếu intent là make_video"}.',
+    `intent make_video: khách nhờ làm video về một chủ đề cụ thể${a.makeVideos ? '' : ' (hiện chưa tự làm được: hướng dẫn gõ TAO + chủ đề)'}. status: hỏi video của họ tới đâu. human: khiếu nại, lỗi thanh toán, hoàn tiền, cần người thật, hoặc bạn không chắc câu trả lời${a.handoff ? ' (nói rằng đã chuyển cho nhân viên)' : ''}. Còn lại: chat.`,
+  ].filter(Boolean).join('\n\n');
+  let ans;
+  try { ans = await assistantAnswer(env, sys, await chatHistory(env, x.chatId, x.messageId), x.text); }
+  catch (e: any) {
+    rc.log('zalo.assistant', { ok: false, data: { chat: x.chatId, error: String(e.message).slice(0, 200) } });
+    return x.reply(z.templates.unknown);
+  }
+  rc.log('ai.chat', { cost: aiCost(env.config, { model: ans.usage.model, tokensIn: ans.usage.tokensIn, tokensOut: ans.usage.tokensOut }), data: { chat: x.chatId, intent: ans.intent, ...ans.usage } });
+  await x.reply(ans.reply.replace(/\*\*/g, ''));
+  if (ans.intent === 'human' && a.handoff) await notifyOwner(env, 'support', `Khách cần hỗ trợ [${code}] ${x.name || ''}: "${x.text.slice(0, 300)}"\nTrợ lý đã trả lời: "${ans.reply.slice(0, 200)}"\nTrả lời khách: TL ${code} <lời nhắn>`);
+  if (ans.intent === 'make_video' && a.makeVideos && ans.topic.length >= 5) {
+    if (!env.config.enabledSources.includes('topic')) return;
+    // the same path as "TAO <chủ đề>", done by the minute job (writing a script can take longer than a webhook may run)
+    const now = Date.now();
+    await env.DB.prepare("INSERT OR IGNORE INTO zalo_messages (id, chat_id, sender_name, text, is_text, status, received_at, updated_at) VALUES (?, ?, ?, ?, 1, 'received', ?, ?)")
+      .bind(x.messageId + '-tao', x.chatId, x.name, 'TAO ' + ans.topic, now, now).run();
+    rc.log('zalo.assistant.video', { data: { chat: x.chatId, topic: ans.topic.slice(0, 120) } });
+  }
 }
 
 async function makeVideo(env: XEnv, rc: Rc, user: User, chatId: string, source: string, text: string, prefs: any, guest: boolean, messageId: string) {
@@ -467,7 +594,9 @@ export async function zaloAdmin(req: Request, env: XEnv, rawEnv: Env, sub: strin
         { k: 'Zalo đã gọi tới web này (bỏ qua nếu dùng hỏi định kỳ)', ok: (!!lastCall && lastCall.ok !== 0) || (await receiveMode(env)) === 'poll', detail: lastCall ? `${new Date(lastCall.ts).toLocaleString('vi-VN')} · ${lastCall.ok ? 'hợp lệ' : (JSON.parse(lastCall.data || '{}').error || 'bị từ chối')}` : 'Chưa có lần gọi nào.', fix: lastCall ? 'Sửa theo lỗi ở trên rồi nhắn lại GIUP.' : 'Zalo chưa gọi tới. Kiểm tra: (1) webhook đúng địa chỉ; (2) trong Zalo Bot Creator đã bật nhận sự kiện tin nhắn (message.text.received); (3) Cloudflare không chặn (tắt Bot Fight Mode / Under Attack cho /api/zalo/webhook); (4) bạn đang nhắn đúng bot có token này.' },
         { k: 'Web đã ghi nhận tin nhắn', ok: !!inbox, detail: inbox ? `Tin gần nhất: ${inbox.status}${inbox.error ? ' — ' + inbox.error : ''}` : 'Chưa có tin nhắn được ghi nhận.', fix: 'Nhắn GIUP cho bot rồi bấm Kiểm tra lại. Nếu không nhận, kiểm tra webhook và token.' },
         { k: 'Phản hồi gần nhất gửi thành công', ok: reply?.status === 'sent', detail: reply ? `${reply.status}${reply.error ? ' — ' + reply.error : ''}` : 'Chưa gửi phản hồi.', fix: 'Xem Hộp thư Zalo để thử gửi lại phản hồi lỗi.' },
-        { k: 'Chủ web đã nhận bot (để nhận thông báo quản trị)', ok: !!env.config.zalo.ownerChat, fix: 'Tạo mã chủ web và gửi CHUWEB <mã> cho bot. Khách vẫn dùng bot khi chưa có chat chủ web.' },
+        { k: 'Có Zalo nhận thông báo của chủ web (đơn hàng, người dùng mới, khách cần hỗ trợ)', ok: (await ownerChats(env)).chats.length > 0, detail: `${(await ownerChats(env)).chats.length} Zalo nhận tin`, fix: 'Tạo mã chủ web và gửi CHUWEB <mã> cho bot, hoặc kết nối Zalo bằng chính tài khoản quản trị (web → Kết nối Zalo) rồi gửi CHUWEB.' },
+        await (async () => { const n = await env.DB.prepare("SELECT ts, ok, data FROM events WHERE type = 'owner.notify' ORDER BY id DESC LIMIT 1").first<any>(); const d = n ? JSON.parse(n.data || '{}') : {};
+          return { k: 'Thông báo gần nhất tới chủ web', ok: !!n?.ok, detail: n ? `${new Date(n.ts).toLocaleString('vi-VN')} · Zalo ${d.zalo || 0}, thiết bị ${d.push || 0}${d.error ? ' · ' + d.error : ''} · ${d.text || ''}` : 'Chưa có.', fix: 'Bấm "Gửi tin thử cho chủ web" sau khi có Zalo nhận tin.' }; })(),
         { k: 'Liên kết bot cho người dùng', ok: !!env.config.zalo.botLink, fix: 'Dán đường dẫn bot (https://zalo.me/...) ở mục Zalo.' },
       ],
       last: last.results, links, recv: { mode: await receiveMode(env), status: await zaloRecvStatus(env) },
@@ -512,10 +641,11 @@ export async function zaloAdmin(req: Request, env: XEnv, rawEnv: Env, sub: strin
     return json({ ok: reply?.status === 'sent', reply });
   }
   if (sub === 'zalo/test' && method === 'POST') {
-    if (!env.config.zalo.ownerChat) throw new HttpError(400, 'Chưa có Zalo chủ web.');
-    const r = await send(env, env.config.zalo.ownerChat, 'Tin nhắn thử từ trang quản trị: kết nối Zalo hoạt động tốt ✅');
-    if (!r.ok) throw new HttpError(502, 'Gửi chưa được: ' + r.error);
-    return json({ ok: true });
+    await notifyOwner(env, 'support', 'Tin nhắn thử từ trang quản trị: thông báo cho chủ web hoạt động ✅');
+    const n = await env.DB.prepare("SELECT ok, data FROM events WHERE type = 'owner.notify' ORDER BY id DESC LIMIT 1").first<any>();
+    const d = n ? JSON.parse(n.data || '{}') : {};
+    if (!n?.ok) throw new HttpError(502, 'Chưa gửi được: ' + (d.error || 'không rõ'));
+    return json({ ok: true, zalo: d.zalo, push: d.push });
   }
   throw new HttpError(404, 'Không tìm thấy.');
 }

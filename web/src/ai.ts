@@ -328,3 +328,38 @@ export async function analyzeSample(env: Env, frames: string[], notes: string): 
   return { name: s(out.name, 40) || 'Định dạng mới', summary: s(out.summary, 600), base: Object.keys(LOOK_BRIEF).includes(out.base) && out.base !== 'doc' ? out.base : 'act',
     structure: arr(out.structure), pacing: s(out.pacing, 500), visuals: s(out.visuals, 600), audio: s(out.audio, 400), brief: s(out.brief, 3000), stages: arr(out.stages), _usage: usage };
 }
+
+
+// ---------------------------------------------------------------- Zalo assistant
+export interface AssistantTurn { role: 'user' | 'bot'; text: string }
+export interface AssistantAnswer { reply: string; intent: 'chat' | 'make_video' | 'status' | 'human'; topic: string; usage: { provider: string; model: string; tokensIn: number; tokensOut: number } }
+
+/**
+ * One answer of the staff-like assistant: a short reply plus what the person wants (a video, their
+ * status, a human). Tries the text model, its fallbacks, then the other provider.
+ */
+export async function assistantAnswer(env: Env, sys: string, history: AssistantTurn[], question: string): Promise<AssistantAnswer> {
+  const plan: [TextProvider, string][] = [];
+  if (env.GEMINI_API_KEY) for (const m of new Set([env.GEMINI_TEXT_MODEL || 'gemini-3.5-flash', ...list(env.GEMINI_TEXT_FALLBACK)])) plan.push(['gemini', m]);
+  if (env.OPENAI_API_KEY) for (const m of new Set([env.OPENAI_TEXT_MODEL || 'gpt-4o-mini', ...list(env.OPENAI_TEXT_FALLBACK)])) plan.push(['openai', m]);
+  if (!plan.length) throw new HttpError(503, 'Chưa có khoá AI.');
+  const convo = history.slice(-10).map((t) => `${t.role === 'user' ? 'KHÁCH' : 'BẠN'}: ${t.text.slice(0, 600)}`).join('\n');
+  const user = (convo ? 'HỘI THOẠI GẦN ĐÂY:\n' + convo + '\n\n' : '') + 'TIN MỚI CỦA KHÁCH: ' + question.slice(0, 2000);
+  let last = '';
+  for (const [p, model] of plan) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await callText(env, p, model, sys, user);
+        const j = parseJson(r.text);
+        if (!j || typeof j.reply !== 'string' || !j.reply.trim()) { last = `${model}: trả lời không đúng dạng`; break; }
+        const intent = ['chat', 'make_video', 'status', 'human'].includes(j.intent) ? j.intent : 'chat';
+        return { reply: j.reply.trim().slice(0, 1500), intent, topic: typeof j.topic === 'string' ? j.topic.trim().slice(0, 300) : '', usage: { provider: p, model, tokensIn: r.tokensIn, tokensOut: r.tokensOut } };
+      } catch (e: any) {
+        last = String(e.message || e).slice(0, 160);
+        if (e.status === 429 || e.status >= 500) { await sleep(1200); continue; }
+        break;
+      }
+    }
+  }
+  throw new HttpError(502, 'AI chưa trả lời được: ' + last);
+}
