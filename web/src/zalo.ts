@@ -460,7 +460,9 @@ export async function zaloAdmin(req: Request, env: XEnv, rawEnv: Env, sub: strin
     return json({
       steps: [
         { k: 'Bật tính năng Zalo', ok: env.config.zalo.enabled, fix: 'Bật ở mục Zalo rồi lưu.' },
-        { k: 'Token hợp lệ', ok: !!me?.ok, detail: me?.result?.account_name || me?.result?.display_name || me?.error || 'chưa nhập token', fix: 'Lấy token trong Zalo Bot Creator và dán vào Khoá API.' },
+        { k: 'Token hợp lệ', ok: !!me?.ok, detail: me?.ok ? [me.result?.display_name, me.result?.account_name, me.result?.id && 'id ' + me.result.id].filter(Boolean).join(' · ') : me?.error || 'chưa nhập token', fix: 'Lấy token trong Zalo Bot Creator và dán vào Khoá API.' },
+        // the link people open must be the bot this token answers for, or their messages go to another bot
+        ...(me?.ok && me.result?.id && /zalo\.me\/\d+/.test(env.config.zalo.botLink) ? [{ k: 'Đường dẫn bot đúng bot của token', ok: env.config.zalo.botLink.includes(String(me.result.id)), detail: `token: ${me.result.id} · đường dẫn: ${env.config.zalo.botLink}`, fix: 'Người dùng đang nhắn một bot khác với bot của token. Dán đúng token của bot ở đường dẫn, hoặc sửa đường dẫn bot.' }] : []),
         { k: 'Webhook trỏ về web này (bỏ qua nếu dùng hỏi định kỳ)', ok: hookPath(info?.result?.url) === expected || (await receiveMode(env)) === 'poll', detail: hookPath(info?.result?.url) || '(chưa có)', fix: 'Bấm "Kết nối webhook". Bot chỉ có một webhook: nếu đang trỏ về web khác (ví dụ Apps Script cũ) thì web này không nhận được tin. Bấm nút này để chuyển bot về đây.' },
         { k: 'Zalo đã gọi tới web này (bỏ qua nếu dùng hỏi định kỳ)', ok: (!!lastCall && lastCall.ok !== 0) || (await receiveMode(env)) === 'poll', detail: lastCall ? `${new Date(lastCall.ts).toLocaleString('vi-VN')} · ${lastCall.ok ? 'hợp lệ' : (JSON.parse(lastCall.data || '{}').error || 'bị từ chối')}` : 'Chưa có lần gọi nào.', fix: lastCall ? 'Sửa theo lỗi ở trên rồi nhắn lại GIUP.' : 'Zalo chưa gọi tới. Kiểm tra: (1) webhook đúng địa chỉ; (2) trong Zalo Bot Creator đã bật nhận sự kiện tin nhắn (message.text.received); (3) Cloudflare không chặn (tắt Bot Fight Mode / Under Attack cho /api/zalo/webhook); (4) bạn đang nhắn đúng bot có token này.' },
         { k: 'Web đã ghi nhận tin nhắn', ok: !!inbox, detail: inbox ? `Tin gần nhất: ${inbox.status}${inbox.error ? ' — ' + inbox.error : ''}` : 'Chưa có tin nhắn được ghi nhận.', fix: 'Nhắn GIUP cho bot rồi bấm Kiểm tra lại. Nếu không nhận, kiểm tra webhook và token.' },
@@ -469,6 +471,8 @@ export async function zaloAdmin(req: Request, env: XEnv, rawEnv: Env, sub: strin
         { k: 'Liên kết bot cho người dùng', ok: !!env.config.zalo.botLink, fix: 'Dán đường dẫn bot (https://zalo.me/...) ở mục Zalo.' },
       ],
       last: last.results, links, recv: { mode: await receiveMode(env), status: await zaloRecvStatus(env) },
+      bot: me?.ok ? { id: me.result?.id, name: me.result?.account_name, display: me.result?.display_name } : null,
+      webhook: info?.result ? { ...info.result, url: hookPath(info.result.url) } : info?.error || null,
     });
   }
   if (sub === 'zalo/inbox' && method === 'GET') {
