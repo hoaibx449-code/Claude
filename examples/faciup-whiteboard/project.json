@@ -9,7 +9,7 @@
   "intro": null,
   "voice": {
     "provider": "everai",
-    "voiceId": "vi_male_tridung_mb",
+    "voiceId": "vi_male_tridung_mn",
     "model": "everai-v1.6"
   },
   "scenes": [
