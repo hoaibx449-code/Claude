@@ -111,6 +111,8 @@ export interface ZaloConfig {
 }
 export interface Plan {
   id: string; name: string; price: number; days: number; visible: boolean; highlight: boolean; desc: string; features: string[];
+  /** price for a whole year (365 days), 0 = sold by its own period only */ yearPrice: number;
+  /** the usual price shown struck through next to `price` (a real former or list price), 0 = none */ listPrice: number;
   /** per day */ limits: { script: number; image: number; render: number };
   /** 'all' or a list of keys allowed on this plan */ styles: 'all' | string[]; sources: 'all' | string[]; voices: 'all' | string[];
   zalo: boolean; maxSeconds: number;
@@ -215,9 +217,9 @@ export function defaultConfig(env: Env): Config {
       },
     },
     plans: [
-      { id: 'free', name: 'Miễn phí', price: 0, days: 0, visible: true, highlight: false, desc: 'Dùng thử đầy đủ quy trình', features: ['Bảng vẽ tự do', 'Kịch bản của bạn', 'Giọng máy miễn phí'],
+      { id: 'free', name: 'Miễn phí', price: 0, days: 0, yearPrice: 0, listPrice: 0, visible: true, highlight: false, desc: 'Dùng thử đầy đủ quy trình', features: ['Bảng vẽ tự do', 'Kịch bản của bạn', 'Giọng máy miễn phí'],
         limits: { script: 3, image: 0, render: 2 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 90, docPerMonth: 0 },
-      { id: 'pro', name: 'Chuyên nghiệp', price: 199000, days: 30, visible: true, highlight: true, desc: 'Cho người làm kênh đều đặn', features: ['AI viết & minh hoạ', 'Giọng EverAI tự nhiên', 'Tranh AI', 'Ưu tiên dựng'],
+      { id: 'pro', name: 'Chuyên nghiệp', price: 199000, days: 30, yearPrice: 0, listPrice: 0, visible: true, highlight: true, desc: 'Cho người làm kênh đều đặn', features: ['AI viết & minh hoạ', 'Giọng EverAI tự nhiên', 'Tranh AI', 'Ưu tiên dựng'],
         limits: { script: 30, image: 60, render: 10 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 600, docPerMonth: 4 },
     ],
     payment: { enabled: false, bank: '970436', account: '', accountName: '', prefix: 'NV', expiryDays: 7, holdMinutes: 15, note: 'Chuyển khoản đúng nội dung để được kích hoạt tự động trong 1-2 phút.' },
@@ -340,7 +342,7 @@ export function cleanConfig(input: any, base: Config): Config {
         const keys = (v: unknown) => (v === 'all' || !Array.isArray(v) ? 'all' : v.map(String).filter((x) => /^[\w:.-]{1,60}$/.test(x)).slice(0, 80)) as any;
         return {
           id: /^[a-z0-9-]{2,20}$/.test(p?.id) ? p.id : 'goi' + (k + 1), name: str(p?.name, 40, 'Gói ' + (k + 1)) || 'Gói ' + (k + 1),
-          price: int(p?.price, 0, 100_000_000, 0), days: int(p?.days, 0, 3650, 30), visible: p?.visible !== false, highlight: !!p?.highlight,
+          price: int(p?.price, 0, 100_000_000, 0), days: int(p?.days, 0, 3650, 30), yearPrice: int(p?.yearPrice, 0, 1_000_000_000, 0), listPrice: int(p?.listPrice, 0, 100_000_000, 0), visible: p?.visible !== false, highlight: !!p?.highlight,
           desc: str(p?.desc, 200, ''), features: (Array.isArray(p?.features) ? p.features : []).map((x: unknown) => str(x, 80, '')).filter(Boolean).slice(0, 10),
           limits: { script: int(p?.limits?.script, 0, 1000, 3), image: int(p?.limits?.image, 0, 5000, 0), render: int(p?.limits?.render, 0, 500, 2) },
           styles: keys(p?.styles), sources: keys(p?.sources), voices: keys(p?.voices), zalo: p?.zalo !== false, maxSeconds: int(p?.maxSeconds, 15, 1800, 180),
@@ -501,7 +503,7 @@ export function publicConfig(config: Config) {
     formats: config.formats.filter((f) => f.stage === 'live').map((f) => ({ id: 'f:' + f.id, name: f.name, base: f.base, note: f.note.split('\n')[0].slice(0, 160) })), visibility: config.beta.enabled ? { ...config.visibility, 'feature:plans': 'hidden' as Vis } : config.visibility, notice: config.notice,
     beta: config.beta.enabled ? { label: config.beta.label, note: config.beta.note } : null,
     site: config.site,
-    plans: !selling(config) ? [] : config.plans.filter((p) => p.visible).map((p) => ({ id: p.id, name: p.name, price: p.price, days: p.days, highlight: p.highlight, desc: p.desc, features: p.features, limits: p.limits, maxSeconds: Math.min(p.maxSeconds, config.limits.maxSeconds), docPerMonth: p.docPerMonth || 0 })),
+    plans: !selling(config) ? [] : config.plans.filter((p) => p.visible).map((p) => ({ id: p.id, name: p.name, price: p.price, days: p.days, yearPrice: p.yearPrice || 0, listPrice: p.listPrice > p.price ? p.listPrice : 0, highlight: p.highlight, desc: p.desc, features: p.features, limits: p.limits, maxSeconds: Math.min(p.maxSeconds, config.limits.maxSeconds), docPerMonth: p.docPerMonth || 0 })),
     templates: config.visibility['feature:templates'] === 'hidden' ? [] : config.templates.map((t) => ({ id: t.id, title: t.title, niche: t.niche })),
 
     zalo: { enabled: config.zalo.enabled && config.visibility['feature:zalo'] !== 'hidden', botLink: config.zalo.botLink, dev: config.visibility['feature:zalo'] === 'dev' },

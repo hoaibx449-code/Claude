@@ -10,6 +10,15 @@ import type { Rc, XEnv } from './worker.ts';
 import { notifyOwner } from './zalo.ts';
 
 const DAY = 86_400_000;
+
+/** "pro" (the plan's own period) or "pro:year" (365 days at the yearly price). */
+export function planOrder(plans: Plan[], want: string) {
+  const [id, period] = String(want).split(':');
+  const p = plans.find((x) => x.id === id);
+  if (!p || (period && period !== 'year')) return null;
+  if (period === 'year') return p.yearPrice > 0 ? { plan: p, id: p.id + ':year', price: p.yearPrice, days: 365, name: `${p.name} (1 năm)` } : null;
+  return { plan: p, id: p.id, price: p.price, days: p.days || 30, name: p.name };
+}
 const CODE = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 export async function planOf(env: XEnv, userId: string): Promise<{ plan: Plan; expires: number | null }> {
@@ -79,8 +88,9 @@ async function confirmOrder(env: XEnv, rc: Rc, code: string, paid: number, ref: 
   if (!o) return null;
   // a pack of documentary credits
   if (String(o.plan).startsWith('credit:')) return confirmCredits(env, rc, o, paid, ref, via, now, cutoff);
-  const plan = env.config.plans.find((p) => p.id === o.plan);
-  if (!plan) return null;
+  const bought = planOrder(env.config.plans, o.plan);
+  if (!bought) return null;
+  const plan = bought.plan, days = bought.days;
   // D1 batch is transactional: credit and mark paid together, and serialize retries.
   // Every statement rechecks pending state, including after another request wins.
   const receipt = via === 'admin' ? 'admin:' + code : 'sepay:' + ref.slice(0, 80);
@@ -93,7 +103,7 @@ async function confirmOrder(env: XEnv, rc: Rc, code: string, paid: number, ref: 
       AND EXISTS (SELECT 1 FROM payment_receipts WHERE ref = ? AND order_code = orders.code)
       ON CONFLICT(user_id) DO UPDATE SET plan = excluded.plan,
       expires_at = (CASE WHEN user_plans.plan = excluded.plan AND user_plans.expires_at > ? THEN user_plans.expires_at ELSE ? END) + ?,
-      granted_by = excluded.granted_by`).bind(plan.id, now + (plan.days || 30) * DAY, 'order:' + code, code, receipt, now, now, (plan.days || 30) * DAY),
+      granted_by = excluded.granted_by`).bind(plan.id, now + days * DAY, 'order:' + code, code, receipt, now, now, days * DAY),
     env.DB.prepare(`UPDATE orders SET status = 'paid', paid_at = ?, ref = ?, via = ? WHERE code = ? AND status = 'pending'
       AND EXISTS (SELECT 1 FROM payment_receipts WHERE ref = ? AND order_code = orders.code)`)
       .bind(now, ref.slice(0, 80), via, code, receipt),
@@ -101,8 +111,8 @@ async function confirmOrder(env: XEnv, rc: Rc, code: string, paid: number, ref: 
   if (!results[2].meta.changes) return null;
   const until = (await env.DB.prepare('SELECT expires_at FROM user_plans WHERE user_id = ?').bind(o.user_id).first<any>())?.expires_at;
   rc.userId = o.user_id;
-  rc.log('order.paid', { data: { code, plan: plan.id, amount: o.amount, via, until } });
-  await notifyOwner(env, 'order', `Đã nhận ${o.amount.toLocaleString('vi-VN')}đ cho đơn ${code} (gói ${plan.name}).`);
+  rc.log('order.paid', { data: { code, plan: o.plan, amount: o.amount, via, until } });
+  await notifyOwner(env, 'order', `Đã nhận ${o.amount.toLocaleString('vi-VN')}đ cho đơn ${code} (gói ${bought.name}).`);
   return o;
 }
 
@@ -141,7 +151,8 @@ export async function planRoutes(req: Request, env: XEnv, rc: Rc, user: User, pa
     if (!p.enabled || !p.account) throw new HttpError(503, 'Thanh toán đang tạm đóng. Liên hệ quản trị viên.');
     const want = String((await body<any>(req, 500)).plan);
     const pack = want.startsWith('credit:') ? env.config.doc.packs.find((x) => 'credit:' + x.id === want) : null;
-    const plan = pack ? { id: want, name: pack.name, price: pack.price } : env.config.plans.find((x) => x.id === want && x.visible && x.price > 0);
+    const pick = pack ? null : planOrder(env.config.plans, want);
+    const plan = pack ? { id: want, name: pack.name, price: pack.price } : pick && pick.plan.visible && pick.price > 0 ? pick : null;
     if (!plan) throw new HttpError(400, 'Gói không hợp lệ.');
     // reuse a pending order for the same plan instead of piling up new ones
     let o = await env.DB.prepare("SELECT * FROM orders WHERE user_id = ? AND plan = ? AND status = 'pending' AND created_at > ?").bind(user.id, plan.id, Date.now() - p.expiryDays * DAY).first<any>();

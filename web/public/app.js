@@ -1212,24 +1212,48 @@ async function showPlans() {
     });
   }
   const per = (p) => (!p.days ? '' : p.days === 30 ? ' / tháng' : p.days === 365 ? ' / năm' : ` / ${p.days} ngày`);
+  // a yearly price exists for some plan: offer the month / year switch, with the real saving
+  const yearly = plans.filter((p) => p.price > 0 && p.yearPrice > 0 && p.days > 0);
+  // a year of the plan's own price: 12 months for a monthly plan, rounded to a thousand dong
+  const yearOf = (p) => (p.days === 30 ? p.price * 12 : Math.round(p.price * 365 / p.days / 1000) * 1000);
+  const saving = (p) => Math.round((1 - p.yearPrice / yearOf(p)) * 100);
+  const bestSaving = Math.max(0, ...yearly.map(saving));
+  let year = false;
+  try { year = !!yearly.length && store.get('nv_year') === '1'; } catch {}
+  const grid = h('div', { class: 'plans' });
+  const paintPlans = () => grid.replaceChildren(...plans.map(planCard));
+  const toggle = yearly.length ? h('div', { class: 'billing' },
+    h('span', { class: 'bl' + (year ? '' : ' on') }, 'Thanh toán theo tháng'),
+    h('button', { type: 'button', role: 'switch', class: 'switch' + (year ? ' on' : ''), 'aria-checked': String(year), 'aria-label': 'Thanh toán theo năm', onclick: (e) => {
+      year = !year; e.currentTarget.classList.toggle('on', year); e.currentTarget.setAttribute('aria-checked', String(year));
+      e.currentTarget.parentElement.querySelectorAll('.bl').forEach((x, k) => x.classList.toggle('on', k === 1 ? year : !year));
+      store.set('nv_year', year ? '1' : '0'); paintPlans(); } }, h('i')),
+    h('span', { class: 'bl' + (year ? ' on' : '') }, 'Thanh toán theo năm'),
+    bestSaving > 0 ? h('span', { class: 'save' }, `Tiết kiệm đến ${bestSaving}%`) : null) : null;
   const ICON_OF = ['send', 'crown', 'team', 'star'];
   const planCard = (p, i) => {
     const current = p.id === r.current.id, lim = p.limits || {};
+    const byYear = year && p.yearPrice > 0 && p.price > 0;
+    const shown = byYear ? p.yearPrice : p.price;
+    // struck price: the plan's real list price, or a year of monthly payments when paying yearly
+    const struck = byYear ? yearOf(p) : p.listPrice > p.price ? p.listPrice : 0;
     const lines = [`${lim.render || 0} video mỗi ngày`, `Mỗi video tối đa ${String(Math.round((p.maxSeconds || 90) / 60 * 10) / 10).replace('.', ',')} phút`, ...(lim.script ? [`${lim.script} lượt AI viết kịch bản mỗi ngày`] : []), ...(p.docPerMonth ? [`${p.docPerMonth} phim tài liệu AI mỗi tháng`] : []), ...(p.features || [])];
     return h('article', { class: 'plan' + (p.highlight ? ' hot' : '') },
       p.highlight ? h('span', { class: 'ribbon' }, 'Phổ biến nhất') : null,
       h('span', { class: 'plan-ic' }, icon(ICON_OF[i % ICON_OF.length])),
       h('h2', {}, p.name),
-      h('p', { class: 'price' }, h('b', {}, p.price ? money(p.price) : '0đ'), h('span', {}, p.price ? per(p) : ' / mãi mãi')),
+      h('p', { class: 'price' }, h('b', {}, shown ? money(shown) : '0đ'), h('span', {}, !p.price ? ' / mãi mãi' : byYear ? ' / năm' : per(p))),
+      struck > shown ? h('p', { class: 'struck' }, h('s', {}, money(struck)), byYear ? h('span', {}, ` ≈ ${money(Math.round(shown / 12 / 1000) * 1000)} / tháng`) : null) : null,
+      year && p.price > 0 && !byYear ? h('p', { class: 'muted small' }, 'Gói này chỉ bán theo ' + (per(p).replace(' / ', '') || 'kỳ')) : null,
       p.desc ? h('p', { class: 'muted' }, p.desc) : null,
       h('ul', { class: 'ticks' }, lines.map((t) => h('li', {}, icon('check'), t))),
       current ? h('span', { class: 'btn ghost', 'aria-disabled': 'true' }, 'Đang dùng')
-        : p.price ? h('button', { type: 'button', class: p.highlight ? '' : 'ghost', 'data-ev': 'buy', onclick: (e) => buy({ id: p.id, name: p.name }, e.currentTarget) }, me ? 'Bắt đầu ngay' : 'Đăng nhập để mua')
+        : p.price ? h('button', { type: 'button', class: p.highlight ? '' : 'ghost', 'data-ev': 'buy', onclick: (e) => buy(byYear ? { id: p.id + ':year', name: p.name + ' (1 năm)' } : { id: p.id, name: p.name }, e.currentTarget) }, me ? 'Bắt đầu ngay' : 'Đăng nhập để mua')
         : h('a', { class: 'btn ghost', href: '#/tao' }, 'Bắt đầu ngay'));
   };
   show(h('header', { class: 'pagehead center' }, h('div', {}, h('h1', {}, 'Chọn gói phù hợp với nhu cầu của bạn'),
       h('p', { class: 'muted' }, me ? `Bạn đang dùng gói ${r.current.name || 'Miễn phí'}${r.current.expires ? ` (đến ${fmtDate(r.current.expires)})` : ''}. ` + 'Thanh toán bằng VietQR, kích hoạt tự động trong 1–2 phút.' : 'Dù bạn là cá nhân hay doanh nghiệp, luôn có gói phù hợp. Thanh toán VietQR, kích hoạt tự động.'))),
-    h('div', { class: 'plans' }, plans.map(planCard)),
+    toggle, grid,
     packs.length ? h('section', { class: 'card' }, h('h2', {}, 'Credit phim tài liệu AI'), h('p', { class: 'muted' }, `Mỗi phim tài liệu dùng ${ui.doc?.perVideo || 1} credit (ảnh AI cho từng cảnh).`),
       h('div', { class: 'packs' }, packs.map((k) => h('div', { class: 'pack' }, h('b', {}, k.name), h('span', {}, `${k.credits} credit`), h('b', { class: 'amount' }, money(k.price)),
         h('button', { type: 'button', class: 'ghost small', onclick: (e) => buy({ id: 'credit:' + k.id, name: k.name }, e.currentTarget) }, 'Mua'))))) : null,
@@ -1237,9 +1261,10 @@ async function showPlans() {
     r.orders.length ? h('div', { class: 'card' }, h('h2', {}, 'Đơn của bạn'), ...r.orders.map((o) => h('div', { class: 'row' },
       h('code', {}, o.code), money(o.amount), h('span', { class: 'pill ' + (o.status === 'paid' ? 'done' : o.status === 'pending' ? 'queued' : 'failed') }, { pending: 'Chờ thanh toán', paid: 'Đã thanh toán', cancelled: 'Đã huỷ', expired: 'Hết hạn' }[o.status] || o.status),
       h('small', { class: 'muted' }, fmtDate(o.created_at)),
-      o.status === 'pending' ? h('button', { type: 'button', class: 'small', onclick: (e) => buy({ id: o.plan, name: plans.find((x) => x.id === o.plan)?.name || o.plan }, e.currentTarget) }, 'Thanh toán') : null,
+      o.status === 'pending' ? h('button', { type: 'button', class: 'small', onclick: (e) => buy({ id: o.plan, name: (plans.find((x) => x.id === String(o.plan).split(':')[0])?.name || o.plan) + (String(o.plan).endsWith(':year') ? ' (1 năm)' : '') }, e.currentTarget) }, 'Thanh toán') : null,
       o.status === 'pending' ? h('button', { type: 'button', class: 'ghost small', onclick: async () => { await api(`/api/orders/${o.code}/cancel`, { method: 'POST' }).catch(fail); showPlans(); } }, 'Huỷ') : null))) : null,
     footer());
+  paintPlans();
 }
 
 /** Payment window: VietQR, bank with its logo, copy buttons, countdown, and it notices the money by itself. */
@@ -1473,7 +1498,8 @@ async function showEditor(id) {
   }, 900);
   // never lose edits when leaving the page
   addEventListener('pagehide', () => save.flush(), { once: true });
-  const refresh = debounce(() => buildPreview(spec, canvas, playBtn).catch(fail), 350);
+  // the list and the timeline follow the new timing; the open scene's fields are left alone (typing)
+  const refresh = debounce(() => buildPreview(spec, canvas, playBtn).then(() => { paintList?.(); paintTimeline?.(); }).catch(fail), 350);
   const changed = () => { save(); refresh(); };
   const field = (label, value, onInput, opts = {}) => h('label', {}, label, h(opts.area ? 'textarea' : 'input', { value: value ?? '', maxlength: opts.max || 80, rows: opts.area ? 3 : undefined, oninput: (e) => onInput(e.target.value) }));
 
@@ -1674,11 +1700,10 @@ async function showEditor(id) {
     drawScenes();
     return ok;
   }
-  function drawScenes() {
-    panelImgs.clear();
-    drawAllBtn.hidden = !imageAI || (spec.look && spec.look !== 'doc') || !spec.scenes.some((sc) => !sc.diagram && sc.panels.some((p) => !/^(r2|doodle|peep):/.test(p.image || '')));
-    const move = (si, d) => { const j = si + d; [spec.scenes[si], spec.scenes[j]] = [spec.scenes[j], spec.scenes[si]]; drawScenes(); changed(); };
-    scenesBox.replaceChildren(...spec.scenes.map((sc, si) => h('div', { class: 'scene' },
+  // the editor shows one scene at a time (picked in the list or on the timeline)
+  let cur = 0;
+  const move = (si, d) => { const j = si + d; [spec.scenes[si], spec.scenes[j]] = [spec.scenes[j], spec.scenes[si]]; cur = j; drawScenes(); changed(); };
+  const sceneCard = (sc, si) => h('div', { class: 'scene' },
       h('div', { class: 'row', style: 'justify-content:space-between' }, h('h3', {}, `Cảnh ${si + 1}`),
         h('div', { class: 'row' },
           !spec.look && (imageAI || !sc.diagram) ? h('button', { type: 'button', class: 'ghost small', onclick: () => {
@@ -1710,17 +1735,94 @@ async function showEditor(id) {
           h('label', {}, spec.look === 'doc' ? 'Mô tả ảnh (tiếng Anh: bối cảnh, ánh sáng, góc máy)' : 'Mô tả hình (tiếng Anh cho AI vẽ)', h('textarea', { rows: 2, maxlength: 400, value: p.prompt,
             oninput: (e) => { p.prompt = e.target.value; save(); } })),
           btn);
-      })))),
-      h('div', { class: 'row' },
+      })));
+  const addRow = () => h('div', { class: 'row' },
         h('button', { type: 'button', class: 'ghost', 'data-ev': 'add-scene', onclick: () => {
           if (spec.look) { spec.scenes.push({ lines: ['Câu thoại mới.'], panels: spec.look === 'doc' ? [{ prompt: '', image: '' }] : [] }); drawScenes(); changed(); return; }
           spec.scenes.push({ lines: ['Câu thoại mới.'], panels: [], diagram: { kind: 'statement', text: 'Câu chốt' } }); drawScenes(); changed();
           redesign(spec.scenes[spec.scenes.length - 1]);
         } }, '+ Thêm cảnh'),
-        drawAllBtn));
+        drawAllBtn);
+  const sceneList = h('ol', { class: 'slist', 'aria-label': 'Danh sách cảnh' });
+  const sceneDetail = h('div', { class: 'sdetail' });
+  const listHead = h('h2', {});
+  const thumbs = [];
+  const fmtT = (t) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+  const sceneSpan = (si) => pv?.model?.timeline?.scenes?.[si];
+  function selectScene(si, seek = true) {
+    cur = Math.max(0, Math.min(spec.scenes.length - 1, si));
+    if (seek && pv && sceneSpan(cur)) pv.t = sceneSpan(cur).start + 0.05;
+    sceneList.querySelectorAll('li').forEach((li, k) => li.classList.toggle('on', k === cur));
+    sceneDetail.replaceChildren(sceneCard(spec.scenes[cur], cur), addRow());
+    paintTimeline();
   }
-  drawScenes();
-
+  function drawScenes() {
+    panelImgs.clear();
+    drawAllBtn.hidden = !imageAI || (spec.look && spec.look !== 'doc') || !spec.scenes.some((sc) => !sc.diagram && sc.panels.some((p) => !/^(r2|doodle|peep):/.test(p.image || '')));
+    paintList();
+    cur = Math.min(cur, spec.scenes.length - 1);
+    sceneDetail.replaceChildren(sceneCard(spec.scenes[cur], cur), addRow());
+    paintTimeline();
+  }
+  function paintList() {
+    listHead.textContent = `Danh sách cảnh (${spec.scenes.length})`;
+    thumbs.length = 0;
+    sceneList.replaceChildren(...spec.scenes.map((sc, si) => {
+      const th = h('canvas', { class: 'sthumb', 'aria-hidden': 'true' }); thumbs.push(th);
+      const span = sceneSpan(si);
+      return h('li', { class: si === cur ? 'on' : '' }, h('button', { type: 'button', class: 'sitem', 'aria-label': `Cảnh ${si + 1}: ${sc.lines[0] || ''}`, onclick: () => selectScene(si) },
+        h('span', { class: 'snum' }, String(si + 1)), th,
+        h('span', { class: 'stext' }, h('b', {}, sc.lines[0] || 'Cảnh ' + (si + 1)), h('small', {}, span ? `${fmtT(span.start)} – ${fmtT(span.end)}` : ''))));
+    }));
+    paintThumbs();
+  }
+  // a still of each scene (its last drawn moment) for the list
+  function paintThumbs() {
+    const m = pv?.model; if (!m) return;
+    const off = document.createElement('canvas'); off.width = canvas.width; off.height = canvas.height;
+    const octx = off.getContext('2d');
+    thumbs.forEach((th, si) => {
+      const span = m.timeline.scenes[si]; if (!span) return;
+      th.width = 96; th.height = Math.round(96 * off.height / off.width);
+      try { NV.renderFrame(octx, m, Math.max(span.start + 0.1, span.end - 0.35), { hand: false }); th.getContext('2d').drawImage(off, 0, 0, th.width, th.height); } catch {}
+    });
+  }
+  // ---- timeline: scenes, words, pictures, music, voice; a playhead that follows the preview
+  const tl = h('div', { class: 'tl', role: 'group', 'aria-label': 'Dòng thời gian' });
+  const tlRuler = h('div', { class: 'tl-ruler' }), tlHead = h('i', { class: 'tl-head', 'aria-hidden': 'true' });
+  const lanes = { scene: h('div', { class: 'tl-lane' }), text: h('div', { class: 'tl-lane' }), image: h('div', { class: 'tl-lane' }), music: h('div', { class: 'tl-lane' }), voice: h('div', { class: 'tl-lane voice' }) };
+  const LANE_NAMES = [['scene', 'Cảnh', 'film'], ['text', 'Văn bản', 'pen'], ['image', 'Hình ảnh', 'library'], ['music', 'Âm thanh', 'spark'], ['voice', 'Giọng đọc', 'users']];
+  tl.append(h('div', { class: 'tl-names' }, h('span', {}), ...LANE_NAMES.map(([, n, i]) => h('span', {}, icon(i), n))),
+    h('div', { class: 'tl-body', onclick: (e) => {
+      const r = e.currentTarget.getBoundingClientRect(), d = pv?.model?.timeline?.duration; if (!d) return;
+      const t = Math.max(0, Math.min(d, (e.clientX - r.left) / r.width * d)); pv.t = t;
+      const si = pv.model.timeline.scenes.findIndex((x) => t >= x.start && t < x.end); if (si >= 0 && si !== cur) selectScene(si, false);
+    } }, tlRuler, ...Object.values(lanes), tlHead));
+  function paintTimeline() {
+    const T = pv?.model?.timeline; if (!T) return;
+    const D = T.duration || 1, pct = (t) => (t / D * 100).toFixed(3) + '%';
+    const box = (a, b, cls, label, si) => h('span', { class: 'tl-box ' + cls + (si === cur ? ' on' : ''), style: `left:${pct(a)};width:calc(${pct(Math.max(0.05, b - a))} - 2px)`, title: label }, label);
+    const step = D > 120 ? 30 : D > 40 ? 10 : 5;
+    tlRuler.replaceChildren(...Array.from({ length: Math.floor(D / step) + 1 }, (_, k) => h('span', { style: `left:${pct(k * step)}` }, fmtT(k * step))));
+    lanes.scene.replaceChildren(...T.scenes.map((x, si) => box(x.start, x.end, 'sc', `Cảnh ${si + 1}`, si)));
+    lanes.text.replaceChildren(...T.scenes.flatMap((x, si) => (x.lines || []).map((l, li) => box(l.start, l.end, 'tx', spec.scenes[si]?.lines[li] || '', si))));
+    lanes.image.replaceChildren(...T.scenes.map((x, si) => { const sc = spec.scenes[si] || {}; return box(x.start, x.end, 'im', sc.diagram ? (ui.labels.kinds?.[sc.diagram.kind] || 'Bảng vẽ') : spec.look ? lookName(spec.look) : `${(sc.panels || []).length} hình`, si); }));
+    lanes.music.replaceChildren(spec.music ? h('span', { class: 'tl-box mu', style: 'left:0;width:100%' }, 'Nhạc nền') : h('span', { class: 'tl-empty' }, 'Không có nhạc nền'));
+    // the preview has no sound: the voice lane shows when each sentence is read
+    lanes.voice.replaceChildren(...T.scenes.flatMap((x) => (x.lines || []).map((l) => h('span', { class: 'tl-wave', style: `left:${pct(l.start)};width:${pct(Math.max(0.05, l.end - l.start))}` }))));
+  }
+  const clock = h('span', { class: 'clock' }, '00:00 / 00:00');
+  function follow() {
+    if (!tl.isConnected) return;
+    const T = pv?.model?.timeline;
+    if (T) {
+      tlHead.style.left = (pv.t / (T.duration || 1) * 100) + '%';
+      clock.textContent = `${fmtT(pv.t)} / ${fmtT(T.duration)}`;
+      const si = T.scenes.findIndex((x) => pv.t >= x.start && pv.t < x.end);
+      sceneList.querySelectorAll('li').forEach((li, k) => li.classList.toggle('now', k === si));
+    }
+    requestAnimationFrame(follow);
+  }
   const tags = () => [spec.caption, (spec.hashtags || []).join(' ')].filter(Boolean).join('\n\n');
   const postCard = h('div', { class: 'card' }, h('h2', {}, T('post')),
     field('Caption', spec.caption, (v) => { spec.caption = v; save(); }, { area: true, max: 300 }),
@@ -1747,7 +1849,8 @@ async function showEditor(id) {
   let pollTimer;
   async function pollJobs() {
     clearTimeout(pollTimer);
-    if (!document.body.contains(jobsBox)) return;
+    // the export tab may be closed: keep following while the editor is open
+    if (!document.querySelector('.studio')) return;
     let jobs, queueLength;
     try { ({ jobs, queueLength } = await api(`/api/projects/${id}/jobs`)); } catch (error) { jobsBox.replaceChildren(h('p', { class: 'error' }, 'Chưa đọc được trạng thái: ' + error.message)); pollTimer = setTimeout(pollJobs, 4000); return; }
     const wasRunning = jobsBox.dataset.running === '1', running = jobs.some((j) => j.status === 'queued' || j.status === 'running');
@@ -1786,19 +1889,32 @@ async function showEditor(id) {
     try { await api('/api/projects/' + id, { method: 'DELETE' }); location.hash = '#/'; } catch (e) { fail(e); }
   } }, 'Xoá video');
 
-  const screenEl = spec.ratio === '9:16' ? iphone(canvas) : h('div', { class: 'screen flat' }, canvas);
-  const preview = h('div', { class: 'preview' + (spec.ratio === '16:9' ? ' landscape' : '') },
-    platformFrame(screenEl, spec),
-    h('div', { class: 'row' }, playBtn,
-      h('button', { type: 'button', class: 'ghost small', onclick: () => { if (pv) { pv.t = 0; pv.playing = true; playBtn.textContent = 'Tạm dừng'; } } }, 'Phát lại'),
-      status),
-    h('small', { class: 'muted' }, 'Xem trước không có tiếng; nhịp vẽ ước tính theo độ dài câu. Video dựng xong sẽ khớp đúng giọng đọc.'),
-    h('div', { class: 'card' }, h('h2', {}, T('export')), h('div', { class: 'row' }, renderBtn, imgProvider), jobsBox,
-      h('div', { class: 'row' }, coverBtn, dupBtn, delBtn)));
+  const screenEl = h('div', { class: 'screen flat stage-screen' + (spec.ratio === '16:9' ? ' wide' : '') }, canvas);
   playBtn.addEventListener('click', () => { if (!pv) return; pv.playing = !pv.playing; playBtn.textContent = pv.playing ? 'Tạm dừng' : 'Phát'; });
-
-  show(h('a', { href: '#/' }, T('allVideos')), h('div', { class: 'editor' }, preview, h('div', { class: 'scenes' }, settings, scenesBox, postCard)));
+  const exportCard = h('div', { class: 'card' }, h('h2', {}, T('export')), h('div', { class: 'row' }, imgProvider), jobsBox, h('div', { class: 'row' }, coverBtn, dupBtn, delBtn));
+  // right panel: the open scene, the whole video's settings, export and posting
+  const TABS = [['scene', 'Cảnh', sceneDetail], ['video', 'Video', settings], ['out', 'Xuất & đăng', h('div', { class: 'scenes' }, exportCard, postCard)]];
+  let tab = 'scene';
+  const tabBar = h('div', { class: 'ptabs', role: 'tablist' }), tabBody = h('div', { class: 'pbody' });
+  const paintTabs = () => {
+    tabBar.replaceChildren(...TABS.map(([k, n]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === tab), class: k === tab ? 'on' : '', onclick: () => { tab = k; paintTabs(); } }, n)));
+    tabBody.replaceChildren(TABS.find(([k]) => k === tab)[2]);
+  };
+  paintTabs();
+  const titleInput = h('input', { class: 'ptitle', value: spec.title, maxlength: 100, 'aria-label': 'Tên dự án', oninput: (e) => { spec.title = e.target.value; save(); } });
+  const ratioSel = h('select', { 'aria-label': 'Khung hình', onchange: (e) => { spec.ratio = e.target.value; save.flush().then(() => showEditor(id)); } }, options(ratioOptions(false), spec.ratio));
+  renderBtn.classList.add('export-btn'); renderBtn.replaceChildren(icon('share'), 'Xuất video');
+  show(h('div', { class: 'studio' + (spec.ratio === '16:9' ? ' landscape' : '') },
+    h('div', { class: 'sbar' }, h('a', { class: 'iconbtn', href: '#/video', 'aria-label': T('allVideos') }, '←'), h('span', { class: 'muted' }, 'Dự án:'), titleInput, status, h('span', { class: 'grow' }), ratioSel, renderBtn),
+    h('aside', { class: 'scol' }, listHead, sceneList, h('button', { type: 'button', class: 'ghost small', onclick: () => sceneDetail.querySelector('[data-ev="add-scene"]')?.click() }, icon('plus'), 'Thêm cảnh')),
+    h('section', { class: 'stage' }, platformFrame(screenEl, spec),
+      h('div', { class: 'transport' }, playBtn, h('button', { type: 'button', class: 'ghost small', onclick: () => { if (pv) { pv.t = 0; pv.playing = true; playBtn.textContent = 'Tạm dừng'; } } }, 'Phát lại'), clock),
+      h('small', { class: 'muted' }, 'Xem trước không có tiếng; nhịp vẽ ước tính theo độ dài câu. Video dựng xong sẽ khớp đúng giọng đọc.')),
+    h('section', { class: 'pcol' }, tabBar, tabBody),
+    tl));
   await buildPreview(spec, canvas, playBtn);
+  drawScenes();
+  requestAnimationFrame(follow);
   pollJobs();
   let auto = false;
   try { auto = sessionStorage.getItem('autodraw:' + id) === '1'; sessionStorage.removeItem('autodraw:' + id); } catch {}

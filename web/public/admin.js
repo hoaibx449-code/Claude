@@ -286,6 +286,8 @@ function plansTab(c, secrets, secretInput) {
     h('div', { class: 'grid' },
       h('label', {}, 'Mã', input(p.id, (v) => { p.id = v; }, { maxlength: 20 })), h('label', {}, 'Tên', input(p.name, (v) => { p.name = v; }, { maxlength: 40 })),
       h('label', {}, 'Giá (VND)', input(p.price, (v) => { p.price = v; }, { type: 'number', min: 0 })), h('label', {}, 'Số ngày', input(p.days, (v) => { p.days = v; }, { type: 'number', min: 0 })),
+      p.price ? h('label', {}, 'Giá cả năm (VND, 0 = không bán theo năm)', input(p.yearPrice || 0, (v) => { p.yearPrice = v; }, { type: 'number', min: 0 })) : null,
+      p.price ? h('label', {}, 'Giá gốc gạch ngang (VND, 0 = không hiện)', input(p.listPrice || 0, (v) => { p.listPrice = v; }, { type: 'number', min: 0 })) : null,
       h('label', {}, 'Video / ngày', input(p.limits.render, (v) => { p.limits.render = v; }, { type: 'number', min: 0 })),
       h('label', {}, 'AI viết / ngày', input(p.limits.script, (v) => { p.limits.script = v; }, { type: 'number', min: 0 })),
       h('label', {}, 'Ảnh AI / ngày', input(p.limits.image, (v) => { p.limits.image = v; }, { type: 'number', min: 0 })),
@@ -311,7 +313,7 @@ function plansTab(c, secrets, secretInput) {
       h('p', { class: 'muted' }, 'Webhook SePay: ', h('code', {}, location.origin + '/api/sepay/webhook'), ' · Kiểu xác thực: API Key.')),
     keysCard(secrets, secretInput, ['SEPAY_API_KEY']),
     card('Các gói', 'Giới hạn tính theo ngày. Phong cách/giọng/cách tạo ngoài gói sẽ hiện thông báo nâng cấp đúng gói cần mua.',
-      h('button', { type: 'button', class: 'ghost small', onclick: (e) => { c.plans.push({ id: 'goi' + (c.plans.length + 1), name: 'Gói mới', price: 99000, days: 30, visible: true, highlight: false, desc: '', features: [], limits: { script: 10, image: 20, render: 5 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 180, docPerMonth: 0 }); e.target.closest('.card').after(planCard(c.plans[c.plans.length - 1], c.plans.length - 1)); } }, '+ Thêm gói')),
+      h('button', { type: 'button', class: 'ghost small', onclick: (e) => { c.plans.push({ id: 'goi' + (c.plans.length + 1), name: 'Gói mới', price: 99000, days: 30, yearPrice: 0, listPrice: 0, visible: true, highlight: false, desc: '', features: [], limits: { script: 10, image: 20, render: 5 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 180, docPerMonth: 0 }); e.target.closest('.card').after(planCard(c.plans[c.plans.length - 1], c.plans.length - 1)); } }, '+ Thêm gói')),
     ...c.plans.map(planCard),
     docCard(c),
   ];
