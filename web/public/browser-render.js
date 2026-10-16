@@ -8,12 +8,12 @@ export function subtitleFile(spec,timeline){
   return timeline.scenes.flatMap((sc,i)=>sc.lines.map((l,j)=>`${++n}\n${stamp(l.start)} --> ${stamp(l.end)}\n${spec.scenes[i].lines[j]}\n`)).join('\n');
 }
 let current=null;
-export async function openBrowserRender(spec,projectId,{h,previewModel,paintFrame,NV}){
+export async function openBrowserRender(spec,projectId,{h,previewModel,paintFrame,NV,onClose}){
   current?.();
-  const controller=new AbortController(),signal=controller.signal,urls=[],sources=[];let ctx,stream,recorder,raf=0,working=false,finished=false,wake;
+  const controller=new AbortController(),signal=controller.signal,urls=[],sources=[];let ctx,stream,recorder,raf=0,working=false,finished=false,closed=false,wake;
   const canvas=h('canvas',{'aria-label':'Khung hình đang xuất'}),note=h('p',{class:'muted',role:'status'},'Giữ tab này mở trong lúc dựng. Tệp tải về máy, chưa lưu vào thư viện.'),meter=h('progress',{max:100,value:0,'aria-label':'Tiến độ dựng trên trình duyệt'}),result=h('div',{class:'row'});
   const cleanup=()=>{cancelAnimationFrame(raf);if(recorder?.state==='recording')recorder.stop();sources.forEach(s=>{try{s.stop();}catch{}});stream?.getTracks().forEach(t=>t.stop());ctx?.close().catch(()=>{});wake?.release().catch(()=>{});};
-  const close=()=>{controller.abort();cleanup();urls.forEach(u=>URL.revokeObjectURL(u));dialog.close();dialog.remove();document.removeEventListener('visibilitychange',visibility);window.removeEventListener('hashchange',close);window.removeEventListener('pagehide',close);if(current===close)current=null;};
+  const close=()=>{if(closed)return;closed=true;controller.abort();cleanup();urls.forEach(u=>URL.revokeObjectURL(u));dialog.close();dialog.remove();document.removeEventListener('visibilitychange',visibility);window.removeEventListener('hashchange',close);window.removeEventListener('pagehide',close);if(current===close)current=null;onClose?.();};
   const visibility=()=>{if(working&&document.hidden)controller.abort(new Error('Tab bị ẩn. Giữ tab dựng ở phía trước và dựng lại để tránh video thiếu khung hình.'));};
   const button=h('button',{type:'button',onclick:()=>run()},'Bắt đầu dựng');
   const dialog=h('dialog',{class:'render-desk browser-render','aria-labelledby':'browser-render-title'},h('header',{class:'render-desk-head'},h('h2',{id:'browser-render-title'},'Dựng trên trình duyệt'),h('button',{type:'button',class:'ghost small',onclick:close},'Đóng')),h('p',{},spec.title||'Video mới'),h('p',{class:'muted'},'Xuất hình và lời đọc. Bản tạm thời chưa trộn nhạc nền/hiệu ứng; hỗ trợ video tối đa 3 phút. Giọng AI cần dịch vụ giọng hoạt động, hoặc dùng MP3/WAV bạn tải lên.'),h('div',{class:'browser-render-preview'},canvas),note,meter,button,result);
