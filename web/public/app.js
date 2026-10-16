@@ -432,8 +432,8 @@ const STYLE_SHOW = ['sunset', 'cosmos', 'manim', 'bold', 'neon', 'comic', 'paste
 async function showLanding() {
   viewed('landing');
   const demos = await getDemos(), site = ui.site || {};
-  const sample = demos.find((d) => d.look === 'director') || demos.find((d) => d.look === 'act') || demos[0];
-  const canvas = h('canvas', { 'aria-label': 'Video mẫu AI đạo diễn' });
+  const sample = demos.find((d) => d.look === 'kinetic') || demos[0];
+  const canvas = h('canvas', { 'aria-label': 'Video mẫu chuyển động chữ' });
   const media = site.heroMedia ? (/\.(mp4|webm)$/i.test(site.heroMedia) ? siteVideo(site.heroMedia, site.heroPoster, 'Video giới thiệu', true) : h('img', { src: siteUrl(site.heroMedia), alt: 'Video minh hoạ' })) : canvas;
   let run;
   const pause = h('button', { type: 'button', class: 'ghost small', 'aria-label': 'Tạm dừng video mẫu', onclick: () => {
@@ -443,16 +443,16 @@ async function showLanding() {
     pause.textContent = run.visible ? '❚❚' : '▶';
     pause.setAttribute('aria-label', run.visible ? 'Tạm dừng video mẫu' : 'Phát video mẫu');
   } }, '❚❚');
-  const oldTitles = ['Tạo video giải thích có giọng đọc tiếng Việt', 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút'];
+  const oldTitles = ['Tạo video giải thích có giọng đọc tiếng Việt', 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút', 'TẠO VIDEO GIẢI THÍCH TỰ ĐỘNG'];
   const title = site.heroTitle && !oldTitles.includes(site.heroTitle) ? site.heroTitle : 'Ý tưởng thành video';
   show(ui.notice ? h('div', { class: 'notice' }, ui.notice) : null,
     h('section', { class: 'home-minimal' },
-      h('div', { class: 'home-intro' }, h('span', { class: 'eyebrow' }, [ui.brand.name, ui.brand.accent].filter(Boolean).join(' ')),
+      h('div', { class: 'home-intro' },
         h('h1', {}, title),
         h('p', { class: 'description' }, site.heroText && site.heroText.length < 200 ? site.heroText : 'Nhập nội dung, chọn giọng đọc và tạo video theo cách kể của bạn.'),
         h('div', { class: 'cta' }, h('a', { class: 'btn', href: '#/tao', 'data-ev': 'hero-create' }, icon('plus'), 'Tạo video'), h('a', { class: 'btn ghost', href: '#/mau' }, 'Xem định dạng')),
         h('div', { class: 'home-meta' }, h('span', {}, 'MP4 · Dọc hoặc ngang'), helpHint('Thông tin video', 'Bạn có thể xem trước, sửa từng cảnh và tải video cùng phụ đề. Hạn mức và chi phí hiển thị trong trang tạo video.'))),
-      h('figure', { class: 'home-preview' }, media, h('figcaption', {}, h('span', {}, 'Bản xem mẫu'), media === canvas ? pause : null))),
+      h('div', { class: 'home-stage' }, h('div', { class: 'stage-heading' }, h('span', {}, 'TỪ KỊCH BẢN ĐẾN MÀN HÌNH'), h('span', { class: 'stage-dot', 'aria-hidden': 'true' })), h('figure', { class: 'home-preview' }, media, h('figcaption', {}, h('span', {}, 'Xem chuyển động thực tế'), media === canvas ? pause : null)), h('div', { class: 'stage-steps', 'aria-label': 'Quy trình dựng' }, ...['Nội dung', 'Cảnh & giọng', 'Video'].map((n, i) => h('span', {}, h('i', {}, String(i + 1).padStart(2, '0')), n))))),
     footer());
   if (media === canvas && sample) run = playDemo(canvas, sample.spec, { dpr: 0.75 });
 }
@@ -563,26 +563,31 @@ async function showStyles() {
   const demos = await getDemos();
   const looks = allLooks(demos);
   const q = searchTerm();
-  let group = 'all';
+  let group = 'all', ratio = '9:16';
+  const ratioTabs = h('div', { class: 'tabs ratio-tabs', role: 'tablist', 'aria-label': 'Khung xem mẫu' });
   const chips = h('div', { class: 'tabs', role: 'tablist' }), grid = h('div', { class: 'fgrid' });
   // one live preview at a time per card, drawn only when visible
   const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { io.unobserve(e.target); e.target._play?.(); } }), { rootMargin: '150px' });
   const pick = (k) => { sessionStorage.setItem('nv_look', k); track('style_pick', { look: k }); location.hash = '#/tao'; };
   const card = (d) => {
-    const c = h('canvas', { 'aria-hidden': 'true' }); c._play = () => playDemo(c, d.spec, { dpr: 0.32 }); io.observe(c);
+    const c = h('canvas', { 'aria-hidden': 'true' }); c._play = () => playDemo(c, { ...d.spec, ratio }, { dpr: ratio === '9:16' ? 0.45 : 0.6 }); io.observe(c);
     return h('article', { class: 'fcard', 'data-k': d.look },
-      h('div', { class: 'fthumb' + (d.spec?.ratio === '16:9' ? ' wide' : '') }, c, d.look === 'doc' ? h('span', { class: 'credit-tag' }, 'Tính credit') : null),
+      h('div', { class: 'fthumb' + (ratio === '16:9' ? ' wide' : '') }, c, d.look === 'doc' ? h('span', { class: 'credit-tag' }, 'Tính credit') : null),
       h('div', { class: 'catalog-title' }, h('h3', {}, lookName(d.look)), helpHint(lookName(d.look), lookNote(d.look))),
       h('button', { type: 'button', class: 'small', 'data-ev': 'style-pick', onclick: () => pick(d.look) }, 'Chọn định dạng'));
   };
   const paint = () => {
-    chips.replaceChildren(...[['all', 'Tất cả'], ...LOOK_GROUPS.map(([n]) => [n, n])].map(([k, n]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === group), class: 'tab' + (k === group ? ' on' : ''), onclick: () => { group = k; paint(); } }, n)));
+    stopDemos();
+    io.disconnect();
+    grid.classList.toggle('landscape', ratio === '16:9');
+    ratioTabs.replaceChildren(...[['9:16', 'Dọc 9:16'], ['16:9', 'Ngang 16:9']].map(([k, n]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === ratio), class: 'tab' + (k === ratio ? ' on' : ''), onclick: () => { ratio = k; paint(); } }, n)));
+    chips.replaceChildren(...[['all', 'Tất cả'], ...LOOK_GROUPS.filter(([, keys]) => looks.some(d => keys.includes(d.look))).map(([n]) => [n, n])].map(([k, n]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === group), class: 'tab' + (k === group ? ' on' : ''), onclick: () => { group = k; paint(); } }, n)));
     const keys = group === 'all' ? null : LOOK_GROUPS.find(([n]) => n === group)?.[1] || [];
     const list = looks.filter((d) => (!keys || keys.includes(d.look)) && matches(q, lookName(d.look), lookNote(d.look)));
     grid.replaceChildren(...(list.length ? list.map(card) : [h('p', { class: 'muted' }, 'Không có định dạng nào khớp "' + (new URLSearchParams(location.hash.split('?')[1] || '').get('q') || '') + '".')]));
   };
   show(h('header', { class: 'pagehead' }, h('div', {}, h('h1', {}, 'Định dạng video'), h('p', { class: 'muted' }, 'Xem mẫu và chọn cách kể.'))),
-    chips, grid, footer());
+    h('div', { class: 'gallery-toolbar' }, ratioTabs, chips), grid, footer());
   paint();
 }
 
@@ -702,14 +707,14 @@ const MODE_STYLE = Object.fromEntries(MODES.map(([k, , , st]) => [k, st]));
 // ---------- video formats (looks)
 const LOOK_KEYS = ['director', 'act', 'whiteboard', 'illustrated', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'];
 const SKIN_NAMES = { dem: 'Đêm', sang: 'Sáng', tim: 'Tím', 'do-xanh': 'Đỏ – xanh', 'tim-vang': 'Tím – vàng', toi: 'Tối', hong: 'Hồng', giay: 'Giấy', 'bang-den': 'Bảng đen', xanh: 'Xanh', 'xanh-la': 'Xanh lá', cam: 'Cam', 'dien-anh': 'Điện ảnh', 'trang-den': 'Trắng đen', lanh: 'Lạnh' };
-const looksOn = () => LOOK_KEYS.filter((k) => V('look:' + k) !== 'hidden');
+const looksOn = () => LOOK_KEYS.filter((k) => V('look:' + k) === 'on');
 /**
  * How the video is told: one dropdown, the chosen way playing beside it. `auto` (the default)
  * picks per video from the words and does not repeat the channel's last one; `classic*` are the
  * hand-drawn boards (sketchnote, hand-drawn charts, doodle pictures).
  */
-const LOOK_GROUPS = [['Đề xuất', ['auto', 'director']], ['Vẽ tay', ['act', 'whiteboard', 'classic-sketch', 'classic-diagram', 'classic']], ['Đồ hoạ chuyển động', ['illustrated','kinetic', 'split', 'chat', 'data', 'quiz', 'story']], ['Điện ảnh', ['doc']]];
-const HAND = { auto: ['AI chọn cách kể', 'AI thiết kế bố cục và chuyển động theo ý nghĩa từng cảnh. Nếu quản trị tắt AI đạo diễn, hệ thống chọn một cách kể khả dụng. Chế độ tự minh hoạ dùng quy tắc nội dung.'],
+const LOOK_GROUPS = [['Đề xuất', ['auto', 'director']], ['Vẽ tay', ['act', 'whiteboard', 'classic-sketch', 'classic-diagram']], ['Đồ hoạ chuyển động', ['illustrated','kinetic', 'split', 'chat', 'data', 'quiz', 'story']], ['Điện ảnh', ['doc']]];
+const HAND = { auto: ['Tự chọn cách kể', 'Chọn cách kể theo nội dung và các định dạng đang hoạt động. Tự minh họa dùng quy tắc; chế độ AI cần kết nối AI hợp lệ.'],
   'classic-sketch': ['Sketchnote theo lời', 'Vẽ đúng thứ đang được nói: nhân vật đổi tư thế theo động từ, đồ vật của câu thoại, mũi tên và bóng thoại.'],
   'classic-diagram': ['Biểu đồ vẽ tay', 'Biểu đồ tròn, đường xu hướng, cột số liệu được tay vẽ từng nét, khoanh đỏ chỗ quan trọng.'],
   classic: ['Tranh doodle', 'Mỗi câu một bức tranh lớn vẽ tay, xen nhân vật chính đóng đúng hành động, không có chữ dưới hình.'] };
@@ -718,7 +723,7 @@ const customOf = (k) => (String(k).startsWith('f:') ? (ui.formats || []).find((f
 const lookName = (k) => HAND[k]?.[0] || customOf(k)?.name || L('looks', k);
 const lookNote = (k) => HAND[k]?.[1] || (customOf(k) ? customOf(k).note || L('lookNotes', customOf(k).base) : L('lookNotes', k));
 function lookPicker(current, onPick, demos) {
-  const on = new Set([...looksOn(), 'auto', 'classic', 'classic-sketch', 'classic-diagram', ...(ui.formats || []).map((f) => f.id)]);
+  const on = new Set([...looksOn(), 'auto', 'classic-sketch', 'classic-diagram', ...(ui.formats || []).map((f) => f.id)]);
   const groups = (ui.formats || []).length ? [LOOK_GROUPS[0], ['Định dạng riêng', ui.formats.map((f) => f.id)], ...LOOK_GROUPS.slice(1)] : LOOK_GROUPS;
   const sel = h('select', { id: 'f-look', 'aria-label': 'Cách kể' }, ...groups.map(([title, keys]) => {
     const list = keys.filter((k) => on.has(k) && (k !== 'act' || on.has('act')));
@@ -731,7 +736,7 @@ function lookPicker(current, onPick, demos) {
   const cv = h('canvas', { 'aria-label': 'Video mẫu của cách kể đang chọn' });
   const demoOf = (k) => demos.find((x) => x.id === k) || demos.find((x) => x.look === (customOf(k)?.base || k));
   // auto: the demo pane shows the hand-drawn ways in turn
-  const tour = ['look-act', 'classic-sketch', 'classic-diagram', 'classic'].map((id) => demos.find((x) => x.id === id)).filter(Boolean);
+  const tour = ['look-act', 'classic-sketch', 'classic-diagram'].map((id) => demos.find((x) => x.id === id)).filter(Boolean);
   let run = null, timer = 0, at = 0;
   const play = (d) => {
     cap.textContent = d ? lookName(d.look || d.id) : '';
@@ -740,7 +745,7 @@ function lookPicker(current, onPick, demos) {
     else { run.spec = d.spec; run.t = 0; run.build().catch(() => {}); }
   };
   const paint = (k) => {
-    clearInterval(timer); note.replaceChildren(helpHint('Cách kể: ' + lookName(k), lookNote(k))); if (k === 'auto' && demos.some((d) => d.look === 'director')) { play(demos.find((d) => d.look === 'director')); return; }
+    clearInterval(timer); note.replaceChildren(helpHint('Cách kể: ' + lookName(k), lookNote(k))); if (k === 'auto' && V('look:director') === 'on' && demos.some((d) => d.look === 'director')) { play(demos.find((d) => d.look === 'director')); return; }
     if (k === 'auto' && tour.length) {
       at = 0; play(tour[0]);
       timer = setInterval(() => { if (!cv.isConnected) { clearInterval(timer); return; } play(tour[(at = (at + 1) % tour.length)]); }, 9000);
@@ -1350,18 +1355,22 @@ async function showWatch(pid, jobId) {
 async function showCommunity() {
   viewed('community');
   if (V('feature:community') === 'hidden') { show(h('p', { class: 'muted' }, 'Cộng đồng chưa mở.')); return; }
-  let sort = 'new';
+  let sort = 'new', ratio = '9:16', request = 0;
   const grid = h('div', {}, skeleton(8, 'sk-tall'));
   const tabs = h('div', { class: 'tabs', role: 'tablist' });
   const q = searchTerm();
-  const paintTabs = () => tabs.replaceChildren(...[['new', 'Mới nhất'], ['top', 'Nhiều lượt thích']].map(([k, n]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === sort), class: 'tab' + (k === sort ? ' on' : ''), onclick: () => { sort = k; paintTabs(); load(); } }, n)));
+  const paintTabs = () => tabs.replaceChildren(...[['9:16', 'Video 9:16'], ['16:9', 'Video 16:9']].map(([k, n]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === ratio), class: 'tab' + (k === ratio ? ' on' : ''), onclick: () => { ratio = k; paintTabs(); load(); } }, n)));
+  const sorting = h('select', { 'aria-label': 'Sắp xếp video', onchange: (e) => { sort = e.target.value; load(); } }, h('option', { value: 'new' }, 'Mới nhất'), h('option', { value: 'top' }, 'Nhiều lượt thích'));
   async function load() {
+    const ticket = ++request;
+    grid.querySelectorAll('video').forEach((v) => v.pause());
     grid.replaceChildren(skeleton(8, 'sk-tall'));
     try {
-      const { videos: all } = await api('/api/community?sort=' + sort);
-      const videos = all.filter((v) => matches(q, v.title, v.author));
-      grid.replaceChildren(videos.length ? h('div', { class: 'community' }, videos.map(vcard)) : h('div', { class: 'card empty' }, h('span', { class: 'big-emoji' }, '🌱'), h('p', { class: 'muted' }, q ? 'Không có video nào khớp tìm kiếm.' : 'Chưa có video nào được chia sẻ. Hãy là người đầu tiên!'), h('a', { class: 'btn', href: '#/tao' }, 'Tạo video')));
-    } catch (e) { grid.replaceChildren(h('p', { class: 'error' }, e.message)); }
+      const { videos: all } = await api('/api/community?sort=' + sort + '&ratio=' + encodeURIComponent(ratio));
+      if (ticket !== request || !grid.isConnected) return;
+      const videos = all.filter((v) => (v.ratio === '16:9' ? '16:9' : '9:16') === ratio && matches(q, v.title, v.author));
+      grid.replaceChildren(videos.length ? h('div', { class: 'community' + (ratio === '16:9' ? ' landscape' : '') }, videos.map(vcard)) : h('div', { class: 'card empty' }, h('span', { class: 'big-emoji' }, '🌱'), h('p', { class: 'muted' }, q ? 'Không có video nào khớp tìm kiếm.' : 'Chưa có video ' + ratio + ' được chia sẻ.'), h('a', { class: 'btn', href: '#/tao' }, 'Tạo video')));
+    } catch (e) { if (ticket === request) grid.replaceChildren(h('p', { class: 'error' }, e.message)); }
   }
   function vcard(v) {
     const vid = h('video', { src: `/api/community/${v.job_id}/video#t=0.5`, muted: true, playsinline: true, loop: true, preload: 'metadata' });
@@ -1375,7 +1384,7 @@ async function showCommunity() {
     const dur = h('span', { class: 'dur', hidden: true });
     vid.addEventListener('loadedmetadata', () => { if (isFinite(vid.duration)) { dur.textContent = `${Math.floor(vid.duration / 60)}:${String(Math.round(vid.duration % 60)).padStart(2, '0')}`; dur.hidden = false; } });
     const who = v.author || 'Ẩn danh';
-    const card = h('div', { class: 'vcard', role: 'button', tabindex: 0, 'aria-label': 'Xem ' + v.title, onclick: () => openPlayer(v), onkeydown: (e) => { if (e.key === 'Enter') openPlayer(v); }, onmouseenter: () => vid.play().catch(() => {}), onmouseleave: () => vid.pause() },
+    const card = h('div', { class: 'vcard' + (v.ratio === '16:9' ? ' wide' : ''), role: 'button', tabindex: 0, 'aria-label': 'Xem ' + v.title, onclick: () => openPlayer(v), onkeydown: (e) => { if (e.key === 'Enter') openPlayer(v); }, onmouseenter: () => vid.play().catch(() => {}), onmouseleave: () => vid.pause() },
       h('div', { class: 'vthumb' }, vid, h('span', { class: 'play' }, '▶'), dur),
       h('div', { class: 'vmeta' }, h('b', { class: 'vtitle' }, v.title),
         h('div', { class: 'vauthor' }, h('span', { class: 'av' }, who.trim().charAt(0).toUpperCase()), h('span', {}, who)),
@@ -1393,9 +1402,9 @@ async function showCommunity() {
           h('a', { class: 'btn small', href: '#/tao', onclick: close, 'data-ev': 'community-make' }, 'Làm video như này'))));
     document.body.append(bg);
   }
-  show(h('header', { class: 'pagehead' }, h('div', {}, h('h1', {}, 'Cộng đồng'), h('p', { class: 'muted' }, 'Video do mọi người làm bằng ' + ui.brand.name + '. Dựng xong video, bấm "Chia sẻ lên Cộng đồng" để góp mặt.')),
+  show(h('header', { class: 'pagehead' }, h('div', {}, h('h1', {}, 'Cộng đồng'), h('p', { class: 'muted' }, 'Khám phá video từ cộng đồng.')),
       h('a', { class: 'btn', href: me ? '#/video' : '#/tao', 'data-ev': 'community-share' }, icon('share'), 'Chia sẻ video')),
-    tabs, grid, footer());
+    h('div', { class: 'gallery-toolbar' }, tabs, sorting), grid, footer());
   paintTabs(); load();
 }
 

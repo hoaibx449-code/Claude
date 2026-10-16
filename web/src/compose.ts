@@ -319,7 +319,7 @@ export function composeLook(input: LookInput): LookInput {
   }
   if (look === 'split') {
     const low = all.toLowerCase();
-    out.sides ||= /giàu|nghèo/.test(low) ? { a: 'Người nghèo', b: 'Người giàu' } : /trước|sau/.test(low) && /trước khi|sau khi|trước đây|bây giờ/.test(low) ? { a: 'Trước đây', b: 'Bây giờ' } : { a: 'Cách sai', b: 'Cách đúng' };
+    out.sides ||= /giàu|nghèo/.test(low) ? { a: 'Người nghèo', b: 'Người giàu' } : /trước|sau/.test(low) && /trước khi|sau khi|trước đây|bây giờ/.test(low) ? { a: 'Trước đây', b: 'Bây giờ' } : { a: 'Bên A', b: 'Bên B' };
     for (const s of scenes) {
       if (s.x.a && s.x.b) continue;
       let a = '', b = '';

@@ -1,3 +1,4 @@
+import { composeLook } from '../web/src/compose.ts';
 // Server-side logic that needs no Cloudflare runtime: intent detection, free scene design,
 // spec validation, settings cleaning, log masking.
 import { test } from 'node:test';
@@ -52,7 +53,7 @@ test('settings: visibility, free voices and plans are always well formed', () =>
   const base = defaultConfig(env);
   const c = cleanConfig({ visibility: { 'style:kraft': 'hidden', 'style:oly': 'dev', 'bad key': 'hidden', 'feature:zalo': 'nope' }, voices: [{ provider: 'everai', code: 'vi_x_y', label: 'X' }], plans: [{ id: 'pro', name: 'Pro', price: 100 }] }, base);
   // settings saved before the story animation existed hide the old stick-figure story once
-  assert.deepEqual(Object.keys(c.visibility).sort(), ['look:story', 'style:kraft', 'style:oly']);
+  assert.deepEqual(Object.keys(c.visibility).sort(), ['look:director', 'look:doc', 'look:illustrated', 'look:story', 'look:whiteboard', 'style:kraft', 'style:oly']);
   assert.equal(c.defaults.look, 'act');
   const again = cleanConfig({ ...c, visibility: { 'style:kraft': 'hidden' }, defaults: { ...c.defaults, look: 'kinetic' } }, base);
   assert.deepEqual(Object.keys(again.visibility), ['style:kraft'], 'an admin who shows it again keeps it shown');
@@ -101,4 +102,24 @@ test('custom formats from the training page: cleaned, and only released ones are
   assert.deepEqual(c.formats.map((f) => [f.id, f.base, f.stage]), [['ke-sach', 'act', 'live'], ['thu', 'act', 'test']]);
   const pub = publicConfig(c) as any;
   assert.deepEqual(pub.formats, [{ id: 'f:ke-sach', name: 'Kể sách', base: 'act', note: 'Dòng đầu' }]);
+});
+
+
+test('format audit migrates incomplete formats out of creation, preserves projects and allows explicit re-enabling', () => {
+  const base = defaultConfig(env);
+  const retired = ['director', 'whiteboard', 'illustrated', 'doc', 'story'];
+  const old = cleanConfig({ rev: 2, visibility: {}, formats: [{id:'image-mode', name:'Ảnh', base:'illustrated', stage:'live'}] }, base);
+  for (const k of retired) assert.equal(old.visibility['look:' + k], 'hidden');
+  assert.equal(old.rev, 3);
+  assert.equal(publicConfig(old).formats.length, 0);
+  assert.ok(!old.visibility['look:act']);
+  const enabled = cleanConfig({ ...old, visibility: { ...old.visibility, 'look:director': 'on' } }, base);
+  assert.equal(enabled.visibility['look:director'], undefined);
+  const existing = cleanSpec({ look: 'director', scenes: [{ lines: ['Giữ dự án cũ.'] }] }, 'u');
+  assert.equal(existing.look, 'director');
+});
+
+test('comparison never invents good/bad judgments when the script does not state them', () => {
+  const c = composeLook({look:'split', scenes:[{lines:['Trà có hương nhẹ.', 'Cà phê có hương đậm.']}]});
+  assert.deepEqual(c.sides, {a:'Bên A', b:'Bên B'});
 });

@@ -229,7 +229,7 @@ export function defaultConfig(env: Env): Config {
       imageOpenai: 0.063, imageGemini: 0.039, everaiPer1000: 1000, googleTtsPerM: 16, elevenPer1000: 0.18,
     },
     logDays: 180,
-    visibility: { 'feature:music': 'dev', 'look:story': 'hidden' },
+    visibility: { 'feature:music': 'dev', ...Object.fromEntries(['director', 'whiteboard', 'illustrated', 'doc', 'story'].map(k => ['look:' + k, 'hidden' as Vis])) },
     zalo: {
       enabled: false, botLink: '', receive: 'webhook', keepWebhook: true, perDay: 300, stickers: { welcome: '', thanks: '' },
       followup: { enabled: false, hours: 20, text: 'Chào {ten}, hôm trước bạn có hỏi về gói {goi} bên mình. Bạn còn phân vân điều gì không, mình giải đáp ngay nhé? Nếu muốn làm thử trước, bạn chỉ cần nhắn chủ đề video là mình làm luôn 😊' },
@@ -358,9 +358,12 @@ export function cleanConfig(input: any, base: Config): Config {
       if (!i.visibility && Array.isArray(i.enabledSources)) for (const k of SOURCE_KEYS) if (!i.enabledSources.includes(k)) v['source:' + k] = 'hidden';
       // rev 2: the story animation replaces the stick-figure story
       if ((Number(i.rev) || 0) < 2) v['look:story'] = 'hidden';
+      // Rev 3: retire unfinished image/isolated runners and the repetitive director fallback from public creation.
+      // Existing projects remain readable; admin may explicitly re-enable after validating the renderer and AI.
+      if ((Number(i.rev) || 0) < 3) for (const k of ['director', 'whiteboard', 'illustrated', 'doc', 'story']) v['look:' + k] = 'hidden';
       return v;
     })(),
-    rev: 2,
+    rev: 3,
     zalo: (() => {
       const z = i.zalo || {}, b = base.zalo;
       const tpl: Record<string, string> = {};
@@ -550,7 +553,7 @@ export function publicConfig(config: Config) {
   return {
     brand: config.brand, labels: config.labels, texts: config.texts, enabledStyles: config.enabledStyles, enabledSources: config.enabledSources, defaults: config.defaults,
     voices: config.voices.filter((v) => config.visibility['voice:' + v.code] !== 'hidden'),
-    formats: config.formats.filter((f) => f.stage === 'live').map((f) => ({ id: 'f:' + f.id, name: f.name, base: f.base, note: f.note.split('\n')[0].slice(0, 160) })), visibility: config.beta.enabled ? { ...config.visibility, 'feature:plans': 'hidden' as Vis } : config.visibility, notice: config.notice,
+    formats: config.formats.filter((f) => f.stage === 'live' && vis(config, 'look:' + f.base) === 'on').map((f) => ({ id: 'f:' + f.id, name: f.name, base: f.base, note: f.note.split('\n')[0].slice(0, 160) })), visibility: config.beta.enabled ? { ...config.visibility, 'feature:plans': 'hidden' as Vis } : config.visibility, notice: config.notice,
     beta: config.beta.enabled ? { label: config.beta.label, note: config.beta.note } : null,
     site: config.site,
     plans: !selling(config) ? [] : config.plans.filter((p) => p.visible).map((p) => ({ id: p.id, name: p.name, price: p.price, days: p.days, yearPrice: p.yearPrice || 0, listPrice: p.listPrice > p.price ? p.listPrice : 0, highlight: p.highlight, desc: p.desc, features: p.features, limits: p.limits, maxSeconds: Math.min(p.maxSeconds, config.limits.maxSeconds), docPerMonth: p.docPerMonth || 0 })),
