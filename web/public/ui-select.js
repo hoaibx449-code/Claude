@@ -5,7 +5,7 @@
 // shows a ▶ button on each option to listen before choosing (voices).
 // iPhone: no automatic zoom when a field gets focus (iOS still lets people pinch to zoom, so
 // text zoom stays available); other phones keep full zoom.
-if (/iPad|iPhone|iPod/.test(navigator.userAgent)) document.querySelector('meta[name=viewport]')?.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover');
+// Keep the user's pinch-to-zoom available; 16px fields prevent unwanted focus zoom.
 
 (() => {
   'use strict';

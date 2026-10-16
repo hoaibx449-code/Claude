@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 // Execute the actual D1 SQL with SQLite, including batch rollback semantics.
 export function database(file: string) {
-  const execute = (statements: any[], schema = '') => JSON.parse(execFileSync('python3', ['-c', `
+  const execute = (statements: any[], schema = '') => JSON.parse(execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), ['-c', `
 import json, sqlite3, sys
 p=json.load(sys.stdin); db=sqlite3.connect(sys.argv[1]); db.row_factory=sqlite3.Row
 if p['schema']: db.executescript(p['schema'])

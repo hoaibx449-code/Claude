@@ -39,6 +39,7 @@ const demos = [...picks.map((p, i) => make(p, i === 0)), ...genres.slice(1).map(
 // one demo per video format, in the niches the site is made for: finance, philosophy, life skills, motivation
 const { composeLook } = await import('./src/compose.ts');
 const LOOK_DEMOS = {
+  director: ['AI đang chọn thương hiệu thay bạn.', 'Nội dung rõ ràng giúp AI hiểu sản phẩm.', 'Được nhìn thấy chưa chắc được khách hàng chọn.', 'Ba việc cần làm: dữ liệu rõ, công cụ đúng, con người lắng nghe.'],
   whiteboard:['Dành thời gian cho gia đình thay vì nhận thêm công việc.','Đọc một trang sách mỗi ngày để bắt đầu thói quen.'],
   kinetic: ['Đừng chờ có động lực mới bắt đầu.', 'Bắt đầu đi, động lực sẽ tới sau.', 'Mỗi ngày chỉ cần 1% tốt hơn.', 'Một năm sau, bạn giỏi gấp 37 lần.'],
   split: ['Người nghèo nhận lương là đi mua sắm.', 'Người giàu nhận lương là cất 20% trước.', 'Người nghèo hết tiền thì vay.', 'Người giàu có quỹ dự phòng 6 tháng.'],

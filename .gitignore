@@ -14,3 +14,5 @@ web/.gcp-secrets.json
 web/public/icons/icon-*.png
 web/public/demos.json
 .scratch/
+
+web/public/illustrated-addon.js

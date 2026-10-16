@@ -1,0 +1,57 @@
+{
+  "title": "AI hiểu, khách hàng tin",
+  "channel": "Nét Vẽ",
+  "look": "director",
+  "skin": "sang",
+  "ratio": "9:16",
+  "style": "notebook",
+  "subtitles": true,
+  "scenes": [
+    {
+      "lines": ["Khi AI chọn thương hiệu, bạn có nằm trong danh sách?", "Nội dung rõ ràng giúp sản phẩm được hiểu đúng."],
+      "panels": [],
+      "direction": {
+        "composition": "funnel", "title": "AI đang chọn ai?", "meaning": "Từ nhiều lựa chọn tới sản phẩm được hiểu rõ.", "transition": "fade",
+        "nodes": [
+          {"id":"ai","label":"AI tìm kiếm","icon":"cpu","x":50,"y":17,"w":44,"h":24,"line":0,"shape":"circle","enter":"scale"},
+          {"id":"a","label":"Thông tin thiếu","icon":"file-unknown","x":25,"y":65,"w":40,"h":30,"line":0,"delay":0.3,"enter":"rise"},
+          {"id":"b","label":"Sản phẩm rõ ràng","icon":"file-check","x":75,"y":65,"w":40,"h":30,"line":1,"accent":true,"enter":"rise"}
+        ],
+        "links": [{"from":"ai","to":"a","line":0},{"from":"ai","to":"b","line":1}]
+      }
+    },
+    {
+      "lines": ["Được nhìn thấy mới là bước đầu.", "Khách hàng còn cân nhắc trước khi quyết định."], "panels": [],
+      "direction": {
+        "composition": "flow", "title": "Từ thấy đến chọn", "meaning": "Từng giai đoạn trong quyết định mua.", "transition": "slide",
+        "nodes": [
+          {"id":"see","label":"Nhìn thấy","icon":"eye","x":50,"y":17,"w":84,"h":23,"line":0,"enter":"slide"},
+          {"id":"think","label":"Cân nhắc","icon":"scale","x":50,"y":50,"w":64,"h":23,"line":1,"enter":"slide"},
+          {"id":"choose","label":"Lựa chọn","icon":"check","x":50,"y":83,"w":44,"h":23,"line":1,"delay":0.4,"accent":true,"enter":"scale"}
+        ],
+        "links": [{"from":"see","to":"think","line":1},{"from":"think","to":"choose","line":1}]
+      }
+    },
+    {
+      "lines": ["Nói thật nhiều chưa chắc tạo được niềm tin.", "Thông tin đúng và trải nghiệm tốt mới có sức thuyết phục."], "panels": [],
+      "direction": {
+        "composition": "compare", "title": "Điều gì tạo niềm tin?", "meaning": "Đối chiếu lời quảng cáo với bằng chứng và trải nghiệm.", "transition": "fade",
+        "nodes": [
+          {"id":"talk","label":"Chỉ quảng cáo","icon":"speakerphone","x":25,"y":43,"w":40,"h":50,"line":0,"enter":"rise"},
+          {"id":"trust","label":"Đúng lời hứa","icon":"heart-handshake","x":75,"y":43,"w":40,"h":50,"line":1,"accent":true,"enter":"scale"}
+        ], "links": []
+      }
+    },
+    {
+      "lines": ["Bắt đầu từ dữ liệu rõ ràng và công cụ phù hợp.", "Sau cùng, hãy lắng nghe con người phía sau mỗi đơn hàng."], "panels": [],
+      "direction": {
+        "composition": "free", "title": "Bắt đầu từ hôm nay", "meaning": "Ba hành động nối tiếp, điểm nhấn cuối là con người.", "transition": "zoom",
+        "nodes": [
+          {"id":"data","label":"Dữ liệu rõ","icon":"database","x":25,"y":23,"w":40,"h":32,"line":0,"enter":"rise"},
+          {"id":"tools","label":"Công cụ đúng","icon":"tools","x":75,"y":23,"w":40,"h":32,"line":0,"delay":0.4,"enter":"slide"},
+          {"id":"people","label":"Lắng nghe khách hàng","icon":"users","x":50,"y":75,"w":82,"h":32,"line":1,"accent":true,"enter":"scale"}
+        ], "links": [{"from":"data","to":"people","line":1},{"from":"tools","to":"people","line":1}]
+      }
+    }
+  ]
+}

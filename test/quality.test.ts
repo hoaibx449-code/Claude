@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 // Drawing quality gates (run in CI): a change that makes the hand jump, the nib leave the line,
 // pictures fall back to the sweep, or rendering slow down fails here.
 import { test } from 'node:test';
@@ -8,7 +9,7 @@ import { prepare, renderFrame, SANS, inkify } from '../src/engine/render.ts';
 import { buildTimeline, estimateVoice } from '../src/engine/timeline.ts';
 import { extractStrokes, pace, penState, pathStroke, thin, trace } from '../src/engine/strokes.ts';
 
-const R = new URL('..', import.meta.url).pathname;
+const R = fileURLToPath(new URL('../', import.meta.url));
 GlobalFonts.registerFromPath(R + 'assets/fonts/Pangolin-Regular.ttf', 'Pangolin');
 GlobalFonts.registerFromPath(R + 'assets/fonts/BeVietnamPro-ExtraBold.ttf', SANS);
 const env = { createCanvas: (w: number, h: number) => createCanvas(w, h) as any };

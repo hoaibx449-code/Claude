@@ -48,7 +48,7 @@ async function showAdmin() {
   await (pages[tab] || adminOverview)(body, tab);
 }
 
-const card = (title, note, ...kids) => h('section', { class: 'card' }, h('h2', {}, title), note ? h('p', { class: 'muted' }, note) : null, ...kids);
+const card = (title, note, ...kids) => h('section', { class: 'card' }, h('div', { class: 'section-title' }, h('h2', {}, title), note ? helpHint(title, note) : null), ...kids);
 const input = (value, onInput, attrs = {}) => h('input', { value: value ?? '', ...attrs, oninput: (e) => onInput(attrs.type === 'number' ? Number(e.target.value) : e.target.value) });
 const area = (value, onInput, rows = 4) => h('textarea', { rows, value: value ?? '', oninput: (e) => onInput(e.target.value) });
 const select = (list, value, onChange) => h('select', { onchange: (e) => onChange(e.target.value) }, options(list, value));

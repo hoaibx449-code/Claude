@@ -1,3 +1,4 @@
+import { planDirections } from '../../src/engine/director.ts';
 import { composeAct } from './act.ts';
 // Free mode (no AI cost): turns the user's own script into scenes and designs a sketch for each
 // one with simple rules — key words become handwritten text, nouns become line-art icons,
@@ -288,13 +289,14 @@ const keysOf = (s: string) => [...iconsIn(s).map((x) => x.word), ...(s.match(/\d
 import {planIllustrated} from '../../addons/faciup-illustrated/schema.ts';
 import { cleanWhiteboard } from '../../addons/faciup-whiteboard/faciup-schema.js';
 import { freeWhiteboard } from '../../addons/faciup-whiteboard/semantic.ts';
-export interface LookInput { look: string; scenes: { lines: string[]; x?: any; pause?: number; panels?: any[]; act?: any }[]; sides?: { a: string; b: string }; chatName?: string; cast?: any[] }
+export interface LookInput { look: string; recentDirections?: string[]; scenes: { lines: string[]; x?: any; pause?: number; panels?: any[]; act?: any; direction?: any }[]; sides?: { a: string; b: string }; chatName?: string; cast?: any[] }
 
 /** Fill the format data of every scene (keeps what is already there). */
 export function composeLook(input: LookInput): LookInput {
   const { look } = input, all = input.scenes.map((s) => s.lines.join(' ')).join(' ');
   let scenes = input.scenes.map((s) => ({ ...s, x: { ...(s.x || {}) } }));
   const out: LookInput = { ...input };
+  if (look === 'director') return { ...input, scenes: planDirections(input.scenes, input.recentDirections) };
   if(look==='illustrated'){out.scenes=scenes.map((s:any)=>{const d=planIllustrated(s.lines,s.illustrated||s.x?.illustrated)!;return {...s,illustrated:d,panels:d.layers.map((l:any,k:number)=>({...s.panels?.[k],prompt:s.panels?.[k]?.prompt||l.prompt,image:s.panels?.[k]?.image||'',line:l.line}))};});return out;}
   if(look==='whiteboard') {
     out.scenes=scenes.map((s:any)=>({...s,whiteboard:cleanWhiteboard(s.whiteboard||s.x?.whiteboard)||freeWhiteboard(s.lines),panels:[]}));

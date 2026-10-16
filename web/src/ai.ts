@@ -1,3 +1,4 @@
+import { DIRECTOR_BRIEF, planDirections, directionIssues, cleanDirection } from '../../src/engine/director.ts';
 import {ILLUSTRATED_BRIEF} from '../../addons/faciup-illustrated/schema.ts';
 import { ACT_BRIEF } from './act.ts';
 // Script writing (OpenAI or Gemini, chosen per request) and line-art images.
@@ -24,6 +25,7 @@ const ICON_HINT = 'Tên icon là tên bộ Tabler Icons tiếng Anh, viết thư
 /** What each format needs from the writer, and the per-scene "x" data it reads. */
 import {whiteboardDirections} from '../../addons/faciup-whiteboard/brief.js';
 export const LOOK_BRIEF: Record<string, string> = {
+  director: DIRECTOR_BRIEF,
   act: ACT_BRIEF, illustrated:ILLUSTRATED_BRIEF,
   whiteboard: whiteboardDirections()+' Mỗi cảnh có x:{whiteboard:{title,meaning,objects}}, không panels. Giữ nguyên lời người dùng.',
   kinetic: 'ĐỊNH DẠNG: CHỮ BÙNG NỔ. Câu ngắn, mạnh, có con số cụ thể; mỗi câu ≤ 14 chữ. Mỗi cảnh có "x":{"icon":"icon chính","keys":["1-3 từ cần nhấn, đúng như trong câu"]}.',
@@ -45,6 +47,7 @@ export interface ScriptRequest {
   look?: string;
   /** the format's brief as set on the training page (replaces the built-in one) */
   brief?: string;
+  recentDirections?: string[];
 }
 
 const ICON_VOCAB = 'user, users, user-check, user-x, user-heart, user-star, friends, man, woman, baby-carriage, old, mood-happy, mood-sad, mood-cry, mood-angry, mood-confuzed, mood-sick, mood-nervous, mood-smile-beam, heart, heart-broken, heart-handshake, hearts, brain, bulb, bulb-off, message, message-circle, messages, speakerphone, microphone, thumb-up, thumb-down, hand-stop, hand-click, pointer, eye, eye-off, ear, search, zoom-question, question-mark, exclamation-mark, alert-triangle, alert-circle, info-circle, check, x, circle-check, circle-x, ban, lock, lock-open, key, shield, shield-check, fingerprint, home, building, building-skyscraper, building-bank, building-store, building-hospital, building-factory, school, briefcase, tent, cash, coin, coins, currency-dollar, pig-money, wallet, credit-card, receipt, receipt-tax, report-money, moneybag, basket, shopping-cart, shopping-bag, gift, tag, discount, percentage, calculator, chart-bar, chart-line, chart-pie, chart-arrows-vertical, trending-up, trending-down, arrow-up-right, arrow-down-right, scale, scale-outline, clock, alarm, hourglass, calendar, calendar-event, calendar-time, stopwatch, history, hourglass-high, device-mobile, device-laptop, device-desktop, device-tv, device-gamepad-2, wifi, world, cloud, database, server, robot, cpu, code, mail, phone, camera, photo, video, movie, music, headphones, car, bus, bike, plane, rocket, ship, truck, map, map-pin, route, road-sign, compass, globe, sun, moon, cloud-rain, snowflake, bolt, flame, droplet, leaf, plant, tree, seedling, mountain, beach, coffee, cup, tools-kitchen-2, pizza, apple, salad, bottle, beer, cake, candy, egg, fish, meat, milk, bed, zzz, run, walk, swimming, yoga, barbell, stretching, heartbeat, activity, pill, vaccine, stethoscope, first-aid-kit, virus, book, book-2, books, notebook, pencil, writing, certificate, award, trophy, medal, crown, star, stars, flag, target, target-arrow, puzzle, chess, chess-knight, dice-5, ladder, stairs-up, stairs-down, battery, battery-1, battery-4, plug, lamp, bell, bell-ringing, hammer, tool, tools, settings, adjustments, box, package, link, anchor, magnet, umbrella, paperclip, sparkles, confetti, balloon, mask, mood-crazy-happy, ghost, skull, bomb, fire-extinguisher, arrows-split, arrows-join, refresh, repeat, infinity, recycle, arrow-loop-right, arrows-exchange';
@@ -81,6 +84,13 @@ const DIAGRAM_SCHEMA =
   '{"kind":"stick","title":"(tuỳ chọn)","actors":[{"action":"idle|walk|run|wave|think|cheer|sad|point|shrug|jump","label":"≤2 chữ, vd Bạn, Sếp"}],"bubble":"lời thoại ≤8 chữ (tuỳ chọn)","caption":"≤8 chữ (tuỳ chọn)"} — 1-2 người que CHUYỂN ĐỘNG THẬT (đi, chạy, vẫy tay, ăn mừng...), dùng cho tình huống, cảm xúc, nhân vật; người đầu tiên nói câu trong bubble. Chỉ dùng số liệu có thật hoặc ví dụ minh hoạ đã nói rõ là ví dụ';
 
 function systemPrompt(r: ScriptRequest) {
+  if (r.look === 'director') return [
+    r.scenes ? 'Giữ nguyên lời đọc và số cảnh; chỉ thiết kế direction cho từng cảnh.' : `Viết video tiếng Việt về đúng chủ đề, khoảng ${Math.max(4, Math.min(14, Math.round(r.seconds / 6)))} cảnh, tổng khoảng ${r.seconds} giây, mỗi cảnh 1-3 câu. Nhịp dài ngắn theo ý, không buộc mọi video cùng công thức hook/danh sách/CTA.`,
+    DIRECTOR_BRIEF, r.brief || '', r.extra || '', r.tone ? 'Giọng văn: ' + r.tone : '',
+    r.ratio === '16:9' ? 'Khung ngang: ưu tiên mối quan hệ trái-phải.' : 'Khung dọc: giữ chữ ngắn, phân tầng hình rõ ràng.',
+    r.recentDirections?.length ? 'Bố cục các video gần đây (tránh dùng lại chuỗi): ' + r.recentDirections.join('; ') : '',
+    'Chỉ trả JSON {"title":"...","caption":"...","hashtags":[],"scenes":[{"lines":["..."],"direction":{...}}]}.'
+  ].filter(Boolean).join('\n');
   if (r.scenes) return illustratePrompt(r);
   const scenes = Math.max(4, Math.min(14, Math.round(r.seconds / 5.5)));
   const visual = {
@@ -242,7 +252,28 @@ export async function writeScript(env: Env, provider: TextProvider, r: ScriptReq
           usage.tokensIn += fix.tokensIn; usage.tokensOut += fix.tokensOut;
           out = parseJson(fix.text);
         }
-        if (out && Array.isArray(out.scenes) && out.scenes.length) return { ...out, _usage: usage };
+        if (out && Array.isArray(out.scenes) && out.scenes.length) {
+          if (r.look === 'director') {
+            const original = r.scenes || out.scenes.map((s: any) => Array.isArray(s.lines) ? s.lines.slice(0, 3) : []);
+            out.scenes = original.map((lines: string[], i: number) => ({ lines, direction: out.scenes[i]?.direction }));
+            const issues = out.scenes.flatMap((s: any, i: number) => {
+              const d = cleanDirection(s.direction, s.lines);
+              return !d ? [`Cảnh ${i + 1}: thiếu thiết kế`] : directionIssues(d).map((x) => `Cảnh ${i + 1}: ${x}`);
+            });
+            const repeated = out.scenes.some((s: any, i: number) => i > 0 && s.direction?.composition === out.scenes[i - 1].direction?.composition);
+            if (issues.length || repeated) {
+              // One bounded critique/repair pass; preserve the narration even if repair changes it.
+              try {
+                const fix = await callText(env, p, model, DIRECTOR_BRIEF + '\nRà soát storyboard. Sửa chồng chữ/vật và chuỗi cảnh lặp. Giữ lời đọc. Trả JSON {scenes:[{direction:...}]}.', JSON.stringify({ issues, repeated, scenes: out.scenes }));
+                usage.tokensIn += fix.tokensIn; usage.tokensOut += fix.tokensOut;
+                const revised = parseJson(fix.text);
+                if (revised?.scenes?.length === original.length) out.scenes = original.map((lines: string[], i: number) => ({ lines, direction: revised.scenes[i]?.direction || out.scenes[i].direction }));
+              } catch { /* retain the first design; bounded local repair below */ }
+            }
+            out.scenes = planDirections(out.scenes, r.recentDirections?.flatMap((x) => x.split(',')).slice(0, 4));
+          }
+          return { ...out, _usage: usage };
+        }
         lastErr = 'AI trả về chưa đúng định dạng';
         break; // try the next model
       } catch (e: any) {
@@ -358,6 +389,25 @@ export async function analyzeSample(env: Env, frames: string[], notes: string, p
 
 
 // ---------------------------------------------------------------- Zalo assistant
+/** Actual rendered frames, paired with the source graph. Suggestions never replace narration. */
+export async function reviewDirectionFrames(env: Env, frames: string[], scenes: any[], provider: TextProvider) {
+  if (!frames.length || frames.length > 6 || frames.some((f) => !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(f) || f.length > 400000)) throw new HttpError(400, 'Cần 1–6 ảnh xem trước JPEG hợp lệ.');
+  const imgs = frames.map((f) => ({ mime: 'image/jpeg', data: f.split(',')[1] }));
+  const sys = DIRECTOR_BRIEF + '\nĐây là khung hình thực đã dựng theo storyboard. Kiểm tra chữ tràn, chồng vật, minh hoạ không khớp lời và cảnh lặp. Chỉ đề xuất sửa direction; không sửa lời đọc. Trả JSON {notes:["nhận xét cụ thể"],scenes:[{direction:...}]} đúng số cảnh.';
+  let last = '';
+  for (const [p, model] of textPlan(env, provider)) {
+    try {
+      const r = await callVision(env, p, model, sys, JSON.stringify(scenes.map((s) => ({ lines: s.lines, direction: s.direction }))), imgs);
+      const out = parseJson(r.text);
+      if (!out || !Array.isArray(out.scenes) || out.scenes.length !== scenes.length) { last = 'AI trả thiếu cảnh.'; continue; }
+      return { scenes: planDirections(scenes.map((s, i) => ({ ...s, direction: out.scenes[i]?.direction || s.direction }))),
+        notes: (Array.isArray(out.notes) ? out.notes : []).filter((x: any) => typeof x === 'string').slice(0, 8).map((x: string) => x.slice(0, 300)),
+        _usage: { provider: p, model, tokensIn: r.tokensIn, tokensOut: r.tokensOut, tries: 1 } };
+    } catch (e: any) { last = String(e.message); }
+  }
+  throw new HttpError(502, 'Chưa rà soát được bản dựng: ' + last.slice(0, 160));
+}
+
 export interface AssistantTurn { role: 'user' | 'bot'; text: string }
 export interface AssistantAnswer { reply: string; intent: 'chat' | 'make_video' | 'status' | 'human' | 'buy' | 'clarify' | 'samples' | 'settings' | 'optout'; topic: string; plan: string; usage: { provider: string; model: string; tokensIn: number; tokensOut: number }
   /** everything else the model returned (customer profile, stage, chosen frame/voice/format…) */ extra: Record<string, any> }
