@@ -49,6 +49,7 @@ export interface Config {
   defaults: { source: string; textAI: string; imageAI: string; style: string; visual: string; ratio: string; seconds: number; voice: string; channel: string; tone: string; subtitles: boolean; mode: string; intro: boolean; look: string; music: string };
   /** Google sign-in: popup (Google's button), redirect (full page, works in installed apps and in-app browsers), auto. */
   auth: { google: string };
+  rendering: { mode: 'cloud' | 'local' | 'browser' };
   voices: Voice[];
   models: { openaiText: string; openaiImage: string; openaiImageQuality: string; geminiText: string; geminiImage: string; openaiFallback: string; geminiFallback: string };
   /** daily defaults; maxSeconds: longest video anyone may make (plans may allow less) */
@@ -197,6 +198,7 @@ export function defaultConfig(env: Env): Config {
     enabledSources: [...SOURCE_KEYS],
     defaults: { source: 'topic', subtitles: false, textAI: 'gemini', imageAI: 'gemini', style: 'notebook', visual: 'doodle', ratio: '9:16', seconds: 45, voice: 'vi_female_thuytrang_mb', channel: '', tone: '', mode: 'hand', intro: true, look: 'act', music: 'auto' },
     auth: { google: 'auto' },
+    rendering: { mode: 'cloud' },
     voices: [
       ['vi_female_thuytrang_mb', 'Thùy Trang · nữ Bắc · nói chuyện'], ['vi_male_minhtriet_mb', 'Minh Triết · nam Bắc · sách nói'],
       ['vi_male_leduc_mb', 'Lê Đức · nam Bắc · kể chuyện'], ['vi_female_kimphuong_mb', 'Kim Phượng · nữ Bắc · kể chuyện'],
@@ -323,6 +325,7 @@ export function cleanConfig(input: any, base: Config): Config {
       look: (Number(i.rev) || 0) < 2 ? 'act' : pick(d.look, LOOK_KEYS.filter((k) => k !== 'doc'), base.defaults.look), music: typeof d.music === 'string' && /^(auto|none|[a-z0-9-]{2,20})$/.test(d.music) ? d.music : base.defaults.music,
     },
     auth: { google: pick(i.auth?.google, GOOGLE_MODES, base.auth.google) },
+    rendering: { mode: pick(i.rendering?.mode, ['cloud', 'local', 'browser'], base.rendering.mode) as Config['rendering']['mode'] },
     voices: vs,
     models: {
       openaiText: MODEL.test(m.openaiText) ? m.openaiText : base.models.openaiText, openaiImage: MODEL.test(m.openaiImage) ? m.openaiImage : base.models.openaiImage,
@@ -568,6 +571,6 @@ export function publicConfig(config: Config) {
     legal: { version: config.legal.version, company: config.legal.company, email: config.legal.email, address: config.legal.address, taxId: config.legal.taxId },
     doc: { perVideo: config.doc.creditsPerVideo, packs: selling(config) && config.payment.enabled ? config.doc.packs : [] },
     limits: { maxSeconds: config.limits.maxSeconds },
-    auth: config.auth,
+    auth: config.auth, rendering: config.rendering,
   };
 }

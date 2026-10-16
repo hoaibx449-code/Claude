@@ -178,3 +178,11 @@ main.wrap .home-minimal h1 { font-size: clamp(1.8rem, 3.1vw, 2.8rem); font-weigh
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .home-contact { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: .85rem; font-weight: 600; }
 .home-contact:hover { color: var(--blue); }
+
+.browser-render { padding: 24px; }
+.browser-render > p { margin-block: 12px; }
+.browser-render-preview { display: flex; justify-content: center; max-height: 38vh; margin-block: 12px; }
+.browser-render-preview canvas { max-width: 100%; max-height: 38vh; width: auto; object-fit: contain; }
+.browser-render progress { width: 100%; margin-block: 12px; }
+.browser-render .browser-result { width: 100%; max-height: 48vh; object-fit: contain; background: #14202d; margin-top: 12px; }
+.browser-render > .row { flex-wrap: wrap; margin-top: 12px; }

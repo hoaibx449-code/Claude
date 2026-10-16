@@ -233,6 +233,8 @@ function keysCard(secrets, secretInput, names) {
 function settingsTab(c, secrets, secretInput) {
   return [
     keysCard(secrets, secretInput, ['GEMINI_API_KEY', 'OPENAI_API_KEY']),
+    card('Máy dựng video', 'Cloud dùng Cloud Run. Máy cá nhân cần mở runner trên PC. Trình duyệt xuất trực tiếp trên thiết bị, cần giữ tab mở; tải tệp về máy, chưa lưu vào thư viện. Giọng AI vẫn cần dịch vụ giọng; có thể tải bản thu âm của bạn.',
+      h('label', {}, 'Nơi dựng video', select([['cloud', 'Cloud (Google Cloud Run)'], ['local', 'Máy cá nhân (PC / VPS)'], ['browser', 'Trình duyệt (tạm thời)']], c.rendering?.mode || 'cloud', v => { c.rendering = {mode:v}; }))),
     card('Mặc định khi tạo video', 'Người dùng vẫn đổi được từng video.', h('div', { class: 'grid' },
       h('label', {}, 'Cách tạo', select(Object.entries(c.labels.sources), c.defaults.source, (v) => { c.defaults.source = v; })),
       h('label', {}, 'AI viết kịch bản', select(Object.entries(c.labels.ai), c.defaults.textAI, (v) => { c.defaults.textAI = v; })),

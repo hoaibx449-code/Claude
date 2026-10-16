@@ -1837,12 +1837,13 @@ async function showEditor(id) {
       // never let placeholder art reach the video: draw (or redesign) what is missing first
       if (!(await drawAll())) { renderBtn.disabled = false; return; }
       await api(`/api/projects/${id}`, { method: 'PUT', body: { spec } });
+      if(ui.rendering?.mode==='browser'){stopPreview();const {openBrowserRender}=await import('/browser-render.js');await openBrowserRender(spec,id,{h,previewModel,paintFrame,NV});return;}
       const { job } = await api(`/api/projects/${id}/render`, { method: 'POST' }); toast(job.note || 'Đã xếp video vào hàng chờ dựng.'); RenderDesk.open(spec, id, job.id).catch(fail); pollJobs();
       me = await api('/api/me').catch(() => me);
     }
     catch (e) { fail(e); }
-    renderBtn.disabled = false;
-  } }, T('render'));
+    finally { renderBtn.disabled = false; }
+  } }, ui.rendering?.mode==='browser'?'Xuất trên trình duyệt':ui.rendering?.mode==='local'?'Gửi máy cá nhân':T('render'));
   let pollTimer;
   async function pollJobs() {
     clearTimeout(pollTimer);
@@ -1928,7 +1929,7 @@ async function showEditor(id) {
   paintTabs();
   const titleInput = h('input', { class: 'ptitle', value: spec.title, maxlength: 100, 'aria-label': 'Tên dự án', oninput: (e) => { spec.title = e.target.value; save(); } });
   const ratioSel = h('select', { 'aria-label': 'Khung hình', onchange: (e) => { spec.ratio = e.target.value; save.flush().then(() => showEditor(id)); } }, options(ratioOptions(false), spec.ratio));
-  renderBtn.classList.add('export-btn'); renderBtn.replaceChildren(icon('share'), 'Xuất video');
+  renderBtn.classList.add('export-btn'); renderBtn.replaceChildren(icon('share'), ui.rendering?.mode==='browser'?'Xuất trên trình duyệt':ui.rendering?.mode==='local'?'Gửi máy cá nhân':'Xuất video');
   show(h('div', { class: 'studio' + (spec.ratio === '16:9' ? ' landscape' : '') },
     h('div', { class: 'sbar' }, h('a', { class: 'iconbtn', href: '#/video', 'aria-label': T('allVideos') }, '←'), h('span', { class: 'muted' }, 'Dự án:'), titleInput, status, h('span', { class: 'grow' }), ratioSel, reviewBtn, reviewBtn ? helpHint('AI rà soát', 'Dùng 1 lượt AI và chi phí API theo gói. AI xem tối đa 6 khung hình để đề xuất sửa bố cục; bạn xem nhận xét và chọn áp dụng. Không kiểm tra toàn bộ chuyển động hoặc âm thanh.') : null, renderBtn),
     h('aside', { class: 'scol' }, listHead, sceneList, h('button', { type: 'button', class: 'ghost small', onclick: () => sceneDetail.querySelector('[data-ev="add-scene"]')?.click() }, icon('plus'), 'Thêm cảnh')),
@@ -1953,7 +1954,7 @@ const loadSans = () => (sansReady ||= (async () => { try { const f = new FontFac
 let peepsReady = null;
 /** The hand-drawn people of story animation (Open Peeps), fetched once. */
 const loadPeeps = () => (peepsReady ||= fetch('/assets/peeps/peeps.json').then((r) => r.json()).then((d) => NV.setPeeps(d)).catch(() => { peepsReady = null; }));
-async function previewModel(spec, dpr) {
+async function previewModel(spec, dpr, timelineOverride) {
   const entries = Object.entries(spec.media || {});
   const [images, hand, icons, pics] = await Promise.all([
     Promise.all(spec.scenes.map((sc) => Promise.all(sc.panels.map((p) => (imageUrl(p.image) ? loadImg(imageUrl(p.image)).catch(blankCanvas) : Promise.resolve(blankCanvas())))))),
@@ -1961,7 +1962,7 @@ async function previewModel(spec, dpr) {
     document.fonts.load('29px Pangolin').catch(() => {}), spec.look==='whiteboard'?document.fonts.load('36px "WB Hand"'):null, loadSans(), spec.figures !== 'rig' && (spec.look === 'act' || !spec.look) ? loadPeeps() : null,
   ]);
   const media = Object.fromEntries(entries.map(([k], i) => [k, pics[i]]).filter(([, v]) => v));
-  const timeline = NV.buildTimeline(spec.scenes, spec.scenes.map((s) => NV.estimateVoice(s.lines)), { intro: !!spec.intro?.title && spec.look !== 'act' });
+  const timeline = timelineOverride || NV.buildTimeline(spec.scenes, spec.scenes.map((s) => NV.estimateVoice(s.lines)), { intro: !!spec.intro?.title && spec.look !== 'act' });
   const env = { createCanvas: (w, hgt) => { const c = document.createElement('canvas'); c.width = w; c.height = hgt; return c; } };
   if(spec.look==='illustrated')return {...FVIllustrated.prepare({env,project:spec,timeline,images,hand,dpr,icons,media}),illustratedAddon:true};
   if(spec.look==='whiteboard') {
