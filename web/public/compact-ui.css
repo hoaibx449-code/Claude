@@ -117,6 +117,7 @@ main.wrap .home-minimal h1 { font-size: clamp(1.8rem, 3.1vw, 2.8rem); font-weigh
 .gallery-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .gallery-toolbar .tabs { margin: 0; }
 .gallery-toolbar > select { width: auto; min-width: 170px; }
+.gallery-toolbar > .nv-select { width: 190px; flex: 0 0 190px; min-width: 0; }
 .ratio-tabs { background: var(--card); border: 1px solid var(--line); padding: 4px; border-radius: 12px; }
 .fgrid { grid-template-columns: repeat(auto-fill, minmax(min(235px, 100%), 1fr)); align-items: start; gap: 22px; }
 .fgrid.landscape { grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); }
