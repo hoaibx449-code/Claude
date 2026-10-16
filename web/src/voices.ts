@@ -152,7 +152,7 @@ export async function browserVoice(env:XEnv,rc:Rc,user:User,projectId:string,spe
   if(env.config.budget.perVideoVnd>0&&cost>env.config.budget.perVideoVnd)throw new HttpError(413,'Chi phí giọng vượt trần mỗi video. Hãy rút ngắn hoặc dùng bản thu âm.');
   await requireBudget(env,'giọng đọc trình duyệt');await useQuota(env,user.id,'voice',80);
   const secrets=await runnerSecrets(env);let audio:Uint8Array;
-  const everaiKey=secrets.EVERAI_API_KEY||env.EVERAI_API_KEY,googleKey=secrets.GOOGLE_TTS_API_KEY||env.GOOGLE_TTS_API_KEY;
+  const everaiKey=secrets.EVERAI_API_KEY,googleKey=secrets.GOOGLE_TTS_API_KEY;
   if(voice.provider==='everai'&&everaiKey)audio=await everaiSample(everaiKey,voice.voiceId,text,speed);
   else if(voice.provider==='google'&&googleKey)audio=await googleSample(env,voice.voiceId,0,speed,googleKey,text);
   else throw new HttpError(503,'Chưa có dịch vụ giọng hoạt động cho trình duyệt. Trong Âm thanh, chọn Giọng của tôi để tải MP3/WAV, hoặc chọn Không lời.');
