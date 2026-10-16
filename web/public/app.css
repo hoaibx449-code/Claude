@@ -948,8 +948,8 @@ p.center { text-align: center; }
 .fcard h3 { font-size: 1rem; margin-top: 4px; }
 .fcard p { font-size: .8125rem; line-height: 1.5; flex: 1; }
 .fcard button { width: 100%; }
-.fcard:nth-child(n+2) button { background: var(--card); color: var(--ink); border: 1px solid var(--line); box-shadow: none; }
-.fcard:nth-child(n+2) button:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
+.fcard > button { background: var(--card); color: var(--ink); border: 1px solid var(--line); box-shadow: none; }
+.fcard > button:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
 
 /* ---------- community (reference 4) */
 .community { grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr)); gap: 18px; }

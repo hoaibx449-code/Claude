@@ -301,12 +301,12 @@ async function showHelp() {
     ['Tạo video đầu tiên thế nào?', 'Bấm "Tạo video", dán kịch bản hoặc gõ chủ đề, chọn định dạng rồi bấm Tạo. Xem trước ngay trên trang, sửa từng cảnh, rồi bấm Xuất video.'],
     ['Video mất bao lâu?', 'Thường vài phút cho video dưới một phút. Trang Video của tôi hiện tiến độ; có thể bật thông báo khi video xong.'],
     ['Giọng đọc lỗi hoặc khác giọng đã chọn?', 'Khi dịch vụ giọng đang lỗi, video được đọc bằng giọng miễn phí cùng giới tính để không bị hỏng. Quản trị viên xem lý do ở trang Giọng đọc.'],
-    ['Tạo video qua Zalo?', ui.zalo?.enabled ? 'Mở bot Zalo, gõ "Hướng dẫn". Gửi KB + kịch bản để dựng, TT để xem tiến độ; bot gửi link video khi xong.' : 'Tính năng Zalo chưa mở.'],
+    ['Tạo video qua Zalo?', ui.zalo?.enabled ? 'Nhắn yêu cầu tư vấn qua Zalo. Bạn cũng có thể gửi KB + kịch bản để dựng và TT để xem tiến độ.' : 'Tính năng Zalo chưa mở.'],
     ['Huỷ gói, hoàn tiền?', 'Xem Chính sách hoàn tiền ở cuối trang.'],
   ];
   show(h('header', { class: 'pagehead' }, h('div', {}, h('h1', {}, 'Trợ giúp'), h('p', { class: 'muted' }, 'Câu hỏi thường gặp và cách liên hệ.'))),
     h('div', { class: 'faq' }, qa.map(([q, a]) => h('details', {}, h('summary', {}, q), h('p', {}, a)))),
-    h('div', { class: 'row' }, ui.zalo?.enabled && ui.zalo.botLink ? h('a', { class: 'btn', href: ui.zalo.botLink, target: '_blank', rel: 'noopener' }, 'Mở bot Zalo') : null,
+    h('div', { class: 'row' }, ui.zalo?.enabled && ui.zalo.botLink ? h('a', { class: 'btn', href: ui.zalo.botLink, target: '_blank', rel: 'noopener' }, 'Tư vấn qua Zalo') : null,
       ui.legal?.email && !/example\.(com|org)$/i.test(ui.legal.email) ? h('a', { class: 'btn ghost', href: 'mailto:' + ui.legal.email }, 'Gửi email hỗ trợ') : null),
     footer());
 }
@@ -315,7 +315,9 @@ function markNav(name) {
   for (const a of document.querySelectorAll('[data-route]')) a.classList.toggle('on', a.dataset.route === name);
 }
 const PUBLIC = { '#/tro-giup': 1, '': 1, '#/': 1, '#/mau': 1, '#/goi': 1, '#/tao': 1, '#/thu': 1, '#/dieu-khoan': 1, '#/bao-mat': 1, '#/hoan-tien': 1, '#/cong-dong': 1, '#/dang-nhap-loi': 1 };
+let stopHomeGallery = null;
 function route() {
+  stopHomeGallery?.(); stopHomeGallery = null;
   stopPreview(); stopDemos();
   // a window left open (payment, player, sign-in) never follows the user to another page
   document.querySelectorAll('.sheet-bg').forEach((x) => x.remove());
@@ -434,7 +436,11 @@ async function showLanding() {
   const demos = await getDemos(), site = ui.site || {};
   const sample = demos.find((d) => d.look === 'kinetic') || demos[0];
   const canvas = h('canvas', { 'aria-label': 'Video mẫu chuyển động chữ' });
-  const media = site.heroMedia ? (/\.(mp4|webm)$/i.test(site.heroMedia) ? siteVideo(site.heroMedia, site.heroPoster, 'Video giới thiệu', true) : h('img', { src: siteUrl(site.heroMedia), alt: 'Video minh hoạ' })) : canvas;
+  const {galleryItems,mountGallery}=await import('/home-gallery.js');
+  const playlist=galleryItems(site);
+  const gallery=playlist.length?mountGallery(playlist,{h,siteUrl}):null;
+  if(gallery)stopHomeGallery=gallery.dispose;
+  const media=canvas;
   let run;
   const pause = h('button', { type: 'button', class: 'ghost small', 'aria-label': 'Tạm dừng video mẫu', onclick: () => {
     if (!run) return;
@@ -451,10 +457,11 @@ async function showLanding() {
         h('h1', {}, title),
         h('p', { class: 'description' }, site.heroText && site.heroText.length < 200 ? site.heroText : 'Nhập nội dung, chọn giọng đọc và tạo video theo cách kể của bạn.'),
         h('div', { class: 'cta' }, h('a', { class: 'btn', href: '#/tao', 'data-ev': 'hero-create' }, icon('plus'), 'Tạo video'), h('a', { class: 'btn ghost', href: '#/mau' }, 'Xem định dạng')),
+        ui.zalo?.enabled && ui.zalo.botLink ? h('a', {class:'home-contact',href:ui.zalo.botLink,target:'_blank',rel:'noopener'},icon('send'),'Tư vấn qua Zalo') : null,
         h('div', { class: 'home-meta' }, h('span', {}, 'MP4 · Dọc hoặc ngang'), helpHint('Thông tin video', 'Bạn có thể xem trước, sửa từng cảnh và tải video cùng phụ đề. Hạn mức và chi phí hiển thị trong trang tạo video.'))),
-      h('div', { class: 'home-stage' }, h('div', { class: 'stage-heading' }, h('span', {}, 'TỪ KỊCH BẢN ĐẾN MÀN HÌNH'), h('span', { class: 'stage-dot', 'aria-hidden': 'true' })), h('figure', { class: 'home-preview' }, media, h('figcaption', {}, h('span', {}, 'Xem chuyển động thực tế'), media === canvas ? pause : null)), h('div', { class: 'stage-steps', 'aria-label': 'Quy trình dựng' }, ...['Nội dung', 'Cảnh & giọng', 'Video'].map((n, i) => h('span', {}, h('i', {}, String(i + 1).padStart(2, '0')), n))))),
+      h('div', { class: 'home-stage' }, h('div', { class: 'stage-heading' }, h('span', {}, 'TỪ KỊCH BẢN ĐẾN MÀN HÌNH'), h('span', { class: 'stage-dot', 'aria-hidden': 'true' })), gallery?.element || h('figure', { class: 'home-preview' }, media, h('figcaption', {}, h('span', {}, 'Xem chuyển động thực tế'), pause)), h('div', { class: 'stage-steps', 'aria-label': 'Quy trình dựng' }, ...['Nội dung', 'Cảnh & giọng', 'Video'].map((n, i) => h('span', {}, h('i', {}, String(i + 1).padStart(2, '0')), n))))),
     footer());
-  if (media === canvas && sample) run = playDemo(canvas, sample.spec, { dpr: 0.75 });
+  if (!gallery && sample) run = playDemo(canvas, sample.spec, { dpr: 0.75 });
 }
 /** Home page media: uploaded files ("site:abc.mp4") or full https addresses. */
 const siteUrl = (v) => (String(v || '').startsWith('site:') ? '/api/site/' + String(v).slice(5) : String(v || ''));
@@ -636,7 +643,7 @@ function openLogin(reason, after) {
         devBtn,
         h('p', { class: 'agree' }, 'Bằng việc tiếp tục, bạn đồng ý với ', h('a', { href: '#/dieu-khoan', target: '_blank' }, 'Điều khoản sử dụng'), ' và ', h('a', { href: '#/bao-mat', target: '_blank' }, 'Chính sách bảo mật'), '.'),
         ui.zalo?.enabled && ui.zalo.botLink ? h('div', { class: 'or' }, 'hoặc') : null,
-        ui.zalo?.enabled && ui.zalo.botLink ? h('a', { class: 'btn ghost', href: ui.zalo.botLink, target: '_blank', rel: 'noopener', 'data-ev': 'login-zalo' }, 'Tạo video ngay trong Zalo') : null,
+        ui.zalo?.enabled && ui.zalo.botLink ? h('a', { class: 'btn ghost', href: ui.zalo.botLink, target: '_blank', rel: 'noopener', 'data-ev': 'login-zalo' }, 'Tư vấn qua Zalo') : null,
         h('div', { class: 'secure' }, h('span', {}, h('b', {}, 'Google chỉ chia sẻ tên, email và ảnh đại diện. '), 'Chúng tôi không nhận mật khẩu, không đọc Gmail hay Drive, không đăng bài thay bạn. Bạn tải hoặc xoá toàn bộ dữ liệu trong trang Tài khoản.')))));
   document.body.append(bg);
   if (cfg?.clientId && !redirect) {
@@ -1290,7 +1297,7 @@ async function showZalo() {
          try {
            const r = await api('/api/zalo/code', { method: 'POST' });
            codeBox.replaceChildren(h('ol', {},
-             h('li', {}, 'Mở bot: ', r.botLink ? h('a', { href: r.botLink, target: '_blank', rel: 'noopener' }, r.botLink) : '(quản trị chưa nhập đường dẫn bot)'),
+             h('li', {}, 'Tư vấn qua Zalo: ', r.botLink ? h('a', { href: r.botLink, target: '_blank', rel: 'noopener' }, r.botLink) : '(quản trị chưa nhập đường dẫn Zalo)'),
              h('li', {}, 'Gửi tin nhắn: ', h('b', { class: 'memo' }, r.command), ' ', h('button', { type: 'button', class: 'ghost small', onclick: () => navigator.clipboard?.writeText(r.command).then(() => toast('Đã sao chép.')) }, 'Sao chép')),
              h('li', {}, `Mã có hạn ${r.expiresMin} phút. Kết nối xong trang này tự cập nhật.`)));
            const poll = async () => { if (!document.body.contains(codeBox)) return; const s = await api('/api/zalo/me').catch(() => null); if (s?.linked) { me.zaloLinked = true; toast('Đã kết nối Zalo!'); return showZalo(); } setTimeout(poll, 4000); };
