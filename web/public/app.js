@@ -1081,8 +1081,8 @@ async function showCreate() {
     const mine = f.source.value !== 'topic', secs = mine ? Math.round(f.topic.value.trim().length / 14) : Number(f.seconds.value);
     const voice = (ui.voices || []).find((v) => v.code === f.voice.value);
     summary.replaceChildren(
-      h('dt', {}, 'Bạn nhận'), h('dd', {}, `MP4 ${f.ratio.value === '16:9' ? 'ngang 16:9' : 'dọc 9:16'}${secs ? `, khoảng ${Math.max(10, secs)} giây` : ''}, phụ đề SRT`),
-      h('dt', {}, 'Chi phí'), h('dd', {}, (look === 'doc' ? `${ui.doc?.perVideo || 1} credit phim tài liệu + ` : '') + `1 lượt dựng` + (me ? ` (hôm nay còn ${left})` : ` (miễn phí ${ui.free?.render || 0} lượt mỗi ngày)`)
+      h('dt', {}, 'Bạn nhận'), h('dd', {}, `${ui.rendering?.mode==='browser'?'MP4/WebM':'MP4'} ${f.ratio.value === '16:9' ? 'ngang 16:9' : 'dọc 9:16'}${secs ? `, khoảng ${Math.max(10, secs)} giây` : ''}, phụ đề SRT`),
+      h('dt', {}, 'Chi phí'), h('dd', {}, (ui.rendering?.mode==='browser'?'Xuất trên thiết bị; giọng AI tính theo dịch vụ':(look === 'doc' ? `${ui.doc?.perVideo || 1} credit phim tài liệu + ` : '') + `1 lượt dựng` + (me ? ` (hôm nay còn ${left})` : ` (miễn phí ${ui.free?.render || 0} lượt mỗi ngày)`))
         + (f.source.value === 'topic' || f.source.value === 'mine-ai' ? ' + 1 lượt AI viết' : '')));
   };
   for (const el of [f.source, f.topic, f.seconds, f.ratio, f.voice]) el.addEventListener('change', paintSummary);
