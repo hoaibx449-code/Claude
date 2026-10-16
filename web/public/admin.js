@@ -452,7 +452,7 @@ function zaloTab(c, secrets, secretInput, zcheck, inbox) {
       check(z.allowGuests, (v) => { z.allowGuests = v; }, 'Cho người chưa có tài khoản web dùng ngay'),
       check(z.autoRender, (v) => { z.autoRender = v; }, 'Tự dựng video ngay (không chờ sửa trên web)'),
       h('label', {}, 'Kịch bản gửi qua Zalo được minh hoạ bằng', select([['mine-free', 'Luật tự động (miễn phí)'], ['mine-ai', 'AI (tốn lượt)']], z.scriptSource, (v) => { z.scriptSource = v; })),
-      h('label', {}, 'Đường dẫn bot (https://zalo.me/…)', input(z.botLink, (v) => { z.botLink = v.trim(); }))),
+      h('label', {}, 'Đường dẫn tư vấn Zalo (https://zalo.me/…)', input(z.botLink, (v) => { z.botLink = v.trim(); }))),
       h('h3', {}, 'Báo cho chủ web qua Zalo'),
       h('div', { class: 'grid' },
         check(z.notifyOwner.signup, (v) => { z.notifyOwner.signup = v; }, 'Người dùng mới qua Zalo'), check(z.notifyOwner.failed, (v) => { z.notifyOwner.failed = v; }, 'Video dựng lỗi'),
@@ -532,19 +532,35 @@ function siteCard(c) {
   const list = h('div', { class: 'scenes' });
   const draw = () => list.replaceChildren(...c.site.showcase.map((m, i) => h('div', { class: 'scene' },
     h('div', { class: 'grid wide' }, h('label', {}, 'Tiêu đề', input(m.title, (v) => { m.title = v; }, { maxlength: 60 })), h('label', {}, 'Mô tả ngắn', input(m.caption, (v) => { m.caption = v; }, { maxlength: 120 }))),
-    h('div', { class: 'grid wide' }, mediaField('Video (MP4/WebM, dọc 9:16)', m.video, (v) => { m.video = v; }, 'video/mp4,video/webm'), mediaField('Ảnh bìa (poster)', m.poster, (v) => { m.poster = v; }, 'image/png,image/jpeg,image/webp')),
+    h('div', { class: 'grid wide' }, mediaField('Video trình diễn (MP4/WebM, dọc hoặc ngang)', m.video, (v) => { m.video = v; }, 'video/mp4,video/webm'), mediaField('Ảnh bìa (poster)', m.poster, (v) => { m.poster = v; }, 'image/png,image/jpeg,image/webp')),
     h('div', { class: 'row' },
       i > 0 ? h('button', { type: 'button', class: 'ghost small', onclick: () => { c.site.showcase.splice(i - 1, 0, c.site.showcase.splice(i, 1)[0]); draw(); } }, '↑ Lên') : null,
       h('button', { type: 'button', class: 'ghost small danger', onclick: () => { c.site.showcase.splice(i, 1); draw(); } }, 'Bỏ video')))));
+  const bulk=h('input',{type:'file',accept:'video/mp4,video/webm',multiple:true,hidden:true,'aria-label':'Tải nhiều video trình diễn',onchange:async()=>{
+    const files=Array.from(bulk.files||[]);if(!files.length)return;
+    let added=0,errors=0;
+    await busy(bulkBtn,'Đang tải video…',async()=>{
+      for(const f of files){
+        if(c.site.showcase.length>=12){errors++;continue;}
+        try{
+          if(f.size>60*1024*1024)throw new Error('Video vượt 60 MB.');
+          const r=await fetch('/api/admin/site-media',{method:'POST',credentials:'same-origin',headers:{'x-nv':'1','content-type':f.type||(/\.webm$/i.test(f.name)?'video/webm':'video/mp4')},body:f});
+          const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||'Tải lên chưa thành công.');
+          c.site.showcase.push({title:f.name.replace(/\.(mp4|webm)$/i,'').slice(0,60),caption:'',video:data.ref,poster:''});added++;
+        }catch{errors++;}
+      }
+    });
+    bulk.value='';draw();toast(`Đã tải ${added} video${errors?' · '+errors+' tệp chưa thêm được (kiểm tra định dạng, dung lượng và giới hạn 12 video)':''}. Bấm Lưu cài đặt để áp dụng.`);
+  }});
+  const bulkBtn=h('button',{type:'button',class:'ghost small',onclick:()=>bulk.click()},'Tải nhiều video');
   draw();
-  return card('Trang chủ: hình và video mẫu', 'Ảnh/video cạnh tiêu đề và danh sách video mẫu. Để trống thì trang chủ tự vẽ demo trực tiếp. Tệp tải lên tối đa 60 MB; video nên dưới 10 MB, H.264, dọc 9:16 để tải nhanh.',
+  return card('Trang chủ: trình diễn video', 'Danh sách dưới đây hiển thị cạnh tiêu đề. Từ 2 video, trình diễn tự chuyển khi video kết thúc; có nút dừng và chọn từng video. Để trống dùng mẫu dựng sẵn. Tệp tối đa 60 MB; nên dùng H.264 dưới 10 MB.',
     h('div', { class: 'grid wide' },
       h('label', {}, 'Tiêu đề lớn', input(c.site.heroTitle, (v) => { c.site.heroTitle = v; }, { maxlength: 120 })),
       h('label', {}, 'Đoạn giới thiệu', input(c.site.heroText, (v) => { c.site.heroText = v; }, { maxlength: 300 }))),
-    h('div', { class: 'grid wide' }, mediaField('Ảnh hoặc video cạnh tiêu đề', c.site.heroMedia, (v) => { c.site.heroMedia = v; }), mediaField('Ảnh chờ cho video (poster)', c.site.heroPoster, (v) => { c.site.heroPoster = v; }, 'image/png,image/jpeg,image/webp')),
-    h('div', { class: 'grid wide' }, mediaField('Video hướng dẫn ngắn (cạnh 3 bước bắt đầu)', c.site.tutorial, (v) => { c.site.tutorial = v; }, 'video/mp4,video/webm')),
-    h('h3', {}, 'Video mẫu'), list,
-    h('button', { type: 'button', class: 'ghost small', onclick: () => { if (c.site.showcase.length >= 12) return toast('Tối đa 12 video.'); c.site.showcase.push({ title: '', caption: '', video: '', poster: '' }); draw(); } }, '+ Thêm video mẫu'));
+    h('div', { class: 'grid wide' }, mediaField('Ảnh/video mở đầu (tùy chọn)', c.site.heroMedia, (v) => { c.site.heroMedia = v; }), mediaField('Ảnh chờ cho video (poster)', c.site.heroPoster, (v) => { c.site.heroPoster = v; }, 'image/png,image/jpeg,image/webp')),
+    h('h3', {}, 'Danh sách video trình diễn'), bulkBtn, bulk, list,
+    h('button', { type: 'button', class: 'ghost small', onclick: () => { if (c.site.showcase.length >= 12) return toast('Tối đa 12 video.'); c.site.showcase.push({ title: '', caption: '', video: '', poster: '' }); draw(); } }, '+ Thêm video trình diễn'));
 }
 
 function budgetCard(c) {
