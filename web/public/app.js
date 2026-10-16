@@ -1484,10 +1484,10 @@ async function showEditor(id) {
   };
   const lookBox = !spec.look ? null : h('div', { class: 'grid wide-2' },
     spec.look === 'doc' ? h('p', { class: 'muted' }, h('b', {}, L('looks', 'doc')), ' (đã trả credit). Muốn định dạng khác, hãy tạo video mới.')
-      : h('label', {}, 'Định dạng video', h('select', { onchange: (e) => switchLook(e.target.value) }, options(looksOn().filter((k) => k !== 'doc').map((k) => [k, L('looks', k), 'look:' + k]), spec.look))),
+      : h('label', {}, 'Định dạng video', h('select', { onchange: (e) => switchLook(e.target.value) }, !looksOn().includes(spec.look) ? h('option', { value: spec.look, selected: true, disabled: true }, L('looks', spec.look) + ' · dự án cũ') : null, options(looksOn().filter((k) => k !== 'doc').map((k) => [k, L('looks', k), 'look:' + k]), spec.look))),
     (NV.SKINS?.[spec.look] || []).length > 1 ? h('div', {}, h('span', { class: 'plabel' }, 'Bộ màu'), skinChips(spec.look, spec.skin, (n) => { spec.skin = n; changed(); })) : null,
-    spec.look === 'split' ? field('Tên bên A (sai / nghèo / trước)', spec.sides?.a, (v) => { (spec.sides ||= { a: '', b: '' }).a = v; changed(); }, { max: 24 }) : null,
-    spec.look === 'split' ? field('Tên bên B (đúng / giàu / sau)', spec.sides?.b, (v) => { (spec.sides ||= { a: '', b: '' }).b = v; changed(); }, { max: 24 }) : null,
+    spec.look === 'split' ? field('Tên bên A', spec.sides?.a, (v) => { (spec.sides ||= { a: '', b: '' }).a = v; changed(); }, { max: 24 }) : null,
+    spec.look === 'split' ? field('Tên bên B', spec.sides?.b, (v) => { (spec.sides ||= { a: '', b: '' }).b = v; changed(); }, { max: 24 }) : null,
     spec.look === 'chat' ? field('Tên người nhắn tin', spec.chatName, (v) => { spec.chatName = v; changed(); }, { max: 30 }) : null,
     (ui.music || []).length ? h('label', {}, 'Nhạc nền', h('select', { onchange: (e) => { const m = e.target.value; spec.music = m === 'none' ? undefined : spec.music; if (m !== 'none' && m !== 'keep') toast('Nhạc mới áp dụng khi tạo video mới.'); save(); } }, options([['keep', spec.music ? 'Giữ bản nhạc đã chọn' : 'Không nhạc'], ['none', 'Tắt nhạc']], 'keep'))) : null,
     h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: spec.sfx !== false, onchange: (e) => { spec.sfx = e.target.checked; save(); } }), 'Tiếng hiệu ứng (vút, bụp, ting…)'));
