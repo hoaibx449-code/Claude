@@ -61,6 +61,8 @@ form.create > .step:first-child { grid-row: span 2; align-self: stretch; }
 .direction-editor .advanced { margin: 0; }
 .catalog-title, .section-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .catalog-title h3, .section-title h2 { min-width: 0; }
+.catalog-title h3 { flex: 1; }
+.fcard .help-hint { width: 28px; min-width: 28px; flex: 0 0 28px; min-height: 28px; padding: 0; }
 .fcard { display: flex; flex-direction: column; }
 .fcard > button { margin-top: auto; }
 main small:not(.tag):not(.pill) { text-align: justify; text-justify: inter-word; }
@@ -93,3 +95,4 @@ main small:not(.tag):not(.pill) { text-align: justify; text-justify: inter-word;
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
