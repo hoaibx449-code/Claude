@@ -543,11 +543,15 @@ function story(B: LookBuild, sc: SceneSpec, T: SceneTiming, si: number): LookSce
 function data(B: LookBuild, sc: SceneSpec, T: SceneTiming, si: number): LookScene {
   const st = sc.x?.stat;
   if (!st) return kinetic({ ...B }, sc, T, si);
-  const { W, H, S, skin, portrait } = B, s0 = T.lines[0].start, sEnd = T.lines[T.lines.length - 1].end;
+  const { W, H, skin, portrait } = B, s0 = T.lines[0].start, sEnd = T.lines[T.lines.length - 1].end;
   const parts = (st.parts || []).slice(0, 5), max = Math.max(1, ...parts.map((p) => p.value));
   const barAt = parts.map((_, i) => s0 + 1.1 + ((sEnd - s0 - 1.2) * i) / Math.max(1, parts.length));
   B.cues.push({ t: s0 + 1.1, k: 'ding' }); barAt.forEach((t) => B.cues.push({ t, k: 'pop' }));
   const unit = st.unit || '';
+  const topY = H * (parts.length ? (portrait ? 0.2 : 0.14) : 0.38);
+  // Fit the entire chart above the caption, including the final bar and its label.
+  const chartBudget = H * 0.74 - topY;
+  const S = parts.length ? Math.min(B.S, chartBudget / ((portrait ? 112 : 96) * 1.55 + (parts.length - 1) * 96 + 72)) : B.S;
   return {
     captions: true,
     draw(c, t, alpha) {
@@ -557,7 +561,6 @@ function data(B: LookBuild, sc: SceneSpec, T: SceneTiming, si: number): LookScen
       c.strokeStyle = 'rgba(127,140,170,.12)'; c.lineWidth = 1.5 * S;
       for (let gx = 0; gx < W; gx += 60 * S) { c.beginPath(); c.moveTo(gx, 0); c.lineTo(gx, H); c.stroke(); }
       for (let gy = 0; gy < H; gy += 60 * S) { c.beginPath(); c.moveTo(0, gy); c.lineTo(W, gy); c.stroke(); }
-      const topY = H * (parts.length ? (portrait ? 0.2 : 0.22) : 0.38);
       if (st.label) { const p = seg(t, s0, s0 + 0.3); c.globalAlpha = alpha * p; text(c, B, st.label.toUpperCase(), W / 2, topY, Math.round(24 * S), skin.sub); c.globalAlpha = alpha; }
       const k = eOut(seg(t, s0 + 0.05, s0 + 1.1)), pulse = t > s0 + 1.1 ? 1 + Math.sin((t - s0) * 5) * 0.012 : 1;
       const big = fmtNum(st.value * k);
@@ -570,7 +573,7 @@ function data(B: LookBuild, sc: SceneSpec, T: SceneTiming, si: number): LookScen
       if (unit) text(c, B, ' ' + unit, -(nw + uw) / 2 + nw, 0, Math.round(sz * 0.42), skin.hl, 'left');
       c.restore();
       if (parts.length) {
-        const x0 = W * 0.08, bw = W * 0.84, y0 = topY + sz * 1.55, rowH = Math.min(96 * S, (H * (portrait ? 0.72 : 0.86) - y0) / parts.length);
+        const x0 = W * 0.08, bw = W * 0.84, y0 = topY + sz * 1.55, rowH = 96 * S;
         parts.forEach((p, i) => {
           const q = eOut(seg(t, barAt[i], barAt[i] + 0.7));
           if (t < barAt[i] - 0.05) return;

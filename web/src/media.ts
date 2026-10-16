@@ -102,7 +102,9 @@ export async function communityPublic(req: Request, env: XEnv, rc: Rc, path: str
     rc.quiet = true;
     const sort = url.searchParams.get('sort') === 'top' ? 'likes DESC, created_at DESC' : 'created_at DESC';
     const before = Number(url.searchParams.get('before')) || Date.now() + 1;
-    const rows = (await env.DB.prepare(`SELECT job_id, title, author, style, mode, ratio, created_at, likes, views FROM community WHERE hidden = 0 AND created_at < ? ORDER BY ${sort} LIMIT 24`).bind(before).all<any>()).results;
+    const ratio = url.searchParams.get('ratio');
+    const filter = ratio === '16:9' ? " AND ratio = '16:9'" : ratio === '9:16' ? " AND (ratio = '9:16' OR ratio IS NULL OR ratio = '')" : '';
+    const rows = (await env.DB.prepare(`SELECT job_id, title, author, style, mode, ratio, created_at, likes, views FROM community WHERE hidden = 0 AND created_at < ?${filter} ORDER BY ${sort} LIMIT 24`).bind(before).all<any>()).results;
     let liked: string[] = [];
     if (user && rows.length) liked = (await env.DB.prepare(`SELECT job_id FROM community_likes WHERE user_id = ? AND job_id IN (${rows.map(() => '?').join(',')})`).bind(user.id, ...rows.map((r) => r.job_id)).all<any>()).results.map((r) => r.job_id);
     return json({ videos: rows.map((r) => ({ ...r, liked: liked.includes(r.job_id) })) });

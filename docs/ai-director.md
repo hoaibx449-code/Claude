@@ -1,3 +1,5 @@
+> Cập nhật 16/10/2026: director tạm ẩn khỏi tạo mới theo đợt rà soát rev 3. Xem [kết quả rà soát](format-audit.md). Chỉ bật lại khi AI và máy xuất đã được xác minh.
+
 # AI đạo diễn và giao diện gọn
 
 Chế độ `director` thiết kế từng cảnh bằng đồ thị hình ảnh: nhãn, icon, vị trí,
