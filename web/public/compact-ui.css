@@ -33,7 +33,7 @@ button, .btn { text-wrap: balance; }
 .home-preview figcaption { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 2px 2px; font-size: .7rem; color: var(--muted); }
 .home-preview figcaption button { font-size: .7rem; padding: 4px 8px; min-height: 32px; }
 body[data-page="home"] .topsearch { display: none; }
-body[data-page="home"] main.wrap { gap: 0; }
+body[data-page="home"] main.wrap { gap: 0; width: 100%; }
 footer.site { margin-top: 20px; padding-top: 24px; }
 /* Creation: one input, one visual decision, one output decision. Extras stay collapsed. */
 form.create { width: min(100%, 1040px); margin-inline: auto; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px; align-items: start; }
@@ -76,6 +76,7 @@ main small:not(.tag):not(.pill) { text-align: justify; text-justify: inter-word;
   form.create { display: flex; width: min(100%, 760px); }
 }
 @media (max-width: 760px) {
+  main.wrap { width: 100%; }
   .home-minimal { grid-template-columns: 1fr; gap: 28px; padding: 24px 0; }
   .home-intro { gap: 16px; }
   .home-preview { width: min(240px, 72vw); }
