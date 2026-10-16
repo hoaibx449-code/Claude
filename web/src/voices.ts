@@ -1,11 +1,13 @@
 // Voices on the site: listen before choosing (the sample is made the same way the render
 // machine reads, so what you hear is what the video gets), the user's own recording as the
 // narration, and an honest status of each voice service for the admin page.
+import { requireBudget } from './budget.ts';
+import { voiceCost } from './log.ts';
 import { standIn } from '../../src/engine/voices.ts';
 import type { User } from './auth.ts';
 import { accessToken } from './gcp.ts';
 import { runnerSecrets } from './settings.ts';
-import { HttpError, json, useQuota } from './util.ts';
+import { HttpError, json, useQuota, sha256 } from './util.ts';
 import type { Rc, XEnv } from './worker.ts';
 
 const SAMPLE = 'Xin chào! Đây là giọng đọc cho video của bạn. Nghe có dễ chịu không?';
@@ -58,23 +60,23 @@ export async function voicesWithStatus(env: XEnv) {
   });
 }
 
-async function googleSample(env: XEnv, name: string, pitch: number, rate: number, key?: string) {
+async function googleSample(env: XEnv, name: string, pitch: number, rate: number, key?: string, text = SAMPLE) {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   let url = 'https://texttospeech.googleapis.com/v1/text:synthesize';
   if (key) url += '?key=' + encodeURIComponent(key);
   else if (env.GCP_TRIGGER_KEY) { headers.authorization = 'Bearer ' + (await accessToken(env)); if (env.GCP_PROJECT) headers['x-goog-user-project'] = env.GCP_PROJECT; }
   else throw new HttpError(503, 'Chưa có dịch vụ giọng để tạo bản nghe thử.');
   const res = await fetch(url, { method: 'POST', headers, signal: AbortSignal.timeout(20_000),
-    body: JSON.stringify({ input: { text: SAMPLE }, voice: { languageCode: 'vi-VN', name }, audioConfig: { audioEncoding: 'MP3', ...(pitch ? { pitch } : {}), ...(rate !== 1 ? { speakingRate: rate } : {}) } }) });
+    body: JSON.stringify({ input: { text }, voice: { languageCode: 'vi-VN', name }, audioConfig: { audioEncoding: 'MP3', ...(pitch ? { pitch } : {}), ...(rate !== 1 ? { speakingRate: rate } : {}) } }) });
   if (!res.ok) throw new HttpError(502, `Không tạo được bản nghe thử (Google ${res.status}).`);
   const j: any = await res.json();
   return Uint8Array.from(atob(j.audioContent), (c) => c.charCodeAt(0));
 }
 
-async function everaiSample(key: string, code: string) {
+async function everaiSample(key: string, code: string, text = SAMPLE, speed = 1) {
   const url = 'https://www.everai.vn/api/v1/tts', headers = { authorization: `Bearer ${key}`, 'content-type': 'application/json' };
   const r = await fetch(url, { method: 'POST', headers, signal: AbortSignal.timeout(20_000),
-    body: JSON.stringify({ response_type: 'indirect', input_text: SAMPLE, voice_code: code, model_id: 'everai-v1.6', audio_type: 'mp3', bitrate: 128, speed_rate: 1, pitch_rate: 1, volume: 100 }) });
+    body: JSON.stringify({ response_type: 'indirect', input_text: text, voice_code: code, model_id: 'everai-v1.6', audio_type: 'mp3', bitrate: 128, speed_rate: speed, pitch_rate: 1, volume: 100 }) });
   const j: any = await r.json().catch(() => ({}));
   const find = (o: any, k: string): any => { if (!o || typeof o !== 'object') return undefined; if (o[k] != null && o[k] !== '') return o[k]; for (const x of Object.keys(o)) { const v = find(o[x], k); if (v != null) return v; } };
   const id = find(j.result, 'request_id');
@@ -129,4 +131,32 @@ export async function voiceUpload(req: Request, env: XEnv, rc: Rc, user: User) {
   await env.BUCKET.put(key, req.body, { httpMetadata: { contentType: type } });
   rc.log('voice.upload', { data: { bytes: size, ext } });
   return json({ ref: 'r2:' + key });
+}
+
+
+/** Owner-authenticated browser narration; never exposes service credentials to the client. */
+export async function browserVoice(env:XEnv,rc:Rc,user:User,projectId:string,spec:any,scene:unknown){
+  const head={'content-type':'audio/mpeg','cache-control':'private, no-store'};
+  if(spec.audio?.voice==='upload'){
+    const key=String(spec.audio.voiceFile||'').replace(/^r2:/,'');
+    if(!key.startsWith('voice/'+user.id.replace(/[^\w-]/g,'')+'/'))throw new HttpError(403,'Không có quyền dùng tệp giọng này.');
+    const obj=await env.BUCKET.get(key);if(!obj)throw new HttpError(404,'Không tìm thấy tệp giọng.');
+    return new Response(obj.body,{headers:{...head,'content-type':obj.httpMetadata?.contentType||'audio/mpeg'}});
+  }
+  const si=Number(scene);if(!Number.isInteger(si)||si<0||si>=spec.scenes.length)throw new HttpError(400,'Cảnh không hợp lệ.');
+  const text=spec.scenes[si].lines.join(' ');if(text.length>1200)throw new HttpError(400,'Mỗi cảnh trình duyệt tối đa 1200 ký tự. Hãy tách cảnh ngắn hơn.');
+  const voice=spec.voice||{},speed=Number(voice.speed)||1;
+  const key='browser-voice/'+user.id+'/'+await sha256(JSON.stringify([voice,text]))+'.mp3';
+  const cached=await env.BUCKET.get(key);if(cached)return new Response(cached.body,{headers:head});
+  const cost=voiceCost(env.config,voice.provider,spec.scenes.reduce((n:number,s:any)=>n+s.lines.join(' ').length,0));
+  if(env.config.budget.perVideoVnd>0&&cost>env.config.budget.perVideoVnd)throw new HttpError(413,'Chi phí giọng vượt trần mỗi video. Hãy rút ngắn hoặc dùng bản thu âm.');
+  await requireBudget(env,'giọng đọc trình duyệt');await useQuota(env,user.id,'voice',80);
+  const secrets=await runnerSecrets(env);let audio:Uint8Array;
+  const everaiKey=secrets.EVERAI_API_KEY,googleKey=secrets.GOOGLE_TTS_API_KEY;
+  if(voice.provider==='everai'&&everaiKey)audio=await everaiSample(everaiKey,voice.voiceId,text,speed);
+  else if(voice.provider==='google'&&googleKey)audio=await googleSample(env,voice.voiceId,0,speed,googleKey,text);
+  else throw new HttpError(503,'Chưa có dịch vụ giọng hoạt động cho trình duyệt. Trong Âm thanh, chọn Giọng của tôi để tải MP3/WAV, hoặc chọn Không lời.');
+  await env.BUCKET.put(key,audio,{httpMetadata:{contentType:'audio/mpeg'}});
+  rc.log('voice.browser',{projectId,cost:voiceCost(env.config,voice.provider,text.length),data:{scene:si,chars:text.length,provider:voice.provider}});
+  return new Response(audio,{headers:head});
 }

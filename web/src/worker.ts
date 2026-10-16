@@ -6,7 +6,7 @@ import {claimWhiteboard,startWhiteboard,assertWhiteboard,voiceCache} from '../..
 import { startRunner } from './gcp.ts';
 import { cleanSpec, LOOKS, STYLES } from './spec.ts';
 import { LOOK_BRIEF } from './ai.ts';
-import { clearVoiceFallback, recordRunnerCaps, recordVoiceFallback, voicePreview, voicesWithStatus, voiceUpload } from './voices.ts';
+import { clearVoiceFallback, recordRunnerCaps, recordVoiceFallback, voicePreview, voicesWithStatus, voiceUpload, browserVoice } from './voices.ts';
 import { composeLook, composeScene, splitScript } from './compose.ts';
 import { doodlePanels } from './doodles.ts';
 import { chargeDoc, closeDocProject, creditRoutes, giveBackDocImage, openDocProject, refundDoc, useDocImage } from './credits.ts';
@@ -99,10 +99,10 @@ export default {
       env.DB.prepare('DELETE FROM zalo_outbox WHERE created_at < ?').bind(Date.now() - config.logDays * 86_400_000).run(),
     ]).then(() => {}, (e) => console.error(e)));
     const waiting = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'queued' AND COALESCE(json_extract(spec,'$.look'),'') NOT IN ('whiteboard','illustrated') AND created_at < ?").bind(Date.now() - 90_000).first<any>();
-    if (waiting?.n) ctx.waitUntil(startRunner(env).catch((e) => console.error(e)));
-    const il=await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status='queued' AND json_extract(spec,'$.look')='illustrated'").first<any>();if(il?.n)ctx.waitUntil(startIllustrated(env).catch(()=>{}));
+    if (config.rendering.mode === 'cloud' && waiting?.n) ctx.waitUntil(startRunner(env).catch((e) => console.error(e)));
+    const il=await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status='queued' AND json_extract(spec,'$.look')='illustrated'").first<any>();if(config.rendering.mode === 'cloud' && il?.n)ctx.waitUntil(startIllustrated(env).catch(()=>{}));
     const wb=await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status='queued' AND json_extract(spec,'$.look')='whiteboard'").first<any>();
-    if(wb?.n)ctx.waitUntil(startWhiteboard(env).catch(e=>console.error(e)));
+    if(config.rendering.mode === 'cloud' && wb?.n)ctx.waitUntil(startWhiteboard(env).catch(e=>console.error(e)));
   },
 };
 
@@ -453,6 +453,11 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       await saveSpec(env, user, id, spec, typeof saveRequest.expectedUpdatedAt === 'number' ? saveRequest.expectedUpdatedAt : undefined);
       rc.log('project.save', { projectId: id, data: { scenes: spec.scenes.length, style: spec.style, ratio: spec.ratio, subtitles: spec.subtitles } });
       return json({ id, spec });
+    }
+    if (sub === '/browser-audio' && method === 'POST') {
+      await checkAllowed(env, user, p.spec);
+      const b = await body<any>(req, 1000);
+      return browserVoice(env, rc, user, id, p.spec, b.scene);
     }
     if (sub === '/review-direction' && method === 'POST') {
       if (p.spec.look !== 'director') throw new HttpError(400, 'Rà soát hình dành cho chế độ AI đạo diễn.');
@@ -866,6 +871,7 @@ const hashText = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) 
 
 /** Put a project in the render queue and wake the render machine. */
 export async function queueRender(env: XEnv, rc: Rc, user: User, id: string, spec: any) {
+  if(env.config.rendering.mode==='browser')throw new HttpError(409,'Đang dùng máy dựng trình duyệt. Mở dự án trên website và bấm Xuất video tại đó.');
   if(spec.look==='whiteboard')assertWhiteboard(spec);
   if(spec.look==='illustrated')assertIllustrated(spec);
   const missing = spec.scenes.reduce((n: number, sc: any) => n + sc.panels.filter((x: any) => !/^(r2|doodle|peep):/.test(String(x.image))).length, 0);
@@ -885,7 +891,7 @@ export async function queueRender(env: XEnv, rc: Rc, user: User, id: string, spe
       .bind(jobId, id, user.id, JSON.stringify({ ...spec, _via: rc.channel }), Date.now(), user.id, MAX_ACTIVE_JOBS).run();
     if (!inserted.meta.changes) throw new HttpError(429, 'Bạn đang có video chờ dựng. Đợi xong rồi dựng tiếp nhé.');
   } catch (error) { await refundQuota(env, user.id, 'render'); throw error; }
-  rc.wait((spec.look==='illustrated'?startIllustrated(env):spec.look==='whiteboard'?startWhiteboard(env):startRunner(env)).catch((e) => { rc.log('render.trigger', { ok: false, data: { error: String(e.message || e) } }); }));
+  if(env.config.rendering.mode==='cloud')rc.wait((spec.look==='illustrated'?startIllustrated(env):spec.look==='whiteboard'?startWhiteboard(env):startRunner(env)).catch((e) => { rc.log('render.trigger', { ok: false, data: { error: String(e.message || e) } }); }));
   rc.log('render.queue', { projectId: id, data: { job: jobId, scenes: spec.scenes.length, chars: spec.scenes.reduce((n: number, sc: any) => n + sc.lines.join(' ').length, 0), voice: spec.voice, style: spec.style, via: rc.channel } });
   return { id: jobId, status: 'queued', progress: 0, note };
 }
