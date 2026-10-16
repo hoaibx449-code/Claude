@@ -1,3 +1,4 @@
+import type { Direction } from './director.ts';
 import type { ActCast, ActScene } from './act/spec.ts';
 
 // Shared types. The engine only uses the Canvas 2D API, so the same code draws
@@ -9,8 +10,8 @@ export type StyleKey = 'notebook' | 'whiteboard' | 'chalkboard' | 'kraft' | 'oly
 /** How the board comes alive: a hand drawing, motion graphics, maths animation, kinetic typography. */
 export type Mode = 'hand' | 'motion' | 'math' | 'kinetic';
 /** Video formats (each its own storytelling grammar, pacing and sound); replaces style × mode for new videos. */
-export type Look = 'act' | 'kinetic' | 'split' | 'chat' | 'story' | 'data' | 'quiz' | 'doc';
-export const LOOKS: Look[] = ['act', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'];
+export type Look = 'director' | 'act' | 'kinetic' | 'split' | 'chat' | 'story' | 'data' | 'quiz' | 'doc';
+export const LOOKS: Look[] = ['director', 'act', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'];
 
 /** Per-scene data a format uses (all optional: missing parts are derived from the lines). */
 export interface LookData {
@@ -76,6 +77,7 @@ export type SketchItem = { id?: string; line?: number; /** words of the line: dr
 );
 
 export interface SceneSpec {
+  direction?: Direction;
   /** Narration, one subtitle line each. */
   lines: string[];
   /** Line-art images revealed by the pen. Empty when the scene is a diagram. */

@@ -20,7 +20,7 @@ test('server pipeline renders odd requested sizes to playable even H.264 dimensi
     await assert.rejects(renderProject({ project, projDir: '.', out, fps: NaN }), /FPS/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
-test('an encoder failure returns a controlled error instead of an unhandled EPIPE or hang', async () => {
+test('an encoder failure returns a controlled error instead of an unhandled EPIPE or hang', { skip: process.platform === 'win32' ? 'POSIX shell shim; encoding is checked by the preceding test' : false }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'encoder-'));
   const originalPath = process.env.PATH;
   try {

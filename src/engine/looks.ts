@@ -1,3 +1,4 @@
+import { directorScene } from './director-render.ts';
 // Video formats ("looks"). Each one has its own storytelling grammar, pacing and colour sets:
 //   kinetic  big words, 1-3 at a time, key word boxed, punch-in on every beat
 //   split    two sides of the screen doing opposite things (wrong / right, poor / rich)
@@ -39,6 +40,10 @@ export interface Skin {
 
 const C4 = ['#ffd23f', '#5b8def', '#ff6b5e', '#3cc68a', '#c084fc'];
 export const SKINS: Record<string, Skin[]> = {
+  director: [
+    { name: 'sang', bg: [['#f3f0e2','#f3f0e2']], ink:'#20231e', sub:'#61675b', hl:'#f4d539', hlInk:'#20231e', good:'#287d56',bad:'#c94438',card:'#fffef7',cardInk:'#20231e',colors:['#f4d539','#b3d0c0','#d9d6c9'] },
+    { name: 'dem', bg: [['#171914','#171914']], ink:'#f3f0e2', sub:'#b6b7a9', hl:'#f4d539', hlInk:'#20231e', good:'#65c48d',bad:'#f17a6b',card:'#25291f',cardInk:'#f3f0e2',colors:['#f4d539','#b3d0c0','#d9d6c9'] },
+  ],
   kinetic: [
     { name: 'dem', bg: [['#121019', '#1d1240'], ['#0f1a2b', '#10233d'], ['#1a1020', '#2c1338']], ink: '#ffffff', sub: '#c9c3e0', hl: '#ffd23f', hlInk: '#16131f', good: '#3cc68a', bad: '#ff6b5e', card: '#ffffff', cardInk: '#16131f', colors: C4 },
     { name: 'sang', bg: [['#fffaf0', '#fff1dc'], ['#f3f7ff', '#e6eeff'], ['#fff4f4', '#ffe6e3']], ink: '#17122b', sub: '#5d5875', hl: '#ff4f3a', hlInk: '#ffffff', good: '#1f8a57', bad: '#e5372b', card: '#17122b', cardInk: '#ffffff', colors: ['#ff4f3a', '#3d6bff', '#f5a623', '#1f8a57', '#8b5cf6'] },
@@ -696,7 +701,7 @@ export interface LookModel { look: string; skin: Skin; scenes: LookScene[]; cues
 export function buildLook(opts: { c: Ctx; env: Env; project: ProjectSpec; timeline: Timeline; W: number; H: number; icons: IconSet; font: string; hand: string; photos: (any | null)[] }): LookModel {
   const look = opts.project.look || 'kinetic', skin = skinOf(look, opts.project.skin);
   const B: LookBuild = { ...opts, skin, S: Math.min(opts.W, opts.H) / 540, portrait: opts.H > opts.W, cues: [] };
-  const per = { kinetic, split, story, data, quiz, doc } as Record<string, (B: LookBuild, sc: SceneSpec, T: SceneTiming, si: number) => LookScene>;
+  const per = { director: (B: LookBuild, sc: SceneSpec, T: SceneTiming, si: number) => directorScene(B, sc, T, si, (c, name, x, y, size, color) => drawIcon(c, iconPaths(name, B.icons), x, y, size, color, 2)), kinetic, split, story, data, quiz, doc } as Record<string, (B: LookBuild, sc: SceneSpec, T: SceneTiming, si: number) => LookScene>;
   let scenes: LookScene[];
   if (look === 'chat') { const one = chat(B, chatThread(B)); scenes = opts.project.scenes.map(() => one); }
   else scenes = opts.project.scenes.map((sc, si) => (per[look] || kinetic)(B, sc, opts.timeline.scenes[si], si));
@@ -714,14 +719,17 @@ export function renderLook(c: Ctx, L: LookModel, t: number, sceneSpecs: SceneSpe
   const S = T[si];
   if (L.continuous || si === 0) L.scenes[si].draw(c, t, 1);
   else {
-    const dur = L.look === 'doc' ? 0.7 : 0.24, u = seg(t, S.start, S.start + dur);
+    const direction = sceneSpecs[si].direction;
+    const directed = L.look === 'director';
+    const dur = L.look === 'doc' ? 0.7 : directed ? 0.4 : 0.24, u = seg(t, S.start, S.start + dur);
     if (u < 1) L.scenes[si - 1].draw(c, t, 1);
     c.save();
-    if (L.look !== 'doc') { const z = 1 + 0.08 * (1 - eOut(u)); c.translate(B.W / 2, B.H / 2); c.scale(z, z); c.translate(-B.W / 2, -B.H / 2); }
+    if (directed && direction?.transition === 'slide') c.translate(B.W * 0.12 * (1 - eOut(u)), 0);
+    if ((!directed && L.look !== 'doc') || (directed && direction?.transition === 'zoom')) { const z = 1 + 0.08 * (1 - eOut(u)); c.translate(B.W / 2, B.H / 2); c.scale(z, z); c.translate(-B.W / 2, -B.H / 2); }
     L.scenes[si].draw(c, t, L.look === 'doc' ? eIO(u) : clamp(u * 2.5));
     c.restore();
     // a white flash on the cut
-    if (L.look !== 'doc' && u < 1) { c.fillStyle = `rgba(255,255,255,${0.35 * (1 - u)})`; c.fillRect(0, 0, B.W, B.H); }
+    if (!directed && L.look !== 'doc' && u < 1) { c.fillStyle = `rgba(255,255,255,${0.35 * (1 - u)})`; c.fillRect(0, 0, B.W, B.H); }
   }
   if (L.scenes[si].captions && B.project.subtitles !== false) drawCaption(c, B, sceneSpecs[si], S, t, B.H * (B.portrait ? (L.look === 'doc' ? 0.82 : 0.885) : 0.86), L.look === 'doc' ? 'doc' : 'box');
   drawProgress(c, B, t);

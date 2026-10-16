@@ -1,0 +1,31 @@
+name: Cập nhật bộ dựng hiện có
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency: deploy-runner
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build và cập nhật image của máy dựng
+        env:
+          REGION: asia-southeast1
+          JOB: net-ve-runner
+          REPO: net-ve
+        run: |
+          set -euo pipefail
+          PROJECT="$(gcloud config get-value project)"
+          test -n "$PROJECT" && test "$PROJECT" != '(unset)'
+          gcloud run jobs describe "$JOB" --region "$REGION" >/dev/null
+          IMAGE="$REGION-docker.pkg.dev/$PROJECT/$REPO/runner:$GITHUB_SHA"
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" -q
+          docker build -f runner.Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          gcloud run jobs update "$JOB" --region "$REGION" --image "$IMAGE"

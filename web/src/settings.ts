@@ -22,7 +22,7 @@ export const KIND_KEYS = ['sketch', 'bars', 'flow', 'compare', 'steps', 'number'
 /** How the picture comes alive (the four genres of explainer video). */
 export const MODE_KEYS = ['hand', 'motion', 'math', 'kinetic'] as const;
 /** Video formats (src/engine/looks.ts). */
-export const LOOK_KEYS = ['act', 'whiteboard', 'illustrated', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
+export const LOOK_KEYS = ['director', 'act', 'whiteboard', 'illustrated', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
 /** Ways a video made in Zalo can be drawn (the documentary needs pictures drawn on the web, so it is not one). */
 export const ZALO_WAYS = ['auto', 'classic-sketch', 'classic-diagram', 'classic', 'act', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz'] as const;
 export const GOOGLE_MODES = ['auto', 'popup', 'redirect'] as const;
@@ -180,8 +180,9 @@ export function defaultConfig(env: Env): Config {
       actions: { idle: 'Đứng', walk: 'Đi bộ', run: 'Chạy', wave: 'Vẫy tay', think: 'Suy nghĩ', cheer: 'Ăn mừng', sad: 'Buồn', point: 'Chỉ tay', shrug: 'Nhún vai', jump: 'Nhảy' },
       ai: { openai: 'OpenAI', gemini: 'Gemini' },
       modes: { hand: 'Bàn tay vẽ (whiteboard)', motion: 'Đồ hoạ chuyển động (motion graphics)', math: 'Toán học / học thuật (kiểu Manim)', kinetic: 'Chữ chuyển động (kinetic typography)' },
-      looks: { illustrated:'Hoạt hình minh họa nhiều lớp', whiteboard:'Whiteboard vẽ tay đa sắc', act: 'Hoạt hình kể chuyện', kinetic: 'Chữ bùng nổ', split: 'Hai bên đối lập', chat: 'Tin nhắn drama', story: 'Kể chuyện người que', data: 'Con số biết nói', quiz: 'Đố vui đếm ngược', doc: 'Phim tài liệu AI' },
+      looks: { director:'AI đạo diễn', illustrated:'Hoạt hình minh họa nhiều lớp', whiteboard:'Whiteboard vẽ tay đa sắc', act: 'Hoạt hình kể chuyện', kinetic: 'Chữ bùng nổ', split: 'Hai bên đối lập', chat: 'Tin nhắn drama', story: 'Kể chuyện người que', data: 'Con số biết nói', quiz: 'Đố vui đếm ngược', doc: 'Phim tài liệu AI' },
       lookNotes: {
+        director:'Thiết kế từng cảnh theo ý nghĩa: bố cục tự do, sơ đồ liên kết và chuyển động theo lời. Giữ màu nhất quán, hạn chế lặp cách thể hiện.',
         illustrated:'Nhân vật nguyên hình và đạo cụ riêng xuất hiện theo lời, chữ nhấn ý, chuyển động từng lớp. Dùng ảnh AI; có thể chỉnh từng cảnh trước khi dựng.',
         whiteboard:'Bàn tay thật vẽ từng nét, minh họa theo lời, chữ viết tay và màu đa sắc. Bộ dựng riêng, không phụ đề dưới mặc định.',
         act: 'Bàn tay vẽ nhân vật rồi nhân vật tự diễn: đi lại, trò chuyện, cảm xúc, ví dụ sai/đúng. Hợp kỹ năng sống, tâm lý, kể chuyện.',

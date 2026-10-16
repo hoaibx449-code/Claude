@@ -1,3 +1,4 @@
+import { planDirections } from '../../src/engine/director.ts';
 // Strict validation of project scripts coming from the browser or an AI model.
 // Anything not on these lists is dropped, so stored specs are always renderable.
 import {cleanIllustrated} from '../../addons/faciup-illustrated/schema.ts';
@@ -10,9 +11,9 @@ import { isDoodle, isPeep } from './doodles.ts';
 export const STYLES = ['notebook', 'whiteboard', 'chalkboard', 'kraft', 'oly', 'pencil', 'blueprint', 'ricepaper', 'neon', 'pastel', 'newspaper', 'comic', 'darkboard', 'sunset', 'cosmos', 'manim', 'bold'] as const;
 export const MODES = ['hand', 'motion', 'math', 'kinetic'] as const;
 /** video formats (src/engine/looks.ts) */
-export const LOOKS = ['act', 'whiteboard', 'illustrated', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
+export const LOOKS = ['director', 'act', 'whiteboard', 'illustrated', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
 export const SKIN_NAMES: Record<string, string[]> = {
-  act: ['giay'], whiteboard: ['sang'], illustrated:['sang'],
+  director: ['sang', 'dem'], act: ['giay'], whiteboard: ['sang'], illustrated:['sang'],
   kinetic: ['dem', 'sang', 'tim'], split: ['do-xanh', 'sang', 'tim-vang'], chat: ['sang', 'toi', 'hong'], story: ['giay', 'bang-den', 'xanh'],
   data: ['dem', 'sang', 'xanh-la'], quiz: ['tim', 'xanh', 'cam'], doc: ['dien-anh', 'trang-den', 'lanh'],
 };
@@ -220,6 +221,7 @@ export function cleanSpec(input: any, userId: string) {
     if (look) {
       // format videos: the words carry the picture; only the documentary needs a picture per scene
       const out: any = { lines, panels: [] };
+      if (look === 'director') out.direction = sc.direction;
       const x = cleanLook(sc?.x, look); if (x) out.x = x;
       if (look === 'whiteboard') { const d=cleanWhiteboard(sc?.whiteboard||sc?.x?.whiteboard); if(d)out.whiteboard=d; }
       if(look==='illustrated'){const d=cleanIllustrated(sc?.illustrated||sc?.x?.illustrated);if(d){out.illustrated=d;out.panels=d.layers.map((layer:any,k:number)=>{const p=sc?.panels?.[k],image=str(p?.image,120);return {prompt:str(p?.prompt,900)||layer.prompt,image:ownImage.test(image)?image:'',line:layer.line};});}}
@@ -284,7 +286,7 @@ export function cleanSpec(input: any, userId: string) {
       voiceId: /^[A-Za-z0-9_-]{3,60}$/.test(v.voiceId || '') ? v.voiceId : undefined,
       speed: num(v.speed, 0.5, 2, 1),
     },
-    scenes,
+    scenes: look === 'director' ? planDirections(scenes) : scenes,
   };
 }
 
