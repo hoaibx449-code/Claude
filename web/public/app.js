@@ -395,7 +395,7 @@ window.pushButton = pushButton;
 
 // ---------- live demo videos (the real engine, playing in the page)
 let demoSet = null, demoRuns = [], demoObserver = null;
-const getDemos = () => (demoSet ||= fetch('/demos.json').then((r) => r.json()).catch(() => []));
+const getDemos = () => (demoSet ||= fetch('/demos.json?v=director-1').then((r) => r.json()).catch(() => []));
 /** Play a spec in a canvas while it is on screen; returns a handle to restyle it. */
 function playDemo(canvas, spec, { dpr = 0.6 } = {}) {
   const run = { canvas, spec, model: null, t: 0, last: 0, raf: 0, visible: false, async build() {
@@ -440,9 +440,9 @@ async function showLanding() {
     if (!run) return;
     run.visible = !run.visible; cancelAnimationFrame(run.raf);
     if (run.visible) { run.last = 0; run.raf = requestAnimationFrame(run.loop); }
-    pause.textContent = run.visible ? 'Tạm dừng' : 'Phát mẫu';
+    pause.textContent = run.visible ? '❚❚' : '▶';
     pause.setAttribute('aria-label', run.visible ? 'Tạm dừng video mẫu' : 'Phát video mẫu');
-  } }, 'Tạm dừng');
+  } }, '❚❚');
   const oldTitles = ['Tạo video giải thích có giọng đọc tiếng Việt', 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút'];
   const title = site.heroTitle && !oldTitles.includes(site.heroTitle) ? site.heroTitle : 'Ý tưởng thành video';
   show(ui.notice ? h('div', { class: 'notice' }, ui.notice) : null,
@@ -452,7 +452,7 @@ async function showLanding() {
         h('p', { class: 'description' }, site.heroText && site.heroText.length < 200 ? site.heroText : 'Nhập nội dung, chọn giọng đọc và tạo video theo cách kể của bạn.'),
         h('div', { class: 'cta' }, h('a', { class: 'btn', href: '#/tao', 'data-ev': 'hero-create' }, icon('plus'), 'Tạo video'), h('a', { class: 'btn ghost', href: '#/mau' }, 'Xem định dạng')),
         h('div', { class: 'home-meta' }, h('span', {}, 'MP4 · Dọc hoặc ngang'), helpHint('Thông tin video', 'Bạn có thể xem trước, sửa từng cảnh và tải video cùng phụ đề. Hạn mức và chi phí hiển thị trong trang tạo video.'))),
-      h('figure', { class: 'home-preview' }, media, h('figcaption', {}, h('span', {}, 'Một cách kể, nhiều góc nhìn'), media === canvas ? pause : null))),
+      h('figure', { class: 'home-preview' }, media, h('figcaption', {}, h('span', {}, 'Bản xem mẫu'), media === canvas ? pause : null))),
     footer());
   if (media === canvas && sample) run = playDemo(canvas, sample.spec, { dpr: 0.75 });
 }
