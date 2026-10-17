@@ -265,7 +265,7 @@ document.addEventListener('submit', (e) => {
   if (e.target.id !== 'topSearch') return;
   e.preventDefault();
   const q = document.getElementById('topSearchInput').value.trim(), page = document.body.dataset.page;
-  const where = page === 'video' || page === 'mau' || page === 'cong-dong' ? page : V('feature:community') === 'on' ? 'cong-dong' : 'mau';
+  const where = page === 'prompt-hunter' || page === 'video' || page === 'mau' || page === 'cong-dong' ? page : V('feature:community') === 'on' ? 'cong-dong' : 'mau';
   location.hash = `#/${where}${q ? '?q=' + encodeURIComponent(q) : ''}`;
 });
 const searchTerm = () => fold(new URLSearchParams(location.hash.split('?')[1] || '').get('q') || '');
@@ -291,7 +291,7 @@ async function showHelp() {
 function markNav(name) {
   for (const a of document.querySelectorAll('[data-route]')) a.classList.toggle('on', a.dataset.route === name);
 }
-const PUBLIC = { '#/tro-giup': 1, '': 1, '#/': 1, '#/mau': 1, '#/goi': 1, '#/tao': 1, '#/thu': 1, '#/dieu-khoan': 1, '#/bao-mat': 1, '#/hoan-tien': 1, '#/cong-dong': 1, '#/dang-nhap-loi': 1 };
+const PUBLIC = { '#/prompt-hunter':1, '#/tro-giup': 1, '': 1, '#/': 1, '#/mau': 1, '#/goi': 1, '#/tao': 1, '#/thu': 1, '#/dieu-khoan': 1, '#/bao-mat': 1, '#/hoan-tien': 1, '#/cong-dong': 1, '#/dang-nhap-loi': 1 };
 let stopHomeGallery = null;
 function route() {
   stopHomeGallery?.(); stopHomeGallery = null;
@@ -311,6 +311,7 @@ function route() {
   if (!me && (m || w)) { showLanding().catch(fatal); return openLogin('route', { hash }); }
   const go = m ? showEditor(m[1])
     : w ? showWatch(w[1], w[2])
+    : hash === '#/prompt-hunter' ? showPromptHunter()
     : hash === '#/cong-dong' ? showCommunity()
     : hash.startsWith('#/admin') && me?.admin ? showAdmin()
     : hash === '#/goi' ? showPlans()
@@ -2012,3 +2013,5 @@ async function buildPreview(spec, canvas, playBtn) {
 
 // admin.js (loaded after this file) defines showAdmin; start once every script is in
 document.addEventListener('DOMContentLoaded', () => boot().catch(fatal));
+
+async function showPromptHunter(){viewed('prompt-hunter');const {showHunter}=await import('/prompt-hunter.js');return showHunter({h,api,show,me,toast,fail,detailDialog,openLogin,footer});}

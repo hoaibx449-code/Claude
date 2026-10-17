@@ -1,3 +1,4 @@
+import {hunterPublic} from './hunter.ts';
 import { creativeResult } from './creative.ts';
 import { creationChoice, designIssues } from './creation-policy.ts';
 // Nét Vẽ Studio API (Cloudflare Worker). Static pages are served from ./public.
@@ -210,6 +211,7 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
 
   const user = await currentUser(env, req);
   if (user) rc.userId = user.id;
+  const hunter=await hunterPublic(req,env,rc,path,user);if(hunter)return hunter;
   const pub = await communityPublic(req, env, rc, path, user);
   if (pub) return pub;
   // what people do in the page (guests included): views, clicks, errors
@@ -301,15 +303,16 @@ async function tryPreview(req: Request, env: XEnv, rc: Rc) {
 /** Everything we hold about the user, as one JSON file (right to a copy of one's data). */
 async function exportAccount(env: XEnv, rc: Rc, user: User) {
   const q = (sql: string) => env.DB.prepare(sql).bind(user.id).all<any>().then((r) => r.results);
-  const [profile, projects, jobs, orders, plans, consents, zalo, events] = await Promise.all([
+  const [profile, projects, jobs, orders, plans, consents, zalo, events, prompts] = await Promise.all([
     env.DB.prepare('SELECT id, email, name, picture, created_at FROM users WHERE id = ?').bind(user.id).first(),
     q('SELECT id, title, spec, created_at, updated_at FROM projects WHERE user_id = ?'), q('SELECT id, project_id, status, error, created_at, finished_at FROM jobs WHERE user_id = ?'),
     q('SELECT code, plan, amount, status, created_at, paid_at FROM orders WHERE user_id = ?'), q('SELECT plan, expires_at FROM user_plans WHERE user_id = ?'),
     q('SELECT version, accepted_at FROM consents WHERE user_id = ?'), q('SELECT name, linked_at, notify FROM zalo_links WHERE user_id = ?'),
     q('SELECT ts, channel, type, path, data FROM events WHERE user_id = ? ORDER BY id DESC LIMIT 5000'),
+    q('SELECT * FROM hunter_prompts WHERE user_id=?'),
   ]);
   rc.log('account.export');
-  return new Response(JSON.stringify({ exportedAt: new Date().toISOString(), profile, projects: projects.map((p: any) => ({ ...p, spec: JSON.parse(p.spec) })), jobs, orders, plans, consents, zalo, events }, null, 2), {
+  return new Response(JSON.stringify({ exportedAt: new Date().toISOString(), profile, prompts, projects: projects.map((p: any) => ({ ...p, spec: JSON.parse(p.spec) })), jobs, orders, plans, consents, zalo, events }, null, 2), {
     headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="du-lieu-cua-toi.json"`, 'cache-control': 'no-store' },
   });
 }
@@ -339,6 +342,9 @@ async function deleteAccount(env: XEnv, rc: Rc, user: User) {
     env.DB.prepare('DELETE FROM consents WHERE user_id = ?').bind(user.id), env.DB.prepare('DELETE FROM community WHERE user_id = ?').bind(user.id),
     env.DB.prepare('DELETE FROM community_likes WHERE user_id = ?').bind(user.id), env.DB.prepare('UPDATE orders SET user_id = ? WHERE user_id = ?').bind(anon, user.id),
     env.DB.prepare('UPDATE events SET user_id = NULL, ip = NULL, ua = NULL WHERE user_id = ?').bind(user.id),
+    env.DB.prepare('DELETE FROM hunter_reports WHERE user_id=?').bind(user.id),
+    env.DB.prepare('DELETE FROM hunter_reports WHERE prompt_id IN (SELECT id FROM hunter_prompts WHERE user_id=?)').bind(user.id),
+    env.DB.prepare('DELETE FROM hunter_prompts WHERE user_id=?').bind(user.id),
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id),
   ]);
   rc.userId = null; rc.log('account.delete', { data: { videos: jobs.length } });

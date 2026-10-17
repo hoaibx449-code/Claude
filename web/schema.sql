@@ -203,3 +203,20 @@ CREATE TABLE IF NOT EXISTS zalo_leads (
   human_until INTEGER,                -- a member of staff is answering: the assistant stays quiet
   updated_at INTEGER NOT NULL
 );
+
+-- Prompt Hunter: publication is independent from AI metadata suggestions.
+CREATE TABLE IF NOT EXISTS hunter_prompts (
+ id TEXT PRIMARY KEY, user_id TEXT, author TEXT NOT NULL, title TEXT NOT NULL,
+ content TEXT NOT NULL, category TEXT NOT NULL, tool TEXT NOT NULL DEFAULT '',
+ description TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL DEFAULT 'pending', note TEXT NOT NULL DEFAULT '',
+ ai_state TEXT NOT NULL DEFAULT 'none', dedupe TEXT UNIQUE,
+ created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS hunter_status_created ON hunter_prompts(status,created_at DESC);
+CREATE TABLE IF NOT EXISTS hunter_reports (
+ prompt_id TEXT NOT NULL, user_id TEXT NOT NULL, reason TEXT NOT NULL, created_at INTEGER NOT NULL,
+ PRIMARY KEY(prompt_id,user_id)
+);
+CREATE TABLE IF NOT EXISTS hunter_settings (id INTEGER PRIMARY KEY CHECK(id=1), auto_approve INTEGER NOT NULL DEFAULT 0);
+INSERT OR IGNORE INTO hunter_settings(id,auto_approve) VALUES(1,0);
