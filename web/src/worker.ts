@@ -96,6 +96,7 @@ export default {
     const xenv = await effectiveEnv(env);
     ctx.waitUntil(Promise.all([
       expireOrders(xenv),
+      env.DB.prepare('DELETE FROM zalo_ocr WHERE created_at < ?').bind(Date.now()-7*86400000).run(),
       env.DB.prepare('DELETE FROM zalo_seen WHERE ts < ?').bind(Date.now() - 2 * 86_400_000).run(),
       env.DB.prepare('DELETE FROM zalo_codes WHERE expires_at < ?').bind(Date.now()).run(),
       env.DB.prepare('DELETE FROM usage WHERE day < ?').bind(new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10)).run(),
@@ -344,6 +345,7 @@ async function deleteAccount(env: XEnv, rc: Rc, user: User) {
   } while (cursor);
   const anon = 'deleted-' + (await sha256(user.id)).slice(0, 12);
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM zalo_ocr WHERE chat_id IN (SELECT chat_id FROM zalo_links WHERE user_id = ?)').bind(user.id),
     env.DB.prepare('DELETE FROM zalo_messages WHERE chat_id IN (SELECT chat_id FROM zalo_links WHERE user_id = ?)').bind(user.id),
     env.DB.prepare('DELETE FROM zalo_outbox WHERE chat_id IN (SELECT chat_id FROM zalo_links WHERE user_id = ?)').bind(user.id),
     env.DB.prepare('DELETE FROM jobs WHERE user_id = ?').bind(user.id), env.DB.prepare('DELETE FROM projects WHERE user_id = ?').bind(user.id),

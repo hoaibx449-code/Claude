@@ -234,3 +234,6 @@ CREATE TRIGGER IF NOT EXISTS hunter_search_update AFTER UPDATE ON hunter_prompts
  INSERT INTO hunter_search(id,title,description,content,category,tool) SELECT new.id,replace(replace(new.title,'đ','d'),'Đ','D'),replace(replace(new.description,'đ','d'),'Đ','D'),replace(replace(new.content,'đ','d'),'Đ','D'),replace(replace(new.category,'đ','d'),'Đ','D'),replace(replace(new.tool,'đ','d'),'Đ','D') WHERE new.status='published';
 END;
 INSERT INTO hunter_search(id,title,description,content,category,tool) SELECT id,replace(replace(title,'đ','d'),'Đ','D'),replace(replace(description,'đ','d'),'Đ','D'),replace(replace(content,'đ','d'),'Đ','D'),replace(replace(category,'đ','d'),'Đ','D'),replace(replace(tool,'đ','d'),'Đ','D') FROM hunter_prompts WHERE status='published' AND NOT EXISTS(SELECT 1 FROM hunter_search s WHERE s.id=hunter_prompts.id);
+
+CREATE TABLE IF NOT EXISTS zalo_ocr (message_id TEXT PRIMARY KEY,chat_id TEXT NOT NULL,content TEXT NOT NULL,uncertain INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS zalo_ocr_chat ON zalo_ocr(chat_id,created_at DESC);

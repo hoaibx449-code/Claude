@@ -127,7 +127,7 @@ export interface ZaloConfig {
   allowGuests: boolean;
   /** How a script sent by chat is illustrated: free rules or AI. */
   scriptSource: 'mine-free' | 'mine-ai';
-  autoRender: boolean;
+  autoRender: boolean; ocrEnabled: boolean;
   ownerChat: string;
   notifyOwner: { signup: boolean; failed: boolean; order: boolean; daily: boolean };
   templates: Record<string, string>;
@@ -250,7 +250,7 @@ export function defaultConfig(env: Env): Config {
     zalo: {
       enabled: false, botLink: '', receive: 'webhook', keepWebhook: true, perDay: 300, stickers: { welcome: '', thanks: '' },
       followup: { enabled: false, hours: 20, text: 'Chào {ten}, hôm trước bạn có hỏi về gói {goi} bên mình. Bạn còn phân vân điều gì không, mình giải đáp ngay nhé? Nếu muốn làm thử trước, bạn chỉ cần nhắn chủ đề video là mình làm luôn 😊' },
-      allowGuests: true, scriptSource: 'mine-free', autoRender: true, ownerChat: '',
+      allowGuests: true, scriptSource: 'mine-free', autoRender: true, ocrEnabled: true, ownerChat: '',
       notifyOwner: { signup: true, failed: true, order: true, daily: false },
       formats: { default: 'web', allowed: [...ZALO_WAYS] },
       assistant: { enabled: true, name: 'Trợ lý', persona: 'Thân thiện, ngắn gọn, xưng "mình", gọi khách là "bạn". Trả lời đúng trọng tâm, tối đa 5 câu.', knowledge: '', makeVideos: true, handoff: true, perDay: 150, ai: 'auto' },
@@ -413,6 +413,7 @@ export function cleanConfig(input: any, base: Config): Config {
         stickers: { welcome: /^[\w-]{4,80}$/.test(z.stickers?.welcome || '') ? z.stickers.welcome : '', thanks: /^[\w-]{4,80}$/.test(z.stickers?.thanks || '') ? z.stickers.thanks : '' },
         followup: { enabled: z.followup?.enabled === true, hours: int(z.followup?.hours, 4, 168, b.followup.hours), text: str(z.followup?.text, 600, b.followup.text) || b.followup.text }, botLink: /^https:\/\/[^\s"<>]{4,200}$/.test(z.botLink || '') ? z.botLink : z.botLink === '' ? '' : b.botLink,
         allowGuests: typeof z.allowGuests === 'boolean' ? z.allowGuests : b.allowGuests, scriptSource: z.scriptSource === 'mine-ai' ? 'mine-ai' : 'mine-free',
+        ocrEnabled: typeof z.ocrEnabled==='boolean'?z.ocrEnabled:b.ocrEnabled,
         autoRender: typeof z.autoRender === 'boolean' ? z.autoRender : b.autoRender, ownerChat: /^[\w.-]{1,80}$/.test(z.ownerChat || '') ? z.ownerChat : z.ownerChat === '' ? '' : b.ownerChat,
         notifyOwner: { signup: z.notifyOwner?.signup ?? b.notifyOwner.signup, failed: z.notifyOwner?.failed ?? b.notifyOwner.failed, order: z.notifyOwner?.order ?? b.notifyOwner.order, daily: z.notifyOwner?.daily ?? b.notifyOwner.daily },
         templates: tpl,
