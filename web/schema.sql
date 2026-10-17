@@ -220,3 +220,17 @@ CREATE TABLE IF NOT EXISTS hunter_reports (
 );
 CREATE TABLE IF NOT EXISTS hunter_settings (id INTEGER PRIMARY KEY CHECK(id=1), auto_approve INTEGER NOT NULL DEFAULT 0);
 INSERT OR IGNORE INTO hunter_settings(id,auto_approve) VALUES(1,0);
+
+-- Community search indexes only public records; moderation changes update it atomically.
+CREATE VIRTUAL TABLE IF NOT EXISTS hunter_search USING fts5(id UNINDEXED,title,description,content,category,tool,tokenize='unicode61 remove_diacritics 2');
+CREATE TRIGGER IF NOT EXISTS hunter_search_insert AFTER INSERT ON hunter_prompts WHEN new.status='published' BEGIN
+ INSERT INTO hunter_search(id,title,description,content,category,tool) VALUES(new.id,replace(replace(new.title,'đ','d'),'Đ','D'),replace(replace(new.description,'đ','d'),'Đ','D'),replace(replace(new.content,'đ','d'),'Đ','D'),replace(replace(new.category,'đ','d'),'Đ','D'),replace(replace(new.tool,'đ','d'),'Đ','D'));
+END;
+CREATE TRIGGER IF NOT EXISTS hunter_search_delete AFTER DELETE ON hunter_prompts BEGIN
+ DELETE FROM hunter_search WHERE id=old.id;
+END;
+CREATE TRIGGER IF NOT EXISTS hunter_search_update AFTER UPDATE ON hunter_prompts BEGIN
+ DELETE FROM hunter_search WHERE id=old.id;
+ INSERT INTO hunter_search(id,title,description,content,category,tool) SELECT new.id,replace(replace(new.title,'đ','d'),'Đ','D'),replace(replace(new.description,'đ','d'),'Đ','D'),replace(replace(new.content,'đ','d'),'Đ','D'),replace(replace(new.category,'đ','d'),'Đ','D'),replace(replace(new.tool,'đ','d'),'Đ','D') WHERE new.status='published';
+END;
+INSERT INTO hunter_search(id,title,description,content,category,tool) SELECT id,replace(replace(title,'đ','d'),'Đ','D'),replace(replace(description,'đ','d'),'Đ','D'),replace(replace(content,'đ','d'),'Đ','D'),replace(replace(category,'đ','d'),'Đ','D'),replace(replace(tool,'đ','d'),'Đ','D') FROM hunter_prompts WHERE status='published' AND NOT EXISTS(SELECT 1 FROM hunter_search s WHERE s.id=hunter_prompts.id);

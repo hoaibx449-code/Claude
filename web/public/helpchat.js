@@ -13,7 +13,7 @@
   const BUBBLE = '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>';
   const BOT = '<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01M9.5 16h5"/>';
   const SEND = '<path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>';
-  const QUICK = ['Cách tạo video', 'Đổi giọng đọc thế nào?', 'Tải video ở đâu?', 'Hết lượt thì sao?'];
+  const QUICK = ['Tìm prompt tạo video', 'Cách tạo video', 'Đổi giọng đọc thế nào?', 'Tải video ở đâu?', 'Hết lượt thì sao?'];
   let mounted = null;
   const history = [];
   try { history.push(...JSON.parse(sessionStorage.getItem('nv_help') || '[]').slice(-20)); } catch {}
@@ -40,6 +40,11 @@
       try {
         const r = await api('/api/help/chat', { method: 'POST', body: { text, history: history.slice(-8) } });
         wait.classList.remove('typing'); wait.textContent = r.reply;
+        if (r.ai === false) { const label = document.createElement('small'); label.textContent = 'Hướng dẫn dự phòng · AI chưa trả lời'; wait.prepend(label, document.createElement('br')); }
+        for (const source of r.sources || []) {
+          if (!source.url?.startsWith('/#/prompt-hunter?q=')) continue;
+          const link = document.createElement('a'); link.href = source.url; link.textContent = 'Xem prompt: ' + source.title; link.className = 'help-source'; wait.append(link);
+        }
         history.push({ role: 'user', text }, { role: 'bot', text: r.reply }); keep();
       } catch (e) { wait.classList.remove('typing'); wait.textContent = e.message || 'Chưa trả lời được, bạn thử lại sau nhé.'; }
       send.disabled = false; input.focus();
@@ -50,7 +55,7 @@
     const head = document.createElement('header');
     const av = document.createElement('span'); av.className = 'av'; av.append(svg(BOT));
     const who = document.createElement('div'); const title = document.createElement('strong'); title.textContent = cfg.name;
-    const sub = document.createElement('small'); sub.textContent = 'Trợ lý AI · hướng dẫn sử dụng'; who.append(title, document.createElement('br'), sub);
+    const sub = document.createElement('small'); sub.textContent = 'Trợ lý AI · tìm prompt & hỗ trợ'; who.append(title, document.createElement('br'), sub);
     const close = document.createElement('button'); close.type = 'button'; close.textContent = '✕'; close.setAttribute('aria-label', 'Đóng trợ lý');
     head.append(av, who, close);
     const note = document.createElement('p'); note.className = 'note'; note.textContent = 'Câu trả lời do AI tạo, có thể chưa chính xác.';
