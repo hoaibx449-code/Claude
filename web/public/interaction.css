@@ -2,15 +2,15 @@
 :root{--ui-glow:var(--accent,#4f46e5);--ui-glow-halo:color-mix(in srgb,var(--ui-glow) 22%,transparent)}
 :where(button,.btn,a[href],input:not([type="hidden"]),textarea,select,summary,[role="button"],[role="tab"],.card,.hunter-card,.scene,.mediafield,.home-preview,.community-card,.format-card,.template-card){transition:outline-color .16s ease,box-shadow .16s ease}
 @media(hover:hover) and (pointer:fine){
- :where(button,.btn,a[href],input:not([type="hidden"]),textarea,select,summary,[role="button"],[role="tab"],.card,.hunter-card,.scene,.mediafield,.home-preview,.community-card,.format-card,.template-card):not(.brand):not(.logo):not(:disabled):not([aria-disabled="true"]):hover{
+ :where(button,.btn,a[href],input:not([type="hidden"]),textarea,select,summary,[role="button"],[role="tab"],.card,.hunter-card,.scene,.mediafield,.home-preview,.community-card,.format-card,.template-card):not(.top *):not(.brand):not(.logo):not(:disabled):not([aria-disabled="true"]):hover{
   outline:1px solid var(--ui-glow)!important;outline-offset:2px;box-shadow:0 0 0 3px var(--ui-glow-halo),0 0 18px var(--ui-glow-halo)!important;
  }
 }
-:where(button,.btn,a[href],input,textarea,select,summary,[role="button"],[role="tab"]):not(.brand):not(.logo):not(:disabled):not([aria-disabled="true"]):focus-visible{
+:where(button,.btn,a[href],input,textarea,select,summary,[role="button"],[role="tab"]):not(.top *):not(.brand):not(.logo):not(:disabled):not([aria-disabled="true"]):focus-visible{
  outline:2px solid var(--ui-glow)!important;outline-offset:3px;box-shadow:0 0 0 5px var(--ui-glow-halo)!important;
 }
 @media(hover:none){
- :where(button,.btn,a[href],summary,[role="button"],[role="tab"]):not(.brand):not(.logo):not(:disabled):not([aria-disabled="true"]):active{outline:1px solid var(--ui-glow)!important;outline-offset:2px;box-shadow:0 0 0 3px var(--ui-glow-halo)!important}
+ :where(button,.btn,a[href],summary,[role="button"],[role="tab"]):not(.top *):not(.brand):not(.logo):not(:disabled):not([aria-disabled="true"]):active{outline:1px solid var(--ui-glow)!important;outline-offset:2px;box-shadow:0 0 0 3px var(--ui-glow-halo)!important}
 }
 @media(prefers-reduced-motion:reduce){:where(button,.btn,a[href],input,textarea,select,summary,[role="button"],[role="tab"],.card,.hunter-card,.scene,.mediafield,.home-preview,.community-card,.format-card,.template-card){transition:none!important}}
 @media(forced-colors:active){:where(button,.btn,a[href],input,textarea,select,summary,[role="button"],[role="tab"]):focus-visible{outline:2px solid Highlight!important;box-shadow:none!important}}
