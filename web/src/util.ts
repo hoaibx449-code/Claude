@@ -102,7 +102,7 @@ export async function body<T = any>(req: Request, maxBytes = 200_000): Promise<T
 export const today = () => new Date().toISOString().slice(0, 10);
 
 /** Count one use of `kind` today; refuse when the daily limit is reached. */
-export async function useQuota(env: Env, userId: string, kind: 'hunter' | 'hunter-report' | 'hunter-ai' | 'script' | 'image' | 'render' | 'events' | 'zalo' | 'try' | 'upload' | 'like' | 'voice' | 'voiceup' | 'chat', limit: number) {
+export async function useQuota(env: Env, userId: string, kind: 'ocr' | 'hunter' | 'hunter-report' | 'hunter-ai' | 'script' | 'image' | 'render' | 'events' | 'zalo' | 'try' | 'upload' | 'like' | 'voice' | 'voiceup' | 'chat', limit: number) {
   if (!Number.isFinite(limit) || limit < 1) throw new HttpError(429, 'Gói hiện tại không có lượt sử dụng tính năng này.');
   const day = today();
   const row = await env.DB.prepare(
@@ -111,7 +111,7 @@ export async function useQuota(env: Env, userId: string, kind: 'hunter' | 'hunte
      RETURNING n`,
   ).bind(userId, day, kind, limit).first<{ n: number }>();
   if (!row) {
-    const names = { hunter:'chia sẻ prompt', 'hunter-report':'báo cáo prompt', 'hunter-ai':'phân loại prompt', script: 'viết kịch bản', image: 'vẽ ảnh AI', render: 'dựng video', events: 'ghi nhận', zalo: 'nhắn Zalo', try: 'xem thử', chat: 'hỏi trợ lý' } as Record<string, string>;
+    const names = { ocr:'đọc chữ từ ảnh', hunter:'chia sẻ prompt', 'hunter-report':'báo cáo prompt', 'hunter-ai':'phân loại prompt', script: 'viết kịch bản', image: 'vẽ ảnh AI', render: 'dựng video', events: 'ghi nhận', zalo: 'nhắn Zalo', try: 'xem thử', chat: 'hỏi trợ lý' } as Record<string, string>;
     throw new HttpError(429, `Bạn đã dùng hết lượt ${names[kind]} hôm nay (${limit} lượt). Thử lại vào ngày mai.`);
   }
 }

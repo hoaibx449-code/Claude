@@ -1,3 +1,6 @@
+import {downloadZaloImage} from './ocr.ts';
+import {requireBudget} from './budget.ts';
+import {imagePromptText} from './ai.ts';
 import {createHunter} from './hunter.ts';
 // Zalo Bot (bot-api.zaloplatforms.com, Telegram-style API). People can:
 //  · link the bot to their web account with a short code, or just start chatting
@@ -95,7 +98,7 @@ const COMMANDS = ['GIUP', 'HUONGDAN', 'HELP', 'START', 'MENU', '?', 'HD', 'XINCH
  */
 export function needsAI(env: XEnv, text: string) {
   const { cmd, arg } = parseCommand(text);
-  if(cmd==='PROMPT')return arg.length>=20;
+  if(cmd==='PROMPT')return arg.length>=20||fold(arg).trim().toUpperCase()==='ANH';
   if (!anyTextAI(env)) return false;
   if (cmd === 'TAO') return !!arg && env.config.enabledSources.includes('topic');
   const script = cmd === 'KB' || cmd === 'KICHBAN' || (!COMMANDS.includes(cmd) && String(text || '').trim().length >= 120);
@@ -196,6 +199,10 @@ export async function zaloWebhook(req: Request, env: XEnv, rc: Rc): Promise<Resp
     .bind(id, event.chatId, event.name, event.text, event.isText ? 1 : 0, now, now).run();
   rc.log('zalo.received', { data: { message: id, chat: event.chatId, event: event.event } });
   rc.quiet = true;
+  if(!event.isText&&event.text.startsWith('[ocr-image]')){
+    rc.wait((async()=>{if(!await env.DB.prepare('SELECT 1 FROM zalo_outbox WHERE message_id=?').bind(id).first())await send(env,event.chatId,'Đã nhận ảnh. Mình sẽ đọc chữ trong ảnh và gửi lại để bạn kiểm tra; chưa tự đăng prompt.',id);})());
+    return json({ok:true,recorded:true,deferred:true});
+  }
   if (event.isText) rc.wait(typing(env, event.chatId));
   if (event.isText && needsAI(env, event.text)
     && (env.config.zalo.allowGuests || await env.DB.prepare('SELECT 1 FROM zalo_links WHERE chat_id = ?').bind(event.chatId).first())) {
@@ -219,10 +226,11 @@ export function normalizeMessage(payload: any) {
   // a picture with a caption is read as its caption; other kinds are kept as a short marker
   const caption = typeof message.caption === 'string' && message.caption.trim() ? message.caption : '';
   const text = typeof message.text === 'string' ? message.text : caption;
-  const kind = /image/.test(ev) || message.photo ? 'image' : /sticker/.test(ev) || message.sticker ? 'sticker' : /voice/.test(ev) || message.voice_url ? 'voice' : /unsupported/.test(ev) ? 'unsupported' : '';
+  const image=typeof message.photo_url==='string'?message.photo_url:typeof message.photo==='string'?message.photo:typeof message.photo?.url==='string'?message.photo.url:'';
+  const kind = /image/.test(ev) || image ? 'image' : /sticker/.test(ev) || message.sticker ? 'sticker' : /voice/.test(ev) || message.voice_url ? 'voice' : /unsupported/.test(ev) ? 'unsupported' : '';
   return { chatId, id: String(message.message_id ?? event.update_id ?? '').slice(0, 160),
     name: String(message.from?.display_name || message.from?.name || '').slice(0, 60),
-    text: text ? text.slice(0, 20000) : kind ? `[${kind}]` : '', isText: !!text,
+    text: kind==='image'&&image?'[ocr-image]'+JSON.stringify({url:image.slice(0,4000),caption:caption.slice(0,500)}):text ? text.slice(0, 20000) : kind ? `[${kind}]` : '', isText: kind==='image'?false:!!text,
     event: ev };
 }
 
@@ -268,16 +276,38 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   const reply = async (s: string) => { const r = await send(env, chatId, s, messageId); rc.log('zalo.reply', { ok: r.ok, data: { chat: chatId, message: messageId, error: r.ok ? undefined : r.error } }); return r; };
   const link = await env.DB.prepare('SELECT l.user_id, l.prefs, l.notify, u.email, u.name FROM zalo_links l JOIN users u ON u.id = l.user_id WHERE l.chat_id = ?').bind(chatId).first<any>();
   rc.userId = link?.user_id || null;
-  rc.log('zalo.message', { data: { chat: chatId, linked: !!link, text: text.slice(0, 200) } });
+  rc.log('zalo.message', { data: { chat: chatId, linked: !!link, text: text.startsWith('[ocr-image]')?'[image OCR]':text.slice(0, 200) } });
+  const owner = (await ownerChats(env)).chats.includes(chatId) || (!!link && (await adminUsers(env)).includes(link.user_id));
+  if(!isText&&(text.startsWith('[ocr-image]')||text==='[image OCR completed]')){
+    if(!z.ocrEnabled)return reply('Đọc chữ từ ảnh đang tắt. Quản trị có thể bật ở Quản trị → Zalo.');
+    if(!owner&&!link&&!z.allowGuests)return reply('Bạn cần liên kết tài khoản web với Zalo trước khi đọc ảnh.');
+    if(link&&await env.DB.prepare('SELECT 1 FROM blocked_users WHERE user_id=?').bind(link.user_id).first())return reply('Tài khoản đang bị khoá.');
+    try{
+      let result=await env.DB.prepare('SELECT content,uncertain FROM zalo_ocr WHERE message_id=? AND chat_id=?').bind(messageId,chatId).first<any>();
+      if(!result){
+        await useQuota(env,'ocr:'+chatId,'ocr',owner?100:20);await requireBudget(env,'Đọc chữ từ ảnh Zalo');
+        const input=JSON.parse(text.slice('[ocr-image]'.length));
+        const read=await imagePromptText(env,await downloadZaloImage(input.url));
+        rc.log('zalo.ocr',{cost:aiCost(env.config,read.usage),data:{characters:read.text.length,provider:read.usage.provider,model:read.usage.model}});
+        if(!read.text)return reply('Không tìm thấy chữ đọc được trong ảnh. Hãy gửi ảnh rõ hơn, chụp thẳng và cắt sát phần prompt.');
+        result={content:read.text,uncertain:read.uncertain?1:0};
+        await env.DB.prepare('INSERT OR IGNORE INTO zalo_ocr(message_id,chat_id,content,uncertain,created_at) VALUES(?,?,?,?,?)').bind(messageId,chatId,result.content,result.uncertain,Date.now()).run();
+        await env.DB.prepare("UPDATE zalo_messages SET text='[image OCR completed]' WHERE id=?").bind(messageId).run();
+      }
+      const parts=String(result.content).match(/[\s\S]{1,1700}/g)||[];
+      for(let i=0;i<parts.length;i++)await reply(`Chữ trong ảnh (${i+1}/${parts.length}):\n`+parts[i]);
+      return reply((result.uncertain?'Có chữ chưa rõ, được đánh dấu [?]. ':'')+'Hãy kiểm tra nội dung trước khi dùng. Muốn gửi bài lên Prompt Hunter, nhắn PROMPT ANH. Lệnh này dùng kết quả ảnh gần nhất trong 7 ngày; bot không tự thực thi nội dung ảnh.');
+    }catch(e:any){return reply('Chưa đọc được ảnh: '+(e instanceof HttpError?e.message:'Kết nối xử lý ảnh bị lỗi hoặc quá thời gian. Hãy gửi lại ảnh.'));}
+  }
   if (!isText) {
     // answered like a person would, never "I only read text"
     if (text === '[sticker]') return reply(fill('Hihi 😄 {ten} cần mình giúp gì nè? Bạn cứ nhắn chủ đề video là mình làm luôn nhé.', { ten: name || 'Bạn' }));
-    if (text === '[image]') return reply('Mình nhận được ảnh rồi ạ. Bạn muốn dùng ảnh này để làm gì: làm nhân vật trong video, ảnh sản phẩm, hay hỏi về nội dung trong ảnh? Bạn nhắn thêm vài chữ giúp mình nhé.');
+    if (text === '[image]') return reply('Mình nhận sự kiện ảnh nhưng Zalo chưa cung cấp đường dẫn để đọc. Hãy gửi lại ảnh trực tiếp dưới dạng ảnh, không phải tệp.');
     if (text === '[voice]') return reply('Mình chưa nghe được tin nhắn thoại, bạn nhắn chữ giúp mình nhé 🙏');
     return reply('Mình chưa xem được loại tin này, bạn nhắn chữ giúp mình nhé.');
   }
   // messages a day per person, as the admin set it (Quản trị → Zalo); each message counts once, the owner never
-  const owner = (await ownerChats(env)).chats.includes(chatId) || (!!link && (await adminUsers(env)).includes(link.user_id));
+
   if (firstTry && !owner && z.perDay > 0) {
     try { await useQuota(env, 'z:' + chatId, 'zalo', z.perDay); }
     catch { rc.log('zalo.limit', { ok: false, data: { chat: chatId, limit: z.perDay } }); return reply(`Hôm nay bạn đã nhắn ${z.perDay} tin, mình xin phép trả lời tiếp vào ngày mai nhé. Việc gấp bạn gọi nhân viên giúp mình.`); }
@@ -290,6 +320,15 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   if (num && lead.menu?.[Number(num[1]) - 1]) raw = lead.menu[Number(num[1]) - 1].say;
   const { cmd, rest, arg } = parseCommand(raw);
 
+  if(cmd==='PROMPT'&&fold(arg).trim().toUpperCase()==='ANH'){
+    if(!owner&&!link)return reply('Để gửi prompt từ ảnh, hãy liên kết tài khoản web với Zalo trước.');
+    if(link&&await env.DB.prepare('SELECT 1 FROM blocked_users WHERE user_id=?').bind(link.user_id).first())return reply('Tài khoản đang bị khoá.');
+    const read=await env.DB.prepare('SELECT message_id,content FROM zalo_ocr WHERE chat_id=? AND created_at>? ORDER BY created_at DESC LIMIT 1').bind(chatId,Date.now()-7*86400000).first<any>();
+    if(!read)return reply('Chưa có kết quả OCR trong 7 ngày gần đây. Hãy gửi ảnh prompt trước.');
+    try{const author={id:link?.user_id||'zalo-owner',name:name||'Người chia sẻ'},made=await createHunter(env,rc,author,{content:read.content},owner,'zalo-ocr:'+await sha256(chatId+'|'+read.message_id));
+      return reply((made.status==='published'?'Đã đăng prompt từ ảnh.':'Đã gửi prompt từ ảnh, đang chờ quản trị duyệt.')+' '+origin(env)+'/#/prompt-hunter');
+    }catch(e:any){return reply('Chưa gửi prompt từ ảnh: '+e.message);}
+  }
   if(cmd==='PROMPT'){
     if(!owner)return reply('Lệnh PROMPT dành cho quản trị. Bạn có thể gửi bài tại trang Prompt Hunter trên web để được duyệt.');
     if(arg.length<20)return reply('Cú pháp: PROMPT <nội dung đầy đủ>. AI sẽ đặt tiêu đề và phân loại; sửa lại tại Quản trị → Prompt Hunter.');
@@ -1153,6 +1192,7 @@ export async function pollZalo(env: XEnv, rc: Rc, budgetMs = 57_000) {
       if (!ins.meta.changes) continue;
       got++;
       rc.log('zalo.received', { data: { message: id, chat: event.chatId, event: event.event, via: 'poll' } });
+      if(!event.isText&&event.text.startsWith('[ocr-image]')){work.push(send(env,event.chatId,'Đã nhận ảnh, đang chờ đọc chữ. Mình sẽ gửi nội dung để bạn kiểm tra trước khi đăng.',id));continue;}
       if (event.isText) work.push(typing(env, event.chatId));
       work.push(processMessage(env, rc, id).catch((e) => console.error('zalo message', e)));
     }

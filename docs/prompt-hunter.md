@@ -16,3 +16,12 @@ Launch suggestions: prioritize tested prompts with an optional result example an
 ## Release verification
 
 Local validation: 144 passing tests, one platform skip; TypeScript and web build pass. Browser automation was unavailable during this implementation. Verify real owner-Zalo publishing, pending-to-published moderation, auto-approval settings, copy behavior and narrow-screen layout on the deployed build before announcing availability. The existing Triển khai web workflow applies schema.sql before deployment.
+
+
+### Đọc prompt từ ảnh qua Zalo
+
+Gửi ảnh PNG/JPG/WebP trực tiếp đến bot (tối đa 8 MB). Webhook chỉ xác nhận nhận ảnh, công việc OCR chạy trong hàng chờ nền. AI nhìn ảnh dùng thứ tự/model trong quản trị; model không hỗ trợ ảnh được thử sang model dự phòng. Bot chép nguyên văn, không thực thi chỉ dẫn trong ảnh. Chỗ chưa rõ đánh dấu `[?]`; ảnh không chữ hoặc không tải được báo lỗi rõ.
+
+Bot trả văn bản để kiểm tra. Gửi `PROMPT ANH` để đăng kết quả ảnh gần nhất: quản trị đăng trực tiếp; thành viên phải liên kết tài khoản và dùng quy trình duyệt/auto-duyệt hiện có. Một ảnh không tạo trùng bài khi lệnh được gửi lại. OCR không tự tạo video.
+
+Bật/tắt tại Quản trị → Zalo → Đọc prompt từ ảnh (OCR). Giới hạn 20 ảnh/ngày/chat thường, 100 cho quản trị và ngân sách AI hiện có. Bản OCR phục vụ lệnh đăng lưu 7 ngày trong D1, dọn bởi cron; không sao chép ảnh gốc sang R2. Chỉ tải từ các CDN Zalo được cho phép, kiểm tra lại từng bước chuyển hướng, giới hạn kích thước tải và xác minh chữ ký định dạng ảnh. OCR có thể sai; người đăng cần kiểm tra trước khi dùng/chia sẻ.
