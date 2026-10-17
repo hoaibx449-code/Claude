@@ -34,7 +34,7 @@ export function buildSketch(c: Ctx, items: SketchItem[], stage: Box, col: Colors
   const placed: BBox[] = [];
   const X = (v: number) => stage.x + (stage.w * Math.max(0, Math.min(100, v))) / 100;
   const Y = (v: number) => stage.y + (stage.h * Math.max(0, Math.min(100, v))) / 100;
-  const color = (k?: InkColor) => (k === 'accent' ? col.accent : k === 'accent2' ? col.accent2 : k === 'good' ? col.good : col.ink);
+  const color = (k?: InkColor) => (typeof k === 'string' && /^#[a-fA-F0-9]{6}$/.test(k) ? k : k === 'accent' ? col.accent : k === 'accent2' ? col.accent2 : k === 'good' ? col.good : col.ink);
   let seed = 7, people = 0;
 
   // ---- element makers; each returns the elements and their bounding box
@@ -73,6 +73,16 @@ export function buildSketch(c: Ctx, items: SketchItem[], stage: Box, col: Colors
         const maxW = it.w ? (stage.w * Math.min(100, it.w)) / 100 : align === 'center' ? Math.max(120, 2 * Math.min(cx - stage.x, stage.x + stage.w - cx)) : stage.x + stage.w - cx;
         const rowsH = size * 1.22 * Math.min(3, wrap(c, it.text, size, maxW).length);
         return textEls(it.text, cx, Y(it.y) + dy - rowsH / 2, size, color(it.color), maxW, align, line);
+      }
+      case 'vector': {
+        const w=stage.w*it.w/100,h=stage.h*it.h/100,ox=X(it.x)+dx-w/2,oy=Y(it.y)+dy-h/2;
+        const paths:P[][]=it.paths.map((ps:number[][])=>ps.map(([x,y])=>[ox+x*w/100,oy+y*h/100] as P));
+        const els:Element[]=[];
+        for(const pts of paths){
+          if(it.fill && pts.length>=3)els.push({kind:'fill',pts,color:color(it.color),anchor:[ox+w/2,oy+h/2],weight:.2,line});
+          els.push(pathEl(pts,color(it.color),it.stroke||3,line));
+        }
+        return {els,box:{x0:ox,y0:oy,x1:ox+w,y1:oy+h}};
       }
       case 'icon': {
         const name = resolveIcon(it.name, icons);
@@ -167,14 +177,14 @@ export function buildSketch(c: Ctx, items: SketchItem[], stage: Box, col: Colors
   // ---- pass 1: things with a size, nudged apart and kept on the page
   const order: { it: any; built: Built; idx: number }[] = [];
   items.forEach((it: any, idx) => {
-    if (!['text', 'icon', 'person', 'chart', 'image', 'qr'].includes(it.t)) return;
+    if (!['vector', 'text', 'icon', 'person', 'chart', 'image', 'qr'].includes(it.t)) return;
     let built = solid(it, 0, 0);
     if (!built) return;
     const fit = (b: BBox) => [Math.max(0, stage.x - b.x0) - Math.max(0, b.x1 - (stage.x + stage.w)), Math.max(0, stage.y - b.y0) - Math.max(0, b.y1 - (stage.y + stage.h))];
     const bad = (b: BBox) => placed.some((p) => overlap(p, b) > 0.12 * Math.min(area(p), area(b)));
     let [dx, dy] = fit(built.box);
     if (dx || dy) built = solid(it, dx, dy) || built;
-    if (bad(built.box)) {
+    if (it.t !== 'vector' && bad(built.box)) {
       const step = stage.h * 0.04;
       found: for (let r = 1; r <= 12; r++) {
         for (const [ox, oy] of [[0, r], [0, -r], [r, 0], [-r, 0], [r, r], [-r, r]]) {
@@ -185,7 +195,7 @@ export function buildSketch(c: Ctx, items: SketchItem[], stage: Box, col: Colors
         }
       }
     }
-    placed.push(built.box);
+    if(it.t !== 'vector') placed.push(built.box);
     boxes.set(it.id || `i${idx}`, built.box);
     boxes.set(String(idx), built.box);
     order.push({ it, built, idx });

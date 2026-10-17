@@ -94,6 +94,11 @@ function options(list, selected) {
 function applyUI(next) {
   if (!next) return;
   ui = next;
+  for(const a of document.querySelectorAll('[data-route]')) {
+    const name=ui.labels?.navigation?.[a.dataset.route];if(!name)continue;
+    for(const n of [...a.childNodes])if(n.nodeType===Node.TEXT_NODE)n.remove();
+    let label=a.querySelector('.nav-label');if(!label){label=h('span',{class:'nav-label'});a.append(label);}label.textContent=name;
+  }
   document.getElementById('brandName').textContent = ui.brand.name;
   document.getElementById('brandAccent').textContent = ui.brand.accent || '';
   document.getElementById('sideBrand').textContent = ui.brand.name;
@@ -113,83 +118,25 @@ function applyUI(next) {
 const styleOptions = () => Object.keys(ui.labels.styles).map((k) => [k, L('styles', k), 'style:' + k]).filter(([k]) => ui.enabledStyles.includes(k) || V('style:' + k) === 'dev');
 const voiceOptions = () => ui.voices.map((v) => [v.code, v.label, 'voice:' + v.code]);
 const previewUrl = (code) => '/api/voices/preview?code=' + encodeURIComponent(code);
-const SPEEDS = [['0.9', 'Chậm'], ['1', 'Vừa'], ['1.1', 'Hơi nhanh'], ['1.2', 'Nhanh']];
-/** The voice control: one button showing the chosen voice; it opens a dialog to search, listen,
- *  choose and set the reading speed. The <select> stays underneath for forms and change events.
- *  speed = { get, set } adds the speed choice to the dialog. */
-function voiceField(select, speed) {
-  select.classList.add('native'); select.hidden = true;
-  const name = h('span', { class: 'vf-name' }), meta = h('small', { class: 'vf-meta' });
-  const speedOn = speed && V('feature:speed') !== 'hidden';
-  const info = (code) => (ui.voices || []).find((v) => v.code === code) || {};
-  const provider = (code) => ({ google: 'Google', everai: 'EverAI', elevenlabs: 'ElevenLabs', edge: 'Microsoft', free: 'Miễn phí' })[info(code).provider] || info(code).provider || '';
-  const paint = () => {
-    const o = select.options[select.selectedIndex];
-    name.textContent = o ? o.textContent : 'Chọn giọng';
-    meta.textContent = [provider(select.value), speedOn ? (SPEEDS.find(([v]) => Number(v) === Number(speed.get() || 1))?.[1] || 'Vừa') : ''].filter(Boolean).join(' · ');
-  };
-  const open = () => {
-    const search = h('input', { type: 'search', placeholder: 'Tìm giọng…', 'aria-label': 'Tìm giọng' });
-    const list = h('div', { class: 'vd-list', role: 'radiogroup', 'aria-label': 'Giọng đọc' });
-    const draw = () => {
-      const q = search.value.trim().toLowerCase();
-      list.replaceChildren(...[...select.options].filter((o) => o.value && (!q || o.textContent.toLowerCase().includes(q))).map((o) => {
-        const on = o.value === select.value;
-        const play = h('button', { type: 'button', class: 'ghost small play nv-play', 'aria-label': 'Nghe thử ' + o.textContent, onclick: (e) => { e.stopPropagation(); window.nvPlayPreview?.(previewUrl(o.value), play); } }, '▶');
-        return h('div', { class: 'vd-row' + (on ? ' on' : '') + (o.disabled ? ' off' : '') },
-          h('button', { type: 'button', role: 'radio', 'aria-checked': String(on), disabled: o.disabled, class: 'vd-pick', onclick: () => {
-            select.value = o.value; select.dispatchEvent(new Event('change', { bubbles: true })); paint(); draw(); } },
-            h('span', { class: 'vd-dot', 'aria-hidden': 'true' }), h('span', {}, o.textContent, h('small', {}, provider(o.value)))), play);
-      }));
-      if (!list.childNodes.length) list.append(h('p', { class: 'muted' }, 'Không có giọng phù hợp.'));
-    };
-    search.addEventListener('input', draw);
-    const speedRow = !speedOn ? null : h('div', { class: 'vd-speed' }, h('span', { class: 'field-caption' }, 'Tốc độ đọc'),
-      (() => { const seg = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Tốc độ đọc' });
-        const p = () => seg.replaceChildren(...SPEEDS.map(([v, t]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(Number(v) === Number(speed.get() || 1)), class: Number(v) === Number(speed.get() || 1) ? 'on' : '',
-          disabled: V('feature:speed') === 'dev', onclick: () => { speed.set(Number(v)); p(); paint(); } }, t)));
-        p(); return seg; })());
-    const done = () => { window.nvPlayPreview?.(''); dlg.close(); };
-    const dlg = h('dialog', { class: 'voice-dialog', 'aria-label': 'Chọn giọng đọc' },
-      h('header', {}, h('h2', {}, 'Giọng đọc'), h('button', { type: 'button', class: 'ghost small icon-only', 'aria-label': 'Đóng', onclick: done }, '✕')),
-      select.options.length > 6 ? search : null, list, speedRow,
-      h('p', { class: 'muted small' }, 'Bấm ▶ để nghe thử. Giọng và tốc độ áp dụng cho cả video.'),
-      h('footer', {}, h('button', { type: 'button', onclick: done }, 'Xong')));
-    dlg.addEventListener('close', () => { window.nvPlayPreview?.(''); dlg.remove(); });
-    dlg.addEventListener('click', (e) => { if (e.target === dlg) done(); });
-    draw(); document.body.append(dlg); dlg.showModal();
-    list.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
-  };
-  select.addEventListener('change', paint);
-  const btn = h('button', { type: 'button', class: 'voice-btn', 'aria-haspopup': 'dialog', onclick: open }, icon('mic'), h('span', { class: 'vf-text' }, name, meta), h('span', { class: 'vf-edit' }, 'Đổi'));
-  paint();
-  return h('div', { class: 'voice-field' }, select, btn);
+/** A voice dropdown with a ▶ on every voice and a "listen" button for the chosen one. */
+function voiceField(select,state={}) {
+  const current=()=>state.get?.()||{speed:1,audio:{voice:'tts'}};
+  const label=h('span'),button=h('button',{type:'button',class:'voice-setup-trigger','aria-label':'Thiết lập giọng đọc',onclick:async()=>{
+    const {openVoicePicker}=await import('/voice-picker.js');
+    openVoicePicker({h,voices:ui.voices,value:select.value,...current(),apply:r=>{select.value=r.value;state.apply?.(r);select.dispatchEvent(new Event('change'));paint();}});
+  }},label,h('span',{'aria-hidden':'true'},'⌄'));
+  function paint(){const a=current().audio;label.textContent=a?.voice==='none'?'Không lời':a?.voice==='upload'?'Giọng của tôi':ui.voices.find(v=>v.code===select.value)?.label||'Chọn giọng đọc';}
+  select.addEventListener('change',paint);paint();return button;
+
 }
 const MOODS = [['', 'Theo nội dung'], ['warm', 'Ấm áp'], ['curious', 'Tò mò'], ['calm', 'Nhẹ nhàng'], ['upbeat', 'Sôi động'], ['none', 'Không nhạc']];
 /** Sound layers of a video: where the narration comes from, music mood, levels of music and effects. */
 function audioBox(spec, save) {
-  const a = (spec.audio ||= { voice: 'tts' });
-  const note = h('small', { class: 'muted' });
-  const file = h('input', { type: 'file', accept: 'audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,.mp3,.m4a,.wav', hidden: true, onchange: async () => {
-    const f = file.files[0]; if (!f) return;
-    if (f.size > 25e6) { note.textContent = 'Tệp tối đa 25 MB.'; return; }
-    note.textContent = 'Đang tải lên…';
-    try {
-      const r = await fetch('/api/voice-upload', { method: 'POST', headers: { 'content-type': f.type || 'audio/mpeg', 'x-nv': '1' }, body: f });
-      const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Không tải lên được.');
-      a.voice = 'upload'; a.voiceFile = j.ref; save(); paint(); note.textContent = 'Đã nhận: ' + f.name + '. Lời đọc sẽ được chia theo từng cảnh.';
-    } catch (e) { note.textContent = e.message; }
-  } });
-  const seg = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Nguồn lời đọc' });
-  const paint = () => seg.replaceChildren(...[['tts', 'Giọng đọc AI'], ['upload', 'Giọng của tôi'], ['none', 'Không lời']].map(([k, t]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(a.voice === k), class: a.voice === k ? 'on' : '',
-    onclick: () => { if (k === 'upload' && !a.voiceFile) { file.click(); return; } a.voice = k; save(); paint(); } }, t)));
-  paint();
-  const level = (key, label, def) => h('label', { class: 'slider' }, `${label}`, h('input', { type: 'range', min: 0, max: 1.5, step: 0.05, value: a[key] ?? def, 'aria-label': label, oninput: (e) => { a[key] = Number(e.target.value); save(); } }));
-  return h('div', { class: 'card flat audio' }, h('h4', {}, 'Âm thanh'),
-    h('div', { class: 'row' }, seg, a.voiceFile ? h('button', { type: 'button', class: 'ghost small', onclick: () => file.click() }, 'Đổi tệp giọng') : null), file, note,
-    h('div', { class: 'grid wide-2' },
-      h('label', {}, 'Nhạc nền', h('select', { onchange: (e) => { a.mood = e.target.value || undefined; save(); } }, options(MOODS, a.mood || ''))),
-      level('musicVolume', 'Âm lượng nhạc', 0.2), level('sfxVolume', 'Hiệu ứng (tiếng bút, bước chân…)', 1)));
+  if(ui.rendering?.mode==='browser')return null;
+  const a=(spec.audio||={voice:'tts'});
+  const level=(key,label,def)=>h('label',{class:'slider'},label,h('input',{type:'range',min:0,max:1.5,step:.05,value:a[key]??def,'aria-label':label,oninput:e=>{a[key]=Number(e.target.value);save();}}));
+  return h('div',{class:'card flat audio'},h('h4',{},'Nhạc và hiệu ứng'),h('div',{class:'grid wide-2'},
+    h('label',{},'Nhạc nền',h('select',{onchange:e=>{a.mood=e.target.value||undefined;save();}},options(MOODS,a.mood||''))),level('musicVolume','Âm lượng nhạc',.2),level('sfxVolume','Âm lượng hiệu ứng',1)));
 }
 const ratioOptions = (long) => [['9:16', long ? 'Dọc 9:16 (TikTok, Shorts, Reels)' : 'Dọc 9:16', 'ratio:9:16'], ['16:9', long ? 'Ngang 16:9 (YouTube)' : 'Ngang 16:9', 'ratio:16:9']];
 
@@ -304,29 +251,10 @@ function paintHeader() {
 }
 // everything about the account lives in one menu behind the avatar
 function closeMenu() { const m = document.getElementById('userMenu'); if (m) m.hidden = true; document.getElementById('account')?.setAttribute('aria-expanded', 'false'); }
-async function openMenu() {
-  const m = document.getElementById('userMenu'), acc = document.getElementById('account');
-  if (!me) return;
-  const lim = me.limits || {}, used = me.used || {}, left = (k) => Math.max(0, (lim[k] || 0) - (used[k] || 0));
-  const item = (href, label, ev) => h('a', { href, role: 'menuitem', 'data-ev': ev, onclick: closeMenu }, label);
-  const credits = h('span', { class: 'muted' }, '…');
-  m.replaceChildren(
-    h('div', { class: 'menu-head' }, h('b', {}, me.user.name || me.user.email.split('@')[0]), h('span', { class: 'muted' }, me.user.email)),
-    h('dl', { class: 'menu-stats' },
-      h('dt', {}, 'Gói'), h('dd', {}, (me.plan?.name || 'Miễn phí') + (me.plan?.expires ? ` · đến ${new Date(me.plan.expires).toLocaleDateString('vi-VN')}` : '')),
-      h('dt', {}, 'Hôm nay còn'), h('dd', {}, `${left('render')} lượt dựng` + (me.ai?.gemini || me.ai?.openai || me.ai?.ollama ? ` · ${left('script')} lượt AI viết` : '')),
-      V('look:doc') !== 'hidden' ? h('dt', {}, 'Phim tài liệu') : null, V('look:doc') !== 'hidden' ? h('dd', {}, credits) : null),
-    h('nav', { class: 'menu-links' },
-      item('#/video', 'Video của tôi', 'menu-videos'), item('#/tai-khoan', 'Tài khoản và dữ liệu', 'menu-account'),
-      V('feature:plans') === 'on' ? item('#/goi', 'Gói cước và credit', 'menu-plans') : null,
-      ui.zalo?.enabled ? item('#/zalo', me.zaloLinked ? 'Zalo: đã kết nối' : 'Kết nối Zalo', 'menu-zalo') : null,
-      me.admin ? item('#/admin', T('admin'), 'menu-admin') : null,
-      h('button', { type: 'button', role: 'menuitem', class: 'menu-out', onclick: () => document.getElementById('logout').click() }, T('logout'))));
-  m.hidden = false; acc.setAttribute('aria-expanded', 'true');
-  m.querySelector('a, button')?.focus();
-  if (V('look:doc') !== 'hidden') api('/api/credits').then((c) => { credits.textContent = c.monthlyLeft ? `${c.monthlyLeft} video trong gói tháng này · ${c.balance} credit` : `${c.balance} credit`; }).catch(() => { credits.textContent = '—'; });
-}
+async function openMenu() { if(me) await showAccount(); }
+
 document.addEventListener('click', (e) => {
+  if(e.target.closest('a[href="#/tai-khoan"]') && me){e.preventDefault();showAccount();return;}
   const acc = document.getElementById('account'), m = document.getElementById('userMenu');
   if (acc && e.target.closest('#account')) { m.hidden ? openMenu() : closeMenu(); return; }
   if (m && !m.hidden && !e.target.closest('#userMenu')) closeMenu();
@@ -391,7 +319,7 @@ function route() {
     : hash === '#/tao' ? showCreate()
     : hash === '#/thu' ? showTry()
     : hash === '#/video' ? showVideos()
-    : hash === '#/tai-khoan' ? showAccount()
+    : hash === '#/tai-khoan' ? showLanding().then(()=>showAccount())
     : hash === '#/dieu-khoan' ? showLegal('terms')
     : hash === '#/bao-mat' ? showLegal('privacy')
     : hash === '#/hoan-tien' ? showLegal('refund')
@@ -1043,8 +971,9 @@ async function showCreate() {
   const savedDirection = sessionStorage.getItem('nv_direction'); sessionStorage.removeItem('nv_direction');
   const demos = [];
   let mode = V('mode:' + (wantMode || D.mode || 'hand')) === 'on' ? wantMode || D.mode || 'hand' : 'hand';
-  let speed = 1;
   const hasAI = !!(cfg?.ai?.gemini || cfg?.ai?.openai || cfg?.ai?.ollama || me?.ai?.gemini || me?.ai?.openai || me?.ai?.ollama);
+  const voiceDraft={speed:1,audio:{voice:"tts",voiceVolume:1}};
+
   const f = {
     wish: h('textarea',{id:'f-wish',rows:4,maxlength:2400,required:true,placeholder:'Ví dụ: Video giải thích vì sao chúng ta trì hoãn, mở bằng một tình huống quen thuộc; nhịp nhanh vừa, chữ ít, hình làm rõ nguyên nhân và kết thúc bằng một hành động nhỏ.'}),
     direction: h('input',{id:'f-direction',maxlength:160,value:savedDirection || (wantLook==='kinetic'?'Chữ chuyển động':'') ,placeholder:'Ví dụ: VOX, Whiteboard, tối giản… hoặc để AI tự chọn'}),
@@ -1150,7 +1079,8 @@ async function showCreate() {
     const x = extras();
     return { look: '', creative:{wish:f.wish.value,direction:f.direction.value}, music: f.music.value,
       source: f.source.value === 'template' ? 'mine-free' : f.source.value, subtitles: f.subtitles.checked, topic: f.topic.value, seconds: Number(f.seconds.value), ratio: f.ratio.value, style: f.style.value,
-      voiceId: f.voice.value, speed, channel: f.channel.value, episode: f.episode.value, tone: f.tone.value, visual: f.visual.value, format: f.format.value, transition: f.transition.value,
+      voiceId: f.voice.value, speed:voiceDraft.speed, audio:voiceDraft.audio, channel: f.channel.value, episode: f.episode.value, tone: f.tone.value, visual: f.visual.value, format: f.format.value, transition: f.transition.value,
+
       mode: x.mode, intro: x.intro, character: x.character, affiliate: x.affiliate, illustratedCharacter:look==='illustrated'?f.illustratedCharacter.value:undefined };
   };
   const feat = (k) => V('feature:' + k) !== 'hidden';
@@ -1193,10 +1123,11 @@ async function showCreate() {
       h('div',{class:'field-group'},h('span',{class:'field-caption'},'Hướng tham khảo',h('small',{class:'muted'},' · không bắt buộc'),helpHint('Hướng tham khảo','Chọn một hoặc nhiều hướng, hoặc gõ thêm ý của bạn. Gợi ý không khóa bố cục. VOX hiện giải thích bằng đồ hoạ, chưa có cảnh quay tư liệu.')),f.direction),
       only.looked=h('div',{hidden:true})),
     step(3, 'Xuất video', 'Kiểm tra thông số và chi phí trước khi dựng.',
-      h('div', { class: 'grid wide-2' }, h('label', {}, T('ratio'), f.ratio), h('div', { class: 'field-group' }, h('span', { class: 'field-caption' }, T('voice')), voiceField(f.voice, { get: () => speed, set: (v) => { speed = v; } })), only.seconds = h('label', {}, T('duration'), f.seconds)),
+      h('div', { class: 'grid wide-2' }, h('label', {}, T('ratio'), f.ratio), h('label', {}, T('voice'), voiceField(f.voice,{get:()=>voiceDraft,apply:r=>{voiceDraft.speed=r.speed;voiceDraft.audio=r.audio;paintSummary();}})), only.seconds = h('label', {}, T('duration'), f.seconds)),
+
       summary,
       h('details', { class: 'advanced' }, h('summary', {}, 'Nâng cao'),
-        h('div', { class: 'grid wide-2' }, h('label', {}, 'Nhạc nền', f.music), h('label', {}, T('channel'), f.channel), h('label', {}, T('episode'), f.episode), only.tone = h('label', {}, T('tone'), f.tone),
+        h('div', { class: 'grid wide-2' }, ui.rendering?.mode==='browser'?null:h('label', {}, 'Nhạc nền', f.music), h('label', {}, T('channel'), f.channel), h('label', {}, T('episode'), f.episode), only.tone = h('label', {}, T('tone'), f.tone),
           only.visual = h('label', {}, T('visual'), f.visual), only.style = h('label', {}, T('style'), f.style), only.transition = h('label', {}, 'Chuyển cảnh', f.transition)),
         only.mode = h('div', {}, h('span', { class: 'plabel' }, 'Kiểu vẽ tay'), modePicker(mode, (k) => { mode = k; track('mode', { mode: k }); })),
         h('div', { class: 'toggles' },
@@ -1222,7 +1153,18 @@ async function showCreate() {
 }
 
 // ---------- account
+function detailDialog(title){
+  document.querySelectorAll('dialog.account-detail').forEach(d=>d.close());
+  const content=h('div',{class:'account-detail-body'}),trigger=document.activeElement;
+  const dialog=h('dialog',{class:'account-detail','aria-label':title},h('header',{},h('h2',{},title),h('button',{type:'button',class:'ghost small','aria-label':'Đóng '+title,onclick:()=>dialog.close()},'Đóng')),content);
+  dialog.addEventListener('close',()=>{dialog.remove();trigger?.focus();},{once:true});document.body.append(dialog);dialog.showModal();return {dialog,content};
+}
 async function showAccount() {
+  if(!me)return openLogin();
+  closeMenu();
+  const {dialog,content}=detailDialog('Tài khoản của bạn');
+  const show=(...kids)=>content.replaceChildren(...kids.filter(k=>k && k.tagName!=='FOOTER'));
+  content.addEventListener('click',e=>{if(e.target.closest('a[href^="#/"]'))dialog.close();});
   viewed('account');
   const del = h('input', { placeholder: 'Gõ XOA để xác nhận', maxlength: 4, 'aria-label': 'Gõ XOA để xác nhận xoá tài khoản' });
   const lim = me.limits || {}, used = me.used || {}, left = (k) => Math.max(0, (lim[k] || 0) - (used[k] || 0));
@@ -1237,20 +1179,21 @@ async function showAccount() {
       h('dl', { class: 'summary' },
         h('dt', {}, 'Gói'), h('dd', {}, (me.plan?.name || 'Miễn phí') + (me.plan?.expires ? ` · đến ${fmtDate(me.plan.expires)}` : '')),
         h('dt', {}, 'Hôm nay còn'), h('dd', {}, `${left('render')}/${lim.render || 0} lượt dựng` + (me.ai?.gemini || me.ai?.openai || me.ai?.ollama ? ` · ${left('script')}/${lim.script || 0} lượt AI viết` : '')),
-        V('look:doc') !== 'hidden' ? h('dt', {}, 'Phim tài liệu') : null, V('look:doc') !== 'hidden' ? credits : null),
+        h('dt', {}, 'Số dư credit'), credits),
       V('feature:plans') === 'on' ? h('a', { class: 'btn ghost', href: '#/goi' }, 'Xem bảng giá') : null),
     ui.zalo?.enabled ? h('section', { class: 'card setgroup' }, h('h2', {}, 'Zalo'), row(me.zaloLinked ? 'Đã kết nối' : 'Chưa kết nối', 'Nhận video và tạo video ngay trong Zalo.', h('a', { class: 'btn ghost small', href: '#/zalo' }, me.zaloLinked ? 'Quản lý' : 'Kết nối'))) : null,
     h('section', { class: 'card setgroup' }, h('h2', {}, 'Dữ liệu và quyền riêng tư'),
       row('Tải dữ liệu của tôi', 'Bản sao toàn bộ dữ liệu (JSON): kịch bản, video, đơn hàng, nhật ký.', h('a', { class: 'btn ghost small', href: '/api/account/export', 'data-ev': 'export-data' }, 'Tải về')),
       row('Chính sách', null, h('div', { class: 'row' }, h('a', { href: '#/dieu-khoan' }, 'Điều khoản sử dụng'), h('a', { href: '#/bao-mat' }, 'Chính sách bảo mật')))),
-    h('section', { class: 'card setgroup danger-zone' }, h('h2', {}, 'Xoá tài khoản'),
+    h('div',{class:'row account-shortcuts'},h('a',{class:'btn ghost',href:'#/video',onclick:()=>dialog.close()},'Video của tôi'), me.admin?h('a',{class:'btn ghost',href:'#/admin',onclick:()=>dialog.close()},'Quản trị'):null, h('button',{type:'button',class:'ghost',onclick:()=>{dialog.close();document.getElementById('logout').click();}},T('logout'))),
+    h('details', { class: 'card setgroup danger-zone' }, h('summary', {}, 'Xoá tài khoản'),
       h('p', { class: 'muted' }, 'Xoá vĩnh viễn video, kịch bản, ảnh, liên kết Zalo và thông tin đăng nhập. Chứng từ thanh toán được giữ ẩn danh theo luật kế toán.'),
       h('div', { class: 'row' }, del, h('button', { type: 'button', class: 'danger', 'data-ev': 'delete-account', onclick: async () => {
         if (del.value.trim().toUpperCase() !== 'XOA') return toast('Gõ XOA để xác nhận.');
         try { await api('/api/account/delete', { method: 'POST', body: { confirm: 'XOA' } }); toast('Đã xoá tài khoản.'); setTimeout(() => { location.hash = '#/'; location.reload(); }, 1200); } catch (e) { fail(e); }
       } }, 'Xoá vĩnh viễn'))),
     footer());
-  if (V('look:doc') !== 'hidden') api('/api/credits').then((c) => { credits.textContent = (c.monthlyLeft ? `${c.monthlyLeft} video trong gói tháng này · ` : '') + `${c.balance} credit`; }).catch(() => { credits.textContent = '—'; });
+  api('/api/credits').then((c) => { credits.textContent = (c.monthlyLeft ? `${c.monthlyLeft} video trong gói tháng này · ` : '') + `${c.balance} credit`; }).catch(() => { credits.textContent = '—'; });
 }
 
 // ---------- plans & payment
@@ -1612,8 +1555,8 @@ async function showEditor(id) {
       spec.look ? null : h('label', {}, 'Dụng cụ vẽ', h('select', { onchange: (e) => { if (e.target.value) spec.tool = e.target.value; else delete spec.tool; changed(); } },
         options([['', 'Theo phong cách'], ...Object.entries(ui.labels.tools).map(([k, v]) => [k, v, 'tool:' + k])], spec.tool || ''))),
       spec.look ? null : h('label', {}, 'Chuyển cảnh', h('select', { onchange: (e) => { spec.transition = e.target.value; changed(); } }, options([['auto', 'Tự động, đa dạng'], ['fade', 'Mờ dần'], ['slide', 'Trượt ngang'], ['wipe', 'Bàn tay xoá bảng'], ['zoom', 'Phóng to']], spec.transition || 'auto'))),
-      h('div', { class: 'field-group' }, h('span', { class: 'field-caption' }, T('voice')), voiceField(h('select', { onchange: (e) => { spec.voice.voiceId = e.target.value; save(); } }, options(voiceOptions(), spec.voice?.voiceId || ui.defaults.voice)),
-        { get: () => spec.voice?.speed ?? 1, set: (v) => { spec.voice.speed = v; save(); } })),
+      h('label', {}, T('voice'), voiceField(h('select', { onchange: (e) => { spec.voice.voiceId = e.target.value; save(); } }, options(voiceOptions(), spec.voice?.voiceId || ui.defaults.voice)),{get:()=>({speed:spec.voice?.speed||1,audio:spec.audio||{voice:'tts'}}),apply:r=>{spec.voice.speed=r.speed;spec.audio=r.audio;save();}})),
+
       audioBox(spec, save),
       h('label', {}, 'Tên kênh', h('input', { value: spec.channel || '', maxlength: 40, oninput: (e) => { spec.channel = e.target.value; changed(); } })),
       h('label', {}, 'Số tập', h('input', { value: spec.episode || '', maxlength: 30, oninput: (e) => { spec.episode = e.target.value; changed(); } })),
@@ -1722,7 +1665,7 @@ async function showEditor(id) {
       Object.assign(spec, r.spec); drawScenes(); refresh();
     } catch (e) { fail(e); }
   }
-  const ITEM_NAMES = { text: 'Chữ', icon: 'Hình', person: 'Người que', chart: 'Biểu đồ', image: 'Ảnh thật', qr: 'Mã QR' };
+  const ITEM_NAMES = { vector:'Hình AI tự vẽ', text: 'Chữ', icon: 'Hình', person: 'Người que', chart: 'Biểu đồ', image: 'Ảnh thật', qr: 'Mã QR' };
   function sketchEditor(sc) {
     const d = sc.diagram, items = d.items || [];
     const rows = items.map((it) => {

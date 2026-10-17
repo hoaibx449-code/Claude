@@ -510,7 +510,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
         const out = await writeScript(env,env.config.defaults.textAI as TextProvider,{topic:'',seconds:0,tone:'',ratio:p.spec.ratio,visual:'sketch',scenes:p.spec.scenes.map((s:any)=>s.lines),creative,creativeRuntime:{styles:env.config.enabledStyles,renderMode:env.config.rendering.mode},extra:env.config.promptExtra});
         const plan=creativeResult(out);
         if(!env.config.enabledStyles.includes(out.style))throw new HttpError(422,'AI chọn phong cách đang tắt. Hãy yêu cầu một hướng khác.');
-        const spec=cleanSpec({...p.spec,mode:out.mode,style:out.style,scenes:p.spec.scenes.map((s:any,i:number)=>({...out.scenes[i],lines:s.lines})),creative:{...p.spec.creative,...plan,feedback:[...(p.spec.creative.feedback||[]),feedback]}},user.id,'creative');
+        const spec=cleanSpec({...p.spec,mode:out.mode,style:out.style,palette:out.palette,transition:out.transition,scenes:p.spec.scenes.map((s:any,i:number)=>({...out.scenes[i],lines:s.lines})),creative:{...p.spec.creative,...plan,feedback:[...(p.spec.creative.feedback||[]),feedback]}},user.id,'creative');
         rc.log('ai.revise',{projectId:id,cost:aiCost(env.config,out._usage),data:{scenes:spec.scenes.length}});
         return json({spec,updatedAt:p.updated_at});
       } catch(e) {await refundQuota(env,user.id,'script');throw e;}
@@ -529,6 +529,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
         const issues = designIssues({ scenes: [{ ...out.scenes?.[0], lines: sc.lines }] }, p.spec.look, 1, !!p.spec.creative);
         if (issues.length) throw new HttpError(502, 'AI chưa thiết kế được cảnh đạt yêu cầu. Cảnh cũ được giữ nguyên.');
       } catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
+      if(p.spec.creative && p.spec.mode==='kinetic' && out.scenes[0].diagram?.items?.some((it:any)=>it.t==='vector'))p.spec.mode=out.mode;
       p.spec.scenes[si] = { ...sc, diagram: out.scenes[0].diagram, x: out.scenes[0].x, panels: [] };
       const spec = cleanSpec(p.spec, user.id, p.spec.creative ? 'creative' : true);
       await saveSpec(env, user, id, spec, p.updated_at);
@@ -847,7 +848,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     const creativePlan = b.creative ? creativeResult(raw) : undefined;
     if (b.creative) {
       mode = raw.mode;
-      if (!env.config.enabledStyles.includes(raw.style)) throw new HttpError(422,'AI chọn phong cách đang tắt. Hãy yêu cầu hướng khác hoặc bật phong cách trong quản trị.');
+
     }
     const autoStyle = FORMAT_STYLE[format as keyof typeof FORMAT_STYLE] || NICHE_STYLE[niche as keyof typeof NICHE_STYLE];
     // each kind of animation has a look made for it; "auto" picks it (or the one for the topic)
@@ -867,7 +868,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     }
     const music = b.music === 'none' ? undefined : (env.config.music.find((m) => m.id === b.music) || (b.music === undefined || b.music === 'auto'
       ? (D.music === 'none' ? undefined : env.config.music.find((m) => m.id === D.music) || env.config.music[hashText(text) % Math.max(1, env.config.music.length)]) : undefined))?.file;
-    const spec: any = cleanSpec({ ...raw, creative: b.creative ? {...b.creative, ...creativePlan} : undefined, format: aff ? 'sales' : format, niche, visual, ratio, subtitles: typeof b.subtitles === 'boolean' ? b.subtitles : D.subtitles,
+    const spec: any = cleanSpec({ ...raw, audio:b.audio, creative: b.creative ? {...b.creative, ...creativePlan} : undefined, format: aff ? 'sales' : format, niche, visual, ratio, subtitles: typeof b.subtitles === 'boolean' ? b.subtitles : D.subtitles,
       style: !look && visual === 'doodle' && (!b.style || b.style === 'auto') && env.config.enabledStyles.includes('notebook') ? 'notebook' : style, tool: b.tool, channel: b.channel ?? D.channel, episode: b.episode, mode, media, character: media.nv ? 'nv' : undefined, affiliate: aff,
       voice: voiceFor(env.config, b.voiceId, Number(b.speed) || 1), look, skin: b.skin, music, sfx: b.sfx !== false }, user.id, b.creative ? 'creative' : true);
     const wantIntro = typeof b.intro === 'boolean' ? b.intro : D.intro;
