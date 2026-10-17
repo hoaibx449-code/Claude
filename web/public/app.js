@@ -111,6 +111,7 @@ function applyUI(next) {
   for (const a of document.querySelectorAll('[data-route="goi"]')) a.hidden = V('feature:plans') !== 'on';
   for (const a of document.querySelectorAll('[data-route="cong-dong"]')) a.hidden = V('feature:community') === 'hidden';
   document.documentElement.dataset.theme = ui.site?.theme || 'aurora';
+  const loading=document.getElementById('loadingText');if(loading)loading.textContent=ui.site?.loadingText||'Đang mở xưởng vẽ…';
   window.nvHelpChat?.();
   for(const bb of document.querySelectorAll('[data-beta]')){bb.hidden=!ui.beta;bb.textContent=ui.beta?.label||'Beta';bb.title=ui.beta?.note||'Phiên bản thử nghiệm';}
 }
@@ -202,6 +203,9 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch { re
 // ---------- boot & routing
 let cfg = null; // sign-in config + public settings, also for guests
 async function boot() {
+  const top=document.querySelector('header.top');
+  if(top){const measure=()=>document.documentElement.style.setProperty('--shell-header-height',Math.ceil(top.getBoundingClientRect().height)+'px');measure();new ResizeObserver(measure).observe(top);}
+
   document.getElementById('logout').addEventListener('click', async () => {
     track('click', { what: 'logout' }); flush();
     await api('/api/auth/logout', { method: 'POST' }).catch(() => {});

@@ -94,7 +94,7 @@ export interface Config {
 }
 export interface SiteMedia { title: string; caption: string; video: string; poster: string }
 export interface SiteConfig {
-  heroTitle: string; heroText: string;
+  heroTitle: string; heroText: string; loadingText: string;
   /** picture or video beside the headline; empty = live hand-drawn preview */
   heroMedia: string; heroPoster: string;
   /** short how-to video shown next to the three steps */
@@ -279,7 +279,7 @@ export function defaultConfig(env: Env): Config {
     notice: '',
     templates: DEFAULT_TEMPLATES,
     beta: { enabled: true, label: 'Beta', note: 'Đang thử nghiệm: tính năng và giao diện có thể thay đổi. Góp ý giúp chúng tôi làm video hay hơn.' },
-    site: { heroTitle: 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút', heroText: '', heroMedia: '', heroPoster: '', tutorial: '', showcase: [], theme: 'aurora', social: {},
+    site: { loadingText:'Đang mở xưởng vẽ…', heroTitle: 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút', heroText: '', heroMedia: '', heroPoster: '', tutorial: '', showcase: [], theme: 'aurora', social: {},
       helpBot: { enabled: true, name: 'Trợ lý', welcome: 'Chào bạn 👋 Mình là trợ lý AI của trang. Bạn cần hướng dẫn tạo video hay có thắc mắc gì?', knowledge: '', perDay: 30 } },
     budget: { dailyVnd: 200_000, monthlyVnd: 3_000_000, warnPct: 80, perVideoVnd: 15_000 },
     // one documentary ≈ 10 AI pictures + voice ≈ 11.000đ cost; 1 credit = 1 video, packs priced with margin
@@ -467,6 +467,7 @@ export function cleanConfig(input: any, base: Config): Config {
       const x = i.site || {}, d = base.site;
       const media = (v: unknown) => { const t = String(v ?? '').trim(); return /^(site:[a-f0-9]{24}\.(png|jpg|webp|mp4|webm)|https:\/\/[^\s"'<>]{4,400})$/.test(t) ? t : ''; };
       return {
+        loadingText: str(x.loadingText,120,d.loadingText)||d.loadingText,
         heroTitle: str(x.heroTitle, 120, d.heroTitle) || d.heroTitle, heroText: str(x.heroText, 300, d.heroText),
         heroMedia: x.heroMedia === undefined ? d.heroMedia : media(x.heroMedia), heroPoster: x.heroPoster === undefined ? d.heroPoster : media(x.heroPoster),
         tutorial: x.tutorial === undefined ? d.tutorial : media(x.tutorial),

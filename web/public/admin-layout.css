@@ -9,3 +9,8 @@ body .hunter-title{min-height:0}.settings-finder{margin:0 0 20px;display:grid;ga
 @media(max-width:650px){body :is(button,.btn):not(.avatar):not(.iconbtn):not(.helpchat-btn):not(.hero-dot):not(.hunter-title):not(.voice-setup-trigger):not(.help){min-height:40px}.settings-shortcuts{flex-wrap:nowrap;overflow-x:auto;padding-bottom:8px}.settings-shortcuts button{flex:none;white-space:nowrap}.admin-head h1{font-size:23px}.top{gap:8px}}
 
 [data-beta][hidden]{display:none!important}.appside .brand{flex-wrap:wrap}.appside .side-beta{margin-left:38px}
+
+/* A single full-width header for every route; secondary navigation stays below it. */
+body .top{margin-left:0!important}body .top>.brand{display:flex!important}body .top .app-beta{display:none!important}body .top #betaBadge:not([hidden]){display:inline-flex!important}
+@media(min-width:1024px){body:not([data-page="home"]) .top>.nav{display:flex;min-width:0;overflow-x:auto;white-space:nowrap;flex-wrap:nowrap}body:not([data-page="home"]) .appside{top:var(--shell-header-height,72px);z-index:20}body .appside>.brand{display:none}body .appside .admin-nav{padding-top:8px}}
+@media(min-width:1024px) and (max-width:1500px){body .topsearch{display:none}body .top>.nav{display:flex;min-width:0;overflow-x:auto;white-space:nowrap;flex-wrap:nowrap}body .top>.nav a{flex:none}}
