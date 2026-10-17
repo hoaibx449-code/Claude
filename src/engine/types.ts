@@ -94,6 +94,7 @@ export interface SceneSpec {
 }
 
 export interface ProjectSpec {
+  creative?: {wish:string;direction?:string;approach?:string;limitations?:string[];feedback?:string[]};
   title: string;
   channel: string;
   episode?: string;
