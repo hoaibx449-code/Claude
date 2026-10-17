@@ -1016,7 +1016,6 @@ async function showCreate() {
   const character = photoField('Ảnh nhân vật', 'Ảnh chân dung hoặc linh vật của kênh: thay cho người que trong mọi cảnh.');
   const product = photoField('Ảnh sản phẩm', 'Hiện ở cảnh cuối cùng mã QR mua hàng.');
   const topicLabel = h('span', {}, T('topic'));
-  const detect = h('div', { class: 'detect' });
   const only = {};
   const go = h('button', { type: 'submit', class: 'big', 'data-ev': 'create' }, T('write'));
   const tryBtn = h('button', { type: 'button', class: 'ghost big', 'data-ev': 'create-try', onclick: () => startTry(f.topic.value, tryBtn, { ratio: f.ratio.value, style: f.style.value === 'auto' ? undefined : f.style.value, format: f.format.value, look: look === 'auto' && V('look:director') === 'on' ? 'director' : isClassic(look) || look === 'doc' || look === 'auto' ? undefined : look, skin: skin || undefined }, extras()) }, '✨ Xem thử');
@@ -1048,28 +1047,6 @@ async function showCreate() {
     if (!classic && (NV.SKINS?.[look] || []).length > 1) skinBox.replaceChildren(h('span', { class: 'plabel' }, 'Bộ màu'), skinChips(look, skin, (n) => { skin = n; })); else skinBox.replaceChildren();
     showCredits();
   };
-  // the form adapts to what the content is: AI reads it, suggests direction and length,
-  // and fills the fields the user has not touched yet
-  const touched = new Set();
-  for (const k of ['seconds', 'ratio']) f[k].addEventListener('change', (e) => { if (e.isTrusted !== false && !f[k].dataset.auto) touched.add(k); delete f[k].dataset.auto; });
-  const setAuto = (k, v) => { if (touched.has(k) || f[k].value === v || ![...f[k].options].some((o) => o.value === v && !o.disabled)) return; f[k].dataset.auto = '1'; f[k].value = v; f[k].dispatchEvent(new Event('change')); };
-  let suggested = '';
-  const guess = debounce(async () => {
-    const text = f.topic.value.trim();
-    if (text.length < 15) { detect.replaceChildren(); suggested = ''; paintHints(); return; }
-    try {
-      const r = await api('/api/intent', { method: 'POST', body: { text } });
-      suggested = FORMAT_HINT[r.format] || '';
-      const secs = FORMAT_SECONDS[r.format];
-      if (f.source.value === 'topic' && secs) setAuto('seconds', String(Math.min(secs, maxSec)));
-      if (r.format === 'news' || r.format === 'data') setAuto('ratio', '16:9');
-      const hint = CREATIVE_HINTS.find(([d]) => d === suggested);
-      detect.replaceChildren(icon('sparkles'), h('span', {}, 'AI hiểu đây là ', h('strong', {}, r.formatName.toLowerCase()), r.nicheName ? ` về ${r.nicheName.toLowerCase()}` : '',
-        hint ? `. Gợi ý: ${hint[1]}` : '', f.source.value === 'topic' && secs ? `, khoảng ${secs} giây` : '', '.'));
-      paintHints();
-    } catch {}
-  }, 700);
-  f.topic.addEventListener('input', guess);
   f.source.addEventListener('change', () => { sync(); track('choose', { source: f.source.value }); });
   f.affOn.addEventListener('change', sync);
   // Creative briefs are interpreted by AI; do not pre-classify them using keyword rules.
@@ -1106,7 +1083,7 @@ async function showCreate() {
       const on = direction ? parts.includes(direction) : !parts.length;
       return h('button', { type: 'button', class: 'chip' + (on ? ' on' : ''), 'aria-pressed': String(on), title: CREATIVE_HINTS.find(([d]) => d === direction)[2],
         onclick: () => { const next = direction ? (on ? parts.filter((x) => x !== direction) : [...parts, direction]) : []; f.direction.value = next.join(', '); paintHints(); } },
-        name, direction && direction === suggested ? h('small', { class: 'ai-tag' }, 'AI gợi ý') : null);
+        name);
     }));
   }
   f.direction.addEventListener('input', paintHints);
@@ -1116,7 +1093,7 @@ async function showCreate() {
   const form = h('form', { class: 'create', onsubmit: (e) => { e.preventDefault(); creationError.hidden=true; createProject(body(), go,(err)=>{creationError.textContent=err.message;creationError.hidden=false;}).then(sync); } },
     step(1, 'Nội dung', 'Nhập chủ đề hoặc kịch bản; AI thiết kế từng cảnh theo nội dung.',
       h('div', { class: 'field-group' }, h('span', { class: 'field-caption' }, 'Bắt đầu từ', helpHint('Cách tạo', 'Chủ đề: AI viết lời và thiết kế cảnh. Kịch bản + AI: giữ nguyên lời của bạn, AI thiết kế cảnh. Nếu AI lỗi, hệ thống dừng và giữ nội dung đã nhập.')), f.source),
-      tplBox, h('label', { for: 'f-topic' }, topicLabel, f.topic), detect),
+      tplBox, h('label', { for: 'f-topic' }, topicLabel, f.topic)),
     step(2, 'Video bạn muốn nhận', 'Phong cách chỉ là gợi ý; AI tự thiết kế theo nội dung và mong muốn của bạn.',
       h('label',{for:'f-wish'},'Mô tả kết quả mong muốn',f.wish),
       hintRow,
