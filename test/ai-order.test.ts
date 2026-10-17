@@ -63,3 +63,19 @@ test('Gemini out of quota hands over to Ollama at once (no waiting on every Gemi
     assert.equal(calls.filter((u) => u.includes('generativelanguage')).length, 1);
   } finally { globalThis.fetch = orig; clearDown(); }
 });
+
+test('a script far shorter than asked gets one pass to reach the length', async () => {
+  const { writeScript } = await import('../web/src/ai.ts');
+  const orig = globalThis.fetch; let calls = 0;
+  const scene = (n: number) => ({ lines: [Array.from({ length: n }, (_, i) => 'chữ' + i).join(' ') + '.'], diagram: { kind: 'sketch', items: [{ t: 'text', text: 'Ý', x: 50, y: 50 }] } });
+  try {
+    globalThis.fetch = (async () => {
+      calls++;
+      const scenes = calls === 1 ? [scene(10), scene(10)] : Array.from({ length: 8 }, () => scene(20));
+      return Response.json({ choices: [{ message: { content: JSON.stringify({ title: 'T', scenes }) } }] });
+    }) as any;
+    const out = await writeScript({ OPENAI_API_KEY: 'k', OPENAI_TEXT_MODEL: 'm' } as any, 'openai', { topic: 'Tiết kiệm', seconds: 60, tone: '', ratio: '9:16', visual: 'sketch', look: 'director' as any });
+    assert.ok(calls >= 2);
+    assert.ok(out.scenes.length >= 8);
+  } finally { globalThis.fetch = orig; }
+});

@@ -90,7 +90,7 @@ const DIAGRAM_SCHEMA =
 function systemPrompt(r: ScriptRequest) {
   if (r.creative) return creativePrompt(r.creative, !!r.scenes, r.seconds, r.ratio, r.creativeRuntime) + '\n' + sketchSchema(r.ratio) + '\nRiêng yêu cầu sáng tạo: số vật và số chữ theo dụng ý, cho phép cảnh chỉ có chữ; các ví dụ schema chỉ minh hoạ cú pháp, không sao chép bố cục.' + (r.extra ? '\nChỉ dẫn bổ sung: '+r.extra : '');
   if (r.look === 'director') return [
-    r.scenes ? 'Giữ nguyên lời đọc và số cảnh; chỉ thiết kế direction cho từng cảnh.' : `Viết video tiếng Việt về đúng chủ đề, khoảng ${Math.max(4, Math.min(14, Math.round(r.seconds / 6)))} cảnh, tổng khoảng ${r.seconds} giây, mỗi cảnh 1-3 câu. Nhịp dài ngắn theo ý, không buộc mọi video cùng công thức hook/danh sách/CTA.`,
+    r.scenes ? 'Giữ nguyên lời đọc và số cảnh; chỉ thiết kế direction cho từng cảnh.' : `Viết video tiếng Việt về đúng chủ đề, khoảng ${Math.max(4, Math.min(14, Math.round(r.seconds / 6)))} cảnh, tổng khoảng ${r.seconds} giây lời đọc = khoảng ${narrationTarget(r.seconds)} chữ (bắt buộc đủ độ dài), mỗi cảnh 1-3 câu. Nhịp dài ngắn theo ý, không buộc mọi video cùng công thức hook/danh sách/CTA.`,
     DIRECTOR_BRIEF, r.brief || '', r.extra || '', r.tone ? 'Giọng văn: ' + r.tone : '',
     r.ratio === '16:9' ? 'Khung ngang: ưu tiên mối quan hệ trái-phải.' : 'Khung dọc: giữ chữ ngắn, phân tầng hình rõ ràng.',
     r.recentDirections?.length ? 'Bố cục các video gần đây (tránh dùng lại chuỗi): ' + r.recentDirections.join('; ') : '',
@@ -284,6 +284,11 @@ async function callText(env: Env, provider: TextProvider, model: string, sys: st
  * moves to the fallback models, then to the other provider when it has a key, and repairs
  * malformed JSON once. Returns the parsed script and what it cost.
  */
+/** Vietnamese narration speed used to size scripts: about 2.6 spoken words (syllables) a second. */
+export const WORDS_PER_SECOND = 2.6;
+export const narrationTarget = (seconds: number) => Math.round(seconds * WORDS_PER_SECOND);
+export const narrationWords = (out: any) => (out?.scenes || []).reduce((n: number, sc: any) => n + (Array.isArray(sc?.lines) ? sc.lines : []).join(' ').split(/\s+/).filter(Boolean).length, 0);
+
 export async function writeScript(env: Env, provider: TextProvider, r: ScriptRequest): Promise<any> {
   const sys = systemPrompt(r);
   const user = r.scenes ? 'KỊCH BẢN:\n' + r.scenes.map((l, i) => `Cảnh ${i + 1}: ` + l.map((x, k) => `[câu ${k}] ${x}`).join(' ')).join('\n') : 'CHỦ ĐỀ: ' + r.topic;
@@ -306,6 +311,18 @@ export async function writeScript(env: Env, provider: TextProvider, r: ScriptReq
           const fix = await callText(env, p, model, 'Sửa đoạn sau thành JSON hợp lệ đúng cấu trúc yêu cầu ban đầu. Giữ nguyên nội dung. Chỉ trả JSON.', res.text.slice(0, 30000));
           usage.tokensIn += fix.tokensIn; usage.tokensOut += fix.tokensOut;
           out = parseJson(fix.text);
+        }
+        if (out && Array.isArray(out.scenes) && out.scenes.length && !r.scenes && r.seconds >= 30) {
+          // models often write far less than asked (19 s for a 60 s video): one pass to reach the length
+          const want = narrationTarget(r.seconds), have = narrationWords(out);
+          if (have < want * 0.75) {
+            try {
+              const more = await callText(env, p, model, sys + `\nLỜI ĐỌC QUÁ NGẮN: bản dưới có ${have} chữ (~${Math.round(have / WORDS_PER_SECOND)} giây), cần khoảng ${want} chữ (~${r.seconds} giây). Viết lại TOÀN BỘ JSON đúng cấu trúc cũ: thêm cảnh và câu có nội dung thật (ví dụ, giải thích, bước làm, số liệu), không lặp ý, không kéo dài bằng từ đệm. Chỉ trả JSON.`, JSON.stringify(out).slice(0, 30000));
+              usage.tokensIn += more.tokensIn; usage.tokensOut += more.tokensOut;
+              const longer = parseJson(more.text);
+              if (Array.isArray(longer?.scenes) && narrationWords(longer) > have) out = { ...out, ...longer };
+            } catch { /* keep the shorter script rather than fail */ }
+          }
         }
         if (out && Array.isArray(out.scenes) && out.scenes.length) {
           if (r.look === 'director') {
