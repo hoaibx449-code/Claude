@@ -42,6 +42,13 @@ async function showAdmin() {
   const nav = h('nav', { class: 'admin-nav', 'aria-label': 'Mục quản trị' }, ADMIN_GROUPS.map(([g, list]) => h('div', { class: 'admin-group' }, h('span', {}, g),
     list.map(([k, name]) => h('a', { href: '#/admin/' + k, class: k === tab ? 'on' : null, 'aria-current': k === tab ? 'page' : null }, name)))));
   const body = h('div', { class: 'admin-body' }, h('p', { class: 'muted' }, 'Đang tải…'));
+  // one menu: on wide screens the admin sections replace the app menu in the side bar;
+  // on smaller screens they are a single scrolling strip above the page
+  const side = document.getElementById('appside');
+  side?.querySelector('.admin-nav')?.remove();
+  const sideNav = nav.cloneNode(true);
+  sideNav.prepend(h('a', { class: 'admin-back', href: '#/' }, '← Về ứng dụng'));
+  side?.querySelector('.sidenav.bottom')?.before(sideNav);
   show(h('div', { class: 'admin' }, nav, h('div', { class: 'admin-main' }, h('header', { class: 'admin-head' }, h('h1', {}, title), h('p', { class: 'muted' }, desc)), body)));
   setTimeout(() => nav.querySelector('a.on')?.scrollIntoView({ block: 'nearest', inline: 'center' }), 0);
   const pages = { 'may-dung': adminRenders, 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings, 'huan-luyen': adminSettings, 'giong-doc': adminSettings };

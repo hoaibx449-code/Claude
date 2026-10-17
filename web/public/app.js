@@ -61,6 +61,7 @@ const ICONS = {
   eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
   share: '<path d="M12 15V3M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>', plus: '<path d="M12 5v14M5 12h14"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>', download: '<path d="M12 4v11M7.5 10.5L12 15l4.5-4.5"/><path d="M5 19h14"/>',
+  sparkles: '<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>', mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
   send: '<path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>', crown: '<path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z"/>', team: '<circle cx="12" cy="7" r="3"/><circle cx="5" cy="10" r="2.2"/><circle cx="19" cy="10" r="2.2"/><path d="M6.5 20c.5-3.5 2.7-5.5 5.5-5.5s5 2 5.5 5.5"/><path d="M1.5 18.5c.3-2.2 1.6-3.5 3.5-3.6M22.5 18.5c-.3-2.2-1.6-3.5-3.5-3.6"/>',
 };
 function icon(name, cls = 'ic') {
@@ -110,10 +111,56 @@ function applyUI(next) {
 const styleOptions = () => Object.keys(ui.labels.styles).map((k) => [k, L('styles', k), 'style:' + k]).filter(([k]) => ui.enabledStyles.includes(k) || V('style:' + k) === 'dev');
 const voiceOptions = () => ui.voices.map((v) => [v.code, v.label, 'voice:' + v.code]);
 const previewUrl = (code) => '/api/voices/preview?code=' + encodeURIComponent(code);
-/** A voice dropdown with a ▶ on every voice and a "listen" button for the chosen one. */
-function voiceField(select) {
-  select.dataset.preview = '/api/voices/preview?code={v}';
-  const btn = h('button', { type: 'button', class: 'ghost listen', 'aria-label': 'Nghe thử giọng đã chọn', onclick: () => window.nvPlayPreview?.(previewUrl(select.value), btn) }, '▶');
+const SPEEDS = [['0.9', 'Chậm'], ['1', 'Vừa'], ['1.1', 'Hơi nhanh'], ['1.2', 'Nhanh']];
+/** The voice control: one button showing the chosen voice; it opens a dialog to search, listen,
+ *  choose and set the reading speed. The <select> stays underneath for forms and change events.
+ *  speed = { get, set } adds the speed choice to the dialog. */
+function voiceField(select, speed) {
+  select.classList.add('native'); select.hidden = true;
+  const name = h('span', { class: 'vf-name' }), meta = h('small', { class: 'vf-meta' });
+  const speedOn = speed && V('feature:speed') !== 'hidden';
+  const info = (code) => (ui.voices || []).find((v) => v.code === code) || {};
+  const provider = (code) => ({ google: 'Google', everai: 'EverAI', elevenlabs: 'ElevenLabs', edge: 'Microsoft', free: 'Miễn phí' })[info(code).provider] || info(code).provider || '';
+  const paint = () => {
+    const o = select.options[select.selectedIndex];
+    name.textContent = o ? o.textContent : 'Chọn giọng';
+    meta.textContent = [provider(select.value), speedOn ? (SPEEDS.find(([v]) => Number(v) === Number(speed.get() || 1))?.[1] || 'Vừa') : ''].filter(Boolean).join(' · ');
+  };
+  const open = () => {
+    const search = h('input', { type: 'search', placeholder: 'Tìm giọng…', 'aria-label': 'Tìm giọng' });
+    const list = h('div', { class: 'vd-list', role: 'radiogroup', 'aria-label': 'Giọng đọc' });
+    const draw = () => {
+      const q = search.value.trim().toLowerCase();
+      list.replaceChildren(...[...select.options].filter((o) => o.value && (!q || o.textContent.toLowerCase().includes(q))).map((o) => {
+        const on = o.value === select.value;
+        const play = h('button', { type: 'button', class: 'ghost small play nv-play', 'aria-label': 'Nghe thử ' + o.textContent, onclick: (e) => { e.stopPropagation(); window.nvPlayPreview?.(previewUrl(o.value), play); } }, '▶');
+        return h('div', { class: 'vd-row' + (on ? ' on' : '') + (o.disabled ? ' off' : '') },
+          h('button', { type: 'button', role: 'radio', 'aria-checked': String(on), disabled: o.disabled, class: 'vd-pick', onclick: () => {
+            select.value = o.value; select.dispatchEvent(new Event('change', { bubbles: true })); paint(); draw(); } },
+            h('span', { class: 'vd-dot', 'aria-hidden': 'true' }), h('span', {}, o.textContent, h('small', {}, provider(o.value)))), play);
+      }));
+      if (!list.childNodes.length) list.append(h('p', { class: 'muted' }, 'Không có giọng phù hợp.'));
+    };
+    search.addEventListener('input', draw);
+    const speedRow = !speedOn ? null : h('div', { class: 'vd-speed' }, h('span', { class: 'field-caption' }, 'Tốc độ đọc'),
+      (() => { const seg = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Tốc độ đọc' });
+        const p = () => seg.replaceChildren(...SPEEDS.map(([v, t]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(Number(v) === Number(speed.get() || 1)), class: Number(v) === Number(speed.get() || 1) ? 'on' : '',
+          disabled: V('feature:speed') === 'dev', onclick: () => { speed.set(Number(v)); p(); paint(); } }, t)));
+        p(); return seg; })());
+    const done = () => { window.nvPlayPreview?.(''); dlg.close(); };
+    const dlg = h('dialog', { class: 'voice-dialog', 'aria-label': 'Chọn giọng đọc' },
+      h('header', {}, h('h2', {}, 'Giọng đọc'), h('button', { type: 'button', class: 'ghost small icon-only', 'aria-label': 'Đóng', onclick: done }, '✕')),
+      select.options.length > 6 ? search : null, list, speedRow,
+      h('p', { class: 'muted small' }, 'Bấm ▶ để nghe thử. Giọng và tốc độ áp dụng cho cả video.'),
+      h('footer', {}, h('button', { type: 'button', onclick: done }, 'Xong')));
+    dlg.addEventListener('close', () => { window.nvPlayPreview?.(''); dlg.remove(); });
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) done(); });
+    draw(); document.body.append(dlg); dlg.showModal();
+    list.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
+  };
+  select.addEventListener('change', paint);
+  const btn = h('button', { type: 'button', class: 'voice-btn', 'aria-haspopup': 'dialog', onclick: open }, icon('mic'), h('span', { class: 'vf-text' }, name, meta), h('span', { class: 'vf-edit' }, 'Đổi'));
+  paint();
   return h('div', { class: 'voice-field' }, select, btn);
 }
 const MOODS = [['', 'Theo nội dung'], ['warm', 'Ấm áp'], ['curious', 'Tò mò'], ['calm', 'Nhẹ nhàng'], ['upbeat', 'Sôi động'], ['none', 'Không nhạc']];
@@ -359,12 +406,12 @@ function resume(after) {
   if (after.create) { location.hash = '#/tao'; setTimeout(() => createProject(after.create), 300); }
 }
 const footer = () => h('footer', { class: 'site' },
-  h('div', { class: 'operator' }, h('b', {}, ui.legal?.company || ui.brand.name),
-    ui.legal?.address ? h('span', {}, ui.legal.address) : null, ui.legal?.taxId ? h('span', {}, 'Mã số thuế ' + ui.legal.taxId) : null,
-    ui.legal?.email && !/example\.(com|org)$/i.test(ui.legal.email) ? h('span', {}, 'Hỗ trợ: ', h('a', { href: 'mailto:' + ui.legal.email }, ui.legal.email)) : null),
-  h('nav', { class: 'policies', 'aria-label': 'Chính sách' }, h('a', { href: '#/dieu-khoan' }, 'Điều khoản sử dụng'), h('a', { href: '#/bao-mat' }, 'Chính sách bảo mật'),
-    V('feature:plans') === 'on' ? h('a', { href: '#/hoan-tien' }, 'Hoàn tiền') : null),
-  h('small', { class: 'muted' }, '© ' + new Date().getFullYear() + ' ' + (ui.legal?.company || ui.brand.name)));
+  h('div', { class: 'operator' },
+    h('span', {}, '© ' + new Date().getFullYear() + ' ' + (ui.legal?.company || ui.brand.name)),
+    ui.legal?.address ? h('span', {}, ui.legal.address) : null, ui.legal?.taxId ? h('span', {}, 'MST ' + ui.legal.taxId) : null,
+    ui.legal?.email && !/example\.(com|org)$/i.test(ui.legal.email) ? h('a', { href: 'mailto:' + ui.legal.email }, ui.legal.email) : null),
+  h('nav', { class: 'policies', 'aria-label': 'Chính sách' }, h('a', { href: '#/dieu-khoan' }, 'Điều khoản'), h('a', { href: '#/bao-mat' }, 'Bảo mật'),
+    V('feature:plans') === 'on' ? h('a', { href: '#/hoan-tien' }, 'Hoàn tiền') : null, h('a', { href: '#/tro-giup' }, 'Trợ giúp')));
 
 // ---------- notifications on this device when a video is ready (Web Push, no third party)
 const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
@@ -451,15 +498,20 @@ async function showLanding() {
   } }, '❚❚');
   const oldTitles = ['Tạo video giải thích có giọng đọc tiếng Việt', 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút', 'TẠO VIDEO GIẢI THÍCH TỰ ĐỘNG'];
   const title = site.heroTitle && !oldTitles.includes(site.heroTitle) ? site.heroTitle : 'Ý tưởng thành video';
+  const zalo = ui.zalo?.enabled && ui.zalo.botLink ? h('a', { class: 'home-zalo', href: ui.zalo.botLink, target: '_blank', rel: 'noopener', 'data-ev': 'home-zalo' }, 'Cần tư vấn? Nhắn Zalo →') : null;
+  const facts = [['mic', 'Giọng đọc tiếng Việt'], ['play', 'Dọc 9:16 hoặc ngang 16:9'], ['check', 'Phụ đề SRT kèm theo']];
+  const how = [['Nhập nội dung', 'Một chủ đề, vài ý chính hoặc kịch bản có sẵn.'], ['AI dựng cảnh', 'AI chọn cách kể, vẽ cảnh, ghép giọng và nhạc theo nội dung.'], ['Sửa và tải về', 'Xem trước, chỉnh từng cảnh rồi tải MP4.']];
   show(ui.notice ? h('div', { class: 'notice' }, ui.notice) : null,
     h('section', { class: 'home-minimal' },
       h('div', { class: 'home-intro' },
+        h('span', { class: 'eyebrow' }, 'Video vẽ tay & giải thích bằng AI'),
         h('h1', {}, title),
         h('p', { class: 'description' }, site.heroText && site.heroText.length < 200 ? site.heroText : 'Nhập nội dung, chọn giọng đọc và tạo video theo cách kể của bạn.'),
         h('div', { class: 'cta' }, h('a', { class: 'btn', href: '#/tao', 'data-ev': 'hero-create' }, icon('plus'), 'Tạo video'), h('a', { class: 'btn ghost', href: '#/mau' }, 'Gợi ý sáng tạo')),
-        ui.zalo?.enabled && ui.zalo.botLink ? h('a', {class:'home-contact',href:ui.zalo.botLink,target:'_blank',rel:'noopener'},icon('send'),'Tư vấn qua Zalo') : null,
-        h('div', { class: 'home-meta' }, h('span', {}, 'MP4 · Dọc hoặc ngang'), helpHint('Thông tin video', 'Bạn có thể xem trước, sửa từng cảnh và tải video cùng phụ đề. Hạn mức và chi phí hiển thị trong trang tạo video.'))),
-      h('div', { class: 'home-stage' }, h('div', { class: 'stage-heading' }, h('span', {}, 'TỪ KỊCH BẢN ĐẾN MÀN HÌNH'), h('span', { class: 'stage-dot', 'aria-hidden': 'true' })), gallery?.element || h('figure', { class: 'home-preview' }, media, h('figcaption', {}, h('span', {}, 'Xem chuyển động thực tế'), pause)), h('div', { class: 'stage-steps', 'aria-label': 'Quy trình dựng' }, ...['Nội dung', 'Cảnh & giọng', 'Video'].map((n, i) => h('span', {}, h('i', {}, String(i + 1).padStart(2, '0')), n))))),
+        h('ul', { class: 'home-facts' }, facts.map(([ic, t]) => h('li', {}, icon(ic), t))),
+        zalo),
+      h('div', { class: 'home-stage' }, h('div', { class: 'stage-heading' }, h('span', {}, 'Từ kịch bản đến màn hình'), h('span', { class: 'stage-dot', 'aria-hidden': 'true' })), gallery?.element || h('figure', { class: 'home-preview' }, media, h('figcaption', {}, h('span', {}, 'Xem chuyển động thực tế'), pause)))),
+    h('section', { class: 'home-how', 'aria-label': 'Cách hoạt động' }, how.map(([t, d], i) => h('div', {}, h('span', { class: 'num' }, String(i + 1).padStart(2, '0')), h('h3', {}, t), h('p', {}, d)))),
     footer());
   if (!gallery && sample) run = playDemo(canvas, sample.spec, { dpr: 0.75 });
 }
@@ -572,6 +624,9 @@ const CREATIVE_HINTS = [
   ['Chữ chuyển động giàu nhịp điệu','Chữ chuyển động','Gợi cách dùng chữ, khoảng nghỉ và điểm nhấn theo thông điệp.'],
   ['Tối giản, ít chữ và nhiều khoảng trống','Tối giản','Gợi cách trình bày tiết chế, tập trung vào từng ý.'],
 ];
+const FORMAT_HINT = { explainer: 'Giải thích kiểu VOX', data: 'Giải thích kiểu VOX', compare: 'Giải thích kiểu VOX', qa: 'Giải thích kiểu VOX', news: 'Giải thích kiểu VOX',
+  howto: 'Whiteboard vẽ ý tưởng', story: 'Whiteboard vẽ ý tưởng', listicle: 'Chữ chuyển động giàu nhịp điệu', motivation: 'Chữ chuyển động giàu nhịp điệu', sales: 'Tối giản, ít chữ và nhiều khoảng trống' };
+const FORMAT_SECONDS = { explainer: 60, data: 60, compare: 45, qa: 45, news: 45, howto: 60, story: 90, listicle: 60, motivation: 30, sales: 30 };
 async function showStyles() {
   viewed('styles');
   show(h('header',{class:'pagehead'},h('div',{},h('h1',{},'Gợi ý sáng tạo'),h('p',{class:'description'},'Chọn một hướng tham khảo, rồi mô tả video theo ý bạn.'))),
@@ -962,6 +1017,7 @@ async function showCreate() {
   const savedDirection = sessionStorage.getItem('nv_direction'); sessionStorage.removeItem('nv_direction');
   const demos = [];
   let mode = V('mode:' + (wantMode || D.mode || 'hand')) === 'on' ? wantMode || D.mode || 'hand' : 'hand';
+  let speed = 1;
   const hasAI = !!(cfg?.ai?.gemini || cfg?.ai?.openai || me?.ai?.gemini || me?.ai?.openai);
   const f = {
     wish: h('textarea',{id:'f-wish',rows:4,maxlength:2400,required:true,placeholder:'Ví dụ: Video giải thích vì sao chúng ta trì hoãn, mở bằng một tình huống quen thuộc; nhịp nhanh vừa, chữ ít, hình làm rõ nguyên nhân và kết thúc bằng một hành động nhỏ.'}),
@@ -1037,15 +1093,28 @@ async function showCreate() {
     if (!classic && (NV.SKINS?.[look] || []).length > 1) skinBox.replaceChildren(h('span', { class: 'plabel' }, 'Bộ màu'), skinChips(look, skin, (n) => { skin = n; })); else skinBox.replaceChildren();
     showCredits();
   };
+  // the form adapts to what the content is: AI reads it, suggests direction and length,
+  // and fills the fields the user has not touched yet
+  const touched = new Set();
+  for (const k of ['seconds', 'ratio']) f[k].addEventListener('change', (e) => { if (e.isTrusted !== false && !f[k].dataset.auto) touched.add(k); delete f[k].dataset.auto; });
+  const setAuto = (k, v) => { if (touched.has(k) || f[k].value === v || ![...f[k].options].some((o) => o.value === v && !o.disabled)) return; f[k].dataset.auto = '1'; f[k].value = v; f[k].dispatchEvent(new Event('change')); };
+  let suggested = '';
   const guess = debounce(async () => {
     const text = f.topic.value.trim();
-    if (text.length < 15) { detect.replaceChildren(); return; }
+    if (text.length < 15) { detect.replaceChildren(); suggested = ''; paintHints(); return; }
     try {
       const r = await api('/api/intent', { method: 'POST', body: { text } });
-      detect.replaceChildren('Nhận diện: ', h('b', {}, r.formatName), ' · ', h('b', {}, r.nicheName),
-        ui.enabledStyles.includes(r.style) ? ` · gợi ý phong cách: ${L('styles', r.style)}` : '', r.hook ? ' · mở đầu gây tò mò ✓' : '');
+      suggested = FORMAT_HINT[r.format] || '';
+      const secs = FORMAT_SECONDS[r.format];
+      if (f.source.value === 'topic' && secs) setAuto('seconds', String(Math.min(secs, maxSec)));
+      if (r.format === 'news' || r.format === 'data') setAuto('ratio', '16:9');
+      const hint = CREATIVE_HINTS.find(([d]) => d === suggested);
+      detect.replaceChildren(icon('sparkles'), h('span', {}, 'AI hiểu đây là ', h('strong', {}, r.formatName.toLowerCase()), r.nicheName ? ` về ${r.nicheName.toLowerCase()}` : '',
+        hint ? `. Gợi ý: ${hint[1]}` : '', f.source.value === 'topic' && secs ? `, khoảng ${secs} giây` : '', '.'));
+      paintHints();
     } catch {}
   }, 700);
+  f.topic.addEventListener('input', guess);
   f.source.addEventListener('change', () => { sync(); track('choose', { source: f.source.value }); });
   f.affOn.addEventListener('change', sync);
   // Creative briefs are interpreted by AI; do not pre-classify them using keyword rules.
@@ -1055,7 +1124,7 @@ async function showCreate() {
     const x = extras();
     return { look: '', creative:{wish:f.wish.value,direction:f.direction.value}, music: f.music.value,
       source: f.source.value === 'template' ? 'mine-free' : f.source.value, subtitles: f.subtitles.checked, topic: f.topic.value, seconds: Number(f.seconds.value), ratio: f.ratio.value, style: f.style.value,
-      voiceId: f.voice.value, channel: f.channel.value, episode: f.episode.value, tone: f.tone.value, visual: f.visual.value, format: f.format.value, transition: f.transition.value,
+      voiceId: f.voice.value, speed, channel: f.channel.value, episode: f.episode.value, tone: f.tone.value, visual: f.visual.value, format: f.format.value, transition: f.transition.value,
       mode: x.mode, intro: x.intro, character: x.character, affiliate: x.affiliate, illustratedCharacter:look==='illustrated'?f.illustratedCharacter.value:undefined };
   };
   const feat = (k) => V('feature:' + k) !== 'hidden';
@@ -1072,19 +1141,33 @@ async function showCreate() {
   };
   for (const el of [f.source, f.topic, f.seconds, f.ratio, f.voice]) el.addEventListener('change', paintSummary);
   f.topic.addEventListener('input', debounce(paintSummary, 400));
+  // direction chips toggle in and out of the direction field; the one AI suggests is marked
+  const hintRow = h('div', { class: 'creative-hints', role: 'group', 'aria-label': 'Hướng gợi ý' });
+  const dirParts = () => f.direction.value.split(/\s*[,;+]\s*/).map((x) => x.trim()).filter(Boolean);
+  function paintHints() {
+    const parts = dirParts();
+    hintRow.replaceChildren(...CREATIVE_HINTS.map(([direction, name]) => {
+      const on = direction ? parts.includes(direction) : !parts.length;
+      return h('button', { type: 'button', class: 'chip' + (on ? ' on' : ''), 'aria-pressed': String(on), title: CREATIVE_HINTS.find(([d]) => d === direction)[2],
+        onclick: () => { const next = direction ? (on ? parts.filter((x) => x !== direction) : [...parts, direction]) : []; f.direction.value = next.join(', '); paintHints(); } },
+        name, direction && direction === suggested ? h('small', { class: 'ai-tag' }, 'AI gợi ý') : null);
+    }));
+  }
+  f.direction.addEventListener('input', paintHints);
+  paintHints();
   const step = (n, title, sub, ...kids) => h('section', { class: 'step' }, h('header', {}, h('span', { class: 'stepno' }, String(n)), h('div', {}, h('h2', {}, title), sub ? helpHint(title, sub) : null)), ...kids);
   const creationError=h('p',{class:'notice bad description',role:'alert',hidden:true});
   const form = h('form', { class: 'create', onsubmit: (e) => { e.preventDefault(); creationError.hidden=true; createProject(body(), go,(err)=>{creationError.textContent=err.message;creationError.hidden=false;}).then(sync); } },
     step(1, 'Nội dung', 'Nhập chủ đề hoặc kịch bản; AI thiết kế từng cảnh theo nội dung.',
       h('div', { class: 'field-group' }, h('span', { class: 'field-caption' }, 'Bắt đầu từ', helpHint('Cách tạo', 'Chủ đề: AI viết lời và thiết kế cảnh. Kịch bản + AI: giữ nguyên lời của bạn, AI thiết kế cảnh. Nếu AI lỗi, hệ thống dừng và giữ nội dung đã nhập.')), f.source),
-      tplBox, h('label', { for: 'f-topic' }, topicLabel, f.topic)),
+      tplBox, h('label', { for: 'f-topic' }, topicLabel, f.topic), detect),
     step(2, 'Video bạn muốn nhận', 'Phong cách chỉ là gợi ý; AI tự thiết kế theo nội dung và mong muốn của bạn.',
       h('label',{for:'f-wish'},'Mô tả kết quả mong muốn',f.wish),
-      h('div',{class:'row creative-hints'},CREATIVE_HINTS.map(([direction,name,note])=>h('button',{type:'button',class:'ghost small',onclick:()=>{f.direction.value=direction;f.direction.dispatchEvent(new Event('input'));}},name))),
-      h('label',{for:'f-direction'},'Hướng tham khảo (không bắt buộc)',helpHint('Hướng tham khảo','Bạn có thể phối hợp nhiều ý. Gợi ý không khóa bố cục hay bắt video theo mẫu. VOX hiện chỉ hỗ trợ hướng giải thích bằng đồ hoạ, chưa có cảnh quay tư liệu.'),f.direction),
+      hintRow,
+      h('div',{class:'field-group'},h('span',{class:'field-caption'},'Hướng tham khảo',h('small',{class:'muted'},' · không bắt buộc'),helpHint('Hướng tham khảo','Chọn một hoặc nhiều hướng, hoặc gõ thêm ý của bạn. Gợi ý không khóa bố cục. VOX hiện giải thích bằng đồ hoạ, chưa có cảnh quay tư liệu.')),f.direction),
       only.looked=h('div',{hidden:true})),
     step(3, 'Xuất video', 'Kiểm tra thông số và chi phí trước khi dựng.',
-      h('div', { class: 'grid wide-2' }, h('label', {}, T('ratio'), f.ratio), h('label', {}, T('voice'), voiceField(f.voice)), only.seconds = h('label', {}, T('duration'), f.seconds)),
+      h('div', { class: 'grid wide-2' }, h('label', {}, T('ratio'), f.ratio), h('div', { class: 'field-group' }, h('span', { class: 'field-caption' }, T('voice')), voiceField(f.voice, { get: () => speed, set: (v) => { speed = v; } })), only.seconds = h('label', {}, T('duration'), f.seconds)),
       summary,
       h('details', { class: 'advanced' }, h('summary', {}, 'Nâng cao'),
         h('div', { class: 'grid wide-2' }, h('label', {}, 'Nhạc nền', f.music), h('label', {}, T('channel'), f.channel), h('label', {}, T('episode'), f.episode), only.tone = h('label', {}, T('tone'), f.tone),
@@ -1503,10 +1586,9 @@ async function showEditor(id) {
       spec.look ? null : h('label', {}, 'Dụng cụ vẽ', h('select', { onchange: (e) => { if (e.target.value) spec.tool = e.target.value; else delete spec.tool; changed(); } },
         options([['', 'Theo phong cách'], ...Object.entries(ui.labels.tools).map(([k, v]) => [k, v, 'tool:' + k])], spec.tool || ''))),
       spec.look ? null : h('label', {}, 'Chuyển cảnh', h('select', { onchange: (e) => { spec.transition = e.target.value; changed(); } }, options([['auto', 'Tự động, đa dạng'], ['fade', 'Mờ dần'], ['slide', 'Trượt ngang'], ['wipe', 'Bàn tay xoá bảng'], ['zoom', 'Phóng to']], spec.transition || 'auto'))),
-      h('label', {}, T('voice'), voiceField(h('select', { onchange: (e) => { spec.voice.voiceId = e.target.value; save(); } }, options(voiceOptions(), spec.voice?.voiceId || ui.defaults.voice)))),
+      h('div', { class: 'field-group' }, h('span', { class: 'field-caption' }, T('voice')), voiceField(h('select', { onchange: (e) => { spec.voice.voiceId = e.target.value; save(); } }, options(voiceOptions(), spec.voice?.voiceId || ui.defaults.voice)),
+        { get: () => spec.voice?.speed ?? 1, set: (v) => { spec.voice.speed = v; save(); } })),
       audioBox(spec, save),
-      V('feature:speed') === 'hidden' ? null : h('label', {}, 'Tốc độ đọc', h('select', { disabled: V('feature:speed') === 'dev', onchange: (e) => { spec.voice.speed = Number(e.target.value); save(); } },
-        options([['0.9', 'Chậm'], ['1', 'Vừa'], ['1.1', 'Hơi nhanh'], ['1.2', 'Nhanh']], String(spec.voice?.speed ?? 1)))),
       h('label', {}, 'Tên kênh', h('input', { value: spec.channel || '', maxlength: 40, oninput: (e) => { spec.channel = e.target.value; changed(); } })),
       h('label', {}, 'Số tập', h('input', { value: spec.episode || '', maxlength: 30, oninput: (e) => { spec.episode = e.target.value; changed(); } })),
       V('feature:subtitles') === 'hidden' ? null : h('label', { class: 'check' }, h('input', { type: 'checkbox', disabled: V('feature:subtitles') === 'dev', checked: spec.look && spec.look!=='whiteboard' ? spec.subtitles !== false : !!spec.subtitles, onchange: (e) => { spec.subtitles = e.target.checked; changed(); } }), T('subsOnPicture'))));

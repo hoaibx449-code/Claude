@@ -15,7 +15,7 @@
 
   function stopAudio() { if (audio) { audio.pause(); audio = null; } playing = ''; document.querySelectorAll('.nv-play.on').forEach((b) => { b.classList.remove('on'); b.textContent = '▶'; }); }
   function play(url, btn) {
-    if (playing === url) { stopAudio(); return; }
+    if (!url || playing === url) { stopAudio(); return; }
     stopAudio();
     audio = new Audio(url); playing = url;
     if (btn) { btn.classList.add('on'); btn.textContent = '❚❚'; }
