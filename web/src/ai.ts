@@ -9,7 +9,7 @@ import { Buffer } from 'node:buffer';
 import { type Env, HttpError } from './util.ts';
 import { FORMAT_BRIEF, FORMAT_NAMES, NICHE_NAMES } from './intent.ts';
 
-export type TextProvider = 'openai' | 'gemini';
+export type TextProvider = 'openai' | 'gemini' | 'ollama';
 export type ImageProvider = 'openai' | 'gemini';
 
 export const LINE_ART_STYLE =
@@ -198,21 +198,49 @@ export function noteFailure(provider: TextProvider, model: string, status: numbe
 }
 const isDown = (p: string, m: string) => [p, p + ':' + m].some((k) => (down.get(k) || 0) > Date.now());
 
+const TEXT_PROVIDERS: TextProvider[] = ['gemini', 'openai', 'ollama'];
+/** Whether a provider can be asked: a key (Gemini, OpenAI) or a server address (Ollama). */
+export function hasTextAI(env: Env, p: TextProvider) {
+  return p === 'openai' ? !!env.OPENAI_API_KEY : p === 'gemini' ? !!env.GEMINI_API_KEY : !!(env.OLLAMA_URL && env.OLLAMA_TEXT_MODEL);
+}
+/** Whether any AI can write: used to switch AI features on or off. */
+export const anyTextAI = (env: Env) => TEXT_PROVIDERS.some((p) => hasTextAI(env, p));
+export const isTextProvider = (v: unknown): v is TextProvider => TEXT_PROVIDERS.includes(v as TextProvider);
+
+/**
+ * The order models are tried in: the provider asked for (a feature's own choice), then the order set
+ * in Quản trị → Cài đặt → Thứ tự AI; each provider's main model, then its fallback models. Providers
+ * without a key or address are skipped.
+ */
 export function textPlan(env: Env, provider: TextProvider): [TextProvider, string][] {
-  const has = (p: TextProvider) => !!(p === 'openai' ? env.OPENAI_API_KEY : env.GEMINI_API_KEY);
+  const order = [...new Set([provider, ...list(env.AI_ORDER).filter(isTextProvider), ...TEXT_PROVIDERS])];
+  const models = (p: TextProvider) => p === 'openai' ? [env.OPENAI_TEXT_MODEL, ...list(env.OPENAI_TEXT_FALLBACK)]
+    : p === 'gemini' ? [env.GEMINI_TEXT_MODEL, ...list(env.GEMINI_TEXT_FALLBACK)] : [env.OLLAMA_TEXT_MODEL || '', ...list(env.OLLAMA_TEXT_FALLBACK)];
   const plan: [TextProvider, string][] = [];
-  for (const p of [provider, provider === 'openai' ? 'gemini' : 'openai'] as TextProvider[]) {
-    if (!has(p)) continue;
-    const models = p === 'openai' ? [env.OPENAI_TEXT_MODEL, ...list(env.OPENAI_TEXT_FALLBACK)] : [env.GEMINI_TEXT_MODEL, ...list(env.GEMINI_TEXT_FALLBACK)];
-    for (const m of [...new Set(models.filter(Boolean))]) plan.push([p, m]);
+  for (const p of order) {
+    if (!hasTextAI(env, p)) continue;
+    for (const m of [...new Set(models(p).filter(Boolean))]) plan.push([p, m]);
   }
   // working ones first; if everything is marked down, still try them all
   const up = plan.filter(([p, m]) => !isDown(p, m));
   return up.length ? up : plan;
 }
 
+/** Ollama chat (own server or Ollama Cloud): JSON answer, optional bearer key. */
+async function ollamaChat(env: Env, model: string, messages: any[], maxTokens: number, timeoutMs: number) {
+  const res = await fetch(env.OLLAMA_URL + '/api/chat', {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(env.OLLAMA_API_KEY ? { authorization: `Bearer ${env.OLLAMA_API_KEY}` } : {}) },
+    signal: AbortSignal.timeout(timeoutMs),
+    body: JSON.stringify({ model, messages, stream: false, format: 'json', options: { num_predict: Math.min(maxTokens, 16384) } }),
+  });
+  if (!res.ok) { const t = await res.text().catch(() => ''); noteFailure('ollama', model, res.status, t); throw Object.assign(new Error(`Ollama ${model}: HTTP ${res.status} ${t.slice(0, 120)}`), { status: res.status }); }
+  const j: any = await res.json();
+  return { text: j.message?.content || '', tokensIn: j.prompt_eval_count || 0, tokensOut: j.eval_count || 0, finish: j.done_reason === 'length' ? 'MAX_TOKENS' : '' };
+}
+
 /** One chat call; throws an error carrying `status` so callers can decide to retry or switch model. */
 async function callText(env: Env, provider: TextProvider, model: string, sys: string, user: string, maxTokens = 16384, timeoutMs?: number) {
+  if (provider === 'ollama') return ollamaChat(env, model, [{ role: 'system', content: sys }, { role: 'user', content: user }], maxTokens, timeoutMs || (maxTokens < 4000 ? 25_000 : 120_000));
   if (provider === 'openai') {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -349,6 +377,7 @@ export interface FormatProposal { name: string; summary: string; base: string; s
  */
 /** One call with pictures (training page). Throws with `status`; `finish` tells why an answer stopped. */
 async function callVision(env: Env, provider: TextProvider, model: string, sys: string, text: string, imgs: { mime: string; data: string }[]) {
+  if (provider === 'ollama') return ollamaChat(env, model, [{ role: 'system', content: sys }, { role: 'user', content: text, images: imgs.map((i) => i.data) }], 4096, 120_000);
   if (provider === 'openai') {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST', headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, 'content-type': 'application/json' }, signal: AbortSignal.timeout(90_000),

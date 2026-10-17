@@ -9,7 +9,7 @@
 import type { User } from './auth.ts';
 import { LOOK_KEYS, vis, ZALO_WAYS, type Config } from './settings.ts';
 import { body, type Env, HttpError, json, randomId, sha256, timingSafeEqual, useQuota } from './util.ts';
-import { assistantAnswer, type AssistantTurn } from './ai.ts';
+import { assistantAnswer, anyTextAI, type AssistantTurn, type TextProvider } from './ai.ts';
 import { budgetState } from './budget.ts';
 import { aiCost, logEvent } from './log.ts';
 import { pushUser } from './push.ts';
@@ -94,7 +94,7 @@ const COMMANDS = ['GIUP', 'HUONGDAN', 'HELP', 'START', 'MENU', '?', 'HD', 'XINCH
  */
 export function needsAI(env: XEnv, text: string) {
   const { cmd, arg } = parseCommand(text);
-  if (!(env.GEMINI_API_KEY || env.OPENAI_API_KEY)) return false;
+  if (!anyTextAI(env)) return false;
   if (cmd === 'TAO') return !!arg && env.config.enabledSources.includes('topic');
   const script = cmd === 'KB' || cmd === 'KICHBAN' || (!COMMANDS.includes(cmd) && String(text || '').trim().length >= 120);
   return script;
@@ -334,7 +334,7 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
     rc.log('zalo.handoff.reply', { ok: r.ok, data: { chat: target.chat_id } });
     return reply(r.ok ? 'Đã gửi cho khách ' + code + '.' : 'Chưa gửi được: ' + r.error);
   }
-  const assistantOn = z.assistant.enabled && !!(env.GEMINI_API_KEY || env.OPENAI_API_KEY);
+  const assistantOn = z.assistant.enabled && !!anyTextAI(env);
   // greetings and "?" get the menu; a free question goes to the assistant when it is on
   if (['GIUP', 'HUONGDAN', 'HELP', 'START', 'MENU', '?', 'HD'].includes(cmd)) return help();
   if (!cmd || (!assistantOn && ['XINCHAO', 'CHAO', 'HI', 'HELLO'].includes(cmd))) return reply(await withMenu(env, chatId, fill(t.welcome, { ten: name || 'bạn', troLy: z.assistant.name, thuongHieu: brandOf(env.config) }), START_MENU));
@@ -426,7 +426,7 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   }
   if (cmd === 'TAO') {
     if (!arg) return reply('Gửi: TAO + chủ đề. Ví dụ: TAO vì sao lương mãi không tăng');
-    if (!env.config.enabledSources.includes('topic') || !(env.GEMINI_API_KEY || env.OPENAI_API_KEY)) return reply(t.noAI);
+    if (!env.config.enabledSources.includes('topic') || !anyTextAI(env)) return reply(t.noAI);
     return makeVideo(env, rc, user, chatId, 'topic', arg, prefs, !link, messageId);
   }
   if (cmd === 'KB' || cmd === 'KICHBAN' || longScript) {
@@ -747,7 +747,7 @@ async function assistantReply(env: XEnv, rc: Rc, x: AskCtx) {
   ].filter(Boolean).join('\n\n');
   let ans;
   // the AI the admin chose: the assistant's own choice, otherwise the site's (AI viết kịch bản)
-  const provider = a.ai !== 'auto' ? a.ai : c.defaults.textAI === 'openai' ? 'openai' : 'gemini';
+  const provider = (a.ai !== 'auto' ? a.ai : c.defaults.textAI) as TextProvider;
   // a webhook call may only work about 30 seconds: 22 of them for the AI; the minute job allows 45
   try { ans = await assistantAnswer(env, sys, await chatHistory(env, x.chatId, x.messageId), x.text, provider, x.patient ? 45_000 : 22_000); }
   catch (e: any) {
@@ -1013,7 +1013,7 @@ export async function zaloAdmin(req: Request, env: XEnv, rawEnv: Env, sub: strin
     const ai = seen.find((e) => e.type === 'ai.chat'), quick = seen.find((e) => e.type === 'zalo.quick'), fail = seen.find((e) => e.type === 'zalo.assistant');
     return json({ ok: replies.some((r) => r.status === 'sent'), replies: replies.map((r) => ({ ...r, text: String(r.text).replace(/^\u0002H/, '') })), ms: Date.now() - t0,
       path: ai ? 'ai' : quick ? 'rules' : 'command', model: ai?.data?.model, intent: ai?.data?.intent || quick?.data?.intent, why: quick?.data?.why || fail?.data?.error || null,
-      assistantOn: env.config.zalo.assistant.enabled && !!(env.GEMINI_API_KEY || env.OPENAI_API_KEY) });
+      assistantOn: env.config.zalo.assistant.enabled && !!anyTextAI(env) });
   }
   if (sub === 'zalo/test' && method === 'POST') {
     await notifyOwner(env, 'support', 'Tin nhắn thử từ trang quản trị: thông báo cho chủ web hoạt động ✅');

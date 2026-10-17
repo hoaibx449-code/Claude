@@ -1,0 +1,136 @@
+/* Colour themes, chosen in Quản trị → Trang chủ & nội dung → Giao diện (html[data-theme]).
+   "aurora" is the default; "classic" keeps the earlier plain white look. */
+
+:root, html[data-theme="aurora"] {
+  --blue: #4f46e5; --blue-2: #4338ca; --blue-soft: #eef0ff; --accent: #4f46e5; --accent-2: #f43f5e; --sun: #f59e0b;
+  --grad: linear-gradient(120deg, #4f46e5 0%, #7c3aed 60%, #db2777 120%);
+  --grad-soft: linear-gradient(135deg, #eef0ff 0%, #fdf2f8 100%);
+  --paper: #f6f5ff; --ink: #1e1b4b; --muted: #5f5b85; --line: #e5e3f6;
+  --page-bg: radial-gradient(900px 520px at 100% -10%, #fce7f3 0%, transparent 60%), radial-gradient(900px 600px at -10% 0%, #e0e7ff 0%, transparent 55%);
+  --side-bg: linear-gradient(180deg, #1e1b4b 0%, #312e81 100%); --side-ink: #eef0ff; --side-muted: #b9b6e6; --side-on: rgba(255, 255, 255, .14); --side-line: rgba(255, 255, 255, .12);
+  --glow: rgba(79, 70, 229, .35);
+}
+html[data-theme="ocean"] {
+  --blue: #0e7490; --blue-2: #155e75; --blue-soft: #e6f7fb; --accent: #0e7490; --accent-2: #f97316; --sun: #fbbf24;
+  --grad: linear-gradient(120deg, #0891b2 0%, #0e7490 55%, #1d4ed8 120%);
+  --grad-soft: linear-gradient(135deg, #e6f7fb 0%, #eff6ff 100%);
+  --paper: #f2f9fb; --ink: #0b2530; --muted: #4f6b78; --line: #dbecf1;
+  --page-bg: radial-gradient(900px 520px at 100% -10%, #ffedd5 0%, transparent 55%), radial-gradient(900px 600px at -10% 0%, #cffafe 0%, transparent 55%);
+  --side-bg: linear-gradient(180deg, #082f3a 0%, #0b4a5c 100%); --side-ink: #e6f7fb; --side-muted: #9cc6d2; --side-on: rgba(255, 255, 255, .14); --side-line: rgba(255, 255, 255, .12);
+  --glow: rgba(14, 116, 144, .35);
+}
+html[data-theme="sunset"] {
+  --blue: #c2410c; --blue-2: #9a3412; --blue-soft: #fff1e8; --accent: #c2410c; --accent-2: #7c3aed; --sun: #f59e0b;
+  --grad: linear-gradient(120deg, #f97316 0%, #e11d48 70%, #9333ea 130%);
+  --grad-soft: linear-gradient(135deg, #fff1e8 0%, #fdf2f8 100%);
+  --paper: #fff8f3; --ink: #2b1408; --muted: #7a5a4a; --line: #f5e3d8;
+  --page-bg: radial-gradient(900px 520px at 100% -10%, #fde68a 0%, transparent 50%), radial-gradient(900px 600px at -10% 0%, #fecdd3 0%, transparent 55%);
+  --side-bg: linear-gradient(180deg, #3b0f0a 0%, #6b1d1d 100%); --side-ink: #fff1e8; --side-muted: #e7b9a8; --side-on: rgba(255, 255, 255, .14); --side-line: rgba(255, 255, 255, .12);
+  --glow: rgba(225, 29, 72, .3);
+}
+html[data-theme="forest"] {
+  --blue: #047857; --blue-2: #065f46; --blue-soft: #e7f8f0; --accent: #047857; --accent-2: #d97706; --sun: #f59e0b;
+  --grad: linear-gradient(120deg, #059669 0%, #047857 55%, #0f766e 120%);
+  --grad-soft: linear-gradient(135deg, #e7f8f0 0%, #fefce8 100%);
+  --paper: #f3faf6; --ink: #0c2a1f; --muted: #4d6b5e; --line: #dcefe5;
+  --page-bg: radial-gradient(900px 520px at 100% -10%, #fef3c7 0%, transparent 55%), radial-gradient(900px 600px at -10% 0%, #d1fae5 0%, transparent 55%);
+  --side-bg: linear-gradient(180deg, #052e22 0%, #064e3b 100%); --side-ink: #e7f8f0; --side-muted: #9dcbb7; --side-on: rgba(255, 255, 255, .14); --side-line: rgba(255, 255, 255, .12);
+  --glow: rgba(4, 120, 87, .3);
+}
+html[data-theme="classic"] {
+  --blue: #1f5eff; --blue-2: #1748d6; --blue-soft: #eaf1ff; --accent: #1f5eff; --accent-2: #ffb020;
+  --grad: linear-gradient(135deg, #2f6bff 0%, #1f5eff 55%, #1748d6 100%);
+  --grad-soft: linear-gradient(135deg, #eef4ff 0%, #f6f9ff 100%);
+  --paper: #f5f7fb; --ink: #0f1b3d; --muted: #5b6785; --line: #e6eaf2;
+  --page-bg: none; --side-bg: #ffffff; --side-ink: #0f1b3d; --side-muted: #5b6785; --side-on: #eaf1ff; --side-line: #e6eaf2;
+  --glow: rgba(31, 94, 255, .3);
+}
+@media (prefers-color-scheme: dark) {
+  :root, html[data-theme] { --paper: #0b1020; --card: #121a30; --ink: #eef2ff; --muted: #9aa6c7; --line: #22304f; --blue-soft: #1b2347;
+    --grad-soft: linear-gradient(135deg, #131d3a 0%, #0f1730 100%); --page-bg: none; --side-bg: #0f1529; --side-on: rgba(255, 255, 255, .08); }
+}
+
+body { background-color: var(--paper); background-image: var(--page-bg); background-attachment: fixed; background-repeat: no-repeat; }
+.top { background: color-mix(in srgb, var(--card) 82%, transparent); backdrop-filter: saturate(1.4) blur(10px); }
+button:hover, .btn:hover { box-shadow: 0 12px 24px -12px var(--glow); }
+button.ghost:hover, .btn.ghost:hover, .vd-pick:hover, .voice-btn:hover { box-shadow: none; }
+.brand .logo { background: var(--grad); }
+.brand .accent { color: var(--accent); }
+
+/* side bar in the theme colour */
+.appside { background: var(--side-bg) !important; border-right-color: transparent !important; color: var(--side-ink); }
+.appside .brand, .appside .brand-text { color: var(--side-ink); }
+.appside .brand .accent { color: var(--side-muted); }
+.appside .sidenav a { color: var(--side-muted); }
+.appside .sidenav a:hover { background: var(--side-on); color: var(--side-ink); }
+.appside .sidenav a.on { background: var(--side-on); color: var(--side-ink); }
+.appside .sidenav.bottom { border-top-color: var(--side-line); }
+.appside .admin-group > span { color: var(--side-muted); opacity: .8; }
+.appside .admin-group a { color: var(--side-muted); }
+.appside .admin-group a:hover { background: var(--side-on); color: var(--side-ink); }
+.appside .admin-group a.on { background: var(--side-on); color: var(--side-ink); }
+.appside .admin-back { color: var(--side-muted); }
+.appside .admin-back:hover { color: var(--side-ink); }
+
+/* colour where it guides the eye */
+.card, .step, .home-how > div { box-shadow: 0 1px 2px rgba(0, 0, 0, .03), 0 10px 30px -18px var(--glow); }
+.stepno { background: var(--grad) !important; color: #fff !important; }
+.home-intro .eyebrow { background: color-mix(in srgb, var(--accent) 10%, var(--card)); border-color: color-mix(in srgb, var(--accent) 25%, transparent); color: var(--accent); }
+main.wrap .home-minimal h1 { background: linear-gradient(100deg, var(--ink) 30%, var(--accent) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.home-how .num { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--grad); color: #fff; letter-spacing: 0; }
+.home-how > div:nth-child(2) .num { background: linear-gradient(120deg, var(--accent-2), var(--sun)); }
+.home-facts .ic { color: var(--accent-2); }
+.detect:not(:empty) { background: var(--grad-soft); }
+.summary { background: var(--grad-soft) !important; }
+
+/* social channels */
+.social { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.social a { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); color: var(--muted); }
+.social a:hover { color: #fff; background: var(--grad); border-color: transparent; }
+.social svg { width: 18px; height: 18px; }
+.home-social { margin-top: 2px; }
+footer.site .social a { width: 30px; height: 30px; }
+
+/* help chat (bottom right) */
+.helpchat-btn { position: fixed; right: 20px; bottom: 20px; z-index: 60; width: 56px; height: 56px; min-height: 0; padding: 0; border-radius: 50%; background: var(--grad); box-shadow: 0 14px 30px -10px var(--glow); }
+.helpchat-btn svg { width: 26px; height: 26px; }
+.helpchat-btn .dot { position: absolute; top: 6px; right: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent-2); box-shadow: 0 0 0 2px #fff; }
+@media (max-width: 1023px) { .helpchat-btn { bottom: calc(var(--tabbar, 64px) + 16px + env(safe-area-inset-bottom)); right: 14px; width: 50px; height: 50px; } }
+.helpchat { position: fixed; right: 20px; bottom: 88px; z-index: 61; width: min(380px, calc(100vw - 24px)); height: min(560px, calc(100dvh - 120px)); display: flex; flex-direction: column;
+  background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 30px 70px -20px rgba(0, 0, 0, .35); overflow: hidden; }
+.helpchat[hidden] { display: none; }
+@media (max-width: 1023px) { .helpchat { right: 12px; bottom: calc(var(--tabbar, 64px) + 76px + env(safe-area-inset-bottom)); height: min(520px, calc(100dvh - 180px)); } }
+.helpchat > header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: var(--grad); color: #fff; }
+.helpchat > header .av { width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 255, 255, .2); display: grid; place-items: center; flex: none; }
+.helpchat > header .av svg { width: 20px; height: 20px; }
+.helpchat > header div { flex: 1; line-height: 1.25; }
+.helpchat > header small { opacity: .85; font-size: .75rem; }
+.helpchat > header button { background: transparent; color: #fff; min-height: 32px; width: 32px; padding: 0; }
+.helpchat .msgs { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; background: var(--paper); }
+.helpchat .msg { max-width: 85%; padding: 9px 12px; border-radius: 14px; font-size: .9rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.helpchat .msg.bot { background: var(--card); border: 1px solid var(--line); border-bottom-left-radius: 4px; align-self: flex-start; }
+.helpchat .msg.me { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; align-self: flex-end; }
+.helpchat .msg.typing { color: var(--muted); }
+.helpchat .msg a { color: inherit; text-decoration: underline; }
+.helpchat .quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px; background: var(--paper); }
+.helpchat .quick button { background: var(--card); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); min-height: 30px; padding: 4px 10px; font-size: .8125rem; font-weight: 500; border-radius: 99px; }
+.helpchat form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--line); background: var(--card); }
+.helpchat form input { flex: 1; min-width: 0; border-radius: 12px; }
+.helpchat form button { min-height: 44px; width: 44px; padding: 0; border-radius: 12px; }
+.helpchat form button svg { width: 18px; height: 18px; }
+.helpchat .note { font-size: .6875rem; color: var(--muted); text-align: center; padding: 0 10px 8px; background: var(--card); }
+
+/* admin: theme picker and AI order */
+.theme-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.theme-pick button { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px; background: var(--card); color: var(--ink); border: 2px solid var(--line); border-radius: 12px; font-weight: 500; box-shadow: none; }
+.theme-pick button.on { border-color: var(--accent); }
+.theme-pick i { display: block; height: 36px; border-radius: 8px; }
+.ai-order { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; max-width: 460px; }
+.ai-order li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.ai-order .ai-rank { width: 26px; height: 26px; border-radius: 8px; background: var(--blue-soft); color: var(--accent); display: grid; place-items: center; font-size: .8125rem; flex: none; }
+.ai-order .ai-name { flex: 1; }
+.ai-order button { min-height: 32px; width: 36px; padding: 0; }
+.home-stage { background: var(--side-bg); }
+html[data-theme="classic"] .home-stage { background: #18293a; }
+/* admins have the save bar in that corner */
+body[data-page="admin"] .helpchat-btn, body[data-page="admin"] .helpchat { display: none; }

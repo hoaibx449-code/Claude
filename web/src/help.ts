@@ -1,0 +1,77 @@
+// The help chat in the bottom right corner of the site: answers how-to questions about the app
+// with the AI chosen in Quản trị (and its fallbacks), and with a short built-in FAQ when no AI
+// can answer. Guests may ask too, within a daily limit per browser and per network.
+import { assistantAnswer, anyTextAI, type AssistantTurn, type TextProvider } from './ai.ts';
+import { budgetState } from './budget.ts';
+import { aiCost } from './log.ts';
+import { planOf } from './plans.ts';
+import { body, HttpError, json, useQuota } from './util.ts';
+import type { Rc, XEnv } from './worker.ts';
+import type { User } from './auth.ts';
+
+const GUIDE = `CÁCH DÙNG TRANG (chỉ dựa vào đây, không bịa tính năng):
+- Tạo video: bấm "Tạo video". Bước 1 Nội dung: chọn "Chủ đề" (AI viết lời và thiết kế cảnh) hoặc "Kịch bản + AI" (giữ nguyên lời của bạn, AI thiết kế cảnh), rồi nhập nội dung. AI tự nhận diện loại video và gợi ý hướng, thời lượng.
+- Bước 2 Video bạn muốn nhận: mô tả kết quả mong muốn; chọn hướng tham khảo (VOX/giải thích, Whiteboard, Chữ chuyển động, Tối giản) hoặc để AI đề xuất.
+- Bước 3 Xuất video: chọn khung hình (dọc 9:16 cho TikTok/Reels/Shorts, ngang 16:9 cho YouTube), giọng đọc (bấm "Đổi" để mở bảng giọng: nghe thử, chọn giọng, chỉnh tốc độ), thời lượng. "Nâng cao": nhạc nền, tên kênh, giọng văn, phụ đề trên hình.
+- Bấm "Lên ý tưởng & thiết kế": AI dựng bản nháp. Trong trang chỉnh sửa: xem trước, sửa lời từng cảnh, đổi giọng/tốc độ, nhạc, tải giọng của bạn lên, yêu cầu AI chỉnh sửa bằng lời.
+- Bấm dựng video để xuất MP4; xong sẽ có thông báo (có thể bật thông báo trên thiết bị hoặc nhận qua Zalo). Tải MP4 và phụ đề SRT trong "Video của tôi".
+- Mỗi ngày có hạn mức lượt dựng và lượt AI viết theo gói; xem ở trang tài khoản/Bảng giá. Hết lượt thì chờ ngày mai hoặc nâng gói.
+- "Gợi ý sáng tạo": các hướng kể chuyện để tham khảo. "Cộng đồng": video người dùng chia sẻ.
+- Đăng nhập bằng Google. Có thể kết nối Zalo để nhận video và tạo video qua Zalo.
+- Lỗi thường gặp: "AI chưa sẵn sàng" = quản trị chưa cấu hình AI; video dựng lâu = đang xếp hàng, chờ vài phút; không nghe thử được giọng = thử lại hoặc chọn giọng khác.`;
+
+const FAQ: [RegExp, string][] = [
+  [/(tao|lam).*(video)|bat dau|cach dung|huong dan/, 'Để tạo video: bấm "Tạo video" → nhập chủ đề hoặc kịch bản → chọn khung hình, giọng đọc → bấm "Lên ý tưởng & thiết kế". Sau khi xem trước và sửa, bấm dựng để xuất MP4.'],
+  [/giong|doc|toc do/, 'Ở bước "Xuất video", bấm "Đổi" cạnh Giọng đọc để mở bảng giọng: bấm ▶ nghe thử, chọn giọng và chỉnh tốc độ đọc.'],
+  [/doc 9|ngang|khung|tiktok|youtube|reels|shorts/, 'Chọn "Dọc 9:16" cho TikTok, Reels, Shorts; "Ngang 16:9" cho YouTube hoặc trình chiếu.'],
+  [/het luot|gioi han|han muc|goi|gia|thanh toan|nang cap/, 'Mỗi ngày bạn có một số lượt dựng và lượt AI viết theo gói. Xem lượt còn lại ở trang tài khoản; cần thêm thì xem "Bảng giá" hoặc chờ sang ngày mới.'],
+  [/tai .*(ve|xuong)|tai video|download|mp4|phu de|srt/, 'Khi dựng xong, mở "Video của tôi" để tải MP4 và phụ đề SRT.'],
+  [/zalo/, 'Bạn có thể kết nối Zalo trong trang tài khoản để nhận video và tạo video qua Zalo.'],
+  [/lau|cham|treo|loi|khong (chay|duoc)/, 'Video đang dựng có thể phải xếp hàng vài phút. Nếu báo lỗi, hãy thử dựng lại; lỗi lặp lại thì nhắn quản trị kèm tên video.'],
+];
+const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+export function faqAnswer(q: string) {
+  const t = fold(q);
+  return FAQ.find(([re]) => re.test(t))?.[1] || 'Mình chưa chắc câu này. Bạn có thể hỏi cụ thể hơn (ví dụ: "cách đổi giọng đọc", "tải video ở đâu"), hoặc liên hệ quản trị qua mục Trợ giúp.';
+}
+
+export async function helpChat(req: Request, env: XEnv, rc: Rc, user: User | null) {
+  const hb = env.config.site.helpBot;
+  if (!hb.enabled) throw new HttpError(404, 'Trợ lý đang tắt.');
+  const b = await body<any>(req, 20_000);
+  const question = String(b.text || '').trim().slice(0, 1000);
+  if (!question) throw new HttpError(400, 'Bạn hãy nhập câu hỏi.');
+  const history: AssistantTurn[] = (Array.isArray(b.history) ? b.history : []).slice(-8)
+    .filter((t: any) => (t?.role === 'user' || t?.role === 'bot') && typeof t.text === 'string').map((t: any) => ({ role: t.role, text: t.text.slice(0, 600) }));
+  // per account (or browser) and per network, so a page cannot ask without end
+  const who = user?.id || (rc.visitor ? 'v:' + rc.visitor : 'ip:' + rc.ip);
+  await useQuota(env, 'help:' + who, 'chat', hb.perDay);
+  await useQuota(env, 'help-ip:' + rc.ip, 'chat', hb.perDay * 4);
+  const t0 = Date.now();
+  if (!anyTextAI(env) || (await budgetState(env)).over) {
+    rc.log('help.chat', { data: { path: 'faq' } });
+    return json({ reply: faqAnswer(question), ai: false });
+  }
+  let about = 'Người hỏi chưa đăng nhập.';
+  if (user) {
+    const { plan } = await planOf(env, user.id).catch(() => ({ plan: null as any }));
+    about = `Người hỏi đã đăng nhập${plan ? `, gói "${plan.name}" (mỗi ngày ${plan.limits.render} lượt dựng, ${plan.limits.script} lượt AI viết, video tối đa ${Math.round(plan.maxSeconds / 60)} phút)` : ''}.`;
+  }
+  const brand = [env.config.brand.name, env.config.brand.accent].filter(Boolean).join(' ');
+  const sys = `Bạn là "${hb.name}", trợ lý AI trên trang ${brand} — nền tảng tạo video vẽ tay và video giải thích bằng AI, giọng đọc tiếng Việt.
+Nhiệm vụ: hướng dẫn sử dụng trang và giải đáp thắc mắc. Trả lời tiếng Việt, thân thiện, ngắn gọn (tối đa 6 câu hoặc vài gạch đầu dòng), nêu đúng tên nút/mục trên trang.
+Không bịa giá, tính năng hay chính sách không có trong tài liệu; không biết thì nói chưa rõ và gợi ý liên hệ quản trị (mục Trợ giúp). Không hỏi hay nhận mật khẩu, khoá API, thông tin thanh toán.
+Câu hỏi ngoài phạm vi trang: trả lời ngắn nếu vô hại rồi gợi ý quay lại việc làm video.
+${about}
+${GUIDE}
+${hb.knowledge ? 'THÔNG TIN THÊM TỪ QUẢN TRỊ:\n' + hb.knowledge : ''}
+Trả DUY NHẤT JSON: {"reply":"câu trả lời","intent":"chat"}`;
+  try {
+    const a = await assistantAnswer(env, sys, history, question, env.config.defaults.textAI as TextProvider, 20_000);
+    rc.log('help.chat', { ms: Date.now() - t0, cost: aiCost(env.config, a.usage), data: { path: 'ai', provider: a.usage.provider, model: a.usage.model } });
+    return json({ reply: a.reply, ai: true });
+  } catch (e: any) {
+    rc.log('help.chat', { ok: false, ms: Date.now() - t0, data: { path: 'faq', error: String(e.message).slice(0, 160) } });
+    return json({ reply: faqAnswer(question), ai: false });
+  }
+}

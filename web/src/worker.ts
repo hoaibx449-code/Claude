@@ -2,7 +2,7 @@ import { creativeResult } from './creative.ts';
 import { creationChoice, designIssues } from './creation-policy.ts';
 // Nét Vẽ Studio API (Cloudflare Worker). Static pages are served from ./public.
 import { consumeNonce, currentUser, endSession, newNonce, startSession, type User, verifyGoogleToken } from './auth.ts';
-import { drawImage, type ImageProvider, type TextProvider, writeScript, reviewDirectionFrames } from './ai.ts';
+import { drawImage, type ImageProvider, type TextProvider, writeScript, reviewDirectionFrames, isTextProvider, hasTextAI } from './ai.ts';
 import {claimIllustrated,startIllustrated,assertIllustrated,voiceCache as illustratedVoiceCache} from '../../addons/faciup-illustrated/web.ts';
 import {claimWhiteboard,startWhiteboard,assertWhiteboard,voiceCache} from '../../addons/faciup-whiteboard/web.ts';
 import { startRunner } from './gcp.ts';
@@ -17,6 +17,7 @@ import { fillLegal } from './legal.ts';
 import { aiCost, clientIp, imageCost, logEvent, routeName, summarize, voiceCost, type LogEntry } from './log.ts';
 import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, vis } from './settings.ts';
 import { adminRoutes } from './admin.ts';
+import { helpChat } from './help.ts';
 import { budgetState, fitVoiceToBudget, requireBudget } from './budget.ts';
 import { checkShare, followUps, keepWebhook, notifyJob, rememberOrigin, resumeZalo, shareLink, zaloUser, zaloWebhook, pollZalo, receiveMode } from './zalo.ts';
 import { pushPublicKey, pushUser, validEndpoint } from './push.ts';
@@ -160,7 +161,7 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
 
   // ---- sign-in
   if (path === '/api/auth/config' && method === 'GET') {
-    return json({ clientId: env.GOOGLE_CLIENT_ID || null, nonce: env.GOOGLE_CLIENT_ID ? await newNonce(env) : null, dev: devAllowed, ui: { ...publicConfig(env.config), voices: (await voicesWithStatus(env)).filter((v) => v.ready) }, ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY } });
+    return json({ clientId: env.GOOGLE_CLIENT_ID || null, nonce: env.GOOGLE_CLIENT_ID ? await newNonce(env) : null, dev: devAllowed, ui: { ...publicConfig(env.config), voices: (await voicesWithStatus(env)).filter((v) => v.ready) }, ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY, ollama: hasTextAI(env, 'ollama') } });
   }
   if (path === '/api/auth/google' && method === 'POST') {
     if (!env.GOOGLE_CLIENT_ID) throw new HttpError(503, 'Chủ trang chưa cấu hình đăng nhập Google.');
@@ -213,6 +214,8 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
   if (pub) return pub;
   // what people do in the page (guests included): views, clicks, errors
   if (path === '/api/events' && method === 'POST') return clientEvents(req, env, rc);
+  // the help chat in the corner (guests included)
+  if (path === '/api/help/chat' && method === 'POST') return helpChat(req, env, rc, user);
   if (!user) throw new HttpError(401, 'Bạn cần đăng nhập.');
   if (await blocked(env, user.id)) throw new HttpError(403, BLOCKED);
   if (path.startsWith('/api/admin/')) {
@@ -364,7 +367,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
     const { plan, expires } = await planOf(env, user.id);
     const zalo = env.config.zalo.enabled ? await env.DB.prepare('SELECT notify FROM zalo_links WHERE user_id = ?').bind(user.id).first<any>() : null;
     const consent = await env.DB.prepare('SELECT 1 FROM consents WHERE user_id = ? AND version = ?').bind(user.id, env.config.legal.version).first();
-    return json({ user, needConsent: !consent, limits: plan.limits, plan: { id: plan.id, name: plan.name, expires, maxSeconds: plan.maxSeconds }, zaloLinked: !!zalo, used: Object.fromEntries(used.results.map((r) => [r.kind, r.n])), ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY },
+    return json({ user, needConsent: !consent, limits: plan.limits, plan: { id: plan.id, name: plan.name, expires, maxSeconds: plan.maxSeconds }, zaloLinked: !!zalo, used: Object.fromEntries(used.results.map((r) => [r.kind, r.n])), ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY, ollama: hasTextAI(env, 'ollama') },
       ui: { ...publicConfig(env.config), voices: (await voicesWithStatus(env)).filter((v) => v.ready) }, admin: await isAdmin(env, env.config, user) });
   }
 
@@ -805,7 +808,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
       raw = { title: scenes[0][0].replace(/[.!?…]+$/, '').slice(0, 70), scenes: scenes.map((lines) => ({ lines })) };
       if (source === 'mine-ai') {
         await requireBudget(env, 'AI thiết kế cảnh');
-        const provider = b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (D.textAI as TextProvider);
+        const provider = isTextProvider(b.provider) ? b.provider : (D.textAI as TextProvider);
         await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
         try {
           const out = await writeScript(env, provider, { topic: '', seconds: 0, tone: '', ratio, visual: 'sketch', extra: env.config.promptExtra+illustratedExtra, scenes, format, niche, look, brief, recentDirections, creative: b.creative, creativeRuntime:{styles:env.config.enabledStyles,renderMode:env.config.rendering.mode} });
@@ -820,7 +823,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
         }
       }
     } else {
-      const provider: TextProvider | 'mock' = b.provider === 'mock' && devAllowed ? 'mock' : b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (D.textAI as TextProvider);
+      const provider: TextProvider | 'mock' = b.provider === 'mock' && devAllowed ? 'mock' : isTextProvider(b.provider) ? b.provider : (D.textAI as TextProvider);
       const seconds = Math.max(15, Math.min(env.config.limits.maxSeconds, (await planOf(env, user.id)).plan.maxSeconds, Number(b.seconds) || D.seconds));
       if (provider === 'mock') raw = sampleScript(text);
       else {

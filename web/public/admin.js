@@ -16,6 +16,7 @@ const ADMIN_TABS = ADMIN_GROUPS.flatMap(([, list]) => list);
 const SECRET_INFO = {
   GEMINI_API_KEY: ['Gemini (Google AI Studio)', 'Viết kịch bản + vẽ ảnh. aistudio.google.com → Get API key.'],
   OPENAI_API_KEY: ['OpenAI', 'Viết kịch bản + vẽ ảnh. platform.openai.com → API keys.'],
+  OLLAMA_API_KEY: ['Ollama (không bắt buộc)', 'Chỉ cần với Ollama Cloud (ollama.com → Settings → Keys) hoặc máy chủ Ollama có đặt mật khẩu.'],
   EVERAI_API_KEY: ['EverAI', 'Giọng đọc tiếng Việt tự nhiên (máy dựng).'],
   GOOGLE_TTS_API_KEY: ['Google Text-to-Speech', 'Giọng Google (máy dựng). Không bắt buộc: giọng miễn phí dùng tài khoản Google Cloud của máy dựng.'],
   ELEVENLABS_API_KEY: ['ElevenLabs', 'Giọng ElevenLabs (máy dựng).'],
@@ -239,13 +240,13 @@ function keysCard(secrets, secretInput, names) {
 
 function settingsTab(c, secrets, secretInput) {
   return [
-    keysCard(secrets, secretInput, ['GEMINI_API_KEY', 'OPENAI_API_KEY']),
+    keysCard(secrets, secretInput, ['GEMINI_API_KEY', 'OPENAI_API_KEY', 'OLLAMA_API_KEY']),
+    aiOrderCard(c),
     card('Máy dựng video', 'Cloud dùng Cloud Run. Máy cá nhân cần mở runner trên PC. Trình duyệt xuất trực tiếp trên thiết bị, cần giữ tab mở; tải tệp về máy, chưa lưu vào thư viện. Giọng AI vẫn cần dịch vụ giọng; có thể tải bản thu âm của bạn.',
       h('label', {}, 'Nơi dựng video', select([['cloud', 'Cloud (Google Cloud Run)'], ['local', 'Máy cá nhân (PC / VPS)'], ['browser', 'Trình duyệt (tạm thời)']], c.rendering?.mode || 'cloud', v => { c.rendering = {mode:v}; }))),
     card('Mặc định khi tạo video', 'Người dùng vẫn đổi được từng video.', h('div', { class: 'grid' },
       h('label', {}, 'Cách tạo', select(Object.entries(c.labels.sources), c.defaults.source, (v) => { c.defaults.source = v; })),
-      h('label', {}, 'AI viết kịch bản', select(Object.entries(c.labels.ai), c.defaults.textAI, (v) => { c.defaults.textAI = v; })),
-      h('label', {}, 'AI vẽ ảnh', select(Object.entries(c.labels.ai), c.defaults.imageAI, (v) => { c.defaults.imageAI = v; })),
+      h('label', {}, 'AI vẽ ảnh', select(Object.entries(c.labels.ai).filter(([k]) => k !== 'ollama'), c.defaults.imageAI, (v) => { c.defaults.imageAI = v; })),
       h('label', {}, 'Phong cách', select(Object.entries(c.labels.styles), c.defaults.style, (v) => { c.defaults.style = v; })),
       h('label', {}, 'Kiểu hình', select(Object.entries(c.labels.visual), c.defaults.visual, (v) => { c.defaults.visual = v; })),
       h('label', {}, 'Khung hình', select([['9:16', 'Dọc 9:16'], ['16:9', 'Ngang 16:9']], c.defaults.ratio, (v) => { c.defaults.ratio = v; })),
@@ -262,14 +263,19 @@ function settingsTab(c, secrets, secretInput) {
     card('Đăng nhập Google', null,
       h('label', {}, 'Cách mở Google', select([['auto', 'Tự động (khuyên dùng): chuyển trang khi là app cài trên màn hình chính hoặc trình duyệt trong Zalo/Facebook'], ['redirect', 'Luôn chuyển trang (ổn định nhất)'], ['popup', 'Luôn cửa sổ bật lên']], c.auth.google, (v) => { c.auth.google = v; })),
       h('p', { class: 'muted' }, 'Để kiểu chuyển trang hoạt động, vào Google Cloud Console → APIs & Services → Credentials → OAuth client (Web) → Authorized redirect URIs, thêm đúng địa chỉ: ', h('code', {}, location.origin + '/api/auth/google/callback'))),
-    card('Model AI', 'Model dự phòng được thử lần lượt khi model chính lỗi hoặc quá tải; hết model thì chuyển sang nhà cung cấp còn lại.', h('div', { class: 'grid' },
+    card('Model AI', 'Model dự phòng được thử lần lượt khi model chính lỗi hoặc quá tải; hết model thì chuyển sang nhà cung cấp kế tiếp theo Thứ tự AI.', h('div', { class: 'grid' },
       h('label', {}, 'OpenAI viết', input(c.models.openaiText, (v) => { c.models.openaiText = v; })),
       h('label', {}, 'OpenAI dự phòng', input(c.models.openaiFallback, (v) => { c.models.openaiFallback = v; })),
       h('label', {}, 'OpenAI vẽ', input(c.models.openaiImage, (v) => { c.models.openaiImage = v; })),
       h('label', {}, 'Chất lượng ảnh OpenAI', select([['low', 'Thấp (rẻ nhất)'], ['medium', 'Vừa'], ['high', 'Cao']], c.models.openaiImageQuality, (v) => { c.models.openaiImageQuality = v; })),
       h('label', {}, 'Gemini viết', input(c.models.geminiText, (v) => { c.models.geminiText = v; })),
       h('label', {}, 'Gemini dự phòng', input(c.models.geminiFallback, (v) => { c.models.geminiFallback = v; })),
-      h('label', {}, 'Gemini vẽ', input(c.models.geminiImage, (v) => { c.models.geminiImage = v; })))),
+      h('label', {}, 'Gemini vẽ', input(c.models.geminiImage, (v) => { c.models.geminiImage = v; })),
+      h('label', {}, 'Địa chỉ Ollama', input(c.models.ollamaUrl, (v) => { c.models.ollamaUrl = v.trim(); }, { type: 'url', placeholder: 'https://ollama.com hoặc https://ollama.cua-ban.vn' })),
+      h('label', {}, 'Ollama viết', input(c.models.ollamaText, (v) => { c.models.ollamaText = v.trim(); }, { placeholder: 'gpt-oss:20b, qwen3:8b…' })),
+      h('label', {}, 'Ollama dự phòng', input(c.models.ollamaFallback, (v) => { c.models.ollamaFallback = v; }, { placeholder: 'cách nhau bằng dấu phẩy' }))),
+    h('p', { class: 'muted' }, 'Ollama phải mở được từ Internet (máy chủ chạy web không gọi được localhost của bạn). Ollama chỉ viết, không vẽ ảnh.'),
+    ollamaCheck()),
     budgetCard(c),
     card('Bảng giá vốn', 'Dùng để ghi chi phí từng lần gọi AI và giọng đọc vào nhật ký. Model: "tên-model: giá vào, giá ra" (USD / 1 triệu token), "*" = mặc định.',
       h('div', { class: 'grid' },
@@ -287,6 +293,33 @@ function settingsTab(c, secrets, secretInput) {
       h('label', {}, 'Email quản trị viên (mỗi dòng một email; để trống = dùng ADMIN_EMAIL trên máy chủ)', area(c.admins.join('\n'), (v) => { c.admins = v.split(/[\s,]+/).filter(Boolean); }, 3)),
       h('label', {}, 'Giữ nhật ký (ngày)', input(c.logDays, (v) => { c.logDays = v; }, { type: 'number', min: 7, max: 3650 }))),
   ];
+}
+
+/** Which AI writes first, and which take over (in order) when it fails or has no key. */
+function aiOrderCard(c) {
+  const names = { gemini: 'Gemini', openai: 'OpenAI', ollama: 'Ollama' };
+  c.models.order = [...new Set([...(c.models.order || []), 'gemini', 'openai', 'ollama'])];
+  const list = h('ol', { class: 'ai-order' });
+  const move = (i, d) => { const o = c.models.order, j = i + d; if (j < 0 || j >= o.length) return; [o[i], o[j]] = [o[j], o[i]]; c.defaults.textAI = o[0]; paint(); };
+  const paint = () => list.replaceChildren(...c.models.order.map((k, i) => h('li', {},
+    h('span', { class: 'ai-rank' }, String(i + 1)), h('span', { class: 'ai-name' }, names[k] || k, i === 0 ? h('small', { class: 'muted' }, ' · viết chính') : h('small', { class: 'muted' }, ' · dự phòng ' + i)),
+    h('button', { type: 'button', class: 'ghost small', disabled: i === 0, 'aria-label': 'Đưa ' + names[k] + ' lên', onclick: () => move(i, -1) }, '↑'),
+    h('button', { type: 'button', class: 'ghost small', disabled: i === c.models.order.length - 1, 'aria-label': 'Đưa ' + names[k] + ' xuống', onclick: () => move(i, 1) }, '↓'))));
+  paint();
+  return card('Thứ tự AI', 'AI đầu tiên viết kịch bản, thiết kế cảnh và trả lời chat. Khi lỗi, quá tải hoặc chưa có khoá, hệ thống tự chuyển xuống AI kế tiếp. Vẽ ảnh chọn riêng ở "Mặc định khi tạo video".', list);
+}
+function ollamaCheck() {
+  const out = h('div', { class: 'muted' });
+  return h('div', {}, h('button', { type: 'button', class: 'ghost small', onclick: async () => {
+    out.textContent = 'Đang kiểm tra… (lưu cài đặt trước nếu vừa đổi địa chỉ)';
+    try {
+      const r = await api('/api/admin/ai/check'), o = r.ollama;
+      if (!o) { out.textContent = 'Chưa nhập địa chỉ Ollama.'; return; }
+      const t = o.timing?.[0];
+      out.replaceChildren(h('p', { class: o.error ? 'bad' : 'ok' }, o.error ? '✗ Không kết nối được: ' + o.error : `✓ Kết nối được (${o.ms} ms). Model có sẵn: ${o.models.slice(0, 12).join(', ') || '(trống)'}`),
+        t ? h('p', { class: t.error || t.status !== 200 ? 'bad' : 'ok' }, t.error || t.status !== 200 ? `✗ ${t.model}: ${t.error || 'HTTP ' + t.status}` : `✓ ${t.model} trả lời trong ${(t.ms / 1000).toFixed(1)} giây`) : null);
+    } catch (e) { out.textContent = e.message; }
+  } }, 'Kiểm tra Ollama'), out);
 }
 
 function plansTab(c, secrets, secretInput) {
@@ -597,7 +630,26 @@ function contentTab(c) {
       h('button', { type: 'button', class: 'ghost small danger', onclick: () => { c.templates.splice(i, 1); drawTpls(); } }, 'Bỏ mẫu')),
     h('label', {}, 'Kịch bản (mỗi đoạn cách nhau một dòng trống = một cảnh)', area(t.text, (v) => { t.text = v; }, 6)))));
   drawTpls();
+  c.site.social ||= {}; c.site.helpBot ||= { enabled: true, name: 'Trợ lý', welcome: '', knowledge: '', perDay: 30 };
+  const THEMES = [['aurora', 'Cực quang (mặc định)', 'linear-gradient(120deg,#4f46e5,#7c3aed,#db2777)'], ['ocean', 'Đại dương', 'linear-gradient(120deg,#0891b2,#0e7490,#1d4ed8)'],
+    ['sunset', 'Hoàng hôn', 'linear-gradient(120deg,#f97316,#e11d48,#9333ea)'], ['forest', 'Rừng xanh', 'linear-gradient(120deg,#059669,#047857,#d97706)'], ['classic', 'Cổ điển (nền trắng)', 'linear-gradient(120deg,#2f6bff,#1748d6)']];
+  const themeRow = h('div', { class: 'theme-pick' });
+  const paintThemes = () => themeRow.replaceChildren(...THEMES.map(([k, name, g]) => h('button', { type: 'button', class: (c.site.theme || 'aurora') === k ? 'on' : '', 'aria-pressed': String((c.site.theme || 'aurora') === k),
+    onclick: () => { c.site.theme = k; document.documentElement.dataset.theme = k; paintThemes(); } }, h('i', { style: 'background:' + g }), name)));
+  paintThemes();
+  const SOCIAL_NAMES = [['facebook', 'Facebook'], ['youtube', 'YouTube'], ['tiktok', 'TikTok'], ['instagram', 'Instagram'], ['zalo', 'Zalo OA'], ['threads', 'Threads'], ['x', 'X (Twitter)'], ['linkedin', 'LinkedIn']];
+  const hb = c.site.helpBot;
   return [
+    card('Giao diện', 'Bộ màu cho toàn trang. Bấm để xem trước ngay, rồi Lưu cài đặt để áp dụng cho mọi người.', themeRow),
+    card('Mạng xã hội', 'Dán đường dẫn đầy đủ (https://…). Kênh nào có link sẽ hiện biểu tượng ở trang chủ và chân trang; để trống = ẩn.', h('div', { class: 'grid' },
+      SOCIAL_NAMES.map(([k, name]) => h('label', {}, name, input(c.site.social[k], (v) => { c.site.social[k] = v.trim(); }, { type: 'url', placeholder: 'https://' }))))),
+    card('Trợ lý hỗ trợ', 'Khung chat ở góc phải: AI hướng dẫn sử dụng và giải đáp thắc mắc. Dùng AI theo "Thứ tự AI"; khi AI lỗi sẽ trả lời theo câu hỏi thường gặp.',
+      check(hb.enabled, (v) => { hb.enabled = v; }, 'Hiện trợ lý trên trang'),
+      h('div', { class: 'grid' },
+        h('label', {}, 'Tên trợ lý', input(hb.name, (v) => { hb.name = v; }, { maxlength: 40 })),
+        h('label', {}, 'Số câu hỏi mỗi người mỗi ngày', input(hb.perDay, (v) => { hb.perDay = v; }, { type: 'number', min: 1, max: 1000 }))),
+      h('label', {}, 'Lời chào', input(hb.welcome, (v) => { hb.welcome = v; }, { maxlength: 300 })),
+      h('label', {}, 'Thông tin thêm cho trợ lý (giá, chính sách, liên hệ, câu hỏi hay gặp…)', area(hb.knowledge, (v) => { hb.knowledge = v; }, 6))),
     card('Thương hiệu', null, h('div', { class: 'grid' },
       h('label', {}, 'Tên trang', input(c.brand.name, (v) => { c.brand.name = v; }, { maxlength: 40 })),
       h('label', {}, 'Chữ nổi bật sau tên', input(c.brand.accent, (v) => { c.brand.accent = v; }, { maxlength: 30 })),

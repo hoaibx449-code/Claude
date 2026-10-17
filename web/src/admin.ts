@@ -94,6 +94,22 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
       const j: any = await r.json().catch(() => ({}));
       out.openai = { status: r.status, error: j.error?.message?.slice(0, 160) };
     }
+    if (env.OLLAMA_URL) {
+      // which models the server has, and how long a tiny JSON answer takes on the chosen one
+      const t0 = Date.now(), auth: Record<string, string> = env.OLLAMA_API_KEY ? { authorization: `Bearer ${env.OLLAMA_API_KEY}` } : {};
+      try {
+        const r = await fetch(env.OLLAMA_URL + '/api/tags', { headers: auth, signal: AbortSignal.timeout(15_000) });
+        const j: any = await r.json().catch(() => ({}));
+        out.ollama = { status: r.status, ms: Date.now() - t0, models: (j.models || []).map((m: any) => String(m.name || m.model)).slice(0, 60), error: r.ok ? undefined : String(j.error || 'HTTP ' + r.status).slice(0, 160) };
+        if (r.ok && env.OLLAMA_TEXT_MODEL) {
+          const t1 = Date.now();
+          const res = await fetch(env.OLLAMA_URL + '/api/chat', { method: 'POST', headers: { 'content-type': 'application/json', ...auth }, signal: AbortSignal.timeout(60_000),
+            body: JSON.stringify({ model: env.OLLAMA_TEXT_MODEL, stream: false, format: 'json', messages: [{ role: 'user', content: 'Trả JSON {"ok":true}' }], options: { num_predict: 64 } }) });
+          const jj: any = await res.json().catch(() => ({}));
+          out.ollama.timing = [{ model: env.OLLAMA_TEXT_MODEL, status: res.status, ms: Date.now() - t1, error: res.ok ? undefined : String(jj.error || '').slice(0, 160) }];
+        }
+      } catch (e: any) { out.ollama = { ms: Date.now() - t0, error: String(e.message).slice(0, 160) }; }
+    }
     return json(out);
   }
   if (sub === 'voices/test' && method === 'POST') {
@@ -155,7 +171,7 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
     const secrets = await secretStatus(rawEnv);
     const setup = [
       { k: 'Đăng nhập Google', ok: !!env.GOOGLE_CLIENT_ID },
-      { k: 'AI viết (Gemini hoặc OpenAI)', ok: !!(secrets.GEMINI_API_KEY || secrets.OPENAI_API_KEY), note: 'Không bắt buộc: chế độ miễn phí vẫn chạy' },
+      { k: 'AI viết (Gemini, OpenAI hoặc Ollama)', ok: !!(secrets.GEMINI_API_KEY || secrets.OPENAI_API_KEY || env.config.models.ollamaUrl), note: 'Không bắt buộc: chế độ miễn phí vẫn chạy' },
       { k: 'Giọng đọc (EverAI / Google)', ok: !!(secrets.EVERAI_API_KEY || secrets.GOOGLE_TTS_API_KEY) || !!env.config.voices.find((v) => v.provider === 'free'), note: 'Không có khoá thì dùng giọng máy miễn phí' },
       { k: 'Máy dựng tự bật (Cloud Run)', ok: !!(env.GCP_TRIGGER_KEY && env.GCP_PROJECT) },
       { k: 'Zalo Bot', ok: !!(env.config.zalo.enabled && (secrets as any).ZALO_BOT_TOKEN) },

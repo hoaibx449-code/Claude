@@ -6,6 +6,13 @@ export interface Env {
   RUNNER_TOKEN?: string;
   OPENAI_API_KEY?: string;
   GEMINI_API_KEY?: string;
+  /** Ollama (self-hosted or Ollama Cloud): server address, optional key, models */
+  OLLAMA_API_KEY?: string;
+  OLLAMA_URL?: string;
+  OLLAMA_TEXT_MODEL?: string;
+  OLLAMA_TEXT_FALLBACK?: string;
+  /** comma-separated text providers in the order they are tried */
+  AI_ORDER?: string;
   OPENAI_TEXT_MODEL: string;
   /** comma-separated models tried when the main one fails */
   OPENAI_TEXT_FALLBACK?: string;

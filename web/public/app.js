@@ -105,6 +105,8 @@ function applyUI(next) {
   // links to switched-off pages disappear (Beta hides prices)
   for (const a of document.querySelectorAll('[data-route="goi"]')) a.hidden = V('feature:plans') !== 'on';
   for (const a of document.querySelectorAll('[data-route="cong-dong"]')) a.hidden = V('feature:community') === 'hidden';
+  document.documentElement.dataset.theme = ui.site?.theme || 'aurora';
+  window.nvHelpChat?.();
   const bb = document.getElementById('betaBadge');
   if (bb) { bb.hidden = !ui.beta; bb.textContent = ui.beta?.label || 'Beta'; }
 }
@@ -312,7 +314,7 @@ async function openMenu() {
     h('div', { class: 'menu-head' }, h('b', {}, me.user.name || me.user.email.split('@')[0]), h('span', { class: 'muted' }, me.user.email)),
     h('dl', { class: 'menu-stats' },
       h('dt', {}, 'Gói'), h('dd', {}, (me.plan?.name || 'Miễn phí') + (me.plan?.expires ? ` · đến ${new Date(me.plan.expires).toLocaleDateString('vi-VN')}` : '')),
-      h('dt', {}, 'Hôm nay còn'), h('dd', {}, `${left('render')} lượt dựng` + (me.ai?.gemini || me.ai?.openai ? ` · ${left('script')} lượt AI viết` : '')),
+      h('dt', {}, 'Hôm nay còn'), h('dd', {}, `${left('render')} lượt dựng` + (me.ai?.gemini || me.ai?.openai || me.ai?.ollama ? ` · ${left('script')} lượt AI viết` : '')),
       V('look:doc') !== 'hidden' ? h('dt', {}, 'Phim tài liệu') : null, V('look:doc') !== 'hidden' ? h('dd', {}, credits) : null),
     h('nav', { class: 'menu-links' },
       item('#/video', 'Video của tôi', 'menu-videos'), item('#/tai-khoan', 'Tài khoản và dữ liệu', 'menu-account'),
@@ -405,11 +407,35 @@ function resume(after) {
   if (after.hash) { location.hash = after.hash; return; }
   if (after.create) { location.hash = '#/tao'; setTimeout(() => createProject(after.create), 300); }
 }
+const SOCIAL = {
+  facebook: ['Facebook', '<path d="M14 8h3V4h-3a4 4 0 0 0-4 4v3H7v4h3v6h4v-6h3l1-4h-4V8z"/>'],
+  youtube: ['YouTube', '<rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path d="M10 9.5l5 2.5-5 2.5z"/>'],
+  tiktok: ['TikTok', '<path d="M14 3v11.5a3.5 3.5 0 1 1-3.5-3.5"/><path d="M14 3c.5 2.6 2.2 4.2 5 4.5"/>'],
+  instagram: ['Instagram', '<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/>'],
+  zalo: ['Zalo', '<path d="M4 5h16v11H9l-5 4z"/><path d="M8.5 8.5h4l-4 5h4M15 8.5v5"/>'],
+  threads: ['Threads', '<path d="M16.5 9.5c-.6-2.4-2.3-3.5-4.6-3.5-3.2 0-5.4 2.4-5.4 6s2.2 6 5.6 6c2.8 0 4.9-1.6 4.9-4 0-2.3-2-3.5-4.6-3.3-1.8.1-2.9 1-2.9 2.2 0 1.3 1.2 2.1 2.6 2 2.2-.1 3.3-1.9 3.3-5"/>'],
+  x: ['X', '<path d="M4 4l16 16M20 4L4 20"/>'],
+  linkedin: ['LinkedIn', '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 10v7M8 7v.01M12 17v-4a2 2 0 0 1 4 0v4M12 10v7"/>'],
+};
+/** The brand's social channels (Quản trị → Trang chủ & nội dung → Mạng xã hội). */
+function socialLinks(cls = '') {
+  const list = Object.entries(ui.site?.social || {}).filter(([k, u]) => SOCIAL[k] && u);
+  if (!list.length) return null;
+  return h('nav', { class: 'social ' + cls, 'aria-label': 'Mạng xã hội' }, list.map(([k, u]) => {
+    const a = h('a', { href: u, target: '_blank', rel: 'noopener', 'aria-label': SOCIAL[k][0], title: SOCIAL[k][0], 'data-ev': 'social-' + k });
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    for (const [k2, v] of Object.entries({ viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) svg.setAttribute(k2, v);
+    const doc = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${SOCIAL[k][1]}</svg>`, 'image/svg+xml');
+    for (const n of [...doc.documentElement.childNodes]) svg.append(document.importNode(n, true));
+    a.append(svg); return a;
+  }));
+}
 const footer = () => h('footer', { class: 'site' },
   h('div', { class: 'operator' },
     h('span', {}, '© ' + new Date().getFullYear() + ' ' + (ui.legal?.company || ui.brand.name)),
     ui.legal?.address ? h('span', {}, ui.legal.address) : null, ui.legal?.taxId ? h('span', {}, 'MST ' + ui.legal.taxId) : null,
     ui.legal?.email && !/example\.(com|org)$/i.test(ui.legal.email) ? h('a', { href: 'mailto:' + ui.legal.email }, ui.legal.email) : null),
+  socialLinks(),
   h('nav', { class: 'policies', 'aria-label': 'Chính sách' }, h('a', { href: '#/dieu-khoan' }, 'Điều khoản'), h('a', { href: '#/bao-mat' }, 'Bảo mật'),
     V('feature:plans') === 'on' ? h('a', { href: '#/hoan-tien' }, 'Hoàn tiền') : null, h('a', { href: '#/tro-giup' }, 'Trợ giúp')));
 
@@ -509,7 +535,7 @@ async function showLanding() {
         h('p', { class: 'description' }, site.heroText && site.heroText.length < 200 ? site.heroText : 'Nhập nội dung, chọn giọng đọc và tạo video theo cách kể của bạn.'),
         h('div', { class: 'cta' }, h('a', { class: 'btn', href: '#/tao', 'data-ev': 'hero-create' }, icon('plus'), 'Tạo video'), h('a', { class: 'btn ghost', href: '#/mau' }, 'Gợi ý sáng tạo')),
         h('ul', { class: 'home-facts' }, facts.map(([ic, t]) => h('li', {}, icon(ic), t))),
-        zalo),
+        zalo, socialLinks('home-social')),
       h('div', { class: 'home-stage' }, h('div', { class: 'stage-heading' }, h('span', {}, 'Từ kịch bản đến màn hình'), h('span', { class: 'stage-dot', 'aria-hidden': 'true' })), gallery?.element || h('figure', { class: 'home-preview' }, media, h('figcaption', {}, h('span', {}, 'Xem chuyển động thực tế'), pause)))),
     h('section', { class: 'home-how', 'aria-label': 'Cách hoạt động' }, how.map(([t, d], i) => h('div', {}, h('span', { class: 'num' }, String(i + 1).padStart(2, '0')), h('h3', {}, t), h('p', {}, d)))),
     footer());
@@ -1018,7 +1044,7 @@ async function showCreate() {
   const demos = [];
   let mode = V('mode:' + (wantMode || D.mode || 'hand')) === 'on' ? wantMode || D.mode || 'hand' : 'hand';
   let speed = 1;
-  const hasAI = !!(cfg?.ai?.gemini || cfg?.ai?.openai || me?.ai?.gemini || me?.ai?.openai);
+  const hasAI = !!(cfg?.ai?.gemini || cfg?.ai?.openai || cfg?.ai?.ollama || me?.ai?.gemini || me?.ai?.openai || me?.ai?.ollama);
   const f = {
     wish: h('textarea',{id:'f-wish',rows:4,maxlength:2400,required:true,placeholder:'Ví dụ: Video giải thích vì sao chúng ta trì hoãn, mở bằng một tình huống quen thuộc; nhịp nhanh vừa, chữ ít, hình làm rõ nguyên nhân và kết thúc bằng một hành động nhỏ.'}),
     direction: h('input',{id:'f-direction',maxlength:160,value:savedDirection || (wantLook==='kinetic'?'Chữ chuyển động':'') ,placeholder:'Ví dụ: VOX, Whiteboard, tối giản… hoặc để AI tự chọn'}),
@@ -1210,7 +1236,7 @@ async function showAccount() {
     h('section', { class: 'card setgroup' }, h('h2', {}, 'Gói và lượt dùng'),
       h('dl', { class: 'summary' },
         h('dt', {}, 'Gói'), h('dd', {}, (me.plan?.name || 'Miễn phí') + (me.plan?.expires ? ` · đến ${fmtDate(me.plan.expires)}` : '')),
-        h('dt', {}, 'Hôm nay còn'), h('dd', {}, `${left('render')}/${lim.render || 0} lượt dựng` + (me.ai?.gemini || me.ai?.openai ? ` · ${left('script')}/${lim.script || 0} lượt AI viết` : '')),
+        h('dt', {}, 'Hôm nay còn'), h('dd', {}, `${left('render')}/${lim.render || 0} lượt dựng` + (me.ai?.gemini || me.ai?.openai || me.ai?.ollama ? ` · ${left('script')}/${lim.script || 0} lượt AI viết` : '')),
         V('look:doc') !== 'hidden' ? h('dt', {}, 'Phim tài liệu') : null, V('look:doc') !== 'hidden' ? credits : null),
       V('feature:plans') === 'on' ? h('a', { class: 'btn ghost', href: '#/goi' }, 'Xem bảng giá') : null),
     ui.zalo?.enabled ? h('section', { class: 'card setgroup' }, h('h2', {}, 'Zalo'), row(me.zaloLinked ? 'Đã kết nối' : 'Chưa kết nối', 'Nhận video và tạo video ngay trong Zalo.', h('a', { class: 'btn ghost small', href: '#/zalo' }, me.zaloLinked ? 'Quản lý' : 'Kết nối'))) : null,

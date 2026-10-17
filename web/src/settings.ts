@@ -8,7 +8,7 @@ import { DEFAULT_TEMPLATES, type Template } from './templates.ts';
 import { DOODLE_NAMES } from './doodles.ts';
 import { DEFAULT_PRIVACY, DEFAULT_REFUND, DEFAULT_TERMS, LEGAL_VERSION, type LegalConfig } from './legal.ts';
 
-export const SECRET_NAMES = ['OPENAI_API_KEY', 'GEMINI_API_KEY', 'EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'ELEVENLABS_API_KEY', 'ZALO_BOT_TOKEN', 'SEPAY_API_KEY'] as const;
+export const SECRET_NAMES = ['OPENAI_API_KEY', 'GEMINI_API_KEY', 'OLLAMA_API_KEY', 'EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'ELEVENLABS_API_KEY', 'ZALO_BOT_TOKEN', 'SEPAY_API_KEY'] as const;
 export type SecretName = (typeof SECRET_NAMES)[number];
 /** Keys the render machine needs (voices); the Worker uses the AI ones itself. */
 const RUNNER_SECRETS: SecretName[] = ['EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'ELEVENLABS_API_KEY'];
@@ -31,6 +31,8 @@ export const VISUAL_KEYS = ['doodle', 'sketch', 'diagram', 'mix', 'images'] as c
 export const SOURCE_KEYS = ['topic', 'mine-ai', 'mine-free'] as const;
 export const ACTION_KEYS = ['idle', 'walk', 'run', 'wave', 'think', 'cheer', 'sad', 'point', 'shrug', 'jump'] as const;
 export const AI_KEYS = ['openai', 'gemini'] as const;
+/** providers that can write text (Ollama writes, it does not draw) */
+export const TEXT_AI_KEYS = ['gemini', 'openai', 'ollama'] as const;
 
 /** idea: written down only · test: admins can make videos with it · live: everyone sees it */
 export interface CustomFormat { id: string; name: string; base: string; brief: string; note: string; stage: 'idea' | 'test' | 'live'; created: number }
@@ -52,7 +54,7 @@ export interface Config {
   auth: { google: string };
   rendering: { mode: 'cloud' | 'local' | 'browser' };
   voices: Voice[];
-  models: { openaiText: string; openaiImage: string; openaiImageQuality: string; geminiText: string; geminiImage: string; openaiFallback: string; geminiFallback: string };
+  models: { openaiText: string; openaiImage: string; openaiImageQuality: string; geminiText: string; geminiImage: string; openaiFallback: string; geminiFallback: string; ollamaUrl: string; ollamaText: string; ollamaFallback: string; order: string[] };
   /** daily defaults; maxSeconds: longest video anyone may make (plans may allow less) */
   limits: { script: number; image: number; render: number; maxSeconds: number };
   promptExtra: string;
@@ -97,7 +99,15 @@ export interface SiteConfig {
   /** short how-to video shown next to the three steps */
   tutorial: string;
   showcase: SiteMedia[];
+  /** colour theme of the whole site */
+  theme: string;
+  /** links to the brand's social channels, shown on the home page and in the footer */
+  social: Partial<Record<(typeof SOCIAL_KEYS)[number], string>>;
+  /** the help chat in the bottom right corner */
+  helpBot: { enabled: boolean; name: string; welcome: string; knowledge: string; perDay: number };
 }
+export const THEMES = ['aurora', 'ocean', 'sunset', 'forest', 'classic'] as const;
+export const SOCIAL_KEYS = ['facebook', 'youtube', 'tiktok', 'instagram', 'zalo', 'threads', 'x', 'linkedin'] as const;
 export type Vis = 'on' | 'dev' | 'hidden';
 export interface ZaloConfig {
   enabled: boolean; botLink: string;
@@ -180,7 +190,7 @@ export function defaultConfig(env: Env): Config {
       visual: { doodle: 'Tranh vẽ tay lộ dần theo nét bút (Open Doodles, miễn phí)', sketch: 'Bảng vẽ tự do: chữ + hình + sơ đồ', diagram: 'Sơ đồ theo mẫu', mix: 'Kết hợp sơ đồ + tranh AI', images: 'Tranh AI cho mọi cảnh' },
       sources: { topic: 'AI viết từ chủ đề', 'mine-ai': 'Kịch bản của tôi + AI minh hoạ', 'mine-free': 'Kịch bản của tôi + tự minh hoạ (miễn phí)' },
       actions: { idle: 'Đứng', walk: 'Đi bộ', run: 'Chạy', wave: 'Vẫy tay', think: 'Suy nghĩ', cheer: 'Ăn mừng', sad: 'Buồn', point: 'Chỉ tay', shrug: 'Nhún vai', jump: 'Nhảy' },
-      ai: { openai: 'OpenAI', gemini: 'Gemini' },
+      ai: { openai: 'OpenAI', gemini: 'Gemini', ollama: 'Ollama' },
       modes: { hand: 'Bàn tay vẽ (whiteboard)', motion: 'Đồ hoạ chuyển động (motion graphics)', math: 'Toán học / học thuật (kiểu Manim)', kinetic: 'Chữ chuyển động (kinetic typography)' },
       looks: { director:'AI đạo diễn', illustrated:'Hoạt hình minh họa nhiều lớp', whiteboard:'Whiteboard vẽ tay đa sắc', act: 'Hoạt hình kể chuyện', kinetic: 'Chữ bùng nổ', split: 'Hai bên đối lập', chat: 'Tin nhắn drama', story: 'Kể chuyện người que', data: 'Con số biết nói', quiz: 'Đố vui đếm ngược', doc: 'Phim tài liệu AI' },
       lookNotes: {
@@ -219,6 +229,7 @@ export function defaultConfig(env: Env): Config {
       openaiText: env.OPENAI_TEXT_MODEL || 'gpt-4o-mini', openaiImage: env.OPENAI_IMAGE_MODEL || 'gpt-image-1', openaiImageQuality: env.OPENAI_IMAGE_QUALITY || 'medium',
       geminiText: env.GEMINI_TEXT_MODEL || 'gemini-3.5-flash', geminiImage: env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
       openaiFallback: 'gpt-4.1-mini', geminiFallback: 'gemini-flash-latest,gemini-3.8-flash',
+      ollamaUrl: '', ollamaText: 'gpt-oss:20b', ollamaFallback: '', order: ['gemini', 'openai', 'ollama'],
     },
     limits: { script: Number(env.DAILY_SCRIPTS) || 20, image: Number(env.DAILY_IMAGES) || 60, render: Number(env.DAILY_RENDERS) || 5, maxSeconds: 600 },
     promptExtra: '',
@@ -265,7 +276,8 @@ export function defaultConfig(env: Env): Config {
     notice: '',
     templates: DEFAULT_TEMPLATES,
     beta: { enabled: true, label: 'Beta', note: 'Đang thử nghiệm: tính năng và giao diện có thể thay đổi. Góp ý giúp chúng tôi làm video hay hơn.' },
-    site: { heroTitle: 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút', heroText: '', heroMedia: '', heroPoster: '', tutorial: '', showcase: [] },
+    site: { heroTitle: 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút', heroText: '', heroMedia: '', heroPoster: '', tutorial: '', showcase: [], theme: 'aurora', social: {},
+      helpBot: { enabled: true, name: 'Trợ lý', welcome: 'Chào bạn 👋 Mình là trợ lý AI của trang. Bạn cần hướng dẫn tạo video hay có thắc mắc gì?', knowledge: '', perDay: 30 } },
     budget: { dailyVnd: 200_000, monthlyVnd: 3_000_000, warnPct: 80, perVideoVnd: 15_000 },
     // one documentary ≈ 10 AI pictures + voice ≈ 11.000đ cost; 1 credit = 1 video, packs priced with margin
     doc: { creditsPerVideo: 1, imagesPerVideo: 14, packs: [{ id: 'doc1', name: '1 phim tài liệu', credits: 1, price: 29000 }, { id: 'doc5', name: '5 phim tài liệu', credits: 5, price: 119000 }, { id: 'doc20', name: '20 phim tài liệu', credits: 20, price: 399000 }] },
@@ -287,6 +299,12 @@ function labels(v: any, keys: readonly string[], def: Record<string, string>, ma
   return out;
 }
 
+/** The order text providers are tried in: every provider once; an older saved setting starts with its chosen provider. */
+export function aiOrder(v: unknown, first?: unknown): string[] {
+  const keys = TEXT_AI_KEYS as readonly string[];
+  const given = Array.isArray(v) ? v.filter((x) => keys.includes(x)) : typeof first === 'string' && keys.includes(first) ? [first] : [];
+  return [...new Set([...given, ...keys])];
+}
 const RETIRED = /^gemini-(1\.5|2\.0|2\.5)-flash(-lite)?$/;
 export function cleanConfig(input: any, base: Config): Config {
   const i = input && typeof input === 'object' ? input : {};
@@ -305,7 +323,7 @@ export function cleanConfig(input: any, base: Config): Config {
     labels: {
       styles: labels(L.styles, STYLE_KEYS, base.labels.styles), tools: labels(L.tools, TOOL_KEYS, base.labels.tools),
       kinds: labels(L.kinds, KIND_KEYS, base.labels.kinds), visual: labels(L.visual, VISUAL_KEYS, base.labels.visual, 80),
-      actions: labels(L.actions, ACTION_KEYS, base.labels.actions), ai: labels(L.ai, AI_KEYS, base.labels.ai),
+      actions: labels(L.actions, ACTION_KEYS, base.labels.actions), ai: labels(L.ai, TEXT_AI_KEYS, base.labels.ai),
       sources: labels(L.sources, SOURCE_KEYS, base.labels.sources, 80), modes: labels(L.modes, MODE_KEYS, base.labels.modes, 80),
       looks: labels(L.looks, LOOK_KEYS, base.labels.looks, 40), lookNotes: labels(L.lookNotes, LOOK_KEYS, base.labels.lookNotes, 160),
     },
@@ -318,7 +336,7 @@ export function cleanConfig(input: any, base: Config): Config {
     enabledStyles: en.filter((k) => !(i.visibility?.['style:' + k] === 'hidden' || i.visibility?.['style:' + k] === 'dev')).length ? en.filter((k) => !(i.visibility?.['style:' + k] === 'hidden' || i.visibility?.['style:' + k] === 'dev')) : en,
     defaults: {
       source: pick(d.source, SOURCE_KEYS, base.defaults.source), subtitles: typeof d.subtitles === 'boolean' ? d.subtitles : base.defaults.subtitles,
-      textAI: pick(d.textAI, AI_KEYS, base.defaults.textAI), imageAI: pick(d.imageAI, AI_KEYS, base.defaults.imageAI),
+      textAI: aiOrder(m.order, d.textAI)[0], imageAI: pick(d.imageAI, AI_KEYS, base.defaults.imageAI),
       style: pick(d.style, en, en.includes(base.defaults.style) ? base.defaults.style : en[0]), visual: pick(d.visual, VISUAL_KEYS, base.defaults.visual),
       ratio: pick(d.ratio, ['9:16', '16:9'], base.defaults.ratio), seconds: int(d.seconds, 15, 1800, base.defaults.seconds),
       voice: pick(d.voice, vs.map((v: Voice) => v.code), vs[0].code), channel: str(d.channel, 40, base.defaults.channel), tone: str(d.tone, 200, base.defaults.tone),
@@ -335,6 +353,10 @@ export function cleanConfig(input: any, base: Config): Config {
       geminiText: MODEL.test(m.geminiText) && !RETIRED.test(m.geminiText) ? m.geminiText : base.models.geminiText, geminiImage: MODEL.test(m.geminiImage) ? m.geminiImage : base.models.geminiImage,
       openaiFallback: typeof m.openaiFallback === 'string' ? m.openaiFallback.split(',').map((x: string) => x.trim()).filter((x: string) => MODEL.test(x)).slice(0, 4).join(',') : base.models.openaiFallback,
       geminiFallback: typeof m.geminiFallback === 'string' ? m.geminiFallback.split(',').map((x: string) => x.trim()).filter((x: string) => MODEL.test(x) && !RETIRED.test(x)).slice(0, 4).join(',') : base.models.geminiFallback,
+      ollamaUrl: typeof m.ollamaUrl === 'string' && /^https?:\/\/[^\s]{3,200}$/.test(m.ollamaUrl.trim()) ? m.ollamaUrl.trim().replace(/\/+$/, '') : '',
+      ollamaText: MODEL.test(m.ollamaText || '') ? m.ollamaText : base.models.ollamaText,
+      ollamaFallback: typeof m.ollamaFallback === 'string' ? m.ollamaFallback.split(',').map((x: string) => x.trim()).filter((x: string) => MODEL.test(x)).slice(0, 4).join(',') : base.models.ollamaFallback,
+      order: aiOrder(m.order, d.textAI),
     },
     limits: { script: int(lim.script, 0, 1000, base.limits.script), image: int(lim.image, 0, 5000, base.limits.image), render: int(lim.render, 0, 500, base.limits.render), maxSeconds: int(lim.maxSeconds, 30, 1800, base.limits.maxSeconds) },
     promptExtra: str(i.promptExtra, 1500, base.promptExtra),
@@ -390,7 +412,7 @@ export function cleanConfig(input: any, base: Config): Config {
           const a = z.assistant || {}, d = b.assistant;
           return { enabled: typeof a.enabled === 'boolean' ? a.enabled : d.enabled, name: str(a.name, 40, d.name) || d.name, persona: str(a.persona, 600, d.persona),
             knowledge: typeof a.knowledge === 'string' ? a.knowledge.replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').trim().slice(0, 6000) : d.knowledge, makeVideos: typeof a.makeVideos === 'boolean' ? a.makeVideos : d.makeVideos,
-            handoff: typeof a.handoff === 'boolean' ? a.handoff : d.handoff, perDay: int(a.perDay, 1, 10_000, d.perDay), ai: a.ai === 'gemini' || a.ai === 'openai' ? a.ai : 'auto' };
+            handoff: typeof a.handoff === 'boolean' ? a.handoff : d.handoff, perDay: int(a.perDay, 1, 10_000, d.perDay), ai: ['gemini', 'openai', 'ollama'].includes(a.ai) ? a.ai : 'auto' };
         })(),
       };
     })(),
@@ -439,6 +461,13 @@ export function cleanConfig(input: any, base: Config): Config {
         showcase: (Array.isArray(x.showcase) ? x.showcase : d.showcase).slice(0, 12)
           .map((m: any) => ({ title: str(m?.title, 60, ''), caption: str(m?.caption, 120, ''), video: media(m?.video), poster: media(m?.poster) }))
           .filter((m: SiteMedia) => m.video || m.poster),
+        theme: pick(x.theme, THEMES, d.theme),
+        social: Object.fromEntries(SOCIAL_KEYS.map((k) => [k, String(x.social?.[k] ?? '').trim()]).filter(([, v]) => /^https:\/\/[^\s"'<>]{4,300}$/.test(v))),
+        helpBot: (() => {
+          const hb = x.helpBot || {}, dh = d.helpBot;
+          return { enabled: typeof hb.enabled === 'boolean' ? hb.enabled : dh.enabled, name: str(hb.name, 40, dh.name) || dh.name, welcome: str(hb.welcome, 300, dh.welcome) || dh.welcome,
+            knowledge: typeof hb.knowledge === 'string' ? lines(hb.knowledge, 4000) : dh.knowledge, perDay: int(hb.perDay, 1, 1000, dh.perDay) };
+        })(),
       };
     })(),
     budget: (() => {
@@ -509,6 +538,7 @@ export async function effectiveEnv(env: Env): Promise<Env & { config: Config }> 
     OPENAI_TEXT_MODEL: config.models.openaiText, OPENAI_IMAGE_MODEL: config.models.openaiImage, OPENAI_IMAGE_QUALITY: config.models.openaiImageQuality,
     GEMINI_TEXT_MODEL: config.models.geminiText, GEMINI_IMAGE_MODEL: config.models.geminiImage,
     OPENAI_TEXT_FALLBACK: config.models.openaiFallback, GEMINI_TEXT_FALLBACK: config.models.geminiFallback,
+    OLLAMA_URL: config.models.ollamaUrl, OLLAMA_TEXT_MODEL: config.models.ollamaText, OLLAMA_TEXT_FALLBACK: config.models.ollamaFallback, AI_ORDER: config.models.order.join(','),
     DAILY_SCRIPTS: String(config.limits.script), DAILY_IMAGES: String(config.limits.image), DAILY_RENDERS: String(config.limits.render),
     config,
   };
@@ -559,7 +589,7 @@ export function publicConfig(config: Config) {
     voices: config.voices.filter((v) => config.visibility['voice:' + v.code] !== 'hidden'),
     formats: [], visibility: { ...config.visibility, ...Object.fromEntries(RETIRED_LOOKS.map(k => ['look:' + k, 'hidden' as Vis])), 'feature:templates': 'hidden' as Vis, 'source:mine-free': 'hidden' as Vis, 'mode:motion':'hidden' as Vis, 'mode:math':'hidden' as Vis, 'mode:kinetic':'hidden' as Vis, ...(config.beta.enabled ? { 'feature:plans': 'hidden' as Vis } : {}) }, notice: config.notice,
     beta: config.beta.enabled ? { label: config.beta.label, note: config.beta.note } : null,
-    site: config.site,
+    site: { ...config.site, helpBot: { enabled: config.site.helpBot.enabled, name: config.site.helpBot.name, welcome: config.site.helpBot.welcome } },
     plans: !selling(config) ? [] : config.plans.filter((p) => p.visible).map((p) => ({ id: p.id, name: p.name, price: p.price, days: p.days, yearPrice: p.yearPrice || 0, listPrice: p.listPrice > p.price ? p.listPrice : 0, highlight: p.highlight, desc: p.desc, features: p.features, limits: p.limits, maxSeconds: Math.min(p.maxSeconds, config.limits.maxSeconds), docPerMonth: p.docPerMonth || 0 })),
     templates: [],
 
