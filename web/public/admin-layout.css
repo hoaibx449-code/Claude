@@ -14,3 +14,13 @@ body .hunter-title{min-height:0}.settings-finder{margin:0 0 20px;display:grid;ga
 body .top{margin-left:0!important}body .top>.brand{display:flex!important}body .top .app-beta{display:none!important}body .top #betaBadge:not([hidden]){display:inline-flex!important}
 @media(min-width:1024px){body:not([data-page="home"]) .top>.nav{display:flex;min-width:0;overflow-x:auto;white-space:nowrap;flex-wrap:nowrap}body:not([data-page="home"]) .appside{top:var(--shell-header-height,72px);z-index:20}body .appside>.brand{display:none}body .appside .admin-nav{padding-top:8px}}
 @media(min-width:1024px) and (max-width:1500px){body .topsearch{display:none}body .top>.nav{display:flex;min-width:0;overflow-x:auto;white-space:nowrap;flex-wrap:nowrap}body .top>.nav a{flex:none}}
+
+/* Public pages use the header only. Admin retains its distinct task navigation. */
+body:not([data-page="admin"]) .appside{display:none!important}
+body:not([data-page="admin"]) main.wrap{margin-left:auto!important;margin-right:auto!important;width:100%;max-width:1240px}
+body[data-page="editor"] main.wrap{max-width:none}
+body:not([data-page="admin"]) .cookie{left:16px}
+body .top>.nav a,body .top>.brand,body .top .who>a{font-weight:700}
+body .top>.nav a:hover{box-shadow:none!important;outline:none;text-decoration:underline;text-underline-offset:7px;text-decoration-thickness:2px}
+body .top>.nav a.on{font-weight:800;color:var(--accent)}
+body .top :is(a,button,input):focus-visible{outline:2px solid var(--accent)!important;outline-offset:3px;box-shadow:none!important}
