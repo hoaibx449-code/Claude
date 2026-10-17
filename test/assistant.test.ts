@@ -69,10 +69,11 @@ test('a hard question goes to the owner with a code, and the owner answers with 
 }));
 
 test('asking for a video in plain words queues it like TAO', () => fixture(async (f) => {
-  f.setAnswer({ reply: 'Có ngay! Mình làm video về lãi kép cho bạn.', intent: 'make_video', topic: 'sức mạnh của lãi kép' });
+  f.setAnswer({ reply: 'Mình đang dựng và sẽ gửi MP4 ngay.', intent: 'make_video', topic: 'sức mạnh của lãi kép' });
   await f.say('làm giúp mình video về lãi kép với');
   const q = await f.env.DB.prepare("SELECT text, status FROM zalo_messages WHERE id = 'm1-tao'").first();
   assert.equal(q.text, 'TAO sức mạnh của lãi kép'); assert.equal(q.status, 'received');
+  assert.match(f.sent.at(-1).text,/hàng chờ thiết kế/);assert.doesNotMatch(f.sent.at(-1).text,/Mình đang dựng/);
 }));
 
 test('a refused AI key is skipped for a while instead of failing before every answer', async () => {
@@ -169,4 +170,20 @@ test('a slow or failing AI is not covered with a canned menu: the minute job ask
   f.setAnswer({ hieu: 'khách hỏi giá', reply: 'Gói **Chuyên nghiệp** 199.000đ/tháng nhé.', intent: 'chat' });
   await f.say('giá sao em');
   assert.match(f.sent.filter((m: any) => m.chat_id === 'customer-abc123').at(-1).text, /<b>Chuyên nghiệp<\/b>/);
+}));
+
+test('browser mode never repeats model claims of rendering or promises an automatic MP4',()=>fixture(async f=>{
+ f.env.config.rendering.mode='browser';
+ f.setAnswer({reply:'Mình đang dựng video, xong tự gửi MP4 nhé.',intent:'make_video',topic:'video về thói quen đọc sách'});
+ await f.say('Làm video về thói quen đọc sách giúp tôi');
+ const text=f.sent.at(-1).text;assert.match(text,/chưa dựng MP4/);assert.match(text,/mở web/);assert.doesNotMatch(text,/Mình đang dựng video/);
+ assert.equal((await f.env.DB.prepare('SELECT COUNT(*) n FROM jobs').first()).n,0);
+ assert.equal((await f.env.DB.prepare("SELECT COUNT(*) n FROM zalo_messages WHERE id='m1-tao'").first()).n,1);
+}));
+test('disabled video actions cannot be acknowledged as started',()=>fixture(async f=>{
+ f.env.config.zalo.assistant.makeVideos=false;
+ f.setAnswer({reply:'Đang dựng rồi.',intent:'make_video',topic:'video về tiết kiệm'});
+ await f.say('Làm video về tiết kiệm giúp tôi');
+ assert.match(f.sent.at(-1).text,/hiện đang tắt/);
+ assert.equal(await f.env.DB.prepare("SELECT id FROM zalo_messages WHERE id='m1-tao'").first(),null);
 }));
