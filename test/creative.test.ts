@@ -56,3 +56,12 @@ test('creative graph mistakes get one AI correction pass rather than a template 
     assert.equal(calls,2);assert.equal(out.scenes[0].diagram.kind,'sketch');
   }finally{globalThis.fetch=original;}
 });
+
+test('the AI chooses the look per video from every style, avoiding the user\'s recent ones',async()=>{
+  const {creativePrompt,CREATIVE_STYLES,creativeResult}=await import('../web/src/creative.ts');
+  assert.ok(CREATIVE_STYLES.length>=15);
+  const p=creativePrompt({wish:'Video về lịch sử trà đạo',direction:''},false,60,'9:16',{styles:[...CREATIVE_STYLES],renderMode:'cloud',recent:['whiteboard','chalkboard']});
+  assert.match(p,/ricepaper/);assert.match(p,/không có phong cách mặc định/);assert.match(p,/whiteboard, chalkboard/);
+  const out:any={mode:'hand',style:'ricepaper',transition:'spin',approach:'Giấy dó mực tàu cho chất Á Đông.'};
+  creativeResult(out);assert.equal(out.transition,undefined);
+});

@@ -792,6 +792,12 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     if (b.look && LOOKS.includes(b.look) && !on('look:' + b.look)) throw new HttpError(403, 'Định dạng video này đang tắt.');
     if(look==='illustrated'&&['mine-free','template'].includes(source))throw new HttpError(409,'Phong cách nhiều lớp cần AI thiết kế cảnh. Chọn Kịch bản của tôi + AI minh họa; lời đọc của bạn được giữ nguyên.');
     const recentDirections: string[] = [];
+    // the user's last looks, so the AI gives each new video its own identity
+    const recentStyles: string[] = [];
+    if (b.creative) {
+      const recent = await env.DB.prepare('SELECT spec FROM projects WHERE user_id = ? ORDER BY created_at DESC LIMIT 4').bind(user.id).all<any>();
+      for (const row of recent.results || []) { try { const st = JSON.parse(row.spec).style; if (st && !recentStyles.includes(st)) recentStyles.push(st); } catch {} }
+    }
     if (look === 'director') {
       const recent = await env.DB.prepare('SELECT spec FROM projects WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(user.id).all<any>();
       for (const row of recent.results || []) { try { const p = JSON.parse(row.spec); if (p.look === 'director') recentDirections.push(p.scenes.map((s: any) => s.direction?.composition || '').join(',')); } catch {} }
@@ -811,7 +817,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
         const provider = isTextProvider(b.provider) ? b.provider : (D.textAI as TextProvider);
         await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
         try {
-          const out = await writeScript(env, provider, { topic: '', seconds: 0, tone: '', ratio, visual: 'sketch', extra: env.config.promptExtra+illustratedExtra, scenes, format, niche, look, brief, recentDirections, creative: b.creative, creativeRuntime:{styles:env.config.enabledStyles,renderMode:env.config.rendering.mode} });
+          const out = await writeScript(env, provider, { topic: '', seconds: 0, tone: '', ratio, visual: 'sketch', extra: env.config.promptExtra+illustratedExtra, scenes, format, niche, look, brief, recentDirections, creative: b.creative, creativeRuntime:{styles:env.config.enabledStyles,renderMode:env.config.rendering.mode,recent:recentStyles} });
           usage = out._usage;
           // the narration always stays the user's own words
           raw = { ...out, title: out.title || raw.title, scenes: scenes.map((lines, i) => ({ lines, direction: out.scenes?.[i]?.direction, diagram: out.scenes?.[i]?.diagram, x: out.scenes?.[i]?.x, act: out.scenes?.[i]?.act, pause: out.scenes?.[i]?.pause, panels: out.scenes?.[i]?.panels })) };
@@ -830,7 +836,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
         await requireBudget(env, 'AI viết kịch bản');
         await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
         try {
-          raw = await writeScript(env, provider, { topic: text, seconds, tone: String(b.tone || '').slice(0, 200), ratio, visual, extra: env.config.promptExtra + affiliateBrief(aff)+illustratedExtra, format: aff ? 'sales' : format, niche, look, brief, recentDirections, creative: b.creative, creativeRuntime:{styles:env.config.enabledStyles,renderMode:env.config.rendering.mode} });
+          raw = await writeScript(env, provider, { topic: text, seconds, tone: String(b.tone || '').slice(0, 200), ratio, visual, extra: env.config.promptExtra + affiliateBrief(aff)+illustratedExtra, format: aff ? 'sales' : format, niche, look, brief, recentDirections, creative: b.creative, creativeRuntime:{styles:env.config.enabledStyles,renderMode:env.config.rendering.mode,recent:recentStyles} });
           usage = raw._usage;
         } catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
       }

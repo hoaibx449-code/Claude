@@ -40,7 +40,7 @@ export const LOOK_BRIEF: Record<string, string> = {
 };
 export interface ScriptRequest {
   creative?: CreativeBrief;
-  creativeRuntime?: {styles:string[];renderMode:string};
+  creativeRuntime?: {styles:string[];renderMode:string;recent?:string[]};
   topic: string; seconds: number; tone: string; ratio: string; visual: VisualMode;
   /** admin's extra instructions */ extra?: string;
   /** the user's own script, already split into scenes: the AI only designs the pictures */
