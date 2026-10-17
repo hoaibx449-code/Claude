@@ -114,7 +114,17 @@ export type XEnv = Env & { config: Config };
 
 async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): Promise<Response> {
   const url = new URL(req.url), path = url.pathname, method = req.method;
-  if (!path.startsWith('/api/')) return rawEnv.ASSETS.fetch(req);
+  if (!path.startsWith('/api/')) {
+    const asset=await rawEnv.ASSETS.fetch(req);
+    if((path==='/'||path==='/index.html')&&asset.headers.get('content-type')?.includes('text/html')){
+      try{
+        const config=await load(rawEnv),headers=new Headers(asset.headers);
+        headers.delete('content-length');headers.delete('etag');headers.set('cache-control','no-cache');
+        return new HTMLRewriter().on('#loadingText',{element(el){el.setInnerContent(config.config.site.loadingText);}}).transform(new Response(asset.body,{status:asset.status,headers}));
+      }catch(e){console.error('Loading text configuration unavailable',e);}
+    }
+    return asset;
+  }
   const env = await effectiveEnv(rawEnv);
   if(path.startsWith('/api/illustrated-runner/')){const sub=path.slice('/api/illustrated-runner/'.length);const v=sub.match(/^voice\/([a-f0-9]{24})\/(\d+)$/);if(v)return illustratedVoiceCache(req,env,v[1],Number(v[2]));return sub==='claim'?claimIllustrated(req,env,rc):runner(req,env,sub,rc);}
   if(path.startsWith('/api/whiteboard-runner/')) {const sub=path.slice('/api/whiteboard-runner/'.length);const v=sub.match(/^voice\/([a-f0-9]{24})\/(\d+)$/);if(v)return voiceCache(req,env,v[1],Number(v[2]));return sub==='claim'?claimWhiteboard(req,env,rc):runner(req,env,sub,rc);}

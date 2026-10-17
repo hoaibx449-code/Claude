@@ -735,7 +735,7 @@ function contentTab(c) {
   const SOCIAL_NAMES = [['facebook', 'Facebook'], ['youtube', 'YouTube'], ['tiktok', 'TikTok'], ['instagram', 'Instagram'], ['zalo', 'Zalo OA'], ['threads', 'Threads'], ['x', 'X (Twitter)'], ['linkedin', 'LinkedIn']];
   const hb = c.site.helpBot;
   return [
-    card('Giao diện', 'Bộ màu cho toàn trang. Bấm để xem trước ngay, rồi Lưu cài đặt để áp dụng cho mọi người.', themeRow),
+    card('Giao diện', 'Bộ màu cho toàn trang. Bấm để xem trước ngay, rồi Lưu cài đặt để áp dụng cho mọi người.', themeRow,h('label',{},'Dòng chữ khi mở trang',input(c.site.loadingText||'Đang mở xưởng vẽ…',v=>{c.site.loadingText=v;},{maxlength:120,placeholder:'Đang mở xưởng vẽ…'}))),
     card('Mạng xã hội', 'Dán đường dẫn đầy đủ (https://…). Kênh nào có link sẽ hiện biểu tượng ở trang chủ và chân trang; để trống = ẩn.', h('div', { class: 'grid' },
       SOCIAL_NAMES.map(([k, name]) => h('label', {}, name, input(c.site.social[k], (v) => { c.site.social[k] = v.trim(); }, { type: 'url', placeholder: 'https://' }))))),
     card('Trợ lý hỗ trợ', 'Khung chat ở góc phải: AI hướng dẫn sử dụng và giải đáp thắc mắc. Dùng AI theo "Thứ tự AI"; khi AI lỗi sẽ trả lời theo câu hỏi thường gặp.',
