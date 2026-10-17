@@ -1,3 +1,4 @@
+import { storedCreative } from './creative.ts';
 import { planDirections } from '../../src/engine/director.ts';
 // Strict validation of project scripts coming from the browser or an AI model.
 // Anything not on these lists is dropped, so stored specs are always renderable.
@@ -198,7 +199,7 @@ export function cleanLook(x: any, look: string) {
   return Object.keys(o).length ? o : undefined;
 }
 
-export function cleanSpec(input: any, userId: string, requireDesign = false) {
+export function cleanSpec(input: any, userId: string, requireDesign: boolean | 'creative' = false) {
   if (!input || typeof input !== 'object' || !Array.isArray(input.scenes)) throw new HttpError(400, 'Kịch bản không hợp lệ.');
   const ownImage = new RegExp(`^r2:img/${userId}/[a-f0-9]{24}\\.(png|jpg|webp)$`);
   const visual = pick(input.visual, VISUAL_MODES, 'sketch');
@@ -234,7 +235,7 @@ export function cleanSpec(input: any, userId: string, requireDesign = false) {
       return out;
     }
     let diagram = cleanDiagram(sc?.diagram, lines.length, mk);
-    if (requireDesign && (!diagram || diagram.kind !== 'sketch' || !diagram.items?.some((it: any) => ['icon','person','chart'].includes(it.t)))) throw new HttpError(502, 'Thiết kế AI có hình không hợp lệ; không dùng bố cục theo luật thay thế.');
+    if (requireDesign && (!diagram || diagram.kind !== 'sketch' || !diagram.items?.some((it: any) => (requireDesign === 'creative' ? ['text','icon','person','chart'] : ['icon','person','chart']).includes(it.t)))) throw new HttpError(502, 'Thiết kế AI có hình không hợp lệ; không dùng bố cục theo luật thay thế.');
     // drawn-only videos: a scene that came back without a usable drawing gets one designed from its words
     if (!diagram && (visual === 'diagram' || visual === 'sketch') && lines.length) diagram = { kind: 'sketch', items: cleanSketch(composeScene(lines, ratio === '9:16', si, { format, index: si, total }), lines.length) };
     if (diagram) return { lines, panels: [], diagram };
@@ -251,6 +252,7 @@ export function cleanSpec(input: any, userId: string, requireDesign = false) {
   if (!scenes.length) throw new HttpError(400, 'Kịch bản cần ít nhất một cảnh có lời và hình.');
   const v = input.voice || {};
   return {
+    creative: storedCreative(input.creative),
     title: str(input.title, 100) || 'Video mới',
     caption: str(input.caption, 300),
     hashtags: (Array.isArray(input.hashtags) ? input.hashtags : []).map((h: unknown) => str(h, 30).replace(/\s+/g, ''))

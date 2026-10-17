@@ -1,3 +1,4 @@
+import { creativePrompt, creativeResult, type CreativeBrief } from './creative.ts';
 import { designIssues } from './creation-policy.ts';
 import { DIRECTOR_BRIEF, planDirections, directionIssues, cleanDirection } from '../../src/engine/director.ts';
 import {ILLUSTRATED_BRIEF} from '../../addons/faciup-illustrated/schema.ts';
@@ -38,6 +39,8 @@ export const LOOK_BRIEF: Record<string, string> = {
   doc: 'ĐỊNH DẠNG: PHIM TÀI LIỆU. Giọng kể điềm tĩnh, giàu hình ảnh, có bối cảnh thời gian và nơi chốn. Mỗi cảnh có "panels":[{"prompt":"TIẾNG ANH: mô tả một ảnh chụp điện ảnh chân thực cho cảnh này (bối cảnh, nhân vật, ánh sáng, góc máy), không chữ trong ảnh"}].',
 };
 export interface ScriptRequest {
+  creative?: CreativeBrief;
+  creativeRuntime?: {styles:string[];renderMode:string};
   topic: string; seconds: number; tone: string; ratio: string; visual: VisualMode;
   /** admin's extra instructions */ extra?: string;
   /** the user's own script, already split into scenes: the AI only designs the pictures */
@@ -85,6 +88,7 @@ const DIAGRAM_SCHEMA =
   '{"kind":"stick","title":"(tuỳ chọn)","actors":[{"action":"idle|walk|run|wave|think|cheer|sad|point|shrug|jump","label":"≤2 chữ, vd Bạn, Sếp"}],"bubble":"lời thoại ≤8 chữ (tuỳ chọn)","caption":"≤8 chữ (tuỳ chọn)"} — 1-2 người que CHUYỂN ĐỘNG THẬT (đi, chạy, vẫy tay, ăn mừng...), dùng cho tình huống, cảm xúc, nhân vật; người đầu tiên nói câu trong bubble. Chỉ dùng số liệu có thật hoặc ví dụ minh hoạ đã nói rõ là ví dụ';
 
 function systemPrompt(r: ScriptRequest) {
+  if (r.creative) return creativePrompt(r.creative, !!r.scenes, r.seconds, r.ratio, r.creativeRuntime) + '\n' + sketchSchema(r.ratio) + '\nRiêng yêu cầu sáng tạo: số vật và số chữ theo dụng ý, cho phép cảnh chỉ có chữ; các ví dụ schema chỉ minh hoạ cú pháp, không sao chép bố cục.' + (r.extra ? '\nChỉ dẫn bổ sung: '+r.extra : '');
   if (r.look === 'director') return [
     r.scenes ? 'Giữ nguyên lời đọc và số cảnh; chỉ thiết kế direction cho từng cảnh.' : `Viết video tiếng Việt về đúng chủ đề, khoảng ${Math.max(4, Math.min(14, Math.round(r.seconds / 6)))} cảnh, tổng khoảng ${r.seconds} giây, mỗi cảnh 1-3 câu. Nhịp dài ngắn theo ý, không buộc mọi video cùng công thức hook/danh sách/CTA.`,
     DIRECTOR_BRIEF, r.brief || '', r.extra || '', r.tone ? 'Giọng văn: ' + r.tone : '',
@@ -249,6 +253,7 @@ export async function writeScript(env: Env, provider: TextProvider, r: ScriptReq
         const res = await callText(env, p, model, sys, user);
         Object.assign(usage, { provider: p, model }); usage.tokensIn += res.tokensIn; usage.tokensOut += res.tokensOut;
         let out = parseJson(res.text);
+        if (r.creative && out?.cannotFulfill) creativeResult(out);
         if (!out || !Array.isArray(out.scenes)) {
           // one repair round: send the broken answer back
           const fix = await callText(env, p, model, 'Sửa đoạn sau thành JSON hợp lệ đúng cấu trúc yêu cầu ban đầu. Giữ nguyên nội dung. Chỉ trả JSON.', res.text.slice(0, 30000));
@@ -275,9 +280,10 @@ export async function writeScript(env: Env, provider: TextProvider, r: ScriptReq
             }
             out.scenes = planDirections(out.scenes, r.recentDirections?.flatMap((x) => x.split(',')).slice(0, 4));
           }
+          if (r.creative) creativeResult(out);
           if (!r.look || r.look === 'kinetic') {
             const checked = r.scenes ? { ...out, scenes: out.scenes.map((s: any, i: number) => ({ ...s, lines: r.scenes?.[i] || [] })) } : out;
-            const issues = designIssues(checked, r.look, r.scenes?.length);
+            const issues = designIssues(checked, r.look, r.scenes?.length, !!r.creative);
             if (issues.length) { lastErr = issues.slice(0, 3).join('; '); break; }
           }
           return { ...out, _usage: usage };
@@ -285,6 +291,7 @@ export async function writeScript(env: Env, provider: TextProvider, r: ScriptReq
         lastErr = 'AI trả về chưa đúng định dạng';
         break; // try the next model
       } catch (e: any) {
+        if (e.status === 422) throw e;
         lastErr = e.message;
         if (e.status === 401 || e.status === 403) break; // bad key: this provider is out
         if (e.status === 429 || e.status >= 500) { await sleep(700 * (attempt + 1)); continue; }
