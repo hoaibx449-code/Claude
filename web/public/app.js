@@ -714,21 +714,21 @@ const MODE_STYLE = Object.fromEntries(MODES.map(([k, , , st]) => [k, st]));
 // ---------- video formats (looks)
 const LOOK_KEYS = ['director', 'act', 'whiteboard', 'illustrated', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'];
 const SKIN_NAMES = { dem: 'Đêm', sang: 'Sáng', tim: 'Tím', 'do-xanh': 'Đỏ – xanh', 'tim-vang': 'Tím – vàng', toi: 'Tối', hong: 'Hồng', giay: 'Giấy', 'bang-den': 'Bảng đen', xanh: 'Xanh', 'xanh-la': 'Xanh lá', cam: 'Cam', 'dien-anh': 'Điện ảnh', 'trang-den': 'Trắng đen', lanh: 'Lạnh' };
-const looksOn = () => LOOK_KEYS.filter((k) => V('look:' + k) === 'on');
+const looksOn = () => ['kinetic'].filter((k) => V('look:' + k) === 'on');
 /**
  * How the video is told: one dropdown, the chosen way playing beside it. `auto` (the default)
  * picks per video from the words and does not repeat the channel's last one; `classic*` are the
  * hand-drawn boards (sketchnote, hand-drawn charts, doodle pictures).
  */
-const LOOK_GROUPS = [['Đề xuất', ['auto', 'director']], ['Vẽ tay', ['act', 'whiteboard', 'classic-sketch', 'classic-diagram']], ['Đồ hoạ chuyển động', ['illustrated','kinetic', 'split', 'chat', 'data', 'quiz', 'story']], ['Điện ảnh', ['doc']]];
+const LOOK_GROUPS = [['Phong cách', ['classic-sketch', 'kinetic']]];
 const HAND = { auto: ['Tự chọn cách kể', 'Chọn cách kể theo nội dung và các định dạng đang hoạt động. Tự minh họa dùng quy tắc; chế độ AI cần kết nối AI hợp lệ.'],
-  'classic-sketch': ['Sketchnote theo lời', 'Vẽ đúng thứ đang được nói: nhân vật đổi tư thế theo động từ, đồ vật của câu thoại, mũi tên và bóng thoại.'],
+  'classic-sketch': ['Whiteboard', 'AI thiết kế hình, chữ ngắn và quan hệ giữa các ý theo từng cảnh. Dùng bộ vẽ bảng hiện có; không phải phim nhân vật hay video tư liệu.'],
   'classic-diagram': ['Biểu đồ vẽ tay', 'Biểu đồ tròn, đường xu hướng, cột số liệu được tay vẽ từng nét, khoanh đỏ chỗ quan trọng.'],
   classic: ['Tranh doodle', 'Mỗi câu một bức tranh lớn vẽ tay, xen nhân vật chính đóng đúng hành động, không có chữ dưới hình.'] };
 const isClassic = (k) => String(k).startsWith('classic');
 const customOf = (k) => (String(k).startsWith('f:') ? (ui.formats || []).find((f) => f.id === k) : null);
-const lookName = (k) => HAND[k]?.[0] || customOf(k)?.name || L('looks', k);
-const lookNote = (k) => HAND[k]?.[1] || (customOf(k) ? customOf(k).note || L('lookNotes', customOf(k).base) : L('lookNotes', k));
+const lookName = (k) => k === 'kinetic' ? 'Chữ chuyển động' : HAND[k]?.[0] || customOf(k)?.name || L('looks', k);
+const lookNote = (k) => k === 'kinetic' ? 'AI chọn câu và từ nhấn theo nội dung. Bộ dựng chữ chuyển động không phải phim minh hoạ.' : HAND[k]?.[1] || (customOf(k) ? customOf(k).note || L('lookNotes', customOf(k).base) : L('lookNotes', k));
 function lookPicker(current, onPick, demos) {
   const on = new Set([...looksOn(), 'auto', 'classic-sketch', 'classic-diagram', ...(ui.formats || []).map((f) => f.id)]);
   const groups = (ui.formats || []).length ? [LOOK_GROUPS[0], ['Định dạng riêng', ui.formats.map((f) => f.id)], ...LOOK_GROUPS.slice(1)] : LOOK_GROUPS;
@@ -743,7 +743,7 @@ function lookPicker(current, onPick, demos) {
   const cv = h('canvas', { 'aria-label': 'Video mẫu của cách kể đang chọn' });
   const demoOf = (k) => demos.find((x) => x.id === k) || demos.find((x) => x.look === (customOf(k)?.base || k));
   // auto: the demo pane shows the hand-drawn ways in turn
-  const tour = ['look-act', 'classic-sketch', 'classic-diagram'].map((id) => demos.find((x) => x.id === id)).filter(Boolean);
+  const tour = ['classic-sketch'].map((id) => demos.find((x) => x.id === id)).filter(Boolean);
   let run = null, timer = 0, at = 0;
   const play = (d) => {
     cap.textContent = d ? lookName(d.look || d.id) : '';
@@ -967,15 +967,15 @@ async function showCreate() {
   viewed('create');
   const D = ui.defaults || {};
   const maxSec = Math.min(me?.plan?.maxSeconds || 1e9, ui.limits?.maxSeconds || 600);
-  const tplOn = ui.templates?.length && V('feature:templates') !== 'hidden';
-  const sources = [...['topic', 'mine-ai', 'mine-free'].map((k) => [k, ({topic:'Chủ đề', 'mine-ai':'Kịch bản + AI', 'mine-free':'Kịch bản của tôi'})[k], 'source:' + k]).filter(([k]) => ui.enabledSources.includes(k) || V('source:' + k) === 'dev'),
+  const tplOn = false;
+  const sources = [...['topic', 'mine-ai'].map((k) => [k, ({topic:'Chủ đề', 'mine-ai':'Kịch bản + AI', 'mine-free':'Kịch bản của tôi'})[k], 'source:' + k]).filter(([k]) => ui.enabledSources.includes(k) || V('source:' + k) === 'dev'),
     ...(tplOn && ui.enabledSources.includes('mine-free') ? [['template', 'Kịch bản mẫu', 'feature:templates']] : [])];
   const wantStyle = sessionStorage.getItem('nv_style'); sessionStorage.removeItem('nv_style');
   const wantSrc = sessionStorage.getItem('nv_src'); sessionStorage.removeItem('nv_src');
-  const startSrc = sources.some(([k]) => k === wantSrc) ? wantSrc : ui.enabledSources.includes(D.source) ? D.source : ui.enabledSources[0];
+  const startSrc = sources.some(([k]) => k === wantSrc) ? wantSrc : sources.some(([k]) => k === D.source) ? D.source : sources[0]?.[0];
   const wantMode = sessionStorage.getItem('nv_mode'); sessionStorage.removeItem('nv_mode');
   const wantLook = sessionStorage.getItem('nv_look'); sessionStorage.removeItem('nv_look');
-  let look = wantMode && !wantLook ? 'classic' : [wantLook].find((k) => k && (HAND[k] || (LOOK_KEYS.includes(k) && V('look:' + k) === 'on'))) || 'auto';
+  let look = wantLook === 'kinetic' && V('look:kinetic') === 'on' ? 'kinetic' : 'classic-sketch';
   let skin = '';
   const demos = await getDemos();
   let mode = V('mode:' + (wantMode || D.mode || 'hand')) === 'on' ? wantMode || D.mode || 'hand' : 'hand';
@@ -1031,11 +1031,11 @@ async function showCreate() {
     f.topic.placeholder = mine ? T('scriptHint') : T('topicHint');
     only.seconds.hidden = mine; only.tone.hidden = mine; only.visual.hidden = mine;
     only.subs.hidden = V('feature:subtitles') === 'hidden';
-    if(only.intro)only.intro.hidden=['auto','director','whiteboard','illustrated'].includes(look);
+    if(only.intro)only.intro.hidden=true;
     illustratedOptions.hidden=look!=='illustrated';
     tplBox.hidden = src !== 'template';
     if (src === 'template' && !tplBox.childNodes.length) tplBox.append(templatesCard(pick));
-    tryBtn.hidden = !mine;
+    tryBtn.hidden = true;
     go.textContent = src === 'mine-free' || src === 'template' ? (ui.beta ? 'Tạo video' : 'Tạo video (miễn phí)') : mine ? 'AI minh hoạ kịch bản' : T('write');
     go.disabled = src !== 'mine-free' && src !== 'template' && !hasAI;
     if(look==='illustrated'&&['mine-free','template'].includes(src)){go.disabled=true;go.textContent='Cần AI minh hoạ';}
@@ -1045,7 +1045,7 @@ async function showCreate() {
     if (only.affToggle) only.affToggle.hidden = !isClassic(look);
     // format videos: the format sets the look; the classic board keeps its own options
     const classic = isClassic(look), auto = look === 'auto';
-    for (const el of [only.mode, only.style, only.visual2, only.transition]) if (el) el.hidden = !classic;
+    for (const el of [only.mode, only.style, only.visual2, only.transition, only.visual]) if (el) el.hidden = true;
     if (only.visual) only.visual.hidden = only.visual.hidden || !classic;
     only.looked.hidden = classic || auto;
     if (isClassic(look)) f.visual.value = look === 'classic-sketch' ? 'sketch' : look === 'classic-diagram' ? 'diagram' : 'doodle';
@@ -1064,7 +1064,7 @@ async function showCreate() {
   f.source.addEventListener('change', () => { sync(); track('choose', { source: f.source.value }); });
   f.affOn.addEventListener('change', sync);
   f.topic.addEventListener('input', guess);
-  const extras = () => ({ mode, intro: !['auto','director'].includes(look) && f.intro.checked && V('feature:intro') === 'on', styleAuto: f.style.value === 'auto', character: isClassic(look) && V('feature:character') === 'on' ? character.get() || undefined : undefined,
+  const extras = () => ({ mode, intro: false && f.intro.checked && V('feature:intro') === 'on', styleAuto: f.style.value === 'auto', character: isClassic(look) && V('feature:character') === 'on' ? character.get() || undefined : undefined,
     affiliate: isClassic(look) && f.affOn.checked && f.affLink.value.trim() ? { link: f.affLink.value.trim(), product: f.affProduct.value.trim(), price: f.affPrice.value.trim(), image: product.get() || undefined } : undefined });
   const body = () => {
     const x = extras();
@@ -1089,10 +1089,10 @@ async function showCreate() {
   f.topic.addEventListener('input', debounce(paintSummary, 400));
   const step = (n, title, sub, ...kids) => h('section', { class: 'step' }, h('header', {}, h('span', { class: 'stepno' }, String(n)), h('div', {}, h('h2', {}, title), sub ? helpHint(title, sub) : null)), ...kids);
   const form = h('form', { class: 'create', onsubmit: (e) => { e.preventDefault(); createProject(body(), go).then(sync); } },
-    step(1, 'Nội dung', 'Bạn muốn nói gì? Dán kịch bản, chọn mẫu hoặc gõ chủ đề.',
-      h('div', { class: 'field-group' }, h('span', { class: 'field-caption' }, 'Bắt đầu từ', helpHint('Cách tạo', 'Chủ đề: AI viết lời và thiết kế hình. Kịch bản + AI: giữ lời của bạn, AI thiết kế hình. Kịch bản của tôi: giữ lời, tự minh hoạ theo quy tắc, không gọi AI viết.')), f.source),
+    step(1, 'Nội dung', 'Nhập chủ đề hoặc kịch bản; AI thiết kế từng cảnh theo nội dung.',
+      h('div', { class: 'field-group' }, h('span', { class: 'field-caption' }, 'Bắt đầu từ', helpHint('Cách tạo', 'Chủ đề: AI viết lời và thiết kế cảnh. Kịch bản + AI: giữ nguyên lời của bạn, AI thiết kế cảnh. Nếu AI lỗi, hệ thống dừng và giữ nội dung đã nhập.')), f.source),
       tplBox, h('label', { for: 'f-topic' }, topicLabel, f.topic), detect),
-    step(2, 'Cách kể', 'Video trông thế nào? Mỗi cách kể có nhịp, bố cục và âm thanh riêng.',
+    step(2, 'Phong cách', 'Chọn ngôn ngữ hình ảnh. AI lên bố cục theo nội dung; bản xem minh hoạ chỉ giới thiệu khả năng bộ dựng.',
       lookPicker(look, (k) => { look = k; skin = ''; track('look', { look: k }); sync(); paintSummary(); }, demos),
       creditNote,illustratedOptions,
       only.looked = h('div', { class: 'grid wide-2' }, skinBox)),
@@ -1100,7 +1100,7 @@ async function showCreate() {
       h('div', { class: 'grid wide-2' }, h('label', {}, T('ratio'), f.ratio), h('label', {}, T('voice'), voiceField(f.voice)), only.seconds = h('label', {}, T('duration'), f.seconds)),
       summary,
       h('details', { class: 'advanced' }, h('summary', {}, 'Nâng cao'),
-        h('div', { class: 'grid wide-2' }, h('label', {}, 'Dạng nội dung', f.format), h('label', {}, 'Nhạc nền', f.music), h('label', {}, T('channel'), f.channel), h('label', {}, T('episode'), f.episode), only.tone = h('label', {}, T('tone'), f.tone),
+        h('div', { class: 'grid wide-2' }, h('label', {}, 'Nhạc nền', f.music), h('label', {}, T('channel'), f.channel), h('label', {}, T('episode'), f.episode), only.tone = h('label', {}, T('tone'), f.tone),
           only.visual = h('label', {}, T('visual'), f.visual), only.style = h('label', {}, T('style'), f.style), only.transition = h('label', {}, 'Chuyển cảnh', f.transition)),
         only.mode = h('div', {}, h('span', { class: 'plabel' }, 'Kiểu vẽ tay'), modePicker(mode, (k) => { mode = k; track('mode', { mode: k }); })),
         h('div', { class: 'toggles' },
@@ -1109,7 +1109,7 @@ async function showCreate() {
           feat('affiliate') ? only.affToggle = h('label', { class: 'check' }, f.affOn, h('span', {}, h('b', {}, 'Video tiếp thị liên kết'), helpHint('Tiếp thị liên kết', 'Thêm cảnh cuối có ảnh sản phẩm, giá và mã QR.'))) : null),
         only.aff = h('div', { class: 'card inner' }, h('div', { class: 'grid' }, h('label', {}, 'Link tiếp thị', f.affLink), h('label', {}, 'Sản phẩm', f.affProduct), h('label', {}, 'Giá', f.affPrice)), product),
         feat('character') ? only.char = h('div', { class: 'inner' }, character) : null),
-      h('div', { class: 'row' }, go, tryBtn),
+      h('div', { class: 'row' }, go),
       me ? null : h('p', { class: 'muted' }, 'Bạn chỉ cần đăng nhập ở bước cuối; nội dung đã nhập được giữ nguyên.')));
   async function pick(t) {
     try {
@@ -1617,7 +1617,7 @@ async function showEditor(id) {
         h('label', {}, 'Đếm ngược sau câu hỏi', h('select', { onchange: (e) => { sc.pause = Number(e.target.value) || undefined; changed(); } }, options([['0', 'Không'], ['3', '3 giây']], String(sc.pause ? 3 : 0)))));
     }
     return h('div', { class: 'panel' }, h('span', { class: 'tag' }, L('looks', spec.look)), h('div', { class: 'grid wide-2' }, ...f),
-      h('div', { class: 'row' }, h('button', { type: 'button', class: 'ghost small', 'data-ev': 'redesign', onclick: () => { delete sc.x; redesign(sc); } }, 'Tự điền lại theo lời (miễn phí)')));
+      h('div', { class: 'row' }, h('button', { type: 'button', class: 'ghost small', 'data-ev': 'redesign', onclick: () => { delete sc.x; redesign(sc); } }, 'AI thiết kế lại cảnh')));
   }
   // free redesign of one scene's board from its current lines (rules on the server, no AI cost)
   async function redesign(sc) {
@@ -1646,7 +1646,7 @@ async function showEditor(id) {
         h('button', { type: 'button', class: 'ghost small', onclick: () => { d.items = items.filter((x) => x !== it && !(x.on === it.id || x.from === it.id || x.to === it.id)); drawScenes(); changed(); } }, 'Bỏ'));
     });
     return h('div', { class: 'sketch' }, ...rows,
-      h('div', { class: 'row' }, h('button', { type: 'button', class: 'ghost small', 'data-ev': 'redesign', onclick: () => redesign(sc) }, 'Thiết kế lại theo lời (miễn phí)')));
+      h('div', { class: 'row' }, h('button', { type: 'button', class: 'ghost small', 'data-ev': 'redesign', onclick: () => redesign(sc) }, 'AI thiết kế lại cảnh')));
   }
   function illustratedEditor(sc,si){
     const d=sc.illustrated;if(!d)return h('p',{},'Cảnh chưa có thiết kế.');

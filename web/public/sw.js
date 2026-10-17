@@ -1,7 +1,7 @@
 // Makes the site installable and fast. The page and its scripts come from the network first
 // (with a short timeout, then the cached copy), so a new version shows up at once; heavy static
 // files (fonts, hand, icons, demo videos) are served from the cache and refreshed in the background.
-const SHELL = 'nv-shell-v17-browser-render', STATIC = 'nv-static-v17-browser-render';
+const SHELL = 'nv-shell-v18-ai-styles', STATIC = 'nv-static-v18-ai-styles';
 const SHELL_FILES = ['/', '/app.css', '/compact-ui.css', '/app.js', '/home-gallery.js', '/browser-render.js', '/ui-select.js', '/admin.js', '/banks.js', '/engine.js', '/whiteboard-addon.js', '/illustrated-addon.js', '/icons/icon.svg'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== SHELL && k !== STATIC).map((k) => caches.delete(k))))); self.clients.claim(); });

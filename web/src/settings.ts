@@ -1,3 +1,4 @@
+import { RETIRED_LOOKS } from './creation-policy.ts';
 // Site settings edited on the admin page (#/admin). Stored in D1 as one JSON document plus
 // encrypted API keys. Defaults below are only starting values: every name shown to users
 // can be renamed by the admin, and keys entered there override the Worker secrets.
@@ -554,13 +555,13 @@ export async function isAdmin(env: Env, config: Config, user: User) {
 /** What every visitor's browser needs to draw the interface. */
 export function publicConfig(config: Config) {
   return {
-    brand: config.brand, labels: config.labels, texts: config.texts, enabledStyles: config.enabledStyles, enabledSources: config.enabledSources, defaults: config.defaults,
+    brand: config.brand, labels: config.labels, texts: config.texts, enabledStyles: config.enabledStyles, enabledSources: config.enabledSources.filter(s => s !== 'mine-free'), defaults: { ...config.defaults, source: config.defaults.source === 'mine-free' ? 'mine-ai' : config.defaults.source, look: 'auto' },
     voices: config.voices.filter((v) => config.visibility['voice:' + v.code] !== 'hidden'),
-    formats: config.formats.filter((f) => f.stage === 'live' && vis(config, 'look:' + f.base) === 'on').map((f) => ({ id: 'f:' + f.id, name: f.name, base: f.base, note: f.note.split('\n')[0].slice(0, 160) })), visibility: config.beta.enabled ? { ...config.visibility, 'feature:plans': 'hidden' as Vis } : config.visibility, notice: config.notice,
+    formats: config.formats.filter((f) => !RETIRED_LOOKS.includes(f.base) && f.stage === 'live' && vis(config, 'look:' + f.base) === 'on').map((f) => ({ id: 'f:' + f.id, name: f.name, base: f.base, note: f.note.split('\n')[0].slice(0, 160) })), visibility: { ...config.visibility, ...Object.fromEntries(RETIRED_LOOKS.map(k => ['look:' + k, 'hidden' as Vis])), 'feature:templates': 'hidden' as Vis, 'source:mine-free': 'hidden' as Vis, 'mode:motion':'hidden' as Vis, 'mode:math':'hidden' as Vis, 'mode:kinetic':'hidden' as Vis, ...(config.beta.enabled ? { 'feature:plans': 'hidden' as Vis } : {}) }, notice: config.notice,
     beta: config.beta.enabled ? { label: config.beta.label, note: config.beta.note } : null,
     site: config.site,
     plans: !selling(config) ? [] : config.plans.filter((p) => p.visible).map((p) => ({ id: p.id, name: p.name, price: p.price, days: p.days, yearPrice: p.yearPrice || 0, listPrice: p.listPrice > p.price ? p.listPrice : 0, highlight: p.highlight, desc: p.desc, features: p.features, limits: p.limits, maxSeconds: Math.min(p.maxSeconds, config.limits.maxSeconds), docPerMonth: p.docPerMonth || 0 })),
-    templates: config.visibility['feature:templates'] === 'hidden' ? [] : config.templates.map((t) => ({ id: t.id, title: t.title, niche: t.niche })),
+    templates: [],
 
     zalo: { enabled: config.zalo.enabled && config.visibility['feature:zalo'] !== 'hidden', botLink: config.zalo.botLink, dev: config.visibility['feature:zalo'] === 'dev' },
     payment: { enabled: selling(config) && config.payment.enabled, holdMinutes: config.payment.holdMinutes },

@@ -1,3 +1,4 @@
+import { designIssues } from './creation-policy.ts';
 import { DIRECTOR_BRIEF, planDirections, directionIssues, cleanDirection } from '../../src/engine/director.ts';
 import {ILLUSTRATED_BRIEF} from '../../addons/faciup-illustrated/schema.ts';
 import { ACT_BRIEF } from './act.ts';
@@ -103,7 +104,9 @@ function systemPrompt(r: ScriptRequest) {
   return [
     'Bạn là biên kịch video ngắn tiếng Việt kiểu "bàn tay vẽ" (whiteboard), chuyên viết video giữ chân người xem tới giây cuối. Viết đúng chủ đề người dùng đưa.',
     `Khoảng ${scenes} cảnh, tổng ~${r.seconds} giây lời đọc (~${Math.round(r.seconds * 2.6)} chữ). Mỗi cảnh 1-3 câu thoại, văn nói tự nhiên, xưng "bạn". Xen câu ngắn nhấn ý với câu dài giải thích, nối ý giữa các cảnh; không biến mọi câu thành khẩu hiệu hoặc thêm dấu ba chấm để kéo nhịp.`,
-    'CẤU TRÚC BẮT BUỘC:',
+    'Chọn cấu trúc kể từ ý nghĩa nội dung. Không áp một công thức hook/vòng lặp tò mò/danh sách/CTA cho mọi video. Không bắt buộc kêu gọi tương tác.',
+    'Mỗi cảnh phải có một mục đích minh hoạ cụ thể; thay đổi mật độ, vị trí và nhịp xuất hiện theo câu nói. Không lặp một bố cục rồi chỉ thay chữ/icon. Nếu không có dữ liệu, không tự vẽ biểu đồ giả.',
+    'Các cách mở/thân/kết sau là gợi ý, chỉ dùng khi phù hợp:',
     '1. HOOK (cảnh 1, ≤ 3 giây): một câu khiến người đang lướt phải dừng lại — câu hỏi chạm đúng nỗi đau, một sự thật bất ngờ, một mâu thuẫn ("càng... càng..."), hoặc lời hứa cụ thể. CẤM chào hỏi, cấm "hôm nay mình sẽ", cấm giới thiệu kênh.',
     '2. VÒNG LẶP TÒ MÒ (cảnh 1-2): gợi một điều chỉ được tiết lộ ở cuối (vd "điều thứ ba mới là thứ quyết định"), để người xem phải xem hết.',
     '3. THÂN BÀI: mỗi cảnh một ý, có ví dụ đời thường của người Việt; cứ 2-3 cảnh có một nhịp đảo chiều hoặc chi tiết bất ngờ. Không lan man.',
@@ -111,7 +114,7 @@ function systemPrompt(r: ScriptRequest) {
     '5. KÊU GỌI KHÉO (chỉ cảnh cuối, 1 câu, gắn với lợi ích của người xem): lưu lại ("lưu lại để lần sau…"), chia sẻ ("gửi cho người bạn đang…") hoặc bình luận bằng một câu hỏi dễ trả lời một chữ. Không xin like trực tiếp, không "nhớ đăng ký kênh".',
     'Số viết bằng chữ trong lời đọc khi đọc tự nhiên hơn. Không bịa số liệu, nghiên cứu, trích dẫn; nếu dùng con số minh hoạ thì nói rõ là ví dụ. Không đưa lời khuyên đầu tư, y tế, pháp lý cụ thể.',
     r.tone ? `Giọng văn: ${r.tone}.` : '',
-    r.format ? 'DẠNG VIDEO (đã nhận diện, giữ đúng): ' + (FORMAT_NAMES as any)[r.format] + ' — ' + (FORMAT_BRIEF as any)[r.format] : '',
+    r.format ? 'Mục đích nội dung (tham khảo, không áp đặt bố cục): ' + (FORMAT_NAMES as any)[r.format] : '',
     r.niche && r.niche !== 'general' ? 'Ngách: ' + (NICHE_NAMES as any)[r.niche] + '. Dùng ví dụ, từ ngữ, ẩn dụ đúng ngách này.' : '',
     r.look ? (r.brief || LOOK_BRIEF[r.look]) + ' ' + ICON_HINT : 'HÌNH: ' + visual,
     r.extra ? 'YÊU CẦU THÊM CỦA CHỦ TRANG: ' + r.extra : '',
@@ -137,7 +140,7 @@ function illustratePrompt(r: ScriptRequest) {
     'Bạn là hoạ sĩ minh hoạ video "bàn tay vẽ" tiếng Việt. Người dùng đã có kịch bản, chia sẵn thành cảnh. GIỮ NGUYÊN lời thoại, KHÔNG viết lại; chỉ thiết kế hình cho từng cảnh, đúng thứ tự, đúng số cảnh.',
     DIAGRAM_SCHEMA + '. Chữ trong hình là tiếng Việt, rất ngắn, khớp ý câu thoại của cảnh.',
     sketchSchema(r.ratio),
-    r.format ? 'DẠNG VIDEO: ' + (FORMAT_NAMES as any)[r.format] + ' — ' + (FORMAT_BRIEF as any)[r.format] : '',
+    r.format ? 'Mục đích nội dung (tham khảo): ' + (FORMAT_NAMES as any)[r.format] : '',
     r.extra ? 'YÊU CẦU THÊM CỦA CHỦ TRANG: ' + r.extra : '',
     `Trả về DUY NHẤT JSON: {"title":"tiêu đề ≤ 70 ký tự gây tò mò","caption":"caption đăng bài ≤ 150 ký tự, kết bằng câu hỏi","hashtags":["#..."],"scenes":[{"diagram":{"kind":"sketch","items":[...]}}, ... đúng ${r.scenes!.length} cảnh]}`,
   ].filter(Boolean).join('\n');
@@ -236,7 +239,7 @@ export async function writeScript(env: Env, provider: TextProvider, r: ScriptReq
   const sys = systemPrompt(r);
   const user = r.scenes ? 'KỊCH BẢN:\n' + r.scenes.map((l, i) => `Cảnh ${i + 1}: ` + l.map((x, k) => `[câu ${k}] ${x}`).join(' ')).join('\n') : 'CHỦ ĐỀ: ' + r.topic;
   const plan = textPlan(env, provider);
-  if (!plan.length) throw new HttpError(503, 'Chưa có khoá AI nào. Hãy dùng "Kịch bản của tôi + tự minh hoạ" (miễn phí) hoặc nhờ quản trị nhập khoá.');
+  if (!plan.length) throw new HttpError(503, 'Chưa có khoá AI nào. Nhờ quản trị cấu hình kết nối AI để thiết kế video.');
   const usage: AiUsage = { provider, model: '', tokensIn: 0, tokensOut: 0, tries: 0 };
   let lastErr = '';
   for (const [p, model] of plan) {
@@ -272,6 +275,11 @@ export async function writeScript(env: Env, provider: TextProvider, r: ScriptReq
             }
             out.scenes = planDirections(out.scenes, r.recentDirections?.flatMap((x) => x.split(',')).slice(0, 4));
           }
+          if (!r.look || r.look === 'kinetic') {
+            const checked = r.scenes ? { ...out, scenes: out.scenes.map((s: any, i: number) => ({ ...s, lines: r.scenes?.[i] || [] })) } : out;
+            const issues = designIssues(checked, r.look, r.scenes?.length);
+            if (issues.length) { lastErr = issues.slice(0, 3).join('; '); break; }
+          }
           return { ...out, _usage: usage };
         }
         lastErr = 'AI trả về chưa đúng định dạng';
@@ -284,7 +292,7 @@ export async function writeScript(env: Env, provider: TextProvider, r: ScriptReq
       }
     }
   }
-  throw new HttpError(502, `AI chưa viết được kịch bản (${lastErr}). Thử lại sau ít phút, hoặc dùng chế độ miễn phí.`);
+  throw new HttpError(502, `AI chưa viết được kịch bản (${lastErr}). Kiểm tra kết nối AI trong quản trị rồi thử lại. Không tạo bản dựng theo mẫu thay thế.`);
 }
 
 export interface DrawnImage { bytes: Uint8Array; type: 'image/webp' | 'image/png'; ext: 'webp' | 'png' }

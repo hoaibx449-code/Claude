@@ -97,7 +97,7 @@ export function needsAI(env: XEnv, text: string) {
   if (!(env.GEMINI_API_KEY || env.OPENAI_API_KEY)) return false;
   if (cmd === 'TAO') return !!arg && env.config.enabledSources.includes('topic');
   const script = cmd === 'KB' || cmd === 'KICHBAN' || (!COMMANDS.includes(cmd) && String(text || '').trim().length >= 120);
-  return script && env.config.zalo.scriptSource === 'mine-ai';
+  return script;
 }
 
 async function send(env: XEnv, chatId: string, text: string, messageId?: string) {
@@ -357,7 +357,7 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   if (!user) {
     // nothing to show or undo yet: answer without signing them up
     if (cmd === 'HUYKETNOI') return reply('Zalo này chưa kết nối tài khoản nào.');
-    if (['TT', 'TRANGTHAI', 'DS', 'DANHSACH'].includes(cmd)) return reply('Zalo này chưa có video nào. Gửi KB + kịch bản (hoặc MAU để xem kịch bản mẫu) để bắt đầu.');
+    if (['TT', 'TRANGTHAI', 'DS', 'DANHSACH'].includes(cmd)) return reply('Zalo này chưa có video nào. Gửi KB + kịch bản để AI thiết kế video.');
     if (cmd === 'GIA') return reply(await quote(env, { chatId }));
     if (cmd === 'NV') return quickAnswer(env, rc, { ...ctx(), text: 'gặp nhân viên ' + arg });
     if (!known && !longScript) return ask();
@@ -422,14 +422,7 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
       await env.DB.prepare('DELETE FROM zalo_links WHERE chat_id = ?').bind(chatId).run();
       rc.log('zalo.unlink', { data: { chat: chatId } });
       return reply('Đã bỏ liên kết Zalo.');
-    case 'MAU': {
-      const list = env.config.templates;
-      const n = Number(rest[0]);
-      if (!n) return reply('Kịch bản mẫu (gõ MAU + số để dựng ngay):\n' + list.map((x, i) => `${i + 1}. ${x.title}`).join('\n'));
-      const tpl = list[n - 1];
-      if (!tpl) return reply('Không có mẫu số ' + n);
-      return makeVideo(env, rc, user, chatId, 'mine-free', tpl.text, prefs, !link, messageId);
-    }
+    case 'MAU': return reply('Đã bỏ kịch bản mẫu. Gửi TAO + chủ đề hoặc KB + kịch bản để AI thiết kế video riêng.');
   }
   if (cmd === 'TAO') {
     if (!arg) return reply('Gửi: TAO + chủ đề. Ví dụ: TAO vì sao lương mãi không tăng');
@@ -439,7 +432,7 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   if (cmd === 'KB' || cmd === 'KICHBAN' || longScript) {
     const script = cmd === 'KB' || cmd === 'KICHBAN' ? arg : raw;
     if (script.length < 20) return reply('Gửi: KB + kịch bản của bạn (ít nhất một câu).');
-    const src = z.scriptSource === 'mine-ai' && (env.GEMINI_API_KEY || env.OPENAI_API_KEY) ? 'mine-ai' : 'mine-free';
+    const src = 'mine-ai';
     return makeVideo(env, rc, user, chatId, src, script, prefs, !link, messageId);
   }
   return ask();
@@ -654,21 +647,21 @@ async function statusText(env: XEnv, user: User | null) {
 // ---------------------------------------------------------------- video formats in Zalo
 const CLASSIC: Record<string, [string, string, string]> = {
   auto: ['Tự động đa dạng', 'mỗi video một cách vẽ hợp với nội dung', ''],
-  'classic-sketch': ['Sketchnote theo lời', 'vẽ đúng thứ đang được nói, nhân vật đổi tư thế theo lời', 'sketch'],
+  'classic-sketch': ['Whiteboard', 'AI thiết kế cảnh theo nội dung', 'sketch'],
   'classic-diagram': ['Biểu đồ vẽ tay', 'biểu đồ, số liệu được tay vẽ từng nét', 'diagram'],
   classic: ['Tranh doodle', 'mỗi câu một bức tranh vẽ tay lớn', 'doodle'],
 };
 export const wayName = (c: Config, k: string) => (k === 'web' ? 'Mặc định của web' : CLASSIC[k]?.[0] || c.labels.looks[k] || k);
 const wayNote = (c: Config, k: string) => CLASSIC[k]?.[1] || c.labels.lookNotes[k] || '';
 /** A way still switched on for the site (an admin may have hidden a format or a kind of picture). */
-const wayOn = (c: Config, k: string) => (k === 'auto' ? true : CLASSIC[k] ? vis(c, 'visual:' + CLASSIC[k][2]) === 'on' : vis(c, 'look:' + k) === 'on');
+const wayOn = (c: Config, k: string) => ['auto','classic-sketch','kinetic'].includes(k) && (k === 'auto' ? true : CLASSIC[k] ? vis(c, 'visual:' + CLASSIC[k][2]) === 'on' : vis(c, 'look:' + k) === 'on');
 /** The formats people may pick in Zalo, in the admin's order. */
 export function zaloWays(c: Config) { return c.zalo.formats.allowed.filter((k) => ZALO_WAYS.includes(k as any) && wayOn(c, k)); }
 /** What createProject needs for a way: a format, "auto", or the classic board with its kind of picture. */
 function wayOptions(k: string): { look?: string; visual?: string } {
   if (k === 'auto') return { look: 'auto' };
-  if (CLASSIC[k]) return { look: '', visual: CLASSIC[k][2] };
-  return k === 'web' ? {} : { look: k };
+  if (CLASSIC[k]) return { look: 'classic-sketch', visual: 'sketch' };
+  return k === 'kinetic' ? { look: k } : { look: 'classic-sketch', visual: 'sketch' };
 }
 /** The way for this person's next video: their own pick if still allowed, otherwise the admin's default. */
 function wayFor(c: Config, prefs: any) {
@@ -814,7 +807,7 @@ async function makeVideo(env: XEnv, rc: Rc, user: User, chatId: string, source: 
     const existing = checkpoint?.project_id ? await env.DB.prepare('SELECT id, spec FROM projects WHERE id = ? AND user_id = ?').bind(checkpoint.project_id, user.id).first<any>() : null;
     const p = existing ? { id: existing.id, spec: JSON.parse(existing.spec), note: '' } : await createProject(env, rc, user, { source, topic: text, ratio: prefs.ratio, style: prefs.style || 'auto', voiceId: prefs.voice, channel: '', visual: 'sketch', ...wayOptions(wayFor(env.config, prefs)) });
     await env.DB.prepare('UPDATE zalo_messages SET project_id = ? WHERE id = ?').bind(p.id, messageId).run();
-    if (!env.config.zalo.autoRender) return send(env, chatId, `Kịch bản "${p.spec.title}" đã sẵn sàng (${p.spec.scenes.length} cảnh). Mở web để xem và dựng: ${origin(env)}/#/p/${p.id}`, messageId);
+    if (env.config.rendering.mode === 'browser' || !env.config.zalo.autoRender) return send(env, chatId, `Kịch bản "${p.spec.title}" đã sẵn sàng (${p.spec.scenes.length} cảnh). Mở web để xem và dựng: ${origin(env)}/#/p/${p.id}`, messageId);
     const queued = await env.DB.prepare("SELECT id FROM jobs WHERE project_id = ? AND user_id = ? AND status IN ('queued','running','done') ORDER BY created_at DESC LIMIT 1").bind(p.id, user.id).first<any>();
     const job = queued || await queueRender(env, rc, user, p.id, p.spec);
     await env.DB.prepare('UPDATE zalo_messages SET job_id = ? WHERE id = ?').bind(job.id, messageId).run();
@@ -830,7 +823,7 @@ async function makeVideo(env: XEnv, rc: Rc, user: User, chatId: string, source: 
     const busy = !(e instanceof HttpError) || e.status >= 500;
     // a limit of the plan (videos a day, length): offer the plan that lifts it
     const up = !busy && (e.status === 429 || e.status === 402) ? await upsellText(env, user).catch(() => '') : '';
-    await send(env, chatId, 'Chưa tạo được video: ' + (busy ? 'AI đang quá tải, bạn thử lại sau ít phút, hoặc gửi KB + kịch bản của bạn để dựng ngay (không cần AI).' : e.message) + (up ? '\n' + up : ''), messageId);
+    await send(env, chatId, 'Chưa tạo được video: ' + (busy ? 'AI chưa thiết kế được video. Vui lòng kiểm tra kết nối AI hoặc thử lại sau; hệ thống không dựng theo mẫu thay thế.' : e.message) + (up ? '\n' + up : ''), messageId);
   }
 }
 
