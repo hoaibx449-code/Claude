@@ -32,3 +32,10 @@ test('menu names are bounded, safely stored and unknown routes are ignored',()=>
  const base=defaultConfig({} as any),c=cleanConfig({...base,labels:{...base.labels,navigation:{home:'Xưởng phim',evil:'x'},adminMenu:{'nguoi-dung':'Khách hàng'}}},base);
  assert.equal(c.labels.navigation.home,'Xưởng phim');assert.equal(c.labels.navigation.evil,undefined);assert.equal(c.labels.adminMenu['nguoi-dung'],'Khách hàng');assert.equal(c.labels.navigation.tao,base.labels.navigation.tao);
 });
+
+test('AI can author curved SVG geometry; malformed commands, markup and unbounded coordinates are rejected',()=>{
+ const p:any=project();p.scenes[0].diagram.items=[{...graphic(),paths:undefined,d:'M 50 95 C 10 70 10 20 50 5 C 90 20 90 70 50 95 Z'}];
+ const spec:any=cleanSpec(p,'u','creative');const paths=spec.scenes[0].diagram.items[0].paths;
+ assert.ok(paths[0].length>8);assert.ok(paths.flat().every((q:number[])=>q.every(n=>Number.isFinite(n)&&n>=0&&n<=100)));
+ for(const d of ['M 0 0 Z 1 2','M 0 0 C 10','M 0 0 L 999 20','<svg onload=alert(1)>','M 0 0 l 5 5','M 0 0 A 5 5 0 0 1 5 5']){p.scenes[0].diagram.items[0].d=d;assert.throws(()=>cleanSpec(p,'u','creative'));}
+});
