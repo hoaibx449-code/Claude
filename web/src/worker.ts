@@ -816,7 +816,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
           await refundQuota(env, user.id, 'script');
           rc.log('ai.design.failed', { ok: false, data: { source, error: String(e.message).slice(0, 200) } });
           if (e.status === 422) throw e;
-          throw new HttpError(502, 'AI chưa thiết kế được video. Nội dung của bạn được giữ trong ô nhập; không tạo bản dựng theo mẫu thay thế. Kiểm tra kết nối AI trong quản trị.');
+          throw new HttpError(502, 'AI chưa hoàn thành thiết kế đạt yêu cầu. Nội dung của bạn được giữ trong ô nhập; hãy thử lại hoặc điều chỉnh mô tả. Không tạo bản dựng theo mẫu thay thế.');
         }
       }
     } else {

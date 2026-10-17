@@ -41,3 +41,18 @@ test('saved creative instructions and feedback survive normalization without unb
   assert.equal(c?.feedback.length,5);assert.equal((c as any).secret,undefined);
   assert.equal(c?.feedback[0],'Góp ý 4');
 });
+
+test('creative graph mistakes get one AI correction pass rather than a template fallback',async()=>{
+  const original=globalThis.fetch;let calls=0;
+  globalThis.fetch=async(_url:any,opt:any)=>{
+    calls++;
+    if(calls===2)assert.match(JSON.parse(opt.body).messages[1].content,/diagram.kind=sketch/);
+    const out=output();
+    if(calls===1)(out.scenes[0].diagram as any)={kind:'steps',items:['Bắt đầu']};
+    return Response.json({choices:[{message:{content:JSON.stringify(out)}}]});
+  };
+  try{
+    const out=await writeScript({OPENAI_API_KEY:'fixture',OPENAI_TEXT_MODEL:'test'} as any,'openai',{topic:'Thói quen',seconds:20,tone:'',ratio:'9:16',visual:'sketch',creative});
+    assert.equal(calls,2);assert.equal(out.scenes[0].diagram.kind,'sketch');
+  }finally{globalThis.fetch=original;}
+});
