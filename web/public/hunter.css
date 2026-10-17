@@ -40,3 +40,21 @@
 .hunter .hunter-hero p{font-size:13px;line-height:1.6}.hunter .hunter-hero>button{min-height:40px;padding:9px 14px;font-size:13px}
 .hunter .hunter-card .description,.hunter .hunter-excerpt{text-align:justify;text-justify:inter-word;hyphens:auto}.hunter .hunter-title{text-align:justify!important;text-align-last:left}
 @media(max-width:650px){.hunter .hunter-hero{flex-direction:row;align-items:center;gap:12px;padding:8px 0 14px}.hunter .hunter-hero h1{font-size:22px!important}.hunter .hunter-hero p{display:none}.hunter .hunter-hero>button{font-size:12px;padding:8px 10px;min-height:38px}.hunter .hunter-hero>div{min-width:0}}
+
+/* Bound intrinsic sizing: scrolling categories must not widen the flex page. */
+.hunter{width:100%;min-width:0;max-width:1200px;box-sizing:border-box}
+.hunter :is(.hunter-toolbar,.hunter-grid,.hunter-hero,.hunter-categories,.hunter-tabs){min-width:0;max-width:100%;box-sizing:border-box}
+.hunter .hunter-categories{width:100%}
+.hunter .hunter-toolbar>input{max-width:100%;box-sizing:border-box}
+.hunter :is(.hunter-tags span,.description,.hunter-guidelines,.hunter-content){min-width:0;overflow-wrap:anywhere}
+.hunter .hunter-card>*{min-width:0;max-width:100%;box-sizing:border-box}
+@media(max-width:650px){
+ .hunter .hunter-hero{flex-wrap:wrap;gap:10px}
+ .hunter .hunter-hero>div{flex:1 1 140px}
+ .hunter .hunter-hero>button{flex:0 1 auto;max-width:100%;white-space:normal}
+ .hunter .hunter-tabs{flex-wrap:wrap;align-self:stretch}
+ .hunter .hunter-tabs button{flex:1 1 auto;white-space:normal}
+ .hunter .hunter-categories{flex:0 1 auto;contain:inline-size;overflow-x:auto}
+ .hunter .hunter-categories button{max-width:none}
+ .hunter .hunter-actions button{flex:1 1 110px;white-space:normal}
+}
