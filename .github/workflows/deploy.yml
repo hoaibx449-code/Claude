@@ -1,7 +1,10 @@
 name: Triển khai web
 
-# Bấm "Run workflow" để đưa trang web lên Cloudflare. Chạy lại bao nhiêu lần cũng được.
+# Tự triển khai khi gộp vào nhánh chính; vẫn có thể chạy thủ công.
 on:
+  push:
+    branches:
+      - claude/ai-hand-drawing-video-platform-9na7xi
   workflow_dispatch:
 
 permissions:
