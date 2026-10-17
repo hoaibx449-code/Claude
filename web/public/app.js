@@ -837,7 +837,7 @@ function decorate(spec, o) {
 }
 
 /** Make the video (signs in first when needed, then continues by itself). */
-async function createProject(body, btn) {
+async function createProject(body, btn, onError) {
   if (!me) return openLogin('create', { create: body });
   await busy(btn, body.source === 'mine-free' ? 'Đang dựng bố cục…' : body.source === 'topic' ? T('writing') : 'AI đang minh hoạ…', async () => {
     try {
@@ -849,7 +849,7 @@ async function createProject(body, btn) {
       if (r.note) toast(r.note);
       try { sessionStorage.setItem('autodraw:' + r.id, '1'); } catch {}
       location.hash = '#/p/' + r.id;
-    } catch (err) { fail(err); }
+    } catch (err) { if(onError)onError(err); else fail(err); }
   });
 }
 
@@ -1073,7 +1073,8 @@ async function showCreate() {
   for (const el of [f.source, f.topic, f.seconds, f.ratio, f.voice]) el.addEventListener('change', paintSummary);
   f.topic.addEventListener('input', debounce(paintSummary, 400));
   const step = (n, title, sub, ...kids) => h('section', { class: 'step' }, h('header', {}, h('span', { class: 'stepno' }, String(n)), h('div', {}, h('h2', {}, title), sub ? helpHint(title, sub) : null)), ...kids);
-  const form = h('form', { class: 'create', onsubmit: (e) => { e.preventDefault(); createProject(body(), go).then(sync); } },
+  const creationError=h('p',{class:'notice bad description',role:'alert',hidden:true});
+  const form = h('form', { class: 'create', onsubmit: (e) => { e.preventDefault(); creationError.hidden=true; createProject(body(), go,(err)=>{creationError.textContent=err.message;creationError.hidden=false;}).then(sync); } },
     step(1, 'Nội dung', 'Nhập chủ đề hoặc kịch bản; AI thiết kế từng cảnh theo nội dung.',
       h('div', { class: 'field-group' }, h('span', { class: 'field-caption' }, 'Bắt đầu từ', helpHint('Cách tạo', 'Chủ đề: AI viết lời và thiết kế cảnh. Kịch bản + AI: giữ nguyên lời của bạn, AI thiết kế cảnh. Nếu AI lỗi, hệ thống dừng và giữ nội dung đã nhập.')), f.source),
       tplBox, h('label', { for: 'f-topic' }, topicLabel, f.topic)),
@@ -1095,7 +1096,7 @@ async function showCreate() {
           feat('affiliate') ? only.affToggle = h('label', { class: 'check' }, f.affOn, h('span', {}, h('b', {}, 'Video tiếp thị liên kết'), helpHint('Tiếp thị liên kết', 'Thêm cảnh cuối có ảnh sản phẩm, giá và mã QR.'))) : null),
         only.aff = h('div', { class: 'card inner' }, h('div', { class: 'grid' }, h('label', {}, 'Link tiếp thị', f.affLink), h('label', {}, 'Sản phẩm', f.affProduct), h('label', {}, 'Giá', f.affPrice)), product),
         feat('character') ? only.char = h('div', { class: 'inner' }, character) : null),
-      h('div', { class: 'row' }, go),
+      creationError, h('div', { class: 'row' }, go),
       me ? null : h('p', { class: 'muted' }, 'Bạn chỉ cần đăng nhập ở bước cuối; nội dung đã nhập được giữ nguyên.')));
   async function pick(t) {
     try {
