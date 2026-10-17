@@ -6,7 +6,7 @@
 // grouped by the job at hand: watch, make videos, people, sell, run the site
 const ADMIN_GROUPS = [
   ['Theo dõi', [['tong-quan', 'Bảng điều khiển', 'Số liệu chính, phễu người dùng, lỗi và tình trạng cài đặt.'], ['nhat-ky', 'Nhật ký', 'Mọi thao tác và lỗi, lọc theo người, loại, thời gian.']]],
-  ['Sản xuất video', [['huan-luyen', 'Huấn luyện video', 'Prompt của từng định dạng, học định dạng mới từ video mẫu, triển khai theo giai đoạn.'], ['hien-thi', 'Định dạng & hiển thị', 'Bật, ẩn hoặc để chỉ quản trị thấy từng định dạng, phong cách, tính năng.'],
+  ['Sản xuất video', [
     ['giong-doc', 'Giọng đọc', 'Giọng nào đang đọc thật, giọng nào dùng giọng thay thế, nghe thử từng giọng.'], ['may-dung', 'Máy dựng', 'Hàng chờ, tiến độ và lỗi khi dựng video.']]],
   ['Người dùng', [['nguoi-dung', 'Người dùng', 'Tìm người dùng, xem video, cấp gói hoặc credit, khoá tài khoản.'], ['cong-dong', 'Cộng đồng', 'Duyệt video chia sẻ.'], ['zalo', 'Zalo', 'Kết nối Zalo Bot, tự kiểm tra và hộp thư.']]],
   ['Kinh doanh', [['goi', 'Gói cước', 'Giá, hạn mức, thanh toán.'], ['don-hang', 'Đơn hàng', 'Đơn chờ, đã trả, huỷ.']]],
@@ -39,9 +39,10 @@ const VIS_NAMES = { on: 'Hiện', dev: 'Đang phát triển', hidden: 'Ẩn' };
 async function showAdmin() {
   const tab = ADMIN_TABS.some(([k]) => k === location.hash.split('/')[2]) ? location.hash.split('/')[2] : 'tong-quan';
   viewed('admin', { tab });
-  const [, title, desc] = ADMIN_TABS.find(([k]) => k === tab);
+  const [, defaultTitle, desc] = ADMIN_TABS.find(([k]) => k === tab);
+  const title=ui.labels?.adminMenu?.[tab]||defaultTitle;
   const nav = h('nav', { class: 'admin-nav', 'aria-label': 'Mục quản trị' }, ADMIN_GROUPS.map(([g, list]) => h('div', { class: 'admin-group' }, h('span', {}, g),
-    list.map(([k, name]) => h('a', { href: '#/admin/' + k, class: k === tab ? 'on' : null, 'aria-current': k === tab ? 'page' : null }, name)))));
+    list.map(([k, name]) => h('a', { href: '#/admin/' + k, class: k === tab ? 'on' : null, 'aria-current': k === tab ? 'page' : null }, ui.labels?.adminMenu?.[k]||name)))));
   const body = h('div', { class: 'admin-body' }, h('p', { class: 'muted' }, 'Đang tải…'));
   // one menu: on wide screens the admin sections replace the app menu in the side bar;
   // on smaller screens they are a single scrolling strip above the page
@@ -138,19 +139,18 @@ let pendingUser = null, pendingLog = null;
 function openUser(id) { pendingUser = id; location.hash = '#/admin/nguoi-dung'; }
 async function adminUsers(body) {
   const r = await api('/api/admin/users');
-  const detail = h('div', { id: 'userDetail' });
   let q = '';
   const tbody = h('tbody');
   const fill = () => tbody.replaceChildren(...r.users.filter((u) => !q || (u.email + ' ' + (u.name || '')).toLowerCase().includes(q)).map((u) => h('tr', {},
     h('td', {}, h('a', { href: '#', onclick: (e) => { e.preventDefault(); adminUserDetail(u.id); } }, u.email)), h('td', {}, u.name || ''),
-    h('td', {}, u.plan || 'free'), h('td', {}, creditCell(u)), h('td', {}, num(u.projects)), h('td', {}, num(u.videos)), h('td', {}, num(u.today)), h('td', {}, money(u.cost)),
+    h('td', {}, u.plan || 'free'), h('td', {}, num(u.credits||0)), h('td', {}, num(u.projects)), h('td', {}, num(u.videos)), h('td', {}, num(u.today)), h('td', {}, money(u.cost)),
     h('td', {}, u.zalo ? '✓' : ''), h('td', {}, u.last_seen ? fmtDate(u.last_seen) : '—'), h('td', {}, fmtDate(u.created_at)),
     h('td', {}, u.blocked ? h('span', { class: 'bad' }, 'Đã khoá') : ''))));
   fill();
   const j = r.jobs7d || {};
-  body.replaceChildren(detail, card('Người dùng', `${r.users.length} tài khoản · 7 ngày: ${j.done || 0} video xong, ${j.failed || 0} lỗi, ${(j.queued || 0) + (j.running || 0)} đang chờ/dựng.`,
+  body.replaceChildren(card('Người dùng', `${r.users.length} tài khoản · 7 ngày: ${j.done || 0} video xong, ${j.failed || 0} lỗi, ${(j.queued || 0) + (j.running || 0)} đang chờ/dựng.`,
     input('', (v) => { q = v.toLowerCase(); fill(); }, { placeholder: 'Tìm email hoặc tên' }),
-    table(['Email', 'Tên', 'Gói', 'Credit phim TL', 'Dự án', 'Video', 'Lượt hôm nay', 'Chi phí', 'Zalo', 'Lần cuối', 'Tham gia', ''], tbody)));
+    table(['Email', 'Tên', 'Gói', 'Credit', 'Dự án', 'Video', 'Lượt hôm nay', 'Chi phí', 'Zalo', 'Lần cuối', 'Tham gia', ''], tbody)));
   if (pendingUser) { const id = pendingUser; pendingUser = null; adminUserDetail(id); }
 }
 /** Documentary credits of a user, with a quick grant box (works in Beta, when nothing is sold). */
@@ -163,9 +163,11 @@ function creditCell(u) {
   return h('div', { class: 'row', style: 'gap:6px;flex-wrap:nowrap' }, out, box, go);
 }
 async function adminUserDetail(id) {
-  const box = document.getElementById('userDetail');
-  if (!box) return;
-  const r = await api('/api/admin/users/' + encodeURIComponent(id));
+  const {dialog,content:box}=detailDialog('Chi tiết tài khoản');
+  box.textContent='Đang tải…';
+  let r;try{r=await api('/api/admin/users/' + encodeURIComponent(id));}catch(e){box.textContent=e.message;return;}
+  if(!dialog.isConnected)return;
+  dialog.querySelector('header h2').textContent=r.user.email;
   const plans = ui.plans?.length ? ui.plans : [{ id: 'free', name: 'Miễn phí' }];
   let grantPlan = plans[plans.length - 1]?.id, grantDays = 30;
   const blockBtn = h('button', { type: 'button', class: 'ghost small danger', onclick: async () => {
@@ -175,16 +177,17 @@ async function adminUserDetail(id) {
   } }, 'Khoá tài khoản');
   const events = r.events.map((e) => h('tr', {}, h('td', {}, fmtDate(e.ts)), h('td', { class: e.ok ? null : 'bad' }, evName(e.type)), h('td', {}, e.channel), h('td', {}, e.cost ? money(e.cost) : ''), h('td', { class: 'data' }, e.path ? e.path + ' ' : '', e.data || '')));
   box.replaceChildren(h('section', { class: 'card drawer' },
-    h('div', { class: 'row', style: 'justify-content:space-between' }, h('h2', {}, r.user.email), h('button', { type: 'button', class: 'ghost small', onclick: () => box.replaceChildren() }, 'Đóng')),
+    h('div', { class: 'row', style: 'justify-content:space-between' }, h('h2', {}, r.user.email), h('button', { type: 'button', class: 'ghost small', onclick: () => dialog.close() }, 'Đóng')),
     h('p', { class: 'muted' }, `${r.user.name || ''} · tham gia ${fmtDate(r.user.created_at)} · ${num(r.totals.events)} thao tác · ${num(r.totals.errors)} lỗi · chi phí ${money(r.totals.cost)}`),
     h('p', {}, 'Gói hiện tại: ', h('b', {}, r.plan ? `${r.plan.plan} đến ${fmtDate(r.plan.expires_at)}` : 'Miễn phí')),
     h('div', { class: 'row' }, 'Cấp gói ', select(plans.map((p) => [p.id, p.name]), grantPlan, (v) => { grantPlan = v; }), ' trong ', input(grantDays, (v) => { grantDays = v; }, { type: 'number', min: 1, style: 'width:90px' }), ' ngày',
       h('button', { type: 'button', class: 'small', onclick: async () => { try { await api('/api/admin/grant', { method: 'POST', body: { user: id, plan: grantPlan, days: grantDays } }); toast('Đã cấp gói.'); adminUserDetail(id); } catch (e) { fail(e); } } }, 'Cấp'),
-      blockBtn, h('button', { type: 'button', class: 'ghost small', onclick: () => { pendingLog = { user: id }; location.hash = '#/admin/nhat-ky'; } }, 'Xem toàn bộ nhật ký')),
+      blockBtn, h('button', { type: 'button', class: 'ghost small', onclick: () => { dialog.close(); pendingLog = { user: id }; location.hash = '#/admin/nhat-ky'; } }, 'Xem toàn bộ nhật ký')),
+    h('h3', {}, 'Credit'), creditCell({...r.user,credits:r.user.credits||0}),
     h('h3', {}, 'Video'), r.projects.length ? h('ul', {}, r.projects.map((p) => h('li', {}, p.title, h('small', { class: 'muted' }, ' · ' + fmtDate(p.updated_at))))) : h('p', { class: 'muted' }, 'Chưa có.'),
     h('h3', {}, 'Lần dựng'), r.jobs.length ? table(['Lúc', 'Trạng thái', 'Lỗi'], r.jobs.map((j) => h('tr', {}, h('td', {}, fmtDate(j.created_at)), h('td', {}, JOB_TEXT[j.status] || j.status), h('td', { class: 'bad' }, j.error || '')))) : h('p', { class: 'muted' }, 'Chưa có.'),
-    h('h3', {}, 'Dòng thời gian (300 thao tác gần nhất)'), table(['Lúc', 'Việc', 'Kênh', 'Chi phí', 'Chi tiết'], events)));
-  box.scrollIntoView({ behavior: 'smooth' });
+    h('details',{},h('summary',{},'Nhật ký hoạt động'), table(['Lúc', 'Việc', 'Kênh', 'Chi phí', 'Chi tiết'], events))));
+  if(r.user.blocked)blockBtn.textContent='Mở khoá';
 }
 
 // ---------------------------------------------------------------- orders
@@ -222,7 +225,7 @@ async function adminSettings(body, tab) {
   } }, 'Lưu cài đặt');
   const sections = tab === 'huan-luyen' ? trainTab(c, briefs || {}) : tab === 'giong-doc' ? voiceTab(c, secrets, secretInput, voices)
     : ({ goi: plansTab, zalo: zaloTab, 'hien-thi': visTab, 'noi-dung': contentTab, 'cai-dat': settingsTab }[tab] || settingsTab)(c, secrets, secretInput, zcheck, inbox);
-  body.replaceChildren(...sections, h('div', { class: 'savebar' }, saveBtn));
+  body.replaceChildren(...sections.filter(Boolean), h('div', { class: 'savebar' }, saveBtn));
 }
 
 function keysCard(secrets, secretInput, names) {
@@ -246,19 +249,12 @@ function settingsTab(c, secrets, secretInput) {
     card('Máy dựng video', 'Cloud dùng Cloud Run. Máy cá nhân cần mở runner trên PC. Trình duyệt xuất trực tiếp trên thiết bị, cần giữ tab mở; tải tệp về máy, chưa lưu vào thư viện. Giọng AI vẫn cần dịch vụ giọng; có thể tải bản thu âm của bạn.',
       h('label', {}, 'Nơi dựng video', select([['cloud', 'Cloud (Google Cloud Run)'], ['local', 'Máy cá nhân (PC / VPS)'], ['browser', 'Trình duyệt (tạm thời)']], c.rendering?.mode || 'cloud', v => { c.rendering = {mode:v}; }))),
     card('Mặc định khi tạo video', 'Người dùng vẫn đổi được từng video.', h('div', { class: 'grid' },
-      h('label', {}, 'Cách tạo', select(Object.entries(c.labels.sources), c.defaults.source, (v) => { c.defaults.source = v; })),
-      h('label', {}, 'AI vẽ ảnh', select(Object.entries(c.labels.ai).filter(([k]) => k !== 'ollama'), c.defaults.imageAI, (v) => { c.defaults.imageAI = v; })),
-      h('label', {}, 'Phong cách', select(Object.entries(c.labels.styles), c.defaults.style, (v) => { c.defaults.style = v; })),
-      h('label', {}, 'Kiểu hình', select(Object.entries(c.labels.visual), c.defaults.visual, (v) => { c.defaults.visual = v; })),
       h('label', {}, 'Khung hình', select([['9:16', 'Dọc 9:16'], ['16:9', 'Ngang 16:9']], c.defaults.ratio, (v) => { c.defaults.ratio = v; })),
-      h('label', {}, 'Định dạng video mặc định', select(Object.entries(c.labels.looks).filter(([k]) => k !== 'doc'), c.defaults.look, (v) => { c.defaults.look = v; })),
-      h('label', {}, 'Kiểu vẽ tay cổ điển', select(Object.entries(c.labels.modes), c.defaults.mode, (v) => { c.defaults.mode = v; })),
       h('label', {}, 'Thời lượng mặc định (giây)', input(c.defaults.seconds, (v) => { c.defaults.seconds = v; }, { type: 'number', min: 15, max: 1800 })),
       h('label', {}, 'Giọng đọc', select(c.voices.map((v) => [v.code, v.label]), c.defaults.voice, (v) => { c.defaults.voice = v; })),
       h('label', {}, 'Tên kênh', input(c.defaults.channel, (v) => { c.defaults.channel = v; }, { maxlength: 40 })),
       h('label', {}, 'Giọng văn', input(c.defaults.tone, (v) => { c.defaults.tone = v; }, { maxlength: 200 })),
-      check(c.defaults.subtitles, (v) => { c.defaults.subtitles = v; }, 'Phụ đề trên hình'),
-      check(c.defaults.intro, (v) => { c.defaults.intro = v; }, 'Mở đầu bằng ảnh bìa (thumbnail)'))),
+      check(c.defaults.subtitles, (v) => { c.defaults.subtitles = v; }, 'Phụ đề trên hình'))),
     card('Giới hạn chung', 'Video dài nhất mà hệ thống cho làm (gói cước có thể cho ít hơn). Ước tính theo số chữ của kịch bản.', h('div', { class: 'grid' },
       h('label', {}, 'Độ dài tối đa (phút)', select([[60, '1 phút'], [120, '2 phút'], [180, '3 phút'], [300, '5 phút'], [420, '7 phút'], [600, '10 phút'], [900, '15 phút'], [1200, '20 phút'], [1800, '30 phút']].map(([v, l]) => [String(v), l]), String(c.limits.maxSeconds), (v) => { c.limits.maxSeconds = Number(v); })))),
     card('Đăng nhập Google', null,
@@ -267,11 +263,8 @@ function settingsTab(c, secrets, secretInput) {
     card('Model AI', 'Model dự phòng được thử lần lượt khi model chính lỗi hoặc quá tải; hết model thì chuyển sang nhà cung cấp kế tiếp theo Thứ tự AI.', h('div', { class: 'grid' },
       h('label', {}, 'OpenAI viết', modelInput(c.models.openaiText, (v) => { c.models.openaiText = v; }, 'openai')),
       h('label', {}, 'OpenAI dự phòng', modelInput(c.models.openaiFallback, (v) => { c.models.openaiFallback = v; }, 'openai', true)),
-      h('label', {}, 'OpenAI vẽ', modelInput(c.models.openaiImage, (v) => { c.models.openaiImage = v; }, 'openai-image')),
-      h('label', {}, 'Chất lượng ảnh OpenAI', select([['low', 'Thấp (rẻ nhất)'], ['medium', 'Vừa'], ['high', 'Cao']], c.models.openaiImageQuality, (v) => { c.models.openaiImageQuality = v; })),
       h('label', {}, 'Gemini viết', modelInput(c.models.geminiText, (v) => { c.models.geminiText = v; }, 'gemini')),
       h('label', {}, 'Gemini dự phòng', modelInput(c.models.geminiFallback, (v) => { c.models.geminiFallback = v; }, 'gemini', true)),
-      h('label', {}, 'Gemini vẽ', modelInput(c.models.geminiImage, (v) => { c.models.geminiImage = v; }, 'gemini-image')),
       h('label', {}, 'Địa chỉ Ollama', modelInput(c.models.ollamaUrl, (v) => { c.models.ollamaUrl = v; }, 'ollama-url')),
       h('label', {}, 'Ollama viết', modelInput(c.models.ollamaText, (v) => { c.models.ollamaText = v; }, 'ollama')),
       h('label', {}, 'Ollama dự phòng', modelInput(c.models.ollamaFallback, (v) => { c.models.ollamaFallback = v; }, 'ollama', true))),
@@ -280,8 +273,6 @@ function settingsTab(c, secrets, secretInput) {
     card('Bảng giá vốn', 'Dùng để ghi chi phí từng lần gọi AI và giọng đọc vào nhật ký. Model: "tên-model: giá vào, giá ra" (USD / 1 triệu token), "*" = mặc định.',
       h('div', { class: 'grid' },
         h('label', {}, 'Tỷ giá USD → VND', input(c.costs.usdVnd, (v) => { c.costs.usdVnd = v; }, { type: 'number' })),
-        h('label', {}, 'Ảnh OpenAI (USD/ảnh)', input(c.costs.imageOpenai, (v) => { c.costs.imageOpenai = v; }, { type: 'number', step: '0.001' })),
-        h('label', {}, 'Ảnh Gemini (USD/ảnh)', input(c.costs.imageGemini, (v) => { c.costs.imageGemini = v; }, { type: 'number', step: '0.001' })),
         h('label', {}, 'EverAI (VND / 1000 ký tự)', input(c.costs.everaiPer1000, (v) => { c.costs.everaiPer1000 = v; }, { type: 'number' })),
         h('label', {}, 'Google TTS (USD / 1 triệu ký tự)', input(c.costs.googleTtsPerM, (v) => { c.costs.googleTtsPerM = v; }, { type: 'number' })),
         h('label', {}, 'ElevenLabs (USD / 1000 ký tự)', input(c.costs.elevenPer1000, (v) => { c.costs.elevenPer1000 = v; }, { type: 'number', step: '0.01' }))),
@@ -693,7 +684,7 @@ function budgetCard(c) {
 }
 
 function contentTab(c) {
-  const LABEL_GROUPS = [['looks', 'Định dạng video'], ['lookNotes', 'Mô tả định dạng'], ['modes', 'Kiểu vẽ tay cổ điển'], ['styles', 'Phong cách vẽ'], ['tools', 'Dụng cụ vẽ'], ['kinds', 'Kiểu sơ đồ'], ['visual', 'Kiểu hình'], ['actions', 'Động tác người que'], ['ai', 'Nhà cung cấp AI'], ['sources', 'Cách tạo video']];
+  const LABEL_GROUPS = [['navigation','Menu trang chính'],['adminMenu','Menu quản trị']];
   const tplList = h('div', { class: 'scenes' });
   const drawTpls = () => tplList.replaceChildren(...c.templates.map((t, i) => h('div', { class: 'scene' },
     h('div', { class: 'grid' }, h('label', {}, 'Tên mẫu', input(t.title, (v) => { t.title = v; })), h('label', {}, 'Mã', input(t.id, (v) => { t.id = v; })),
@@ -743,8 +734,6 @@ function contentTab(c) {
       h('label', {}, 'Điều khoản sử dụng', area(c.legal.terms, (v) => { c.legal.terms = v; }, 12)),
       h('label', {}, 'Chính sách bảo mật', area(c.legal.privacy, (v) => { c.legal.privacy = v; }, 12)),
       h('label', {}, 'Chính sách hoàn tiền', area(c.legal.refund, (v) => { c.legal.refund = v; }, 6))),
-    card('Kịch bản mẫu', 'Người dùng chọn để làm video ngay, không cần AI. Cũng dùng được trong Zalo bằng lệnh MAU.',
-      h('button', { type: 'button', class: 'ghost small', onclick: () => { c.templates.push({ id: 'mau-' + (c.templates.length + 1), title: 'Mẫu mới', niche: 'general', text: '' }); drawTpls(); } }, '+ Thêm mẫu'), tplList),
     card('Đổi tên', 'Mọi tên hiển thị cho người dùng.', ...LABEL_GROUPS.map(([g, title]) => h('details', {}, h('summary', {}, title),
       h('div', { class: 'grid' }, Object.keys(c.labels[g]).map((k) => h('label', {}, h('code', {}, k), input(c.labels[g][k], (v) => { c.labels[g][k] = v; }, { maxlength: 80 })))))),
       h('details', {}, h('summary', {}, 'Chữ trên giao diện'),

@@ -1,3 +1,4 @@
+import {validVector} from '../../src/engine/vector.ts';
 import { creativeBrief } from './creative.ts';
 import { HttpError } from './util.ts';
 
@@ -36,10 +37,13 @@ export function designIssues(out: any, look?: string, expectedScenes?: number, a
     if (items.length < (allowTextOnly ? 1 : 2) || items.length > (allowTextOnly ? 18 : 8)) {
       issues.push(`Cảnh ${i+1}: số vật thể ${items.length} không hợp lệ (tối đa ${allowTextOnly ? 18 : 8})`); return;
     }
-    if (!items.some((it: any) => (allowTextOnly ? ['text','icon','person','chart'] : ['icon','person','chart']).includes(it?.t))) {
+    if (!items.some((it: any) => (allowTextOnly ? ['text','vector','icon','person','chart'] : ['icon','person','chart']).includes(it?.t))) {
       issues.push(`Cảnh ${i+1}: cần hình minh hoạ hoặc chữ có nội dung`); return;
     }
-    if (items.some((it: any) => !it || !['text','icon','person','chart','arrow','circle','underline','box','cross','check'].includes(it?.t))) issues.push(`Cảnh ${i+1}: vật thể không hỗ trợ`);
+    if (items.some((it: any) => !it || !['vector','text','icon','person','chart','arrow','circle','underline','box','cross','check'].includes(it?.t))) issues.push(`Cảnh ${i+1}: vật thể không hỗ trợ`);
+    if (allowTextOnly && items.some((it:any)=>['icon','person','chart','image','qr'].includes(it?.t))) issues.push(`Cảnh ${i+1}: hãy tự vẽ vector thay vì tài nguyên hoặc biểu đồ mẫu`);
+    if(items.some((it:any)=>it?.t==='vector'&&!validVector(it)))issues.push(`Cảnh ${i+1}: tọa độ vector không hợp lệ hoặc vượt giới hạn`);
+    if(out.mode==='kinetic' && items.some((it:any)=>it?.t==='vector'))issues.push(`Cảnh ${i+1}: hình vector cần mode hand hoặc motion để hiển thị đủ`);
     const signature = JSON.stringify(items);
     if (signatures.has(signature)) issues.push(`Cảnh ${i+1}: lặp nguyên thiết kế cảnh trước`);
     signatures.add(signature);

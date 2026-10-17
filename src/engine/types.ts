@@ -61,10 +61,11 @@ export interface DiagramSpec {
   bubble?: string;
 }
 
-export type InkColor = 'ink' | 'accent' | 'accent2' | 'good';
+export type InkColor = `#${string}` | 'ink' | 'accent' | 'accent2' | 'good';
 /** Positions are percentages of the drawing area; x,y is the item's centre. `line` = narration line it is drawn with. */
-export type SketchItem = { id?: string; line?: number; /** words of the line: drawn when they are spoken */ cue?: string } & (
+export type SketchItem = { motion?: {dx:number;dy:number;rotate:number;scale:number}; id?: string; line?: number; /** words of the line: drawn when they are spoken */ cue?: string } & (
   | { t: 'text'; text: string; x: number; y: number; size?: 's' | 'm' | 'l' | 'xl' | 'xxl'; color?: InkColor; w?: number; align?: 'center' | 'left' }
+  | { t: 'vector'; paths: number[][][]; x: number; y: number; w: number; h: number; color?: InkColor; fill?: boolean; stroke?: number }
   | { t: 'icon'; name: string; x: number; y: number; w?: number; color?: InkColor; label?: string }
   | { t: 'person'; action?: string; x: number; y: number; h?: number; facing?: 1 | -1; label?: string; bubble?: string }
   | { t: 'chart'; x: number; y: number; w?: number; h?: number; kind: 'bars' | 'flow' | 'compare' | 'steps' | 'number' | 'plot' | 'pie'; [k: string]: any }
@@ -98,6 +99,7 @@ export interface ProjectSpec {
   episode?: string;
   ratio: Ratio;
   style: StyleKey;
+  palette?: {background:string;ink:string;accent:string;accent2:string};
   /** Overrides the style's default tool. */
   tool?: ToolKind;
   /** Hand asset folder (hand.webp, fingers.webp, hand.json). */

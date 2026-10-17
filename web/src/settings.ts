@@ -41,6 +41,7 @@ export interface Voice { provider: 'everai' | 'google' | 'elevenlabs' | 'free'; 
 export interface Config {
   brand: { name: string; accent: string; tagline: string };
   labels: {
+    navigation: Record<string,string>; adminMenu: Record<string,string>;
     styles: Record<string, string>; tools: Record<string, string>; kinds: Record<string, string>;
     visual: Record<string, string>; actions: Record<string, string>; ai: Record<string, string>; sources: Record<string, string>;
     modes: Record<string, string>; looks: Record<string, string>; lookNotes: Record<string, string>;
@@ -184,6 +185,8 @@ export function defaultConfig(env: Env): Config {
   return {
     brand: { name: 'Nét Vẽ', accent: 'Studio', tagline: 'Tạo video bàn tay vẽ kèm thuyết minh tiếng Việt.' },
     labels: {
+      navigation: {home:'Trang chủ',tao:'Tạo video',mau:'Gợi ý sáng tạo','cong-dong':'Cộng đồng',video:'Video của tôi',goi:'Bảng giá',admin:'Quản trị','tro-giup':'Trợ giúp','tai-khoan':'Tài khoản'},
+      adminMenu: {'tong-quan':'Bảng điều khiển','nhat-ky':'Nhật ký','giong-doc':'Giọng đọc','may-dung':'Máy dựng','nguoi-dung':'Người dùng','cong-dong':'Cộng đồng',zalo:'Zalo',goi:'Gói cước','don-hang':'Đơn hàng','noi-dung':'Nội dung & menu','cai-dat':'Cài đặt'},
       styles: { sunset: 'Hoàng hôn tím cam', cosmos: 'Vũ trụ phẳng', manim: 'Bảng đen toán học', bold: 'Chữ nổi bật', neon: 'Neon đêm', darkboard: 'Bảng đen hiện đại', comic: 'Truyện tranh', pastel: 'Pastel dễ thương', newspaper: 'Báo giấy cổ điển', whiteboard: 'Bảng trắng', chalkboard: 'Bảng phấn', oly: 'Vở ô ly', kraft: 'Giấy kraft', pencil: 'Sổ phác chì', blueprint: 'Bản vẽ kỹ thuật', ricepaper: 'Giấy dó mực tàu', notebook: 'Giấy kem kể chuyện' },
       tools: { marker: 'Bút dạ bảng', chalk: 'Phấn', fountain: 'Bút máy', colormarker: 'Bút dạ màu', pencil: 'Bút chì', technical: 'Bút kỹ thuật', brush: 'Bút lông' },
       kinds: { plot: 'Đồ thị hàm số', sketch: 'Bảng vẽ tự do (chữ + hình + mũi tên)', bars: 'Biểu đồ cột (mũi tên, đường cong)', flow: 'Chuỗi nguyên nhân → kết quả', compare: 'So sánh ✗ / ✓', steps: 'Các bước', number: 'Con số nổi bật', statement: 'Câu chốt', stick: 'Người que chuyển động', pie: 'Biểu đồ tròn chia phần' },
@@ -328,6 +331,8 @@ export function cleanConfig(input: any, base: Config): Config {
   return {
     brand: { name: str(i.brand?.name, 40, base.brand.name) || base.brand.name, accent: str(i.brand?.accent, 30, base.brand.accent), tagline: str(i.brand?.tagline, 160, base.brand.tagline) },
     labels: {
+      navigation: labels(L.navigation, Object.keys(base.labels.navigation || {}), base.labels.navigation || {}, 40),
+      adminMenu: labels(L.adminMenu, Object.keys(base.labels.adminMenu || {}), base.labels.adminMenu || {}, 40),
       styles: labels(L.styles, STYLE_KEYS, base.labels.styles), tools: labels(L.tools, TOOL_KEYS, base.labels.tools),
       kinds: labels(L.kinds, KIND_KEYS, base.labels.kinds), visual: labels(L.visual, VISUAL_KEYS, base.labels.visual, 80),
       actions: labels(L.actions, ACTION_KEYS, base.labels.actions), ai: labels(L.ai, TEXT_AI_KEYS, base.labels.ai),

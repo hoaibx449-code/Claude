@@ -195,7 +195,7 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
   const u = sub.match(/^users\/([A-Za-z0-9_-]{1,80})$/);
   if (u && method === 'GET') {
     const id = u[1];
-    const user = await env.DB.prepare('SELECT id, email, name, created_at FROM users WHERE id = ?').bind(id).first<any>();
+    const user = await env.DB.prepare('SELECT id, email, name, created_at, EXISTS(SELECT 1 FROM blocked_users b WHERE b.user_id=users.id) AS blocked FROM users WHERE id = ?').bind(id).first<any>();
     if (!user) throw new HttpError(404, 'Không tìm thấy người dùng.');
     const [projects, jobs, events, usage, money, plan] = await Promise.all([
       env.DB.prepare('SELECT id, title, created_at, updated_at FROM projects WHERE user_id = ? ORDER BY updated_at DESC LIMIT 50').bind(id).all<any>(),
@@ -205,7 +205,8 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
       env.DB.prepare("SELECT ROUND(COALESCE(SUM(CASE WHEN cost > 0 THEN cost END), 0)) AS cost, COUNT(*) AS events, SUM(ok = 0) AS errors FROM events WHERE user_id = ?").bind(id).first<any>(),
       env.DB.prepare('SELECT plan, expires_at FROM user_plans WHERE user_id = ?').bind(id).first<any>(),
     ]);
-    return json({ user, projects: projects.results, jobs: jobs.results, events: events.results, usage: usage.results, totals: money, plan });
+    const credit=await env.DB.prepare('SELECT balance FROM credits WHERE user_id=?').bind(user.id).first<{balance:number}>();
+    return json({ user:{...user,credits:credit?.balance||0}, projects: projects.results, jobs: jobs.results, events: events.results, usage: usage.results, totals: money, plan });
   }
   const cr = sub.match(/^users\/([A-Za-z0-9_-]{1,80})\/credits$/);
   if (cr && method === 'POST') return creditsAdmin(req, env, rc, cr[1]);

@@ -195,7 +195,8 @@ export function prepare(opts: {
   if (project.look) return prepareLook(opts);
   const mode: Mode = (['motion', 'math', 'kinetic'] as const).includes(project.mode as any) ? project.mode! : 'hand';
   const subs = !!project.subtitles;
-  const style = STYLES[project.style] ?? STYLES.notebook;
+  let style = STYLES[project.style] ?? STYLES.notebook;
+  if(project.palette){const p=project.palette;style={...style,ink:p.ink,sub:p.ink,channel:p.ink,episode:p.accent,accent2:p.accent2,fills:[],bg(c,W,H){c.fillStyle=p.background;c.fillRect(0,0,W,H);}};}
   const { W, H } = logicalSize(project.ratio);
   const bgc = env.createCanvas(W * dpr, H * dpr), b = bgc.getContext('2d');
   b.setTransform(dpr, 0, 0, dpr, 0, 0); style.bg(b, W, H);
@@ -244,7 +245,12 @@ export function prepare(opts: {
       // motion graphics: each thing springs into place quickly, then keeps floating gently
       return schedule(els, sc.lines, T, sc.diagram.kind === 'sketch', (e, start, end) => {
         const stop = start + Math.min(end - start, e.kind === 'path' ? 0.7 : 0.5), ctr = elementCentre(e), ph = ctr[0] * 0.013 + ctr[1] * 0.007;
-        return { start, end: stop, draw: (c: Ctx, p: number, a: number, now: number) => drawPop(c, e, p, a, pen, now - stop, ctr, ph), pen: (p: number) => elementPen(e, p) };
+        return { start, end: stop, draw: (c: Ctx, p: number, a: number, now: number) => {
+          const motion=items[e.item ?? -1]?.motion;
+          if(!motion){drawPop(c,e,p,a,pen,now-stop,ctr,ph);return;}
+          const q=ease(clamp((now-start)/Math.max(.1,T.end-start)));
+          c.save();c.translate(ctr[0]+motion.dx*W/100*q,ctr[1]+motion.dy*H/100*q);c.rotate(motion.rotate*Math.PI/180*q);const z=1+(motion.scale-1)*q;c.scale(z,z);c.translate(-ctr[0],-ctr[1]);drawElement(c,e,p,a,pen,0);c.restore();
+        }, pen: (p: number) => elementPen(e, p) };
       });
     }
     return schedule(els, sc.lines, T, sc.diagram.kind === 'sketch', (e, start, end) => ({

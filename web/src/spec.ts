@@ -1,3 +1,4 @@
+import {validVector} from '../../src/engine/vector.ts';
 import { storedCreative } from './creative.ts';
 import { planDirections } from '../../src/engine/director.ts';
 // Strict validation of project scripts coming from the browser or an AI model.
@@ -49,7 +50,8 @@ function cleanSketch(items: unknown, lines: number, media: string[] = []) {
     if (/^[A-Za-z0-9_-]{1,20}$/.test(String(it.id ?? ''))) o.id = String(it.id);
     if (Number.isInteger(it.line) && it.line >= 0 && it.line < lines) o.line = it.line;
     if (str(it.cue, 40)) o.cue = str(it.cue, 40);
-    if (COLORS.includes(it.color)) o.color = it.color;
+    if (COLORS.includes(it.color) || /^#[a-fA-F0-9]{6}$/.test(it.color)) o.color = it.color;
+    if(it.motion && typeof it.motion==='object')o.motion={dx:num(it.motion.dx,-30,30,0),dy:num(it.motion.dy,-30,30,0),rotate:num(it.motion.rotate,-180,180,0),scale:num(it.motion.scale,.25,2,1)};
     const at = () => { o.x = pct(it.x, 50); o.y = pct(it.y, 50); };
     switch (it.t) {
       case 'text':
@@ -58,6 +60,11 @@ function cleanSketch(items: unknown, lines: number, media: string[] = []) {
         if (it.align === 'left') o.align = 'left';
         if (it.w != null) o.w = pct(it.w, 80);
         break;
+      case 'vector': {
+        if(!validVector(it))continue;
+        at(); o.paths=it.paths; o.w=Math.max(1,pct(it.w,40)); o.h=Math.max(1,pct(it.h,40)); o.fill=it.fill===true; o.stroke=num(it.stroke,1,10,3);
+        break;
+      }
       case 'icon':
         o.name = str(it.name, 40).toLowerCase(); if (!/^[a-z0-9-]{2,40}$/.test(o.name)) continue; at();
         o.w = Math.max(6, Math.min(60, pct(it.w, 22)));
@@ -235,7 +242,7 @@ export function cleanSpec(input: any, userId: string, requireDesign: boolean | '
       return out;
     }
     let diagram = cleanDiagram(sc?.diagram, lines.length, mk);
-    if (requireDesign && (!diagram || diagram.kind !== 'sketch' || !diagram.items?.some((it: any) => (requireDesign === 'creative' ? ['text','icon','person','chart'] : ['icon','person','chart']).includes(it.t)))) throw new HttpError(502, 'Thiết kế AI có hình không hợp lệ; không dùng bố cục theo luật thay thế.');
+    if (requireDesign && (!diagram || diagram.kind !== 'sketch' || !diagram.items?.some((it: any) => (requireDesign === 'creative' ? ['text','vector','icon','person','chart'] : ['icon','person','chart']).includes(it.t)))) throw new HttpError(502, 'Thiết kế AI có hình không hợp lệ; không dùng bố cục theo luật thay thế.');
     // drawn-only videos: a scene that came back without a usable drawing gets one designed from its words
     if (!diagram && (visual === 'diagram' || visual === 'sketch') && lines.length) diagram = { kind: 'sketch', items: cleanSketch(composeScene(lines, ratio === '9:16', si, { format, index: si, total }), lines.length) };
     if (diagram) return { lines, panels: [], diagram };
@@ -253,6 +260,7 @@ export function cleanSpec(input: any, userId: string, requireDesign: boolean | '
   const v = input.voice || {};
   return {
     creative: storedCreative(input.creative),
+    palette: input.palette && ['background','ink','accent','accent2'].every(k=>/^#[a-fA-F0-9]{6}$/.test(input.palette[k])) ? Object.fromEntries(['background','ink','accent','accent2'].map(k=>[k,input.palette[k]])) : undefined,
     title: str(input.title, 100) || 'Video mới',
     caption: str(input.caption, 300),
     hashtags: (Array.isArray(input.hashtags) ? input.hashtags : []).map((h: unknown) => str(h, 30).replace(/\s+/g, ''))
