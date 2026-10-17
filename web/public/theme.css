@@ -149,3 +149,34 @@ body[data-page="admin"] .helpchat-btn, body[data-page="admin"] .helpchat { displ
 .conn-detail .hint { color: var(--ink); }
 .conn-models { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .conn-models button { min-height: 30px; font-size: .8125rem; }
+
+/* browser render: steps, moving bar, REC badge */
+.br-steps { list-style: none; display: flex; gap: 6px; padding: 0; margin: 4px 0 12px; flex-wrap: wrap; }
+.br-steps li { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 99px; background: var(--paper); border: 1px solid var(--line); color: var(--muted); font-size: .8125rem; transition: background .3s, color .3s; }
+.br-steps li i { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: .75rem; background: var(--line); color: var(--muted); }
+.br-steps li.on { background: color-mix(in srgb, var(--accent) 10%, var(--card)); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.br-steps li.on i { background: var(--grad); color: #fff; animation: br-pulse 1.2s ease-in-out infinite; }
+.br-steps li.done { color: var(--ink); }
+.br-steps li.done i { background: var(--good, #059669); color: #fff; font-size: 0; }
+.br-steps li.done i::after { content: '✓'; font-size: .75rem; }
+.br-steps li.fail { color: var(--bad, #dc2626); border-color: color-mix(in srgb, var(--bad, #dc2626) 40%, var(--line)); }
+.br-steps li.fail i { background: var(--bad, #dc2626); color: #fff; }
+@keyframes br-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--glow); } 50% { box-shadow: 0 0 0 6px transparent; } }
+.br-stage { position: relative; border-radius: 16px; padding: 12px; background: var(--grad-soft); overflow: hidden; }
+.br-stage canvas { border-radius: 10px; box-shadow: 0 16px 40px -18px var(--glow); position: relative; z-index: 1; }
+.browser-render.br-working .br-stage::before { content: ''; position: absolute; inset: -40%; background: conic-gradient(from 0deg, transparent 0 70%, color-mix(in srgb, var(--accent) 35%, transparent) 85%, transparent 100%); animation: br-spin 3s linear infinite; }
+.br-stage::after { content: ''; position: absolute; inset: 3px; border-radius: 13px; background: var(--grad-soft); }
+@keyframes br-spin { to { transform: rotate(1turn); } }
+.br-shimmer { position: absolute; inset: 0; z-index: 2; pointer-events: none; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, .45) 50%, transparent 70%); background-size: 220% 100%; animation: br-shine 1.4s linear infinite; }
+@keyframes br-shine { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+.br-rec { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 3; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 99px; background: rgba(0, 0, 0, .65); color: #fff; font-size: .75rem; letter-spacing: .08em; }
+.br-rec i { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: br-blink 1s steps(2) infinite; }
+@keyframes br-blink { 50% { opacity: .2; } }
+.br-meter { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.br-bar { flex: 1 1 240px; height: 12px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.br-bar span { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--grad); background-size: 200% 100%; transition: width .4s ease; position: relative; }
+.browser-render.br-working .br-bar span { background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, .25) 0 10px, transparent 10px 20px), var(--grad); background-size: 28px 28px, 100% 100%; animation: br-stripes .8s linear infinite; }
+@keyframes br-stripes { to { background-position: 28px 0, 0 0; } }
+.br-pct { font-variant-numeric: tabular-nums; min-width: 3.5ch; color: var(--accent); }
+.br-clock { font-size: .8125rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .br-steps li.on i, .br-shimmer, .br-rec i, .browser-render .br-stage::before, .browser-render .br-bar span { animation: none !important; } }
