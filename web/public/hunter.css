@@ -33,3 +33,10 @@
 .helpchat .help-source{display:block;margin-top:10px;color:#3730a3;text-decoration:underline;font-weight:600;overflow-wrap:anywhere}.helpchat .msg.bot{background:#f1f4fa;color:#17243b}.helpchat .msg.me{background:#4338ca;color:#fff}
 @media(max-width:1100px){.hunter .hunter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.hunter{padding:4px 0 24px}.hunter .hunter-hero{align-items:flex-start;flex-direction:column;gap:18px;padding:20px 0}.hunter .hunter-hero h1{font-size:30px}.hunter .hunter-toolbar{flex-direction:column;align-items:stretch;gap:12px}.hunter .hunter-tabs{align-self:flex-start}.hunter .hunter-categories{flex-wrap:nowrap;overflow-x:auto;padding:2px 1px 10px;max-width:100%;gap:6px}.hunter .hunter-categories button{flex:none;white-space:nowrap}.hunter .hunter-grid{grid-template-columns:minmax(0,1fr);gap:14px}.hunter .hunter-card{padding:18px}.hunter .hunter-title{font-size:17px}.hunter .hunter-hero p{font-size:14px}}
+
+/* Compact library heading: leave the screen for the prompts. */
+.hunter{padding-top:0}.hunter .hunter-hero{padding:10px 0 16px;margin-bottom:16px;gap:16px;min-height:0}
+.hunter .hunter-eyebrow{display:none}.hunter .hunter-hero h1{font-size:26px!important;line-height:1.25;margin:0 0 5px!important;letter-spacing:-.025em}
+.hunter .hunter-hero p{font-size:13px;line-height:1.6}.hunter .hunter-hero>button{min-height:40px;padding:9px 14px;font-size:13px}
+.hunter .hunter-card .description,.hunter .hunter-excerpt{text-align:justify;text-justify:inter-word;hyphens:auto}.hunter .hunter-title{text-align:justify!important;text-align-last:left}
+@media(max-width:650px){.hunter .hunter-hero{flex-direction:row;align-items:center;gap:12px;padding:8px 0 14px}.hunter .hunter-hero h1{font-size:22px!important}.hunter .hunter-hero p{display:none}.hunter .hunter-hero>button{font-size:12px;padding:8px 10px;min-height:38px}.hunter .hunter-hero>div{min-width:0}}
