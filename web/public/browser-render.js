@@ -12,7 +12,10 @@ export function subtitleFile(spec,timeline){
   return timeline.scenes.flatMap((sc,i)=>sc.lines.map((l,j)=>`${++n}\n${stamp(l.start)} --> ${stamp(l.end)}\n${spec.scenes[i].lines[j]}\n`)).join('\n');
 }
 let current=null;
-export async function openBrowserRender(spec,projectId,{h,previewModel,paintFrame,NV,onClose}){
+// encoders that failed while recording on this device: skipped on the next try
+const badTypes=new Set();
+export async function openBrowserRender(spec,projectId,opts){
+  const {h,previewModel,paintFrame,NV,onClose}=opts;
   current?.();
   const controller=new AbortController(),signal=controller.signal,urls=[],sources=[];let ctx,stream,recorder,raf=0,working=false,finished=false,closed=false,wake;
   const canvas=h('canvas',{'aria-label':'Khung hình đang xuất'}),note=h('p',{class:'muted',role:'status'},'Giữ tab này mở trong lúc dựng. Tệp tải về máy, chưa lưu vào thư viện.'),meter=h('progress',{max:100,value:0,'aria-label':'Tiến độ dựng trên trình duyệt'}),result=h('div',{class:'row'});
@@ -57,17 +60,21 @@ export async function openBrowserRender(spec,projectId,{h,previewModel,paintFram
       // the biggest picture this device can encode: try sharper first, then smaller
       for(const sc of [4/3,1,2/3]){
         model=await previewModel(spec,sc,timeline);canvas.width=Math.round(model.W*sc);canvas.height=Math.round(model.H*sc);paintFrame(canvas.getContext('2d'),model,0);
-        recMime=await workingType(canvas,recordingTypes(t=>MediaRecorder.isTypeSupported(t),spoken),spoken);if(recMime){scale=sc;break;}
+        recMime=await workingType(canvas,recordingTypes(t=>MediaRecorder.isTypeSupported(t),spoken).filter(t=>!badTypes.has(t)),spoken?ctx:null);if(recMime){scale=sc;break;}
       }
-      if(!recMime)throw new Error('Trình duyệt không mã hoá được video ở máy này. Hãy dùng Chrome/Edge bản mới trên máy tính, hoặc chuyển sang dựng trên Cloud/máy cá nhân.');
+      if(!recMime)throw new Error('Trình duyệt không mã hoá được video ở máy này ('+((workingType.errors||[]).slice(-2).join('; ')||'không có bộ mã hoá phù hợp')+'). Hãy dùng Chrome/Edge bản mới trên máy tính, hoặc chuyển sang dựng trên Cloud/máy cá nhân.');
       setPct(20);
       const dest=ctx.createMediaStreamDestination(),gain=ctx.createGain();gain.gain.value=spec.audio?.voiceVolume??1;gain.connect(dest);
       stream=canvas.captureStream(24);if(spoken)dest.stream.getAudioTracks().forEach(t=>stream.addTrack(t));
       recorder=new MediaRecorder(stream,{mimeType:recMime,videoBitsPerSecond:3500000,audioBitsPerSecond:128000});
       const chunks=[];let bytes=0,recordError,startReject;
       recorder.ondataavailable=e=>{if(e.data.size){chunks.push(e.data);bytes+=e.data.size;if(bytes>120000000)controller.abort(new Error('Tệp vượt 120 MB. Hãy dựng video ngắn hơn.'));}};
-      const stopped=new Promise(resolve=>{recorder.onstop=resolve;recorder.onerror=e=>{recordError=e.error||new Error('Bộ ghi video bị lỗi.');startReject?.(recordError);controller.abort(recordError);};});
-      const started=new Promise((resolve,reject)=>{recorder.onstart=resolve;startReject=reject;});recorder.start(1000);await started;
+      const stopped=new Promise(resolve=>{recorder.onstop=resolve;recorder.onerror=e=>{recordError=e.error||new Error('Bộ ghi video bị lỗi.');badTypes.add(recMime);startReject?.(recordError);controller.abort(recordError);};});
+      const started=new Promise((resolve,reject)=>{recorder.onstart=resolve;startReject=reject;});recorder.start(1000);
+      // a canvas stream only sends a frame when the picture changes: keep repainting until recording starts
+      {const c2=canvas.getContext('2d');let n=0;const keep=setInterval(()=>{paintFrame(c2,model,0);if(n++%2)c2.fillRect(0,0,0,0);},60);
+        try{await Promise.race([started,new Promise((_,no)=>setTimeout(()=>no(new Error('Bộ ghi video không khởi động được ('+recMime+'). Bấm Dựng lại để thử định dạng khác.')),6000))]);}
+        catch(e){badTypes.add(recMime);throw e;}finally{clearInterval(keep);}}
       const base=ctx.currentTime+.05;
       const schedule=(buffer,time)=>{const src=ctx.createBufferSource();src.buffer=buffer;src.connect(gain);src.start(base+time);sources.push(src);};
       if(upload)schedule(upload,timeline.scenes[0].lines[0].start);else buffers.forEach((b,i)=>schedule(b,timeline.scenes[i].lines[0].start));
@@ -76,31 +83,39 @@ export async function openBrowserRender(spec,projectId,{h,previewModel,paintFram
       await new Promise((resolve,reject)=>{const abort=()=>{cancelAnimationFrame(raf);reject(signal.reason||new Error('Đã hủy dựng.'));};signal.addEventListener('abort',abort,{once:true});let last=performance.now();
         const frame=()=>{if(signal.aborted)return abort();if(ctx.state!=='running'){controller.abort(new Error('Âm thanh bị tạm dừng. Giữ tab mở và thử lại.'));return;}const now=performance.now();if(now-last>2500){controller.abort(new Error('Thiết bị bị gián đoạn khi dựng. Giữ tab mở và thử video ngắn hơn.'));return;}last=now;const t=Math.max(0,ctx.currentTime-base);paintFrame(canvas.getContext('2d'),model,Math.min(t,timeline.duration-.01));setPct(20+Math.min(79,t/timeline.duration*79),timeline.duration-t);if(t>=timeline.duration){signal.removeEventListener('abort',abort);resolve();}else raf=requestAnimationFrame(frame);};raf=requestAnimationFrame(frame);
       });
-      recorder.stop();await stopped;if(recordError)throw recordError;const blob=new Blob(chunks,{type:recorder.mimeType||recMime});if(blob.size<1000)throw new Error('Tệp video rỗng.');
+      recorder.stop();await stopped;if(recordError){badTypes.add(recMime);throw recordError;}const blob=new Blob(chunks,{type:recorder.mimeType||recMime});if(blob.size<1000)throw new Error('Tệp video rỗng.');
       const ext=blob.type.startsWith('video/mp4')?'mp4':'webm',url=URL.createObjectURL(blob),srt=URL.createObjectURL(new Blob([subtitleFile(spec,timeline)],{type:'text/plain;charset=utf-8'}));urls.push(url,srt);
       result.replaceChildren(h('a',{class:'btn',href:url,download:`video.${ext}`},`Tải ${ext.toUpperCase()}`),h('a',{class:'btn ghost',href:srt,download:'video.srt'},'Tải phụ đề SRT'),h('video',{src:url,controls:true,playsinline:true,class:'browser-result','aria-label':'Video vừa xuất'}));
       finished=true;setStep(3,'done');setPct(100,0);clearInterval(tick);note.textContent=`Đã xuất ${timeline.duration.toFixed(1)} giây. Tải video về trước khi đóng cửa sổ này.`;button.hidden=true;
-    }catch(e){note.textContent=e?.message||'Không xuất được video.';button.disabled=signal.aborted;const at=[...steps.children].findIndex(li=>li.className==='on');if(at>=0)setStep(at,'fail');button.textContent='Dựng lại';}
+    }catch(e){note.textContent=e?.message||'Không xuất được video.';button.disabled=signal.aborted;const at=[...steps.children].findIndex(li=>li.className==='on');if(at>=0)setStep(at,'fail');
+      // a fresh window for the next try (this one's work was cancelled)
+      const again=h('button',{type:'button',onclick:()=>{close();openBrowserRender(spec,projectId,opts);}},'Dựng lại');button.replaceWith(again);}
     finally{working=false;cleanup();}
   }
 }
 
-/** First type whose encoder really starts on this canvas: isTypeSupported can say yes and still fail. */
-async function workingType(canvas,types,audio){
+/**
+ * First type whose encoder really starts on this canvas: isTypeSupported can say yes and still fail.
+ * The probe uses the page's running AudioContext (a new one would be suspended without a click and
+ * the recorder would wait for sound forever); only a recorder error counts as a failure.
+ */
+async function workingType(canvas,types,ctx){
+  const errors=[];
   for(const type of types){
     const stream=canvas.captureStream(24);
-    if(audio){try{const ac=new AudioContext(),d=ac.createMediaStreamDestination();d.stream.getAudioTracks().forEach(t=>stream.addTrack(t));setTimeout(()=>ac.close().catch(()=>{}),2000);}catch{}}
+    let dest=null;if(ctx){try{dest=ctx.createMediaStreamDestination();const o=ctx.createOscillator(),g=ctx.createGain();g.gain.value=0;o.connect(g).connect(dest);o.start();o.stop(ctx.currentTime+2);dest.stream.getAudioTracks().forEach(t=>stream.addTrack(t));}catch{}}
     const ok=await new Promise(resolve=>{
-      let rec;try{rec=new MediaRecorder(stream,{mimeType:type,videoBitsPerSecond:3500000});}catch{resolve(false);return;}
-      const ctx=canvas.getContext('2d');let n=0;const draw=setInterval(()=>{ctx.fillStyle=n++%2?'#000':'#111';ctx.fillRect(0,0,2,2);},40);
+      let rec;try{rec=new MediaRecorder(stream,{mimeType:type,videoBitsPerSecond:3500000});}catch(e){errors.push(type+': '+(e?.message||e));resolve(false);return;}
+      const c2=canvas.getContext('2d');let n=0;const draw=setInterval(()=>{c2.fillStyle=n++%2?'#000':'#111';c2.fillRect(0,0,2,2);},40);
+      let failed=false;
       const done=v=>{clearInterval(draw);try{if(rec.state!=='inactive')rec.stop();}catch{}resolve(v);};
-      let got=false;rec.ondataavailable=e=>{if(e.data.size)got=true;};
-      rec.onerror=()=>done(false);
-      try{rec.start(250);}catch{done(false);return;}
-      setTimeout(()=>done(got),1200);
+      rec.onerror=e=>{failed=true;errors.push(type+': '+(e?.error?.message||'lỗi bộ mã hoá'));done(false);};
+      try{rec.start(250);}catch(e){errors.push(type+': '+(e?.message||e));done(false);return;}
+      setTimeout(()=>{if(!failed)done(rec.state==='recording');},1500);
     });
-    stream.getTracks().forEach(t=>t.stop());
+    stream.getVideoTracks().forEach(t=>t.stop());
     if(ok)return type;
   }
+  workingType.errors=errors;
   return '';
 }
