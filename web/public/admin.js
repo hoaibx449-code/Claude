@@ -628,6 +628,7 @@ function uploadSiteFile(file, progress = () => {}) {
 /** A home page picture/video: paste an https address or upload a file (stored as "site:…"). */
 function mediaField(label, value, onChange, accept = 'image/png,image/jpeg,image/webp,video/mp4,video/webm') {
   const preview = h('div', { class: 'media-preview' });
+  const uploadStatus=h('p',{class:'muted','aria-live':'polite',role:'status'});
   const paint = (v) => {
     const url = siteUrl(v);
     preview.replaceChildren(!v ? h('span', { class: 'muted' }, 'Chưa có') : /\.(mp4|webm)(?:[?#]|$)/i.test(v) ? h('video', { src: url, muted: true, controls: true, preload: 'metadata' }) : h('img', { src: url, alt: '' }));
@@ -636,17 +637,17 @@ function mediaField(label, value, onChange, accept = 'image/png,image/jpeg,image
   const file = h('input', { type: 'file', accept, hidden: true, onchange: async () => {
     const f = file.files[0]; if (!f) return;
     try {
-      uploadBtn.disabled=true; uploadBtn.textContent='Đang tải…';
-      const data = await uploadSiteFile(f,p=>{uploadBtn.textContent=p===100?'Đang lưu…':p===null?'Đang tải…':'Đang tải '+p+'%';});
-      box.value = data.ref; onChange(data.ref); paint(data.ref); toast('Đã tải lên. Bấm Lưu cài đặt để áp dụng.');
-    } catch (e) { fail(e); } finally { uploadBtn.disabled=false;uploadBtn.textContent='Tải lên'; }
+      uploadBtn.disabled=true; uploadBtn.textContent='Đang tải…';uploadStatus.textContent='Đang tải '+f.name+'…';
+      const data = await uploadSiteFile(f,p=>{uploadBtn.textContent=p===100?'Đang lưu…':p===null?'Đang tải…':'Đang tải '+p+'%';uploadStatus.textContent=f.name+' · '+uploadBtn.textContent;});
+      box.value = data.ref; onChange(data.ref); paint(data.ref);uploadStatus.textContent='Đã tải '+f.name+'. Video/ảnh xem trước ở bên dưới. Bấm Lưu cài đặt để hiển thị trên web.'; toast('Đã tải lên. Bấm Lưu cài đặt để áp dụng.');
+    } catch (e) { uploadStatus.textContent='Chưa tải được '+f.name+': '+e.message;fail(e); } finally { uploadBtn.disabled=false;uploadBtn.textContent='Tải lên'; }
     file.value = '';
   } });
   const uploadBtn=h('button',{type:'button',class:'ghost small',onclick:()=>file.click()},'Tải lên');
   paint(value);
   return h('div', { class: 'mediafield' }, h('label', {}, label, box), h('div', { class: 'row' },
     uploadBtn,
-    h('button', { type: 'button', class: 'ghost small', onclick: () => { box.value = ''; onChange(''); paint(''); } }, 'Bỏ')), preview, file);
+    h('button', { type: 'button', class: 'ghost small', onclick: () => { box.value = ''; onChange(''); paint('');uploadStatus.textContent=''; } }, 'Bỏ')), uploadStatus,preview, file);
 }
 
 function siteCard(c) {
@@ -657,6 +658,7 @@ function siteCard(c) {
     h('div', { class: 'row' },
       i > 0 ? h('button', { type: 'button', class: 'ghost small', onclick: () => { c.site.showcase.splice(i - 1, 0, c.site.showcase.splice(i, 1)[0]); draw(); } }, '↑ Lên') : null,
       h('button', { type: 'button', class: 'ghost small danger', onclick: () => { c.site.showcase.splice(i, 1); draw(); } }, 'Bỏ video')))));
+  const bulkStatus=h('p',{class:'muted',role:'status','aria-live':'polite'});
   const bulk=h('input',{type:'file',accept:'video/mp4,video/webm',multiple:true,hidden:true,'aria-label':'Tải nhiều video trình diễn',onchange:async()=>{
     const files=Array.from(bulk.files||[]);if(!files.length)return;
     let added=0,errors=0;const failures=[];
@@ -665,12 +667,12 @@ function siteCard(c) {
         if(c.site.showcase.length>=12){errors++;continue;}
         try{
           if(f.size>60*1024*1024)throw new Error('Video vượt 60 MB.');
-          const data=await uploadSiteFile(f,p=>{bulkBtn.textContent='Video '+(files.indexOf(f)+1)+'/'+files.length+' · '+(p===100?'Đang lưu…':p===null?'Đang tải…':p+'%');});
+          const data=await uploadSiteFile(f,p=>{bulkBtn.textContent='Video '+(files.indexOf(f)+1)+'/'+files.length+' · '+(p===100?'Đang lưu…':p===null?'Đang tải…':p+'%');bulkStatus.textContent=f.name+' · '+bulkBtn.textContent;});
           c.site.showcase.push({title:f.name.replace(/\.(mp4|webm)$/i,'').slice(0,60),caption:'',video:data.ref,poster:''});added++;
         }catch(e){errors++;failures.push(f.name+": "+e.message);}
       }
     });
-    bulk.value='';draw();if(failures.length)fail(new Error(failures.join('\n')));toast(`Đã tải ${added} video${errors?' · '+errors+' tệp chưa thêm được (kiểm tra định dạng, dung lượng và giới hạn 12 video)':''}. Bấm Lưu cài đặt để áp dụng.`);
+    bulk.value='';draw();bulkStatus.textContent='Đã tải '+added+' video. '+(added?'Video vừa tải đã có trong danh sách bên dưới; bấm Lưu cài đặt để áp dụng. ':'')+failures.join(' · ');if(failures.length)fail(new Error(failures.join('\n')));toast(`Đã tải ${added} video${errors?' · '+errors+' tệp chưa thêm được (kiểm tra định dạng, dung lượng và giới hạn 12 video)':''}. Bấm Lưu cài đặt để áp dụng.`);
   }});
   const bulkBtn=h('button',{type:'button',class:'ghost small',onclick:()=>bulk.click()},'Tải nhiều video');
   draw();
@@ -679,7 +681,7 @@ function siteCard(c) {
       h('label', {}, 'Tiêu đề lớn', input(c.site.heroTitle, (v) => { c.site.heroTitle = v; }, { maxlength: 120 })),
       h('label', {}, 'Đoạn giới thiệu', input(c.site.heroText, (v) => { c.site.heroText = v; }, { maxlength: 300 }))),
     h('div', { class: 'grid wide' }, mediaField('Ảnh/video mở đầu (tùy chọn)', c.site.heroMedia, (v) => { c.site.heroMedia = v; }), mediaField('Ảnh chờ cho video (poster)', c.site.heroPoster, (v) => { c.site.heroPoster = v; }, 'image/png,image/jpeg,image/webp')),
-    h('h3', {}, 'Danh sách video trình diễn'), bulkBtn, bulk, list,
+    h('h3', {}, 'Danh sách video trình diễn'), bulkBtn, bulkStatus,bulk, list,
     h('button', { type: 'button', class: 'ghost small', onclick: () => { if (c.site.showcase.length >= 12) return toast('Tối đa 12 video.'); c.site.showcase.push({ title: '', caption: '', video: '', poster: '' }); draw(); } }, '+ Thêm video trình diễn'));
 }
 
