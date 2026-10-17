@@ -159,7 +159,7 @@ test('AI work is left to the minute job (a webhook call only lives 30 seconds), 
  assert.equal((await f.env.DB.prepare("SELECT status FROM zalo_messages WHERE id='ai'").first()).status,'handled');
  assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM jobs').first()).n,1);
  assert.equal(f.sent.filter((s: any)=>/^Đã nhận, mình đang/.test(s.body.text)).length,1);
- assert.match(f.sent.at(-1).body.text,/đang được dựng/);
+ assert.match(f.sent.at(-1).body.text,/hàng chờ dựng/);
  // quick commands are still answered straight away
  const quick=await (await f.receive('GIUP','fast')).json();await f.drain();assert.equal(quick.deferred,undefined);
 }));
