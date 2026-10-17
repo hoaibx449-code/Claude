@@ -1,3 +1,4 @@
+import {hunterAdmin} from './hunter.ts';
 // Admin API: settings, users, activity log, analytics. Every route here is admin-only
 // (checked in worker.ts before dispatch) and every change is itself logged.
 import { aiCost } from './log.ts';
@@ -36,6 +37,7 @@ function eventFilter(url: URL) {
 
 export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: string, method: string, rc: Rc, admin: User): Promise<Response> {
   const url = new URL(req.url);
+  const hunter=await hunterAdmin(req,env,rc,sub);if(hunter)return hunter;
 
   if (sub === 'renders' && method === 'GET') {
     const jobs = await env.DB.prepare(`SELECT j.id, j.project_id, j.user_id, j.status, j.progress, j.error, j.created_at, j.started_at, j.finished_at,

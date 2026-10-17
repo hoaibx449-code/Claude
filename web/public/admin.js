@@ -8,7 +8,7 @@ const ADMIN_GROUPS = [
   ['Theo dõi', [['tong-quan', 'Bảng điều khiển', 'Số liệu chính, phễu người dùng, lỗi và tình trạng cài đặt.'], ['nhat-ky', 'Nhật ký', 'Mọi thao tác và lỗi, lọc theo người, loại, thời gian.']]],
   ['Sản xuất video', [
     ['giong-doc', 'Giọng đọc', 'Giọng nào đang đọc thật, giọng nào dùng giọng thay thế, nghe thử từng giọng.'], ['may-dung', 'Máy dựng', 'Hàng chờ, tiến độ và lỗi khi dựng video.']]],
-  ['Người dùng', [['nguoi-dung', 'Người dùng', 'Tìm người dùng, xem video, cấp gói hoặc credit, khoá tài khoản.'], ['cong-dong', 'Cộng đồng', 'Duyệt video chia sẻ.'], ['zalo', 'Zalo', 'Kết nối Zalo Bot, tự kiểm tra và hộp thư.']]],
+  ['Người dùng', [['prompt-hunter','Prompt Hunter','Kiểm duyệt và biên tập prompt chia sẻ.'],['nguoi-dung', 'Người dùng', 'Tìm người dùng, xem video, cấp gói hoặc credit, khoá tài khoản.'], ['cong-dong', 'Cộng đồng', 'Duyệt video chia sẻ.'], ['zalo', 'Zalo', 'Kết nối Zalo Bot, tự kiểm tra và hộp thư.']]],
   ['Kinh doanh', [['goi', 'Gói cước', 'Giá, hạn mức, thanh toán.'], ['don-hang', 'Đơn hàng', 'Đơn chờ, đã trả, huỷ.']]],
   ['Hệ thống', [['noi-dung', 'Trang chủ & nội dung', 'Ảnh, video mẫu, chữ trên trang, ngân sách AI.'], ['cai-dat', 'Cài đặt & khoá API', 'Mặc định khi tạo video, model AI, khoá API, quản trị viên.']]],
 ];
@@ -53,7 +53,7 @@ async function showAdmin() {
   side?.querySelector('.sidenav.bottom')?.before(sideNav);
   show(h('div', { class: 'admin' }, nav, h('div', { class: 'admin-main' }, h('header', { class: 'admin-head' }, h('h1', {}, title), h('p', { class: 'muted' }, desc)), body)));
   setTimeout(() => nav.querySelector('a.on')?.scrollIntoView({ block: 'nearest', inline: 'center' }), 0);
-  const pages = { 'may-dung': adminRenders, 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings, 'huan-luyen': adminSettings, 'giong-doc': adminSettings };
+  const pages = { 'prompt-hunter':async(body)=>{const {showHunter}=await import('/prompt-hunter.js');return showHunter({h,api,show:(...nodes)=>body.replaceChildren(...nodes.filter(Boolean)),me,toast,fail,detailDialog,openLogin,footer,admin:true});}, 'may-dung': adminRenders, 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings, 'huan-luyen': adminSettings, 'giong-doc': adminSettings };
   await (pages[tab] || adminOverview)(body, tab);
 }
 

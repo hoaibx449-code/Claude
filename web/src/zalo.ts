@@ -1,3 +1,4 @@
+import {createHunter} from './hunter.ts';
 // Zalo Bot (bot-api.zaloplatforms.com, Telegram-style API). People can:
 //  · link the bot to their web account with a short code, or just start chatting
 //    (a Zalo-only account is created when the admin allows it);
@@ -86,7 +87,7 @@ export function parseCommand(text: string) {
 /** The 6-character code among the words after KETNOI / CHUWEB ("KETNOI ma ABC123" works too). */
 const pickCode = (words: string[]) => { const w = words.map((x) => x.toUpperCase().replace(/[^A-Z0-9]/g, '')); return w.find((x) => /^[A-Z0-9]{6}$/.test(x)) || w[0] || ''; };
 const COMMANDS = ['GIUP', 'HUONGDAN', 'HELP', 'START', 'MENU', '?', 'HD', 'XINCHAO', 'CHAO', 'HI', 'HELLO', 'TT', 'TRANGTHAI', 'DS', 'DANHSACH', 'KHUNG',
-  'DINHDANG', 'DD', 'PHONGCACH', 'PC', 'GIONG', 'TAT', 'BAT', 'HUYKETNOI', 'MAU', 'TAO', 'KB', 'KICHBAN', 'KETNOI', 'CHUWEB', 'GIA', 'MUA', 'NV'];
+  'PROMPT', 'DINHDANG', 'DD', 'PHONGCACH', 'PC', 'GIONG', 'TAT', 'BAT', 'HUYKETNOI', 'MAU', 'TAO', 'KB', 'KICHBAN', 'KETNOI', 'CHUWEB', 'GIA', 'MUA', 'NV'];
 
 /**
  * Messages whose answer needs the AI (a few seconds to a minute). A webhook call may only work
@@ -94,6 +95,7 @@ const COMMANDS = ['GIUP', 'HUONGDAN', 'HELP', 'START', 'MENU', '?', 'HD', 'XINCH
  */
 export function needsAI(env: XEnv, text: string) {
   const { cmd, arg } = parseCommand(text);
+  if(cmd==='PROMPT')return arg.length>=20;
   if (!anyTextAI(env)) return false;
   if (cmd === 'TAO') return !!arg && env.config.enabledSources.includes('topic');
   const script = cmd === 'KB' || cmd === 'KICHBAN' || (!COMMANDS.includes(cmd) && String(text || '').trim().length >= 120);
@@ -200,7 +202,7 @@ export async function zaloWebhook(req: Request, env: XEnv, rc: Rc): Promise<Resp
     // the AI may take longer than the 30 seconds a webhook call gets: tell them now, the minute job does the rest
     rc.wait((async () => {
       const seen = await env.DB.prepare('SELECT 1 FROM zalo_outbox WHERE message_id = ? LIMIT 1').bind(id).first();
-      if (!seen) await send(env, event.chatId, 'Đã nhận, mình đang viết kịch bản và chuẩn bị hình (khoảng 1–2 phút)…', id);
+      if (!seen) await send(env, event.chatId, parseCommand(event.text).cmd==='PROMPT'?'Đã nhận prompt, mình đang đặt tiêu đề và phân loại…':'Đã nhận, mình đang viết kịch bản và chuẩn bị hình (khoảng 1–2 phút)…', id);
     })());
     return json({ ok: true, recorded: true, deferred: true });
   }
@@ -287,6 +289,14 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   const num = raw.match(/^\s*(?:s[oố]\s*)?([1-9])\s*[.)!]?\s*$/i);
   if (num && lead.menu?.[Number(num[1]) - 1]) raw = lead.menu[Number(num[1]) - 1].say;
   const { cmd, rest, arg } = parseCommand(raw);
+
+  if(cmd==='PROMPT'){
+    if(!owner)return reply('Lệnh PROMPT dành cho quản trị. Bạn có thể gửi bài tại trang Prompt Hunter trên web để được duyệt.');
+    if(arg.length<20)return reply('Cú pháp: PROMPT <nội dung đầy đủ>. AI sẽ đặt tiêu đề và phân loại; sửa lại tại Quản trị → Prompt Hunter.');
+    const author=link?.user_id?{id:link.user_id,name:name||'Quản trị'}:{id:'zalo-owner',name:'Quản trị'};
+    try{const made=await createHunter(env,rc,author,{content:arg},true,'zalo:'+await sha256(chatId+'|'+messageId));return reply('Đã đăng Prompt Hunter. '+(made.ai==='failed'?'AI chưa phân loại được; hãy sửa tiêu đề và nhóm trong quản trị. ':'')+'Mở '+origin(env)+'/#/prompt-hunter');}
+    catch(e:any){return reply('Chưa đăng prompt: '+e.message);}
+  }
 
   // owner claims the bot (code from the admin page)
   if (cmd === 'CHUWEB') {
