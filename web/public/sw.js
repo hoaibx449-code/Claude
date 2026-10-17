@@ -1,8 +1,8 @@
 // Makes the site installable and fast. The page and its scripts come from the network first
 // (with a short timeout, then the cached copy), so a new version shows up at once; heavy static
 // files (fonts, hand, icons, demo videos) are served from the cache and refreshed in the background.
-const SHELL = 'nv-shell-v28-hunter', STATIC = 'nv-static-v28-hunter';
-const SHELL_FILES = ['/', '/app.css', '/compact-ui.css', '/polish.css', '/theme.css', '/hunter.css?v=28', '/helpchat.js', '/app.js', '/home-gallery.js', '/voice-picker.js', '/prompt-hunter.js', '/creative-panel.js', '/ui-select.js', '/admin.js', '/banks.js', '/engine.js', '/whiteboard-addon.js', '/illustrated-addon.js', '/icons/icon.svg'];
+const SHELL = 'nv-shell-v29-interaction', STATIC = 'nv-static-v29-interaction';
+const SHELL_FILES = ['/', '/app.css', '/compact-ui.css', '/polish.css', '/theme.css', '/hunter.css?v=28', '/interaction.css?v=29', '/helpchat.js', '/app.js', '/home-gallery.js', '/voice-picker.js', '/prompt-hunter.js', '/creative-panel.js', '/ui-select.js', '/admin.js', '/banks.js', '/engine.js', '/whiteboard-addon.js', '/illustrated-addon.js', '/icons/icon.svg'];
 
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== SHELL && k !== STATIC).map((k) => caches.delete(k))))); self.clients.claim(); });
