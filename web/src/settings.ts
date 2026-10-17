@@ -229,7 +229,7 @@ export function defaultConfig(env: Env): Config {
       openaiText: env.OPENAI_TEXT_MODEL || 'gpt-4o-mini', openaiImage: env.OPENAI_IMAGE_MODEL || 'gpt-image-1', openaiImageQuality: env.OPENAI_IMAGE_QUALITY || 'medium',
       geminiText: env.GEMINI_TEXT_MODEL || 'gemini-3.5-flash', geminiImage: env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
       openaiFallback: 'gpt-4.1-mini', geminiFallback: 'gemini-flash-latest,gemini-3.8-flash',
-      ollamaUrl: '', ollamaText: 'gpt-oss:20b', ollamaFallback: '', order: ['gemini', 'openai', 'ollama'],
+      ollamaUrl: '', ollamaText: 'gpt-oss:120b', ollamaFallback: 'gpt-oss:20b', order: ['gemini', 'openai', 'ollama'],
     },
     limits: { script: Number(env.DAILY_SCRIPTS) || 20, image: Number(env.DAILY_IMAGES) || 60, render: Number(env.DAILY_RENDERS) || 5, maxSeconds: 600 },
     promptExtra: '',
@@ -299,6 +299,13 @@ function labels(v: any, keys: readonly string[], def: Record<string, string>, ma
   return out;
 }
 
+/** An Ollama server address as typed ("ollama.com", "https://x.vn/api/") → "https://x.vn"; '' when unusable. */
+export function ollamaAddress(v: unknown) {
+  let t = String(v ?? '').trim().replace(/\/+$/, '').replace(/\/api$/, '');
+  if (!t) return '';
+  if (!/^https?:\/\//i.test(t)) t = 'https://' + t;
+  return /^https?:\/\/[^\s/"'<>]{3,120}(\/[^\s"'<>]{0,80})?$/.test(t) ? t : '';
+}
 /** The order text providers are tried in: every provider once; an older saved setting starts with its chosen provider. */
 export function aiOrder(v: unknown, first?: unknown): string[] {
   const keys = TEXT_AI_KEYS as readonly string[];
@@ -353,7 +360,7 @@ export function cleanConfig(input: any, base: Config): Config {
       geminiText: MODEL.test(m.geminiText) && !RETIRED.test(m.geminiText) ? m.geminiText : base.models.geminiText, geminiImage: MODEL.test(m.geminiImage) ? m.geminiImage : base.models.geminiImage,
       openaiFallback: typeof m.openaiFallback === 'string' ? m.openaiFallback.split(',').map((x: string) => x.trim()).filter((x: string) => MODEL.test(x)).slice(0, 4).join(',') : base.models.openaiFallback,
       geminiFallback: typeof m.geminiFallback === 'string' ? m.geminiFallback.split(',').map((x: string) => x.trim()).filter((x: string) => MODEL.test(x) && !RETIRED.test(x)).slice(0, 4).join(',') : base.models.geminiFallback,
-      ollamaUrl: typeof m.ollamaUrl === 'string' && /^https?:\/\/[^\s]{3,200}$/.test(m.ollamaUrl.trim()) ? m.ollamaUrl.trim().replace(/\/+$/, '') : '',
+      ollamaUrl: ollamaAddress(m.ollamaUrl),
       ollamaText: MODEL.test(m.ollamaText || '') ? m.ollamaText : base.models.ollamaText,
       ollamaFallback: typeof m.ollamaFallback === 'string' ? m.ollamaFallback.split(',').map((x: string) => x.trim()).filter((x: string) => MODEL.test(x)).slice(0, 4).join(',') : base.models.ollamaFallback,
       order: aiOrder(m.order, d.textAI),
@@ -538,7 +545,8 @@ export async function effectiveEnv(env: Env): Promise<Env & { config: Config }> 
     OPENAI_TEXT_MODEL: config.models.openaiText, OPENAI_IMAGE_MODEL: config.models.openaiImage, OPENAI_IMAGE_QUALITY: config.models.openaiImageQuality,
     GEMINI_TEXT_MODEL: config.models.geminiText, GEMINI_IMAGE_MODEL: config.models.geminiImage,
     OPENAI_TEXT_FALLBACK: config.models.openaiFallback, GEMINI_TEXT_FALLBACK: config.models.geminiFallback,
-    OLLAMA_URL: config.models.ollamaUrl, OLLAMA_TEXT_MODEL: config.models.ollamaText, OLLAMA_TEXT_FALLBACK: config.models.ollamaFallback, AI_ORDER: config.models.order.join(','),
+    // Ollama Cloud needs only its key: no address typed means ollama.com
+    OLLAMA_URL: config.models.ollamaUrl || (secrets.OLLAMA_API_KEY || env.OLLAMA_API_KEY ? 'https://ollama.com' : ''), OLLAMA_TEXT_MODEL: config.models.ollamaText, OLLAMA_TEXT_FALLBACK: config.models.ollamaFallback, AI_ORDER: config.models.order.join(','),
     DAILY_SCRIPTS: String(config.limits.script), DAILY_IMAGES: String(config.limits.image), DAILY_RENDERS: String(config.limits.render),
     config,
   };

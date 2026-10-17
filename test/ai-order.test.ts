@@ -41,3 +41,25 @@ test('help chat falls back to the FAQ', () => {
   assert.match(faqAnswer('tải video về ở đâu'), /Video của tôi/);
   assert.match(faqAnswer('xyz'), /chưa chắc/);
 });
+
+test('Gemini out of quota hands over to Ollama at once (no waiting on every Gemini model)', async () => {
+  const { clearDown } = await import('../web/src/ai.ts');
+  const { ollamaAddress } = await import('../web/src/settings.ts');
+  assert.equal(ollamaAddress('ollama.com/'), 'https://ollama.com');
+  assert.equal(ollamaAddress('https://x.vn/api/'), 'https://x.vn');
+  assert.equal(ollamaAddress('not a url'), '');
+  const orig = globalThis.fetch, calls: string[] = [];
+  clearDown();
+  try {
+    globalThis.fetch = (async (url: any) => {
+      const u = String(url); calls.push(u);
+      if (u.includes('generativelanguage')) return new Response(JSON.stringify({ error: { message: 'You exceeded your current quota, please check your plan and billing details.' } }), { status: 429 });
+      if (u === 'https://ollama.com/api/chat') return new Response(JSON.stringify({ message: { content: '{"reply":"Ollama đây","intent":"chat"}' } }));
+      throw new Error('unexpected ' + u);
+    }) as any;
+    const env = { ...base, OPENAI_API_KEY: '', GEMINI_TEXT_FALLBACK: 'gemini-flash-latest,gemini-3.8-flash', OLLAMA_URL: 'https://ollama.com', OLLAMA_API_KEY: 'k', AI_ORDER: 'gemini,openai,ollama' };
+    const a = await assistantAnswer(env, 'sys', [], 'hi', 'gemini');
+    assert.equal(a.usage.provider, 'ollama');
+    assert.equal(calls.filter((u) => u.includes('generativelanguage')).length, 1);
+  } finally { globalThis.fetch = orig; clearDown(); }
+});

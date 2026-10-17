@@ -1,7 +1,7 @@
 // Admin API: settings, users, activity log, analytics. Every route here is admin-only
 // (checked in worker.ts before dispatch) and every change is itself logged.
 import { aiCost } from './log.ts';
-import { analyzeSample, geminiThinking, LOOK_BRIEF } from './ai.ts';
+import { analyzeSample, checkGateway, clearDown, downState, LOOK_BRIEF, planNotes, textPlan, type TextProvider } from './ai.ts';
 import { testEverAI, voiceStatus, voicesWithStatus } from './voices.ts';
 import type { User } from './auth.ts';
 import { clearCache, effectiveEnv, isAdmin, save as saveSettings, secretStatus } from './settings.ts';
@@ -73,44 +73,13 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
     return json(out);
   }
   if (sub === 'ai/check' && method === 'GET') {
-    // which Gemini text models this key may use, and how long a tiny JSON answer takes on the chosen ones
-    const out: any = { gemini: null, openai: null };
-    if (env.GEMINI_API_KEY) {
-      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': env.GEMINI_API_KEY } });
-      const j: any = await r.json().catch(() => ({}));
-      out.gemini = { status: r.status, error: j.error?.message, models: (j.models || []).filter((m: any) => (m.supportedGenerationMethods || []).includes('generateContent')).map((m: any) => String(m.name).replace('models/', '')).filter((n: string) => /gemini/.test(n)).slice(0, 60) };
-      out.gemini.timing = await Promise.all([env.config.models.geminiText, ...env.config.models.geminiFallback.split(',')].filter(Boolean).map(async (model) => {
-        const t0 = Date.now();
-        try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, { method: 'POST', headers: { 'x-goog-api-key': env.GEMINI_API_KEY!, 'content-type': 'application/json' }, signal: AbortSignal.timeout(60_000),
-            body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Trả JSON {"ok":true}' }] }], generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 2048, ...geminiThinking(model) } }) });
-          const jj: any = await res.json().catch(() => ({}));
-          return { model, status: res.status, ms: Date.now() - t0, error: jj.error?.message?.slice(0, 160), finish: jj.candidates?.[0]?.finishReason };
-        } catch (e: any) { return { model, ms: Date.now() - t0, error: String(e.message).slice(0, 120) }; }
-      }));
-    }
-    if (env.OPENAI_API_KEY) {
-      const r = await fetch('https://api.openai.com/v1/models', { headers: { authorization: `Bearer ${env.OPENAI_API_KEY}` } });
-      const j: any = await r.json().catch(() => ({}));
-      out.openai = { status: r.status, error: j.error?.message?.slice(0, 160) };
-    }
-    if (env.OLLAMA_URL) {
-      // which models the server has, and how long a tiny JSON answer takes on the chosen one
-      const t0 = Date.now(), auth: Record<string, string> = env.OLLAMA_API_KEY ? { authorization: `Bearer ${env.OLLAMA_API_KEY}` } : {};
-      try {
-        const r = await fetch(env.OLLAMA_URL + '/api/tags', { headers: auth, signal: AbortSignal.timeout(15_000) });
-        const j: any = await r.json().catch(() => ({}));
-        out.ollama = { status: r.status, ms: Date.now() - t0, models: (j.models || []).map((m: any) => String(m.name || m.model)).slice(0, 60), error: r.ok ? undefined : String(j.error || 'HTTP ' + r.status).slice(0, 160) };
-        if (r.ok && env.OLLAMA_TEXT_MODEL) {
-          const t1 = Date.now();
-          const res = await fetch(env.OLLAMA_URL + '/api/chat', { method: 'POST', headers: { 'content-type': 'application/json', ...auth }, signal: AbortSignal.timeout(60_000),
-            body: JSON.stringify({ model: env.OLLAMA_TEXT_MODEL, stream: false, format: 'json', messages: [{ role: 'user', content: 'Trả JSON {"ok":true}' }], options: { num_predict: 64 } }) });
-          const jj: any = await res.json().catch(() => ({}));
-          out.ollama.timing = [{ model: env.OLLAMA_TEXT_MODEL, status: res.status, ms: Date.now() - t1, error: res.ok ? undefined : String(jj.error || '').slice(0, 160) }];
-        }
-      } catch (e: any) { out.ollama = { ms: Date.now() - t0, error: String(e.message).slice(0, 160) }; }
-    }
-    return json(out);
+    // one gateway (?p=gemini|openai|ollama) or the fallback plan (?p=plan); every model is asked a
+    // tiny JSON question so the page shows which ones answer, how fast, and why the others do not
+    const which = new URL(req.url).searchParams.get('p') || 'plan';
+    if (which === 'plan') return json({ order: planNotes(env, env.config.defaults.textAI as TextProvider), plan: textPlan(env, env.config.defaults.textAI as TextProvider).map(([p, m]) => ({ provider: p, model: m })), paused: downState() });
+    if (!['gemini', 'openai', 'ollama'].includes(which)) throw new HttpError(400, 'Cổng không hợp lệ.');
+    clearDown();
+    return json(await checkGateway(env, which as TextProvider));
   }
   if (sub === 'voices/test' && method === 'POST') {
     const r = await testEverAI(env, String((await body<any>(req, 500)).code || '') || undefined);
@@ -122,6 +91,7 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
     const b = await body<any>(req, 200_000);
     const before = env.config;
     const config = await saveSettings(rawEnv, b.config, b.secrets || {});
+    clearDown(); // a new key or model gets a fresh chance at once
     clearCache();
     // which sections changed, and which keys were set or removed (never their values)
     const changed = Object.keys(config).filter((k) => JSON.stringify((config as any)[k]) !== JSON.stringify((before as any)[k]));

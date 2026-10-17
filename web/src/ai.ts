@@ -197,6 +197,23 @@ export function noteFailure(provider: TextProvider, model: string, status: numbe
   else if (status === 429 || status === 503) down.set(provider + ':' + model, now + 60_000);
 }
 const isDown = (p: string, m: string) => [p, p + ':' + m].some((k) => (down.get(k) || 0) > Date.now());
+/** A refused key or a used-up quota: the provider's other models would fail the same way. */
+export const providerOut = (p: string) => (down.get(p) || 0) > Date.now();
+/** What is paused right now and until when (admin connection check). */
+export const downState = () => [...down].filter(([, t]) => t > Date.now()).map(([k, t]) => ({ key: k, until: t }));
+export const clearDown = () => down.clear();
+const PROVIDER_NAME: Record<TextProvider, string> = { gemini: 'Gemini', openai: 'OpenAI', ollama: 'Ollama' };
+/** Why each provider in the order will or will not be asked (shown with "AI chưa viết được"). */
+export function planNotes(env: Env, provider: TextProvider) {
+  const order = [...new Set([provider, ...list(env.AI_ORDER).filter(isTextProvider), ...TEXT_PROVIDERS])];
+  return order.map((p) => ({ provider: p, name: PROVIDER_NAME[p], ready: hasTextAI(env, p),
+    why: hasTextAI(env, p) ? (providerOut(p) ? 'đang tạm nghỉ do lỗi khoá/hết hạn mức' : '') : p === 'ollama' ? 'chưa nhập địa chỉ hoặc khoá Ollama' : 'chưa có khoá' }));
+}
+/** "Gemini: HTTP 429 (hết hạn mức); Ollama: chưa nhập địa chỉ…" */
+function triedSummary(env: Env, provider: TextProvider, tried: Map<string, string>) {
+  return planNotes(env, provider).map((n) => `${n.name}: ${tried.get(n.provider) || n.why || 'chưa thử'}`).join('; ');
+}
+const errText = (e: any) => String(e?.message || e).replace(/^(Gemini|OpenAI|Ollama) /, '').slice(0, 140) + (e?.status === 429 ? ' — quá tải hoặc hết hạn mức' : e?.status === 401 || e?.status === 403 ? ' — khoá bị từ chối' : e?.status === 404 ? ' — không có model này' : '');
 
 const TEXT_PROVIDERS: TextProvider[] = ['gemini', 'openai', 'ollama'];
 /** Whether a provider can be asked: a key (Gemini, OpenAI) or a server address (Ollama). */
@@ -274,7 +291,9 @@ export async function writeScript(env: Env, provider: TextProvider, r: ScriptReq
   if (!plan.length) throw new HttpError(503, 'Chưa có khoá AI nào. Nhờ quản trị cấu hình kết nối AI để thiết kế video.');
   const usage: AiUsage = { provider, model: '', tokensIn: 0, tokensOut: 0, tries: 0 };
   let lastErr = '';
+  const tried = new Map<string, string>();
   for (const [p, model] of plan) {
+    if (providerOut(p) && plan.some(([q]) => q !== p && !providerOut(q))) { tried.set(p, tried.get(p) || 'tạm nghỉ do lỗi khoá/hết hạn mức'); continue; }
     for (let attempt = 0; attempt < 2; attempt++) {
       usage.tries++;
       try {
@@ -323,17 +342,18 @@ export async function writeScript(env: Env, provider: TextProvider, r: ScriptReq
           return { ...out, _usage: usage };
         }
         lastErr = 'AI trả về chưa đúng định dạng';
+        tried.set(p, `${model}: trả về chưa đúng định dạng`);
         break; // try the next model
       } catch (e: any) {
         if (e.status === 422) throw e;
-        lastErr = e.message;
-        if (e.status === 401 || e.status === 403) break; // bad key: this provider is out
-        if (e.status === 429 || e.status >= 500) { await sleep(700 * (attempt + 1)); continue; }
+        lastErr = e.message; tried.set(p, errText(e));
+        if (providerOut(p) || e.status === 401 || e.status === 403) break; // bad key or no quota: this provider is out
+        if ((e.status === 429 || e.status >= 500) && attempt === 0) { await sleep(700); continue; }
         break;
       }
     }
   }
-  throw new HttpError(502, `AI chưa viết được kịch bản (${lastErr}). Kiểm tra kết nối AI trong quản trị rồi thử lại. Không tạo bản dựng theo mẫu thay thế.`);
+  throw new HttpError(502, `AI chưa viết được kịch bản. Đã thử theo thứ tự — ${triedSummary(env, provider, tried) || lastErr}. Quản trị: kiểm tra ở Cài đặt → Kiểm tra kết nối. Không tạo bản dựng theo mẫu thay thế.`);
 }
 
 export interface DrawnImage { bytes: Uint8Array; type: 'image/webp' | 'image/png'; ext: 'webp' | 'png' }
@@ -478,6 +498,7 @@ export async function assistantAnswer(env: Env, sys: string, history: AssistantT
   const user = (convo ? 'HỘI THOẠI GẦN ĐÂY:\n' + convo + '\n\n' : '') + 'TIN MỚI CỦA KHÁCH: ' + question.slice(0, 2000);
   let last = '';
   for (const [p, model] of plan) {
+    if (providerOut(p) && plan.some(([q]) => q !== p && !providerOut(q))) continue;
     for (let attempt = 0; attempt < 2; attempt++) {
       const left = end - Date.now();
       if (left < 3000) throw new HttpError(504, 'AI trả lời quá chậm: ' + (last || 'hết thời gian'));
@@ -497,4 +518,50 @@ export async function assistantAnswer(env: Env, sys: string, history: AssistantT
     }
   }
   throw new HttpError(502, 'AI chưa trả lời được: ' + last);
+}
+
+export interface GatewayCheck {
+  provider: TextProvider; name: string; configured: boolean; address?: string; key: boolean; ms?: number; status?: number; error?: string; hint?: string;
+  models: string[]; tests: { model: string; role: string; ok: boolean; status?: number; ms: number; error?: string }[];
+}
+/**
+ * Connection check for one AI gateway: lists the models the key may use, then asks each chosen model
+ * (main and fallbacks) for a tiny JSON answer. Errors are explained in plain words for the admin.
+ */
+export async function checkGateway(env: Env, p: TextProvider): Promise<GatewayCheck> {
+  const out: GatewayCheck = { provider: p, name: PROVIDER_NAME[p], configured: hasTextAI(env, p), key: !!(p === 'gemini' ? env.GEMINI_API_KEY : p === 'openai' ? env.OPENAI_API_KEY : env.OLLAMA_API_KEY), models: [], tests: [] };
+  const chosen = p === 'gemini' ? [env.GEMINI_TEXT_MODEL, ...list(env.GEMINI_TEXT_FALLBACK)] : p === 'openai' ? [env.OPENAI_TEXT_MODEL, ...list(env.OPENAI_TEXT_FALLBACK)] : [env.OLLAMA_TEXT_MODEL || '', ...list(env.OLLAMA_TEXT_FALLBACK)];
+  if (p === 'ollama') out.address = env.OLLAMA_URL || '';
+  if (!out.configured) {
+    out.hint = p === 'ollama' ? 'Nhập địa chỉ máy chủ Ollama (hoặc chỉ khoá Ollama Cloud, địa chỉ tự là https://ollama.com) và tên model, rồi Lưu cài đặt.' : `Chưa có khoá ${out.name}: dán khoá ở mục Khoá API rồi Lưu cài đặt.`;
+    return out;
+  }
+  const t0 = Date.now();
+  try {
+    const r = p === 'gemini' ? await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': env.GEMINI_API_KEY! }, signal: AbortSignal.timeout(15_000) })
+      : p === 'openai' ? await fetch('https://api.openai.com/v1/models', { headers: { authorization: `Bearer ${env.OPENAI_API_KEY}` }, signal: AbortSignal.timeout(15_000) })
+      : await fetch(env.OLLAMA_URL + '/api/tags', { headers: env.OLLAMA_API_KEY ? { authorization: `Bearer ${env.OLLAMA_API_KEY}` } : {}, signal: AbortSignal.timeout(15_000) });
+    const j: any = await r.json().catch(() => ({}));
+    out.status = r.status; out.ms = Date.now() - t0;
+    if (!r.ok) out.error = String(j.error?.message || j.error || 'HTTP ' + r.status).slice(0, 200);
+    out.models = p === 'gemini' ? (j.models || []).filter((m: any) => (m.supportedGenerationMethods || []).includes('generateContent')).map((m: any) => String(m.name).replace('models/', '')).filter((n: string) => /gemini|gemma/.test(n))
+      : p === 'openai' ? (j.data || []).map((m: any) => String(m.id)).filter((n: string) => /^(gpt|o\d|chatgpt)/.test(n)).sort()
+      : (j.models || []).map((m: any) => String(m.name || m.model));
+    out.models = out.models.slice(0, 80);
+  } catch (e: any) { out.ms = Date.now() - t0; out.error = String(e.message).slice(0, 200); }
+  if (out.status === 401 || out.status === 403 || /api key|unauthorized|invalid.*key/i.test(out.error || '')) out.hint = 'Khoá bị từ chối: kiểm tra lại khoá (sai, hết hạn hoặc chưa bật API).';
+  else if (out.error && p === 'ollama') out.hint = 'Không gọi được máy chủ Ollama: địa chỉ phải mở được từ Internet (không dùng localhost), đúng https và cổng.';
+  await Promise.all([...new Set(chosen.filter(Boolean))].map(async (model, i) => {
+    const t1 = Date.now();
+    try {
+      const r = await callText(env, p, model, 'Trả DUY NHẤT JSON.', 'Trả JSON {"ok":true}', 2048, 45_000);
+      out.tests.push({ model, role: i ? 'dự phòng' : 'chính', ok: !!parseJson(r.text), ms: Date.now() - t1, error: parseJson(r.text) ? undefined : 'trả lời không phải JSON' });
+    } catch (e: any) { out.tests.push({ model, role: i ? 'dự phòng' : 'chính', ok: false, status: e.status, ms: Date.now() - t1, error: errText(e) }); }
+  }));
+  out.tests.sort((a, b) => (a.role === 'chính' ? -1 : 0) - (b.role === 'chính' ? -1 : 0));
+  // a check must not leave the gateway paused: the admin is fixing it right now
+  clearDown();
+  if (!out.hint && out.tests.some((t) => t.status === 429)) out.hint = 'HTTP 429: hết hạn mức miễn phí hoặc quá tải. Chờ hạn mức hồi lại, nâng gói, hoặc đưa AI khác lên đầu Thứ tự AI.';
+  if (!out.hint && out.tests.some((t) => t.status === 404)) out.hint = 'Có model không tồn tại với khoá này: chọn model trong danh sách "Model khả dụng".';
+  return out;
 }
