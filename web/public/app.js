@@ -1016,7 +1016,6 @@ async function showCreate() {
   const character = photoField('Ảnh nhân vật', 'Ảnh chân dung hoặc linh vật của kênh: thay cho người que trong mọi cảnh.');
   const product = photoField('Ảnh sản phẩm', 'Hiện ở cảnh cuối cùng mã QR mua hàng.');
   const topicLabel = h('span', {}, T('topic'));
-  const detect = h('div', { class: 'detect' });
   const only = {};
   const go = h('button', { type: 'submit', class: 'big', 'data-ev': 'create' }, T('write'));
   const tryBtn = h('button', { type: 'button', class: 'ghost big', 'data-ev': 'create-try', onclick: () => startTry(f.topic.value, tryBtn, { ratio: f.ratio.value, style: f.style.value === 'auto' ? undefined : f.style.value, format: f.format.value, look: look === 'auto' && V('look:director') === 'on' ? 'director' : isClassic(look) || look === 'doc' || look === 'auto' ? undefined : look, skin: skin || undefined }, extras()) }, '✨ Xem thử');
@@ -1048,28 +1047,6 @@ async function showCreate() {
     if (!classic && (NV.SKINS?.[look] || []).length > 1) skinBox.replaceChildren(h('span', { class: 'plabel' }, 'Bộ màu'), skinChips(look, skin, (n) => { skin = n; })); else skinBox.replaceChildren();
     showCredits();
   };
-  // the form adapts to what the content is: AI reads it, suggests direction and length,
-  // and fills the fields the user has not touched yet
-  const touched = new Set();
-  for (const k of ['seconds', 'ratio']) f[k].addEventListener('change', (e) => { if (e.isTrusted !== false && !f[k].dataset.auto) touched.add(k); delete f[k].dataset.auto; });
-  const setAuto = (k, v) => { if (touched.has(k) || f[k].value === v || ![...f[k].options].some((o) => o.value === v && !o.disabled)) return; f[k].dataset.auto = '1'; f[k].value = v; f[k].dispatchEvent(new Event('change')); };
-  let suggested = '';
-  const guess = debounce(async () => {
-    const text = f.topic.value.trim();
-    if (text.length < 15) { detect.replaceChildren(); suggested = ''; paintHints(); return; }
-    try {
-      const r = await api('/api/intent', { method: 'POST', body: { text } });
-      suggested = FORMAT_HINT[r.format] || '';
-      const secs = FORMAT_SECONDS[r.format];
-      if (f.source.value === 'topic' && secs) setAuto('seconds', String(Math.min(secs, maxSec)));
-      if (r.format === 'news' || r.format === 'data') setAuto('ratio', '16:9');
-      const hint = CREATIVE_HINTS.find(([d]) => d === suggested);
-      detect.replaceChildren(icon('sparkles'), h('span', {}, 'AI hiểu đây là ', h('strong', {}, r.formatName.toLowerCase()), r.nicheName ? ` về ${r.nicheName.toLowerCase()}` : '',
-        hint ? `. Gợi ý: ${hint[1]}` : '', f.source.value === 'topic' && secs ? `, khoảng ${secs} giây` : '', '.'));
-      paintHints();
-    } catch {}
-  }, 700);
-  f.topic.addEventListener('input', guess);
   f.source.addEventListener('change', () => { sync(); track('choose', { source: f.source.value }); });
   f.affOn.addEventListener('change', sync);
   // Creative briefs are interpreted by AI; do not pre-classify them using keyword rules.
@@ -1106,7 +1083,7 @@ async function showCreate() {
       const on = direction ? parts.includes(direction) : !parts.length;
       return h('button', { type: 'button', class: 'chip' + (on ? ' on' : ''), 'aria-pressed': String(on), title: CREATIVE_HINTS.find(([d]) => d === direction)[2],
         onclick: () => { const next = direction ? (on ? parts.filter((x) => x !== direction) : [...parts, direction]) : []; f.direction.value = next.join(', '); paintHints(); } },
-        name, direction && direction === suggested ? h('small', { class: 'ai-tag' }, 'AI gợi ý') : null);
+        name);
     }));
   }
   f.direction.addEventListener('input', paintHints);
@@ -1116,7 +1093,7 @@ async function showCreate() {
   const form = h('form', { class: 'create', onsubmit: (e) => { e.preventDefault(); creationError.hidden=true; createProject(body(), go,(err)=>{creationError.textContent=err.message;creationError.hidden=false;}).then(sync); } },
     step(1, 'Nội dung', 'Nhập chủ đề hoặc kịch bản; AI thiết kế từng cảnh theo nội dung.',
       h('div', { class: 'field-group' }, h('span', { class: 'field-caption' }, 'Bắt đầu từ', helpHint('Cách tạo', 'Chủ đề: AI viết lời và thiết kế cảnh. Kịch bản + AI: giữ nguyên lời của bạn, AI thiết kế cảnh. Nếu AI lỗi, hệ thống dừng và giữ nội dung đã nhập.')), f.source),
-      tplBox, h('label', { for: 'f-topic' }, topicLabel, f.topic), detect),
+      tplBox, h('label', { for: 'f-topic' }, topicLabel, f.topic)),
     step(2, 'Video bạn muốn nhận', 'Phong cách chỉ là gợi ý; AI tự thiết kế theo nội dung và mong muốn của bạn.',
       h('label',{for:'f-wish'},'Mô tả kết quả mong muốn',f.wish),
       hintRow,
@@ -1539,22 +1516,22 @@ async function showEditor(id) {
     h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: spec.sfx !== false, onchange: (e) => { spec.sfx = e.target.checked; save(); } }), 'Tiếng hiệu ứng (vút, bụp, ting…)'));
   const settings = h('div', { class: 'card' },
     lookBox,
-    spec.look ? null : h('div', {}, h('span', { class: 'plabel' }, 'Kiểu video'), modePicker(spec.mode || 'hand', (k) => {
+    spec.look || spec.creative ? null : h('div', {}, h('span', { class: 'plabel' }, 'Kiểu video'), modePicker(spec.mode || 'hand', (k) => {
       spec.mode = k;
       if (MODE_STYLE[k] && k !== 'hand' && ui.enabledStyles.includes(MODE_STYLE[k]) && ['sunset', 'cosmos', 'manim', 'bold'].includes(spec.style)) spec.style = MODE_STYLE[k];
       changed();
     })),
-    V('feature:intro') === 'hidden' || ['director','act','whiteboard','illustrated'].includes(spec.look) ? null : h('label', { class: 'check' }, h('input', { type: 'checkbox', disabled: V('feature:intro') === 'dev', checked: !!spec.intro, onchange: (e) => {
+    spec.creative || V('feature:intro') === 'hidden' || ['director','act','whiteboard','illustrated'].includes(spec.look) ? null : h('label', { class: 'check' }, h('input', { type: 'checkbox', disabled: V('feature:intro') === 'dev', checked: !!spec.intro, onchange: (e) => {
       spec.intro = e.target.checked ? { title: spec.title, badge: BADGES[spec.format] || 'MỚI', icon: spec.scenes.flatMap((sc) => sc.diagram?.items || []).find((it) => it.t === 'icon')?.name } : null;
       paintIntro(); changed();
     } }), h('span', {}, h('b', {}, 'Mở đầu là ảnh bìa thu hút'), helpHint('Ảnh bìa', 'Khung mở đầu chứa tiêu đề dùng làm thumbnail.'))),
-    spec.look === 'act' ? null : introBox, ['director','act'].includes(spec.look) ? null : charField,
-    spec.format ? h('p', { class: 'muted' }, 'Dạng video: ', h('b', {}, FORMAT_LABELS[spec.format] || spec.format)) : null,
+    spec.creative || spec.look === 'act' ? null : introBox, spec.creative || ['director','act'].includes(spec.look) ? null : charField,
+    !spec.creative && spec.format ? h('p', { class: 'muted' }, 'Dạng video: ', h('b', {}, FORMAT_LABELS[spec.format] || spec.format)) : null,
     h('div', { class: 'grid' },
-      spec.look ? null : h('label', {}, 'Phong cách', h('select', { onchange: (e) => { spec.style = e.target.value; delete spec.tool; changed(); } }, options(styleOptions().concat(styleOptions().some(([k]) => k === spec.style) ? [] : [[spec.style, L('styles', spec.style)]]), spec.style))),
-      spec.look ? null : h('label', {}, 'Dụng cụ vẽ', h('select', { onchange: (e) => { if (e.target.value) spec.tool = e.target.value; else delete spec.tool; changed(); } },
+      spec.look || spec.creative ? null : h('label', {}, 'Phong cách', h('select', { onchange: (e) => { spec.style = e.target.value; delete spec.tool; changed(); } }, options(styleOptions().concat(styleOptions().some(([k]) => k === spec.style) ? [] : [[spec.style, L('styles', spec.style)]]), spec.style))),
+      spec.look || spec.creative ? null : h('label', {}, 'Dụng cụ vẽ', h('select', { onchange: (e) => { if (e.target.value) spec.tool = e.target.value; else delete spec.tool; changed(); } },
         options([['', 'Theo phong cách'], ...Object.entries(ui.labels.tools).map(([k, v]) => [k, v, 'tool:' + k])], spec.tool || ''))),
-      spec.look ? null : h('label', {}, 'Chuyển cảnh', h('select', { onchange: (e) => { spec.transition = e.target.value; changed(); } }, options([['auto', 'Tự động, đa dạng'], ['fade', 'Mờ dần'], ['slide', 'Trượt ngang'], ['wipe', 'Bàn tay xoá bảng'], ['zoom', 'Phóng to']], spec.transition || 'auto'))),
+      spec.look || spec.creative ? null : h('label', {}, 'Chuyển cảnh', h('select', { onchange: (e) => { spec.transition = e.target.value; changed(); } }, options([['auto', 'Tự động, đa dạng'], ['fade', 'Mờ dần'], ['slide', 'Trượt ngang'], ['wipe', 'Bàn tay xoá bảng'], ['zoom', 'Phóng to']], spec.transition || 'auto'))),
       h('label', {}, T('voice'), voiceField(h('select', { onchange: (e) => { spec.voice.voiceId = e.target.value; save(); } }, options(voiceOptions(), spec.voice?.voiceId || ui.defaults.voice)),{get:()=>({speed:spec.voice?.speed||1,audio:spec.audio||{voice:'tts'}}),apply:r=>{spec.voice.speed=r.speed;spec.audio=r.audio;save();}})),
 
       audioBox(spec, save),
@@ -1594,8 +1571,8 @@ async function showEditor(id) {
       stick: [actorRow(0), actorRow(1), field('Lời thoại người 1 (bong bóng)', d.bubble, (v) => set('bubble', v), { max: 60 }), field('Chú thích', d.caption, (v) => set('caption', v), { max: 60 })],
       steps: [field('Các bước (mỗi dòng một bước)', (d.items || []).join('\n'), (v) => set('items', v.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 4)), { area: true, max: 300 })],
     }[d.kind] || [];
-    return h('div', { class: 'panel' }, h('span', { class: 'tag' }, 'Bàn tay vẽ từng nét'),
-      h('div', { class: 'grid' }, h('label', {}, 'Kiểu hình', kind), d.kind === 'sketch' ? null : field('Tiêu đề (không bắt buộc)', d.title, (v) => set('title', v), { max: 60 })), ...fields);
+    return h('div', { class: 'panel' }, h('span', { class: 'tag' }, spec.creative?'Thiết kế AI':'Bàn tay vẽ từng nét'),
+      spec.creative?null:h('div', { class: 'grid' }, h('label', {}, 'Kiểu hình', kind), d.kind === 'sketch' ? null : field('Tiêu đề (không bắt buộc)', d.title, (v) => set('title', v), { max: 60 })), ...fields);
   }
   /** Fields of one scene's format data; anything left empty is filled from the words when the scene is redesigned. */
   function lookEditor(sc) {
@@ -1741,7 +1718,7 @@ async function showEditor(id) {
   const sceneCard = (sc, si) => h('div', { class: 'scene' },
       h('div', { class: 'row', style: 'justify-content:space-between' }, h('h3', {}, `Cảnh ${si + 1}`),
         h('div', { class: 'row' },
-          !spec.look && (imageAI || !sc.diagram) ? h('button', { type: 'button', class: 'ghost small', onclick: () => {
+          !spec.creative && !spec.look && (imageAI || !sc.diagram) ? h('button', { type: 'button', class: 'ghost small', onclick: () => {
             if (sc.diagram) { delete sc.diagram; sc.panels = [{ prompt: 'a simple illustration of: ' + (sc.lines[0] || ''), image: '' }]; }
             else return redesign(sc);
             drawScenes(); changed();
@@ -1998,8 +1975,8 @@ async function previewModel(spec, dpr, timelineOverride) {
   const entries = Object.entries(spec.media || {});
   const [images, hand, icons, pics] = await Promise.all([
     Promise.all(spec.scenes.map((sc) => Promise.all(sc.panels.map((p) => (imageUrl(p.image) ? loadImg(imageUrl(p.image)).catch(blankCanvas) : Promise.resolve(blankCanvas())))))),
-    getHand(), getIcons(), Promise.all(entries.map(([, v]) => loadImg(mediaUrl(v)).catch(() => null))),
-    document.fonts.load('29px Pangolin').catch(() => {}), spec.look==='whiteboard'?document.fonts.load('36px "WB Hand"'):null, loadSans(), spec.figures !== 'rig' && (spec.look === 'act' || !spec.look) ? loadPeeps() : null,
+    spec.creative && spec.mode!=='hand'?Promise.resolve({}):getHand(), spec.creative?Promise.resolve({}):getIcons(), Promise.all(entries.map(([, v]) => loadImg(mediaUrl(v)).catch(() => null))),
+    document.fonts.load('29px Pangolin').catch(() => {}), spec.look==='whiteboard'?document.fonts.load('36px "WB Hand"'):null, loadSans(), !spec.creative && spec.figures !== 'rig' && (spec.look === 'act' || !spec.look) ? loadPeeps() : null,
   ]);
   const media = Object.fromEntries(entries.map(([k], i) => [k, pics[i]]).filter(([, v]) => v));
   const timeline = timelineOverride || NV.buildTimeline(spec.scenes, spec.scenes.map((s) => NV.estimateVoice(s.lines)), { intro: !!spec.intro?.title && spec.look !== 'act' });

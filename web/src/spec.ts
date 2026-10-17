@@ -1,4 +1,4 @@
-import {validVector} from '../../src/engine/vector.ts';
+import {vectorPaths} from '../../src/engine/vector.ts';
 import { storedCreative } from './creative.ts';
 import { planDirections } from '../../src/engine/director.ts';
 // Strict validation of project scripts coming from the browser or an AI model.
@@ -61,8 +61,8 @@ function cleanSketch(items: unknown, lines: number, media: string[] = []) {
         if (it.w != null) o.w = pct(it.w, 80);
         break;
       case 'vector': {
-        if(!validVector(it))continue;
-        at(); o.paths=it.paths; o.w=Math.max(1,pct(it.w,40)); o.h=Math.max(1,pct(it.h,40)); o.fill=it.fill===true; o.stroke=num(it.stroke,1,10,3);
+        const paths=vectorPaths(it);if(!paths)continue;
+        at(); o.paths=paths; o.w=Math.max(1,pct(it.w,40)); o.h=Math.max(1,pct(it.h,40)); o.fill=it.fill===true; o.stroke=num(it.stroke,1,10,3);
         break;
       }
       case 'icon':

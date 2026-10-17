@@ -247,7 +247,7 @@ export function prepare(opts: {
         const stop = start + Math.min(end - start, e.kind === 'path' ? 0.7 : 0.5), ctr = elementCentre(e), ph = ctr[0] * 0.013 + ctr[1] * 0.007;
         return { start, end: stop, draw: (c: Ctx, p: number, a: number, now: number) => {
           const motion=items[e.item ?? -1]?.motion;
-          if(!motion){drawPop(c,e,p,a,pen,now-stop,ctr,ph);return;}
+          if(!motion){if(project.creative)drawElement(c,e,p,a,pen,0);else drawPop(c,e,p,a,pen,now-stop,ctr,ph);return;}
           const q=ease(clamp((now-start)/Math.max(.1,T.end-start)));
           c.save();c.translate(ctr[0]+motion.dx*W/100*q,ctr[1]+motion.dy*H/100*q);c.rotate(motion.rotate*Math.PI/180*q);const z=1+(motion.scale-1)*q;c.scale(z,z);c.translate(-ctr[0],-ctr[1]);drawElement(c,e,p,a,pen,0);c.restore();
         }, pen: (p: number) => elementPen(e, p) };
