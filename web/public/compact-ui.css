@@ -186,3 +186,5 @@ main.wrap .home-minimal h1 { font-size: clamp(1.8rem, 3.1vw, 2.8rem); font-weigh
 .browser-render progress { width: 100%; margin-block: 12px; }
 .browser-render .browser-result { width: 100%; max-height: 48vh; object-fit: contain; background: #14202d; margin-top: 12px; }
 .browser-render > .row { flex-wrap: wrap; margin-top: 12px; }
+
+.creative-hints{gap:8px;flex-wrap:wrap;margin:12px 0}.creative-plan{margin-bottom:12px;padding:16px}.creative-plan>summary{font-weight:700;cursor:pointer}.creative-plan .description{text-align:justify;font-size:14px;line-height:1.65}.creative-plan textarea{width:100%;min-height:90px}.creative-plan label{display:block;margin:12px 0}.creative-plan details{margin:10px 0}.creative-plan .row{flex-wrap:wrap}

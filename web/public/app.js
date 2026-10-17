@@ -456,7 +456,7 @@ async function showLanding() {
       h('div', { class: 'home-intro' },
         h('h1', {}, title),
         h('p', { class: 'description' }, site.heroText && site.heroText.length < 200 ? site.heroText : 'Nhập nội dung, chọn giọng đọc và tạo video theo cách kể của bạn.'),
-        h('div', { class: 'cta' }, h('a', { class: 'btn', href: '#/tao', 'data-ev': 'hero-create' }, icon('plus'), 'Tạo video'), h('a', { class: 'btn ghost', href: '#/mau' }, 'Xem định dạng')),
+        h('div', { class: 'cta' }, h('a', { class: 'btn', href: '#/tao', 'data-ev': 'hero-create' }, icon('plus'), 'Tạo video'), h('a', { class: 'btn ghost', href: '#/mau' }, 'Gợi ý sáng tạo')),
         ui.zalo?.enabled && ui.zalo.botLink ? h('a', {class:'home-contact',href:ui.zalo.botLink,target:'_blank',rel:'noopener'},icon('send'),'Tư vấn qua Zalo') : null,
         h('div', { class: 'home-meta' }, h('span', {}, 'MP4 · Dọc hoặc ngang'), helpHint('Thông tin video', 'Bạn có thể xem trước, sửa từng cảnh và tải video cùng phụ đề. Hạn mức và chi phí hiển thị trong trang tạo video.'))),
       h('div', { class: 'home-stage' }, h('div', { class: 'stage-heading' }, h('span', {}, 'TỪ KỊCH BẢN ĐẾN MÀN HÌNH'), h('span', { class: 'stage-dot', 'aria-hidden': 'true' })), gallery?.element || h('figure', { class: 'home-preview' }, media, h('figcaption', {}, h('span', {}, 'Xem chuyển động thực tế'), pause)), h('div', { class: 'stage-steps', 'aria-label': 'Quy trình dựng' }, ...['Nội dung', 'Cảnh & giọng', 'Video'].map((n, i) => h('span', {}, h('i', {}, String(i + 1).padStart(2, '0')), n))))),
@@ -565,37 +565,19 @@ function stylePicker(spec, current, onPick) {
 // ---------- styles gallery
 /** Every way of telling a video that has a demo, in the order of the picker (auto has no single demo). */
 const allLooks = (demos) => LOOK_GROUPS.flatMap(([, keys]) => keys).filter((k) => k !== 'auto' && (isClassic(k) || looksOn().includes(k))).map((k) => demos.find((d) => d.look === k)).filter(Boolean);
+const CREATIVE_HINTS = [
+  ['','Để AI đề xuất','AI chọn cách kể theo nội dung và mô tả của bạn.'],
+  ['Giải thích kiểu VOX','VOX / giải thích','Gợi nhịp giải thích, câu hỏi và đồ hoạ làm rõ ý. Bộ dựng hiện chưa lấy cảnh quay tư liệu.'],
+  ['Whiteboard vẽ ý tưởng','Whiteboard','Gợi cách kể bằng nét vẽ, chữ ngắn và các ý nối nhau.'],
+  ['Chữ chuyển động giàu nhịp điệu','Chữ chuyển động','Gợi cách dùng chữ, khoảng nghỉ và điểm nhấn theo thông điệp.'],
+  ['Tối giản, ít chữ và nhiều khoảng trống','Tối giản','Gợi cách trình bày tiết chế, tập trung vào từng ý.'],
+];
 async function showStyles() {
   viewed('styles');
-  const demos = await getDemos();
-  const looks = allLooks(demos);
-  const q = searchTerm();
-  let group = 'all', ratio = '9:16';
-  const ratioTabs = h('div', { class: 'tabs ratio-tabs', role: 'tablist', 'aria-label': 'Khung xem mẫu' });
-  const chips = h('div', { class: 'tabs', role: 'tablist' }), grid = h('div', { class: 'fgrid' });
-  // one live preview at a time per card, drawn only when visible
-  const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { io.unobserve(e.target); e.target._play?.(); } }), { rootMargin: '150px' });
-  const pick = (k) => { sessionStorage.setItem('nv_look', k); track('style_pick', { look: k }); location.hash = '#/tao'; };
-  const card = (d) => {
-    const c = h('canvas', { 'aria-hidden': 'true' }); c._play = () => playDemo(c, { ...d.spec, ratio }, { dpr: ratio === '9:16' ? 0.45 : 0.6 }); io.observe(c);
-    return h('article', { class: 'fcard', 'data-k': d.look },
-      h('div', { class: 'fthumb' + (ratio === '16:9' ? ' wide' : '') }, c, d.look === 'doc' ? h('span', { class: 'credit-tag' }, 'Tính credit') : null),
-      h('div', { class: 'catalog-title' }, h('h3', {}, lookName(d.look)), helpHint(lookName(d.look), lookNote(d.look))),
-      h('button', { type: 'button', class: 'small', 'data-ev': 'style-pick', onclick: () => pick(d.look) }, 'Chọn định dạng'));
-  };
-  const paint = () => {
-    stopDemos();
-    io.disconnect();
-    grid.classList.toggle('landscape', ratio === '16:9');
-    ratioTabs.replaceChildren(...[['9:16', 'Dọc 9:16'], ['16:9', 'Ngang 16:9']].map(([k, n]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === ratio), class: 'tab' + (k === ratio ? ' on' : ''), onclick: () => { ratio = k; paint(); } }, n)));
-    chips.replaceChildren(...[['all', 'Tất cả'], ...LOOK_GROUPS.filter(([, keys]) => looks.some(d => keys.includes(d.look))).map(([n]) => [n, n])].map(([k, n]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === group), class: 'tab' + (k === group ? ' on' : ''), onclick: () => { group = k; paint(); } }, n)));
-    const keys = group === 'all' ? null : LOOK_GROUPS.find(([n]) => n === group)?.[1] || [];
-    const list = looks.filter((d) => (!keys || keys.includes(d.look)) && matches(q, lookName(d.look), lookNote(d.look)));
-    grid.replaceChildren(...(list.length ? list.map(card) : [h('p', { class: 'muted' }, 'Không có định dạng nào khớp "' + (new URLSearchParams(location.hash.split('?')[1] || '').get('q') || '') + '".')]));
-  };
-  show(h('header', { class: 'pagehead' }, h('div', {}, h('h1', {}, 'Định dạng video'), h('p', { class: 'muted' }, 'Xem mẫu và chọn cách kể.'))),
-    h('div', { class: 'gallery-toolbar' }, ratioTabs, chips), grid, footer());
-  paint();
+  show(h('header',{class:'pagehead'},h('div',{},h('h1',{},'Gợi ý sáng tạo'),h('p',{class:'description'},'Chọn một hướng tham khảo, rồi mô tả video theo ý bạn.'))),
+    h('div',{class:'grid wide-2'},CREATIVE_HINTS.map(([direction,name,note])=>h('article',{class:'card'},
+      h('div',{class:'catalog-title'},h('h2',{},name),helpHint(name,note)),
+      h('button',{type:'button',class:'ghost',onclick:()=>{sessionStorage.setItem('nv_direction',direction);location.hash='#/tao';}},'Dùng làm gợi ý')))),footer());
 }
 
 // ---------- login sheet
@@ -977,10 +959,13 @@ async function showCreate() {
   const wantLook = sessionStorage.getItem('nv_look'); sessionStorage.removeItem('nv_look');
   let look = wantLook === 'kinetic' && V('look:kinetic') === 'on' ? 'kinetic' : 'classic-sketch';
   let skin = '';
-  const demos = await getDemos();
+  const savedDirection = sessionStorage.getItem('nv_direction'); sessionStorage.removeItem('nv_direction');
+  const demos = [];
   let mode = V('mode:' + (wantMode || D.mode || 'hand')) === 'on' ? wantMode || D.mode || 'hand' : 'hand';
   const hasAI = !!(cfg?.ai?.gemini || cfg?.ai?.openai || me?.ai?.gemini || me?.ai?.openai);
   const f = {
+    wish: h('textarea',{id:'f-wish',rows:4,maxlength:2400,required:true,placeholder:'Ví dụ: Video giải thích vì sao chúng ta trì hoãn, mở bằng một tình huống quen thuộc; nhịp nhanh vừa, chữ ít, hình làm rõ nguyên nhân và kết thúc bằng một hành động nhỏ.'}),
+    direction: h('input',{id:'f-direction',maxlength:160,value:savedDirection || (wantLook==='kinetic'?'Chữ chuyển động':'') ,placeholder:'Ví dụ: VOX, Whiteboard, tối giản… hoặc để AI tự chọn'}),
     source: h('select', { id: 'f-source', 'aria-label': 'Bắt đầu từ' }, options(sources, startSrc)),
     topic: h('textarea', { id: 'f-topic', rows: 5, maxlength: 20000, placeholder: T('topicHint') }),
     subtitles: h('input', { type: 'checkbox', checked: !!D.subtitles }),
@@ -1036,18 +1021,18 @@ async function showCreate() {
     tplBox.hidden = src !== 'template';
     if (src === 'template' && !tplBox.childNodes.length) tplBox.append(templatesCard(pick));
     tryBtn.hidden = true;
-    go.textContent = src === 'mine-free' || src === 'template' ? (ui.beta ? 'Tạo video' : 'Tạo video (miễn phí)') : mine ? 'AI minh hoạ kịch bản' : T('write');
+    go.textContent = src === 'mine-free' || src === 'template' ? (ui.beta ? 'Tạo video' : 'Tạo video (miễn phí)') : 'Lên ý tưởng & thiết kế';
     go.disabled = src !== 'mine-free' && src !== 'template' && !hasAI;
     if(look==='illustrated'&&['mine-free','template'].includes(src)){go.disabled=true;go.textContent='Cần AI minh hoạ';}
     if (go.disabled && !(look==='illustrated'&&['mine-free','template'].includes(src))) go.textContent = 'AI chưa sẵn sàng';
     only.aff.hidden = !isClassic(look) || !f.affOn.checked;
-    if (only.char) only.char.hidden = !isClassic(look);
-    if (only.affToggle) only.affToggle.hidden = !isClassic(look);
+    if (only.char) only.char.hidden = true;
+    if (only.affToggle) only.affToggle.hidden = true;
     // format videos: the format sets the look; the classic board keeps its own options
     const classic = isClassic(look), auto = look === 'auto';
     for (const el of [only.mode, only.style, only.visual2, only.transition, only.visual]) if (el) el.hidden = true;
     if (only.visual) only.visual.hidden = only.visual.hidden || !classic;
-    only.looked.hidden = classic || auto;
+    only.looked.hidden = true;
     if (isClassic(look)) f.visual.value = look === 'classic-sketch' ? 'sketch' : look === 'classic-diagram' ? 'diagram' : 'doodle';
     if (!classic && (NV.SKINS?.[look] || []).length > 1) skinBox.replaceChildren(h('span', { class: 'plabel' }, 'Bộ màu'), skinChips(look, skin, (n) => { skin = n; })); else skinBox.replaceChildren();
     showCredits();
@@ -1068,7 +1053,7 @@ async function showCreate() {
     affiliate: isClassic(look) && f.affOn.checked && f.affLink.value.trim() ? { link: f.affLink.value.trim(), product: f.affProduct.value.trim(), price: f.affPrice.value.trim(), image: product.get() || undefined } : undefined });
   const body = () => {
     const x = extras();
-    return { look: isClassic(look) ? '' : look, skin: skin || undefined, music: f.music.value,
+    return { look: '', creative:{wish:f.wish.value,direction:f.direction.value}, music: f.music.value,
       source: f.source.value === 'template' ? 'mine-free' : f.source.value, subtitles: f.subtitles.checked, topic: f.topic.value, seconds: Number(f.seconds.value), ratio: f.ratio.value, style: f.style.value,
       voiceId: f.voice.value, channel: f.channel.value, episode: f.episode.value, tone: f.tone.value, visual: f.visual.value, format: f.format.value, transition: f.transition.value,
       mode: x.mode, intro: x.intro, character: x.character, affiliate: x.affiliate, illustratedCharacter:look==='illustrated'?f.illustratedCharacter.value:undefined };
@@ -1092,10 +1077,11 @@ async function showCreate() {
     step(1, 'Nội dung', 'Nhập chủ đề hoặc kịch bản; AI thiết kế từng cảnh theo nội dung.',
       h('div', { class: 'field-group' }, h('span', { class: 'field-caption' }, 'Bắt đầu từ', helpHint('Cách tạo', 'Chủ đề: AI viết lời và thiết kế cảnh. Kịch bản + AI: giữ nguyên lời của bạn, AI thiết kế cảnh. Nếu AI lỗi, hệ thống dừng và giữ nội dung đã nhập.')), f.source),
       tplBox, h('label', { for: 'f-topic' }, topicLabel, f.topic), detect),
-    step(2, 'Phong cách', 'Chọn ngôn ngữ hình ảnh. AI lên bố cục theo nội dung; bản xem minh hoạ chỉ giới thiệu khả năng bộ dựng.',
-      lookPicker(look, (k) => { look = k; skin = ''; track('look', { look: k }); sync(); paintSummary(); }, demos),
-      creditNote,illustratedOptions,
-      only.looked = h('div', { class: 'grid wide-2' }, skinBox)),
+    step(2, 'Video bạn muốn nhận', 'Phong cách chỉ là gợi ý; AI tự thiết kế theo nội dung và mong muốn của bạn.',
+      h('label',{for:'f-wish'},'Mô tả kết quả mong muốn',f.wish),
+      h('div',{class:'row creative-hints'},CREATIVE_HINTS.map(([direction,name,note])=>h('button',{type:'button',class:'ghost small',onclick:()=>{f.direction.value=direction;f.direction.dispatchEvent(new Event('input'));}},name))),
+      h('label',{for:'f-direction'},'Hướng tham khảo (không bắt buộc)',helpHint('Hướng tham khảo','Bạn có thể phối hợp nhiều ý. Gợi ý không khóa bố cục hay bắt video theo mẫu. VOX hiện chỉ hỗ trợ hướng giải thích bằng đồ hoạ, chưa có cảnh quay tư liệu.'),f.direction),
+      only.looked=h('div',{hidden:true})),
     step(3, 'Xuất video', 'Kiểm tra thông số và chi phí trước khi dựng.',
       h('div', { class: 'grid wide-2' }, h('label', {}, T('ratio'), f.ratio), h('label', {}, T('voice'), voiceField(f.voice)), only.seconds = h('label', {}, T('duration'), f.seconds)),
       summary,
@@ -1929,6 +1915,8 @@ async function showEditor(id) {
   paintTabs();
   const titleInput = h('input', { class: 'ptitle', value: spec.title, maxlength: 100, 'aria-label': 'Tên dự án', oninput: (e) => { spec.title = e.target.value; save(); } });
   const ratioSel = h('select', { 'aria-label': 'Khung hình', onchange: (e) => { spec.ratio = e.target.value; save.flush().then(() => showEditor(id)); } }, options(ratioOptions(false), spec.ratio));
+  const {creativePanel}=await import('/creative-panel.js');
+  const creativeCard=creativePanel(spec,id,{h,api,busy,fail,save,helpHint,refresh:()=>showEditor(id)});
   renderBtn.classList.add('export-btn'); renderBtn.replaceChildren(icon('share'), ui.rendering?.mode==='browser'?'Xuất trên trình duyệt':ui.rendering?.mode==='local'?'Gửi máy cá nhân':'Xuất video');
   show(h('div', { class: 'studio' + (spec.ratio === '16:9' ? ' landscape' : '') },
     h('div', { class: 'sbar' }, h('a', { class: 'iconbtn', href: '#/video', 'aria-label': T('allVideos') }, '←'), h('span', { class: 'muted' }, 'Dự án:'), titleInput, status, h('span', { class: 'grow' }), ratioSel, reviewBtn, reviewBtn ? helpHint('AI rà soát', 'Dùng 1 lượt AI và chi phí API theo gói. AI xem tối đa 6 khung hình để đề xuất sửa bố cục; bạn xem nhận xét và chọn áp dụng. Không kiểm tra toàn bộ chuyển động hoặc âm thanh.') : null, renderBtn),
@@ -1936,7 +1924,7 @@ async function showEditor(id) {
     h('section', { class: 'stage' }, platformFrame(screenEl, spec),
       h('div', { class: 'transport' }, playBtn, h('button', { type: 'button', class: 'ghost small', onclick: () => { if (pv) { pv.t = 0; pv.playing = true; playBtn.textContent = 'Tạm dừng'; } } }, 'Phát lại'), clock),
       helpHint('Bản xem trước', 'Bản xem trước không có tiếng; thời điểm xuất hiện được ước tính theo độ dài câu. Bản xuất căn theo thời lượng lời đọc; đồng bộ từng từ phụ thuộc nhà cung cấp giọng.')),
-    h('section', { class: 'pcol' }, tabBar, tabBody),
+    h('section', { class: 'pcol' }, creativeCard, tabBar, tabBody),
     tl));
   await buildPreview(spec, canvas, playBtn);
   drawScenes();

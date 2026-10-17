@@ -1,3 +1,4 @@
+import { creativeResult } from './creative.ts';
 import { creationChoice, designIssues } from './creation-policy.ts';
 // Nét Vẽ Studio API (Cloudflare Worker). Static pages are served from ./public.
 import { consumeNonce, currentUser, endSession, newNonce, startSession, type User, verifyGoogleToken } from './auth.ts';
@@ -493,6 +494,24 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       rc.log('project.duplicate', { projectId: nid, data: { from: id, ratio: clean.ratio } });
       return json({ id: nid });
     }
+    if (sub === '/revise' && method === 'POST') {
+      if (!p.spec.creative) throw new HttpError(409,'Hãy tạo một dự án bằng mô tả sáng tạo để dùng yêu cầu chỉnh sửa.');
+      const b = await body<any>(req,10000), feedback = String(b.feedback || '').trim().slice(0,1200);
+      if (feedback.length < 5) throw new HttpError(400,'Hãy mô tả điều bạn muốn chỉnh.');
+      if (b.updatedAt !== p.updated_at) throw new HttpError(409,'Dự án đã thay đổi. Tải lại trước khi yêu cầu AI.');
+      await checkSource(env,user,'mine-ai');
+      await requireBudget(env,'AI chỉnh sửa video');
+      await useQuota(env,user.id,'script',(await limitsFor(env,user.id)).script);
+      try {
+        const creative = {...p.spec.creative, wish:p.spec.creative.wish+'\nCÁC GÓP Ý TRƯỚC: '+JSON.stringify(p.spec.creative.feedback || [])+'\nGÓP Ý MỚI: '+feedback};
+        const out = await writeScript(env,env.config.defaults.textAI as TextProvider,{topic:'',seconds:0,tone:'',ratio:p.spec.ratio,visual:'sketch',scenes:p.spec.scenes.map((s:any)=>s.lines),creative,extra:env.config.promptExtra});
+        const plan=creativeResult(out);
+        if(!env.config.enabledStyles.includes(out.style))throw new HttpError(422,'AI chọn phong cách đang tắt. Hãy yêu cầu một hướng khác.');
+        const spec=cleanSpec({...p.spec,mode:out.mode,style:out.style,scenes:p.spec.scenes.map((s:any,i:number)=>({...out.scenes[i],lines:s.lines})),creative:{...p.spec.creative,...plan,feedback:[...(p.spec.creative.feedback||[]),feedback]}},user.id,'creative');
+        rc.log('ai.revise',{projectId:id,cost:aiCost(env.config,out._usage),data:{scenes:spec.scenes.length}});
+        return json({spec,updatedAt:p.updated_at});
+      } catch(e) {await refundQuota(env,user.id,'script');throw e;}
+    }
     if (sub === '/compose' && method === 'POST') {
       const si = Number((await body<any>(req, 1_000)).scene);
       const sc = p.spec.scenes[si];
@@ -503,12 +522,12 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
       let out: any;
       try {
-        out = await writeScript(env, env.config.defaults.textAI as TextProvider, { topic: '', seconds: 0, tone: '', ratio: p.spec.ratio, visual: 'sketch', scenes: [sc.lines], look: p.spec.look, extra: env.config.promptExtra });
-        const issues = designIssues({ scenes: [{ ...out.scenes?.[0], lines: sc.lines }] }, p.spec.look, 1);
+        out = await writeScript(env, env.config.defaults.textAI as TextProvider, { topic: '', seconds: 0, tone: '', ratio: p.spec.ratio, visual: 'sketch', scenes: [sc.lines], look: p.spec.look, creative: p.spec.creative, extra: env.config.promptExtra });
+        const issues = designIssues({ scenes: [{ ...out.scenes?.[0], lines: sc.lines }] }, p.spec.look, 1, !!p.spec.creative);
         if (issues.length) throw new HttpError(502, 'AI chưa thiết kế được cảnh đạt yêu cầu. Cảnh cũ được giữ nguyên.');
       } catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
       p.spec.scenes[si] = { ...sc, diagram: out.scenes[0].diagram, x: out.scenes[0].x, panels: [] };
-      const spec = cleanSpec(p.spec, user.id, true);
+      const spec = cleanSpec(p.spec, user.id, p.spec.creative ? 'creative' : true);
       await saveSpec(env, user, id, spec, p.updated_at);
       rc.log('ai.scene', { projectId: id, cost: aiCost(env.config, out._usage), data: { scene: si } });
       return json({ spec });
@@ -764,7 +783,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     if (b.character && on('feature:character')) media.nv = String(b.character);
     const aff = b.affiliate && on('feature:affiliate') && /^https?:\/\/\S{3,300}$/.test(String(b.affiliate.link || ''))
       ? { link: String(b.affiliate.link), product: String(b.affiliate.product || '').slice(0, 80), price: String(b.affiliate.price || '').slice(0, 30), image: b.affiliate.image ? (media.sp = String(b.affiliate.image), 'sp') : undefined } : null;
-    const mode = ['hand', 'motion', 'math', 'kinetic'].includes(b.mode) && on('mode:' + b.mode) ? b.mode : on('mode:' + D.mode) ? D.mode : 'hand';
+    let mode = ['hand', 'motion', 'math', 'kinetic'].includes(b.mode) && on('mode:' + b.mode) ? b.mode : on('mode:' + D.mode) ? D.mode : 'hand';
     // video format: new videos use one unless the page asked for the classic hand-drawn board (look: "")
     const look: string | undefined = b.look === '' || b.look === 'classic' ? undefined : LOOKS.includes(b.look) && on('look:' + b.look) ? b.look : b.look === undefined && on('look:' + D.look) ? D.look : undefined;
     if (b.look && LOOKS.includes(b.look) && !on('look:' + b.look)) throw new HttpError(403, 'Định dạng video này đang tắt.');
@@ -789,13 +808,14 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
         const provider = b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (D.textAI as TextProvider);
         await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
         try {
-          const out = await writeScript(env, provider, { topic: '', seconds: 0, tone: '', ratio, visual: 'sketch', extra: env.config.promptExtra+illustratedExtra, scenes, format, niche, look, brief, recentDirections });
+          const out = await writeScript(env, provider, { topic: '', seconds: 0, tone: '', ratio, visual: 'sketch', extra: env.config.promptExtra+illustratedExtra, scenes, format, niche, look, brief, recentDirections, creative: b.creative });
           usage = out._usage;
           // the narration always stays the user's own words
           raw = { ...out, title: out.title || raw.title, scenes: scenes.map((lines, i) => ({ lines, direction: out.scenes?.[i]?.direction, diagram: out.scenes?.[i]?.diagram, x: out.scenes?.[i]?.x, act: out.scenes?.[i]?.act, pause: out.scenes?.[i]?.pause, panels: out.scenes?.[i]?.panels })) };
         } catch (e: any) {
           await refundQuota(env, user.id, 'script');
           rc.log('ai.design.failed', { ok: false, data: { source, error: String(e.message).slice(0, 200) } });
+          if (e.status === 422) throw e;
           throw new HttpError(502, 'AI chưa thiết kế được video. Nội dung của bạn được giữ trong ô nhập; không tạo bản dựng theo mẫu thay thế. Kiểm tra kết nối AI trong quản trị.');
         }
       }
@@ -807,19 +827,24 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
         await requireBudget(env, 'AI viết kịch bản');
         await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
         try {
-          raw = await writeScript(env, provider, { topic: text, seconds, tone: String(b.tone || '').slice(0, 200), ratio, visual, extra: env.config.promptExtra + affiliateBrief(aff)+illustratedExtra, format: aff ? 'sales' : format, niche, look, brief, recentDirections });
+          raw = await writeScript(env, provider, { topic: text, seconds, tone: String(b.tone || '').slice(0, 200), ratio, visual, extra: env.config.promptExtra + affiliateBrief(aff)+illustratedExtra, format: aff ? 'sales' : format, niche, look, brief, recentDirections, creative: b.creative });
           usage = raw._usage;
         } catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
       }
     }
-    const problems = designIssues(raw, look, source === 'mine-ai' ? splitScript(text).length : undefined);
+    const problems = designIssues(raw, look, source === 'mine-ai' ? splitScript(text).length : undefined, !!b.creative);
     if (problems.length) throw new HttpError(502, 'Thiết kế AI chưa đạt: ' + problems.slice(0, 3).join('; ') + '. Chưa tạo dự án; hãy thử lại.');
     if(look==='illustrated'&&raw.scenes?.some((s:any)=>!s.x?.illustrated?.layers?.length))throw new HttpError(502,'AI chưa thiết kế đủ các lớp. Kịch bản của bạn vẫn ở ô nhập; hãy thử thiết kế lại.');
+    const creativePlan = b.creative ? creativeResult(raw) : undefined;
+    if (b.creative) {
+      mode = raw.mode;
+      if (!env.config.enabledStyles.includes(raw.style)) throw new HttpError(422,'AI chọn phong cách đang tắt. Hãy yêu cầu hướng khác hoặc bật phong cách trong quản trị.');
+    }
     const autoStyle = FORMAT_STYLE[format as keyof typeof FORMAT_STYLE] || NICHE_STYLE[niche as keyof typeof NICHE_STYLE];
     // each kind of animation has a look made for it; "auto" picks it (or the one for the topic)
     const modeStyle = ({ motion: 'cosmos', math: 'manim', kinetic: 'bold' } as Record<string, string>)[mode];
     const auto = modeStyle && env.config.enabledStyles.includes(modeStyle) ? modeStyle : autoStyle;
-    const style = env.config.enabledStyles.includes(b.style) ? b.style : (b.style === 'auto' || !b.style) && env.config.enabledStyles.includes(auto) ? auto : D.style;
+    const style = b.creative ? raw.style : env.config.enabledStyles.includes(b.style) ? b.style : (b.style === 'auto' || !b.style) && env.config.enabledStyles.includes(auto) ? auto : D.style;
     if (aff && raw.scenes?.length && !look) raw.scenes = [...raw.scenes, affiliateScene(aff, ratio === '9:16')];
     if (!look && visual === 'doodle') {
       // classic hand drawing: one picture per line (an Open Doodle or the video's hand-drawn person acting the words), revealed by the hand; no subtitles unless asked
@@ -833,9 +858,9 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
     }
     const music = b.music === 'none' ? undefined : (env.config.music.find((m) => m.id === b.music) || (b.music === undefined || b.music === 'auto'
       ? (D.music === 'none' ? undefined : env.config.music.find((m) => m.id === D.music) || env.config.music[hashText(text) % Math.max(1, env.config.music.length)]) : undefined))?.file;
-    const spec: any = cleanSpec({ ...raw, format: aff ? 'sales' : format, niche, visual, ratio, subtitles: typeof b.subtitles === 'boolean' ? b.subtitles : D.subtitles,
+    const spec: any = cleanSpec({ ...raw, creative: b.creative ? {...b.creative, ...creativePlan} : undefined, format: aff ? 'sales' : format, niche, visual, ratio, subtitles: typeof b.subtitles === 'boolean' ? b.subtitles : D.subtitles,
       style: !look && visual === 'doodle' && (!b.style || b.style === 'auto') && env.config.enabledStyles.includes('notebook') ? 'notebook' : style, tool: b.tool, channel: b.channel ?? D.channel, episode: b.episode, mode, media, character: media.nv ? 'nv' : undefined, affiliate: aff,
-      voice: voiceFor(env.config, b.voiceId, Number(b.speed) || 1), look, skin: b.skin, music, sfx: b.sfx !== false }, user.id, true);
+      voice: voiceFor(env.config, b.voiceId, Number(b.speed) || 1), look, skin: b.skin, music, sfx: b.sfx !== false }, user.id, b.creative ? 'creative' : true);
     const wantIntro = typeof b.intro === 'boolean' ? b.intro : D.intro;
     if (wantIntro && !['director','whiteboard','illustrated'].includes(look||'') && on('feature:intro')) spec.intro = introFor(spec);
     if (usage) rc.log('ai.script', { cost: aiCost(env.config, usage), data: { source, format, niche, ...usage } });

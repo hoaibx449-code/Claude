@@ -1,3 +1,4 @@
+import { creativeBrief } from './creative.ts';
 import { HttpError } from './util.ts';
 
 // Creation support is a release decision, not an admin label or a renderer unit test.
@@ -5,6 +6,11 @@ import { HttpError } from './util.ts';
 export const RETIRED_LOOKS = ['director','act','whiteboard','illustrated','split','chat','story','data','quiz','doc'];
 export function creationChoice(input: any) {
   const selected = input.look;
+  const creative = creativeBrief(input.creative);
+  if (creative) {
+    if (!['topic','mine-ai'].includes(input.source)) throw new HttpError(400,'Chọn chủ đề hoặc kịch bản của bạn.');
+    return {...input,creative,look:'',visual:'sketch',intro:false};
+  }
   if (selected && !['auto','classic-sketch','kinetic'].includes(selected))
     throw new HttpError(409, 'Dạng video này đã ngừng tạo mới sau rà soát chất lượng. Chọn Whiteboard hoặc Chữ chuyển động.');
   if (input.source === 'mine-free' || input.source === 'template')
@@ -14,7 +20,7 @@ export function creationChoice(input: any) {
 }
 
 /** Reject missing or repeated AI designs before cleanSpec can silently fill them with rules. */
-export function designIssues(out: any, look?: string, expectedScenes?: number): string[] {
+export function designIssues(out: any, look?: string, expectedScenes?: number, allowTextOnly = false): string[] {
   if (!Array.isArray(out?.scenes) || !out.scenes.length) return ['Thiếu cảnh'];
   if (expectedScenes !== undefined && out.scenes.length !== expectedScenes) return ['Sai số cảnh của kịch bản'];
   const issues: string[] = [], signatures = new Set<string>();
@@ -24,7 +30,7 @@ export function designIssues(out: any, look?: string, expectedScenes?: number): 
       return;
     }
     const items = s.diagram?.items;
-    if (s.diagram?.kind !== 'sketch' || !Array.isArray(items) || items.length < 2 || items.length > 8 || !items.some((it: any) => ['icon','person','chart'].includes(it?.t))) {
+    if (s.diagram?.kind !== 'sketch' || !Array.isArray(items) || items.length < (allowTextOnly ? 1 : 2) || items.length > 8 || !items.some((it: any) => (allowTextOnly ? ['text','icon','person','chart'] : ['icon','person','chart']).includes(it?.t))) {
       issues.push(`Cảnh ${i+1}: cần hình minh hoạ, không chỉ hộp chữ`); return;
     }
     if (items.some((it: any) => !it || !['text','icon','person','chart','arrow','circle','underline','box','cross','check'].includes(it?.t))) issues.push(`Cảnh ${i+1}: vật thể không hỗ trợ`);
