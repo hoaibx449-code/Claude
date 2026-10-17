@@ -10,7 +10,8 @@ const ADMIN_GROUPS = [
     ['giong-doc', 'Giọng đọc', 'Giọng nào đang đọc thật, giọng nào dùng giọng thay thế, nghe thử từng giọng.'], ['may-dung', 'Máy dựng', 'Hàng chờ, tiến độ và lỗi khi dựng video.']]],
   ['Người dùng', [['prompt-hunter','Prompt Hunter','Kiểm duyệt và biên tập prompt chia sẻ.'],['nguoi-dung', 'Người dùng', 'Tìm người dùng, xem video, cấp gói hoặc credit, khoá tài khoản.'], ['cong-dong', 'Cộng đồng', 'Duyệt video chia sẻ.'], ['zalo', 'Zalo', 'Kết nối Zalo Bot, tự kiểm tra và hộp thư.']]],
   ['Kinh doanh', [['goi', 'Gói cước', 'Giá, hạn mức, thanh toán.'], ['don-hang', 'Đơn hàng', 'Đơn chờ, đã trả, huỷ.']]],
-  ['Hệ thống', [['noi-dung', 'Trang chủ & nội dung', 'Ảnh, video mẫu, chữ trên trang, ngân sách AI.'], ['cai-dat', 'Cài đặt & khoá API', 'Mặc định khi tạo video, model AI, khoá API, quản trị viên.']]],
+  ['Kết nối & AI', [['ket-noi','API & token','Khoá AI, giọng đọc, Zalo, thanh toán và kiểm tra kết nối.'],['ai','AI & model','Thứ tự AI, model chính và dự phòng.'],['chi-phi','Chi phí & ngân sách','Trần chi phí và bảng giá vốn.']]],
+  ['Hệ thống', [['noi-dung', 'Trang chủ & nội dung', 'Ảnh, video mẫu, chữ trên trang, ngân sách AI.'], ['cai-dat', 'Cài đặt chung', 'Máy dựng, mặc định video, đăng nhập và quyền quản trị.']]],
 ];
 const ADMIN_TABS = ADMIN_GROUPS.flatMap(([, list]) => list);
 const SECRET_INFO = {
@@ -53,7 +54,7 @@ async function showAdmin() {
   side?.querySelector('.sidenav.bottom')?.before(sideNav);
   show(h('div', { class: 'admin' }, nav, h('div', { class: 'admin-main' }, h('header', { class: 'admin-head' }, h('h1', {}, title), h('p', { class: 'muted' }, desc)), body)));
   setTimeout(() => nav.querySelector('a.on')?.scrollIntoView({ block: 'nearest', inline: 'center' }), 0);
-  const pages = { 'prompt-hunter':async(body)=>{const {showHunter}=await import('/prompt-hunter.js');return showHunter({h,api,show:(...nodes)=>body.replaceChildren(...nodes.filter(Boolean)),me,toast,fail,detailDialog,openLogin,footer,admin:true});}, 'may-dung': adminRenders, 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings, 'huan-luyen': adminSettings, 'giong-doc': adminSettings };
+  const pages = { 'prompt-hunter':async(body)=>{const {showHunter}=await import('/prompt-hunter.js');return showHunter({h,api,show:(...nodes)=>body.replaceChildren(...nodes.filter(Boolean)),me,toast,fail,detailDialog,openLogin,footer,admin:true});}, 'may-dung': adminRenders, 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings,'ket-noi':adminSettings,'ai':adminSettings,'chi-phi':adminSettings, 'huan-luyen': adminSettings, 'giong-doc': adminSettings };
   await (pages[tab] || adminOverview)(body, tab);
 }
 
@@ -224,13 +225,16 @@ async function adminSettings(body, tab) {
     saveBtn.disabled = false; saveBtn.textContent = 'Lưu cài đặt';
   } }, 'Lưu cài đặt');
   const sections = tab === 'huan-luyen' ? trainTab(c, briefs || {}) : tab === 'giong-doc' ? voiceTab(c, secrets, secretInput, voices)
-    : ({ goi: plansTab, zalo: zaloTab, 'hien-thi': visTab, 'noi-dung': contentTab, 'cai-dat': settingsTab }[tab] || settingsTab)(c, secrets, secretInput, zcheck, inbox);
-  body.replaceChildren(...sections.filter(Boolean), h('div', { class: 'savebar' }, saveBtn));
+    : ({ goi: plansTab, zalo: zaloTab, 'hien-thi': visTab, 'noi-dung': contentTab, 'cai-dat': settingsTab,'ket-noi':connectionsTab,'ai':(c,s,k)=>settingsTab(c,s,k,'ai'),'chi-phi':(c,s,k)=>settingsTab(c,s,k,'cost') }[tab] || settingsTab)(c, secrets, secretInput, zcheck, inbox);
+  const cards=sections.filter(Boolean);
+  const finder=h('input',{type:'search',placeholder:'Tìm cài đặt trong trang này…','aria-label':'Tìm cài đặt',oninput:e=>{const q=e.target.value.trim().toLocaleLowerCase('vi');for(const section of cards)section.hidden=!!q&&!section.textContent.toLocaleLowerCase('vi').includes(q);}});
+  const shortcuts=h('nav',{class:'settings-shortcuts','aria-label':'Đến nhóm cài đặt'},cards.map(section=>{const title=section.querySelector('h2')?.textContent;if(!title)return null;return h('button',{type:'button',class:'ghost small',onclick:()=>{finder.value='';cards.forEach(x=>x.hidden=false);section.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});section.querySelector('input,select,button,textarea')?.focus({preventScroll:true});}},title);}));
+  body.replaceChildren(h('div',{class:'settings-finder'},finder,shortcuts),...cards,h('div', { class: 'savebar' }, saveBtn));
 }
 
-function keysCard(secrets, secretInput, names) {
+function keysCard(secrets, secretInput, names, title='Khoá API') {
   const status = { admin: 'Đã nhập ở đây', env: 'Đang dùng khoá cài trên máy chủ', null: 'Chưa có' };
-  return card('Khoá API', 'Khoá được mã hoá trước khi lưu và không bao giờ hiện lại. Để trống = giữ nguyên.',
+  return card(title, 'Khoá được mã hoá trước khi lưu và không bao giờ hiện lại. Để trống = giữ nguyên.',
     ...names.map((name) => {
       const [title, note] = SECRET_INFO[name], st = secrets[name];
       const clear = h('button', { type: 'button', class: 'ghost small', hidden: st !== 'admin', onclick: () => { secretInput[name] = null; clear.textContent = 'Sẽ xoá khi lưu'; clear.disabled = true; } }, 'Xoá khoá');
@@ -241,10 +245,19 @@ function keysCard(secrets, secretInput, names) {
     }));
 }
 
-function settingsTab(c, secrets, secretInput) {
-  return [
-    connectionsCard(c),
-    keysCard(secrets, secretInput, ['GEMINI_API_KEY', 'OPENAI_API_KEY', 'OLLAMA_API_KEY']),
+function connectionsTab(c,secrets,secretInput){return [
+ keysCard(secrets,secretInput,['OPENAI_API_KEY','GEMINI_API_KEY','OLLAMA_API_KEY'],'AI: khoá API'),
+ keysCard(secrets,secretInput,['EVERAI_API_KEY','GOOGLE_TTS_API_KEY','ELEVENLABS_API_KEY'],'Giọng đọc: khoá API'),
+ keysCard(secrets,secretInput,['ZALO_BOT_TOKEN'],'Zalo: bot token'),
+ keysCard(secrets,secretInput,['SEPAY_API_KEY'],'Thanh toán: SePay API'),
+ connectionsCard(c),
+ card('Thông tin kết nối trên máy chủ','Những giá trị này được quản lý trong môi trường triển khai, không hiển thị giá trị bí mật trên web.',
+ h('dl',{class:'summary'},h('dt',{},'RUNNER_TOKEN'),h('dd',{},'Xác thực máy dựng và mã hoá khoá API; quản lý trong secrets triển khai.'),h('dt',{},'GOOGLE_CLIENT_ID'),h('dd',{},'Đăng nhập Google; cấu hình trong môi trường triển khai.'),h('dt',{},'Cloudflare token'),h('dd',{},'Dùng để triển khai web, cấu hình trong GitHub Actions secrets.')))
+];}
+function connectionLink(){return h('p',{class:'muted'},'Quản lý khoá tại ',h('a',{href:'#/admin/ket-noi'},'API & token'),'.');}
+function settingsTab(c, secrets, secretInput, group='general') {
+  if(!['ai','cost','general'].includes(group))group='general';
+  const sections=[
     aiOrderCard(c),
     card('Máy dựng video', 'Cloud dùng Cloud Run. Máy cá nhân cần mở runner trên PC. Trình duyệt xuất trực tiếp trên thiết bị, cần giữ tab mở; tải tệp về máy, chưa lưu vào thư viện. Giọng AI vẫn cần dịch vụ giọng; có thể tải bản thu âm của bạn.',
       h('label', {}, 'Nơi dựng video', select([['cloud', 'Cloud (Google Cloud Run)'], ['local', 'Máy cá nhân (PC / VPS)'], ['browser', 'Trình duyệt (tạm thời)']], c.rendering?.mode || 'cloud', v => { c.rendering = {mode:v}; }))),
@@ -284,6 +297,8 @@ function settingsTab(c, secrets, secretInput) {
       h('label', {}, 'Email quản trị viên (mỗi dòng một email; để trống = dùng ADMIN_EMAIL trên máy chủ)', area(c.admins.join('\n'), (v) => { c.admins = v.split(/[\s,]+/).filter(Boolean); }, 3)),
       h('label', {}, 'Giữ nhật ký (ngày)', input(c.logDays, (v) => { c.logDays = v; }, { type: 'number', min: 7, max: 3650 }))),
   ];
+  const groups={'Thứ tự AI':'ai','Model AI':'ai','Trần chi phí':'cost','Bảng giá vốn':'cost'};
+  return sections.filter(section=>(groups[section.querySelector('h2')?.textContent]||'general')===group);
 }
 
 // models offered in the pickers; the connection check adds what each key may really use
@@ -415,7 +430,7 @@ function plansTab(c, secrets, secretInput) {
       bankPicker(c.payment),
       h('label', {}, 'Ghi chú hiện dưới mã QR', input(c.payment.note, (v) => { c.payment.note = v; }, { maxlength: 300 })),
       h('p', { class: 'muted' }, 'Webhook SePay: ', h('code', {}, location.origin + '/api/sepay/webhook'), ' · Kiểu xác thực: API Key.')),
-    keysCard(secrets, secretInput, ['SEPAY_API_KEY']),
+    connectionLink(),
     card('Các gói', 'Giới hạn tính theo ngày. Phong cách/giọng/cách tạo ngoài gói sẽ hiện thông báo nâng cấp đúng gói cần mua.',
       h('button', { type: 'button', class: 'ghost small', onclick: (e) => { c.plans.push({ id: 'goi' + (c.plans.length + 1), name: 'Gói mới', price: 99000, days: 30, yearPrice: 0, listPrice: 0, visible: true, highlight: false, desc: '', features: [], limits: { script: 10, image: 20, render: 5 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 180, docPerMonth: 0 }); e.target.closest('.card').after(planCard(c.plans[c.plans.length - 1], c.plans.length - 1)); } }, '+ Thêm gói')),
     ...c.plans.map(planCard),
@@ -549,7 +564,7 @@ function zaloTab(c, secrets, secretInput, zcheck, inbox) {
       zcheck?.last?.length ? h('details', {}, h('summary', {}, 'Hoạt động Zalo gần đây'), table(['Lúc', 'Kết quả', 'Chi tiết'], zcheck.last.map((e) => h('tr', {}, h('td', {}, fmtDate(e.ts)), h('td', { class: e.ok ? 'ok' : 'bad' }, e.ok ? 'OK' : 'Lỗi'), h('td', { class: 'data' }, e.data || ''))))) : null),
     assistantTestCard(),
     zaloInboxCard(inbox),
-    keysCard(secrets, secretInput, ['ZALO_BOT_TOKEN']),
+    connectionLink(),
     card('Cài đặt Zalo', null, h('div', { class: 'grid' },
       check(z.enabled, (v) => { z.enabled = v; }, 'Bật tạo video qua Zalo'),
       check(z.allowGuests, (v) => { z.allowGuests = v; }, 'Cho người chưa có tài khoản web dùng ngay'),
@@ -909,7 +924,7 @@ function voiceTab(c, secrets, secretInput, data) {
         try { const r = await api('/api/admin/voices/test', { method: 'POST', body: {} }); out.className = r.ok ? 'ok' : 'bad'; out.textContent = r.ok ? `✓ EverAI đọc được (${Math.round(r.bytes / 1024)} KB, ${(r.ms / 1000).toFixed(1)} giây). Đã bỏ trạng thái lỗi.` : '✗ ' + r.error; }
         catch (err) { out.className = 'bad'; out.textContent = '✗ ' + err.message; }
         b.disabled = false; } }, 'Thử EverAI ngay'), h('span', { class: 'muted' }, 'Đọc một câu ngắn bằng khoá đã lưu, báo đúng lỗi EverAI trả về.')) : null),
-    keysCard(secrets, secretInput, ['EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'ELEVENLABS_API_KEY']),
+    connectionLink(),
     card('Giọng đang có', null, list.length ? table(['Giọng', 'Nhà cung cấp', 'Tình trạng', 'Nghe'], list.map((v) => h('tr', {}, h('td', {}, v.label), h('td', {}, v.provider), h('td', {}, v.ready ? state(true, 'Đọc thật', '') : h('span', { class: 'pill' }, 'Đọc thay bằng ' + (v.standIn || 'giọng miễn phí'))), h('td', {}, audioBtn(v.code)))))
       : h('p', { class: 'muted' }, 'Chưa tải được danh sách.')),
     card('Sửa danh sách giọng', 'Mỗi dòng: nhà cung cấp | mã giọng | tên hiển thị. Nhà cung cấp: everai, google, elevenlabs, free.',
