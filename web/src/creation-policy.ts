@@ -30,8 +30,14 @@ export function designIssues(out: any, look?: string, expectedScenes?: number, a
       return;
     }
     const items = s.diagram?.items;
-    if (s.diagram?.kind !== 'sketch' || !Array.isArray(items) || items.length < (allowTextOnly ? 1 : 2) || items.length > 8 || !items.some((it: any) => (allowTextOnly ? ['text','icon','person','chart'] : ['icon','person','chart']).includes(it?.t))) {
-      issues.push(`Cảnh ${i+1}: cần hình minh hoạ, không chỉ hộp chữ`); return;
+    if (s.diagram?.kind !== 'sketch' || !Array.isArray(items)) {
+      issues.push(`Cảnh ${i+1}: cần diagram.kind=sketch và mảng items, nhận ${s.diagram?.kind || 'thiếu diagram'}`); return;
+    }
+    if (items.length < (allowTextOnly ? 1 : 2) || items.length > (allowTextOnly ? 18 : 8)) {
+      issues.push(`Cảnh ${i+1}: số vật thể ${items.length} không hợp lệ (tối đa ${allowTextOnly ? 18 : 8})`); return;
+    }
+    if (!items.some((it: any) => (allowTextOnly ? ['text','icon','person','chart'] : ['icon','person','chart']).includes(it?.t))) {
+      issues.push(`Cảnh ${i+1}: cần hình minh hoạ hoặc chữ có nội dung`); return;
     }
     if (items.some((it: any) => !it || !['text','icon','person','chart','arrow','circle','underline','box','cross','check'].includes(it?.t))) issues.push(`Cảnh ${i+1}: vật thể không hỗ trợ`);
     const signature = JSON.stringify(items);

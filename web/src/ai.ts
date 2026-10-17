@@ -282,8 +282,14 @@ export async function writeScript(env: Env, provider: TextProvider, r: ScriptReq
           }
           if (r.creative) creativeResult(out);
           if (!r.look || r.look === 'kinetic') {
-            const checked = r.scenes ? { ...out, scenes: out.scenes.map((s: any, i: number) => ({ ...s, lines: r.scenes?.[i] || [] })) } : out;
-            const issues = designIssues(checked, r.look, r.scenes?.length, !!r.creative);
+            const check = (value: any) => designIssues(r.scenes ? {...value,scenes:(value.scenes||[]).map((s:any,i:number)=>({...s,lines:r.scenes?.[i]||[]}))} : value,r.look,r.scenes?.length,!!r.creative);
+            let issues = check(out);
+            if (issues.length && r.creative) {
+              const fixed = await callText(env,p,model,sys+'\nSỬA CẤU TRÚC theo lỗi trả về. Mỗi cảnh dùng diagram:{kind:"sketch",items:[...]}; nếu cần biểu đồ, đặt một item t:"chart" trong items. Tối đa 18 vật/cảnh. Giữ yêu cầu sáng tạo, mode/style/approach và nguyên lời đọc. Trả toàn bộ JSON đã sửa.',JSON.stringify({issues,originalNarration:r.scenes,design:out}));
+              usage.tokensIn+=fixed.tokensIn;usage.tokensOut+=fixed.tokensOut;
+              const revised=parseJson(fixed.text);
+              if(revised?.scenes){out={...out,...revised};creativeResult(out);issues=check(out);}
+            }
             if (issues.length) { lastErr = issues.slice(0, 3).join('; '); break; }
           }
           return { ...out, _usage: usage };

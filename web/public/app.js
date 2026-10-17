@@ -1048,7 +1048,7 @@ async function showCreate() {
   }, 700);
   f.source.addEventListener('change', () => { sync(); track('choose', { source: f.source.value }); });
   f.affOn.addEventListener('change', sync);
-  f.topic.addEventListener('input', guess);
+  // Creative briefs are interpreted by AI; do not pre-classify them using keyword rules.
   const extras = () => ({ mode, intro: false, styleAuto: f.style.value === 'auto', character: isClassic(look) && V('feature:character') === 'on' ? character.get() || undefined : undefined,
     affiliate: isClassic(look) && f.affOn.checked && f.affLink.value.trim() ? { link: f.affLink.value.trim(), product: f.affProduct.value.trim(), price: f.affPrice.value.trim(), image: product.get() || undefined } : undefined });
   const body = () => {
@@ -1076,7 +1076,7 @@ async function showCreate() {
   const form = h('form', { class: 'create', onsubmit: (e) => { e.preventDefault(); createProject(body(), go).then(sync); } },
     step(1, 'Nội dung', 'Nhập chủ đề hoặc kịch bản; AI thiết kế từng cảnh theo nội dung.',
       h('div', { class: 'field-group' }, h('span', { class: 'field-caption' }, 'Bắt đầu từ', helpHint('Cách tạo', 'Chủ đề: AI viết lời và thiết kế cảnh. Kịch bản + AI: giữ nguyên lời của bạn, AI thiết kế cảnh. Nếu AI lỗi, hệ thống dừng và giữ nội dung đã nhập.')), f.source),
-      tplBox, h('label', { for: 'f-topic' }, topicLabel, f.topic), detect),
+      tplBox, h('label', { for: 'f-topic' }, topicLabel, f.topic)),
     step(2, 'Video bạn muốn nhận', 'Phong cách chỉ là gợi ý; AI tự thiết kế theo nội dung và mong muốn của bạn.',
       h('label',{for:'f-wish'},'Mô tả kết quả mong muốn',f.wish),
       h('div',{class:'row creative-hints'},CREATIVE_HINTS.map(([direction,name,note])=>h('button',{type:'button',class:'ghost small',onclick:()=>{f.direction.value=direction;f.direction.dispatchEvent(new Event('input'));}},name))),
