@@ -40,6 +40,7 @@ export const LOOK_BRIEF: Record<string, string> = {
 };
 export interface ScriptRequest {
   creative?: CreativeBrief;
+  creativeRuntime?: {styles:string[];renderMode:string};
   topic: string; seconds: number; tone: string; ratio: string; visual: VisualMode;
   /** admin's extra instructions */ extra?: string;
   /** the user's own script, already split into scenes: the AI only designs the pictures */
@@ -87,7 +88,7 @@ const DIAGRAM_SCHEMA =
   '{"kind":"stick","title":"(tuỳ chọn)","actors":[{"action":"idle|walk|run|wave|think|cheer|sad|point|shrug|jump","label":"≤2 chữ, vd Bạn, Sếp"}],"bubble":"lời thoại ≤8 chữ (tuỳ chọn)","caption":"≤8 chữ (tuỳ chọn)"} — 1-2 người que CHUYỂN ĐỘNG THẬT (đi, chạy, vẫy tay, ăn mừng...), dùng cho tình huống, cảm xúc, nhân vật; người đầu tiên nói câu trong bubble. Chỉ dùng số liệu có thật hoặc ví dụ minh hoạ đã nói rõ là ví dụ';
 
 function systemPrompt(r: ScriptRequest) {
-  if (r.creative) return creativePrompt(r.creative, !!r.scenes, r.seconds, r.ratio) + '\n' + sketchSchema(r.ratio) + '\nRiêng yêu cầu sáng tạo: số vật và số chữ theo dụng ý, cho phép cảnh chỉ có chữ; các ví dụ schema chỉ minh hoạ cú pháp, không sao chép bố cục.' + (r.extra ? '\nChỉ dẫn bổ sung: '+r.extra : '');
+  if (r.creative) return creativePrompt(r.creative, !!r.scenes, r.seconds, r.ratio, r.creativeRuntime) + '\n' + sketchSchema(r.ratio) + '\nRiêng yêu cầu sáng tạo: số vật và số chữ theo dụng ý, cho phép cảnh chỉ có chữ; các ví dụ schema chỉ minh hoạ cú pháp, không sao chép bố cục.' + (r.extra ? '\nChỉ dẫn bổ sung: '+r.extra : '');
   if (r.look === 'director') return [
     r.scenes ? 'Giữ nguyên lời đọc và số cảnh; chỉ thiết kế direction cho từng cảnh.' : `Viết video tiếng Việt về đúng chủ đề, khoảng ${Math.max(4, Math.min(14, Math.round(r.seconds / 6)))} cảnh, tổng khoảng ${r.seconds} giây, mỗi cảnh 1-3 câu. Nhịp dài ngắn theo ý, không buộc mọi video cùng công thức hook/danh sách/CTA.`,
     DIRECTOR_BRIEF, r.brief || '', r.extra || '', r.tone ? 'Giọng văn: ' + r.tone : '',

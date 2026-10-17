@@ -504,7 +504,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       await useQuota(env,user.id,'script',(await limitsFor(env,user.id)).script);
       try {
         const creative = {...p.spec.creative, wish:p.spec.creative.wish+'\nCÁC GÓP Ý TRƯỚC: '+JSON.stringify(p.spec.creative.feedback || [])+'\nGÓP Ý MỚI: '+feedback};
-        const out = await writeScript(env,env.config.defaults.textAI as TextProvider,{topic:'',seconds:0,tone:'',ratio:p.spec.ratio,visual:'sketch',scenes:p.spec.scenes.map((s:any)=>s.lines),creative,extra:env.config.promptExtra});
+        const out = await writeScript(env,env.config.defaults.textAI as TextProvider,{topic:'',seconds:0,tone:'',ratio:p.spec.ratio,visual:'sketch',scenes:p.spec.scenes.map((s:any)=>s.lines),creative,creativeRuntime:{styles:env.config.enabledStyles,renderMode:env.config.rendering.mode},extra:env.config.promptExtra});
         const plan=creativeResult(out);
         if(!env.config.enabledStyles.includes(out.style))throw new HttpError(422,'AI chọn phong cách đang tắt. Hãy yêu cầu một hướng khác.');
         const spec=cleanSpec({...p.spec,mode:out.mode,style:out.style,scenes:p.spec.scenes.map((s:any,i:number)=>({...out.scenes[i],lines:s.lines})),creative:{...p.spec.creative,...plan,feedback:[...(p.spec.creative.feedback||[]),feedback]}},user.id,'creative');
@@ -522,7 +522,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
       await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
       let out: any;
       try {
-        out = await writeScript(env, env.config.defaults.textAI as TextProvider, { topic: '', seconds: 0, tone: '', ratio: p.spec.ratio, visual: 'sketch', scenes: [sc.lines], look: p.spec.look, creative: p.spec.creative, extra: env.config.promptExtra });
+        out = await writeScript(env, env.config.defaults.textAI as TextProvider, { topic: '', seconds: 0, tone: '', ratio: p.spec.ratio, visual: 'sketch', scenes: [sc.lines], look: p.spec.look, creative: p.spec.creative, creativeRuntime:{styles:env.config.enabledStyles,renderMode:env.config.rendering.mode}, extra: env.config.promptExtra });
         const issues = designIssues({ scenes: [{ ...out.scenes?.[0], lines: sc.lines }] }, p.spec.look, 1, !!p.spec.creative);
         if (issues.length) throw new HttpError(502, 'AI chưa thiết kế được cảnh đạt yêu cầu. Cảnh cũ được giữ nguyên.');
       } catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
@@ -808,7 +808,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
         const provider = b.provider === 'openai' || b.provider === 'gemini' ? b.provider : (D.textAI as TextProvider);
         await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
         try {
-          const out = await writeScript(env, provider, { topic: '', seconds: 0, tone: '', ratio, visual: 'sketch', extra: env.config.promptExtra+illustratedExtra, scenes, format, niche, look, brief, recentDirections, creative: b.creative });
+          const out = await writeScript(env, provider, { topic: '', seconds: 0, tone: '', ratio, visual: 'sketch', extra: env.config.promptExtra+illustratedExtra, scenes, format, niche, look, brief, recentDirections, creative: b.creative, creativeRuntime:{styles:env.config.enabledStyles,renderMode:env.config.rendering.mode} });
           usage = out._usage;
           // the narration always stays the user's own words
           raw = { ...out, title: out.title || raw.title, scenes: scenes.map((lines, i) => ({ lines, direction: out.scenes?.[i]?.direction, diagram: out.scenes?.[i]?.diagram, x: out.scenes?.[i]?.x, act: out.scenes?.[i]?.act, pause: out.scenes?.[i]?.pause, panels: out.scenes?.[i]?.panels })) };
@@ -827,7 +827,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
         await requireBudget(env, 'AI viết kịch bản');
         await useQuota(env, user.id, 'script', (await limitsFor(env, user.id)).script);
         try {
-          raw = await writeScript(env, provider, { topic: text, seconds, tone: String(b.tone || '').slice(0, 200), ratio, visual, extra: env.config.promptExtra + affiliateBrief(aff)+illustratedExtra, format: aff ? 'sales' : format, niche, look, brief, recentDirections, creative: b.creative });
+          raw = await writeScript(env, provider, { topic: text, seconds, tone: String(b.tone || '').slice(0, 200), ratio, visual, extra: env.config.promptExtra + affiliateBrief(aff)+illustratedExtra, format: aff ? 'sales' : format, niche, look, brief, recentDirections, creative: b.creative, creativeRuntime:{styles:env.config.enabledStyles,renderMode:env.config.rendering.mode} });
           usage = raw._usage;
         } catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
       }
