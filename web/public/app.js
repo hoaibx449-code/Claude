@@ -1064,7 +1064,7 @@ async function showCreate() {
   f.source.addEventListener('change', () => { sync(); track('choose', { source: f.source.value }); });
   f.affOn.addEventListener('change', sync);
   f.topic.addEventListener('input', guess);
-  const extras = () => ({ mode, intro: false && f.intro.checked && V('feature:intro') === 'on', styleAuto: f.style.value === 'auto', character: isClassic(look) && V('feature:character') === 'on' ? character.get() || undefined : undefined,
+  const extras = () => ({ mode, intro: false, styleAuto: f.style.value === 'auto', character: isClassic(look) && V('feature:character') === 'on' ? character.get() || undefined : undefined,
     affiliate: isClassic(look) && f.affOn.checked && f.affLink.value.trim() ? { link: f.affLink.value.trim(), product: f.affProduct.value.trim(), price: f.affPrice.value.trim(), image: product.get() || undefined } : undefined });
   const body = () => {
     const x = extras();
@@ -1122,7 +1122,7 @@ async function showCreate() {
   sync(); paintSummary();
   show(h('header', { class: 'pagehead' }, h('div', {}, h('h1', {}, 'Tạo video'), h('p', { class: 'muted' }, 'Bắt đầu từ điều bạn muốn kể.'))), form);
   const tpl = sessionStorage.getItem('nv_tpl'); sessionStorage.removeItem('nv_tpl');
-  if (tpl) { f.source.value = 'template'; sync(); pick({ id: tpl }); }
+  // Stored legacy template selections are discarded; creation starts from the user's content.
 }
 
 // ---------- account
@@ -1570,7 +1570,7 @@ async function showEditor(id) {
         ...d.nodes.map((n, i) => h('details', { class: 'advanced' }, h('summary', {}, 'Hình ' + (i + 1) + ': ' + n.label),
           field('Nhãn', n.label, (v) => { n.label = v; changed(); }, { max: 56 }),
           h('div', { class: 'grid wide-2' }, ...['x','y','w','h'].map((k) => field(({x:'Vị trí ngang',y:'Vị trí dọc',w:'Chiều rộng',h:'Chiều cao'})[k] + ' (%)', n[k], (v) => { if (Number.isFinite(Number(v))) { n[k] = Number(v); changed(); } }, { max: 5 }))))),
-        h('button', { type: 'button', class: 'ghost small', onclick: () => { delete sc.direction; redesign(sc); } }, 'Thiết kế lại theo lời'));
+        h('button', { type: 'button', class: 'ghost small', onclick: () => redesign(sc) }, 'Thiết kế lại theo lời'));
     }
 
     const x = (sc.x ||= {}), set = (k, v) => { if (v === '' || v == null) delete x[k]; else x[k] = v; changed(); };
@@ -1617,9 +1617,9 @@ async function showEditor(id) {
         h('label', {}, 'Đếm ngược sau câu hỏi', h('select', { onchange: (e) => { sc.pause = Number(e.target.value) || undefined; changed(); } }, options([['0', 'Không'], ['3', '3 giây']], String(sc.pause ? 3 : 0)))));
     }
     return h('div', { class: 'panel' }, h('span', { class: 'tag' }, L('looks', spec.look)), h('div', { class: 'grid wide-2' }, ...f),
-      h('div', { class: 'row' }, h('button', { type: 'button', class: 'ghost small', 'data-ev': 'redesign', onclick: () => { delete sc.x; redesign(sc); } }, 'AI thiết kế lại cảnh')));
+      h('div', { class: 'row' }, h('button', { type: 'button', class: 'ghost small', 'data-ev': 'redesign', onclick: () => redesign(sc) }, 'AI thiết kế lại cảnh')));
   }
-  // free redesign of one scene's board from its current lines (rules on the server, no AI cost)
+  // AI redesign keeps the current scene intact until the server validates a replacement.
   async function redesign(sc) {
     try {
       await save.flush();
