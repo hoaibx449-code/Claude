@@ -112,8 +112,7 @@ function applyUI(next) {
   for (const a of document.querySelectorAll('[data-route="cong-dong"]')) a.hidden = V('feature:community') === 'hidden';
   document.documentElement.dataset.theme = ui.site?.theme || 'aurora';
   window.nvHelpChat?.();
-  const bb = document.getElementById('betaBadge');
-  if (bb) { bb.hidden = !ui.beta; bb.textContent = ui.beta?.label || 'Beta'; }
+  for(const bb of document.querySelectorAll('[data-beta]')){bb.hidden=!ui.beta;bb.textContent=ui.beta?.label||'Beta';bb.title=ui.beta?.note||'Phiên bản thử nghiệm';}
 }
 const styleOptions = () => Object.keys(ui.labels.styles).map((k) => [k, L('styles', k), 'style:' + k]).filter(([k]) => ui.enabledStyles.includes(k) || V('style:' + k) === 'dev');
 const voiceOptions = () => ui.voices.map((v) => [v.code, v.label, 'voice:' + v.code]);
