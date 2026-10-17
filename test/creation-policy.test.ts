@@ -1,3 +1,4 @@
+import { cleanSpec } from '../web/src/spec.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { creationChoice, designIssues, RETIRED_LOOKS } from '../web/src/creation-policy.ts';
@@ -36,4 +37,9 @@ test('AI missing credentials or incomplete output fails instead of manufacturing
   try {
     await assert.rejects(writeScript({OPENAI_API_KEY:'fixture-only',OPENAI_TEXT_MODEL:'test'} as any,'openai',req),{status:502});
   } finally { globalThis.fetch = original; }
+});
+
+test('strict AI normalization never fills unusable diagrams using rules', () => {
+  assert.throws(() => cleanSpec({visual:'sketch',scenes:[{lines:['Bắt đầu.'],diagram:{kind:'sketch',items:[{t:'icon',name:'invalid/name'}]}}]},'u',true), {status:502});
+  assert.ok(cleanSpec({visual:'sketch',scenes:[{lines:['Dự án cũ.']}]},'u').scenes[0].diagram);
 });

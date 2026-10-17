@@ -198,7 +198,7 @@ export function cleanLook(x: any, look: string) {
   return Object.keys(o).length ? o : undefined;
 }
 
-export function cleanSpec(input: any, userId: string) {
+export function cleanSpec(input: any, userId: string, requireDesign = false) {
   if (!input || typeof input !== 'object' || !Array.isArray(input.scenes)) throw new HttpError(400, 'Kịch bản không hợp lệ.');
   const ownImage = new RegExp(`^r2:img/${userId}/[a-f0-9]{24}\\.(png|jpg|webp)$`);
   const visual = pick(input.visual, VISUAL_MODES, 'sketch');
@@ -234,6 +234,7 @@ export function cleanSpec(input: any, userId: string) {
       return out;
     }
     let diagram = cleanDiagram(sc?.diagram, lines.length, mk);
+    if (requireDesign && (!diagram || diagram.kind !== 'sketch' || !diagram.items?.some((it: any) => ['icon','person','chart'].includes(it.t)))) throw new HttpError(502, 'Thiết kế AI có hình không hợp lệ; không dùng bố cục theo luật thay thế.');
     // drawn-only videos: a scene that came back without a usable drawing gets one designed from its words
     if (!diagram && (visual === 'diagram' || visual === 'sketch') && lines.length) diagram = { kind: 'sketch', items: cleanSketch(composeScene(lines, ratio === '9:16', si, { format, index: si, total }), lines.length) };
     if (diagram) return { lines, panels: [], diagram };

@@ -10,7 +10,7 @@ export function creationChoice(input: any) {
   if (input.source === 'mine-free' || input.source === 'template')
     throw new HttpError(409, 'Đã bỏ cách dựng theo mẫu/quy tắc. Chọn Chủ đề hoặc Kịch bản + AI để AI thiết kế từng cảnh.');
   if (input.source && !['topic','mine-ai'].includes(input.source)) throw new HttpError(400, 'Cách tạo không hợp lệ.');
-  return { ...input, source: input.source || 'mine-ai', look: selected === 'kinetic' ? 'kinetic' : '', visual: 'sketch', mode: selected === 'kinetic' ? 'kinetic' : 'hand', intro: false };
+  return { ...input, source: input.source || 'mine-ai', look: selected === 'kinetic' ? 'kinetic' : '', visual: 'sketch', mode: selected === 'kinetic' ? 'kinetic' : 'hand', style: selected === 'kinetic' ? 'bold' : 'whiteboard', intro: false };
 }
 
 /** Reject missing or repeated AI designs before cleanSpec can silently fill them with rules. */

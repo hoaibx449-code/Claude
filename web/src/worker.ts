@@ -508,7 +508,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
         if (issues.length) throw new HttpError(502, 'AI chưa thiết kế được cảnh đạt yêu cầu. Cảnh cũ được giữ nguyên.');
       } catch (e) { await refundQuota(env, user.id, 'script'); throw e; }
       p.spec.scenes[si] = { ...sc, diagram: out.scenes[0].diagram, x: out.scenes[0].x, panels: [] };
-      const spec = cleanSpec(p.spec, user.id);
+      const spec = cleanSpec(p.spec, user.id, true);
       await saveSpec(env, user, id, spec, p.updated_at);
       rc.log('ai.scene', { projectId: id, cost: aiCost(env.config, out._usage), data: { scene: si } });
       return json({ spec });
@@ -835,7 +835,7 @@ export async function createProject(env: XEnv, rc: Rc, user: User, b: any, devAl
       ? (D.music === 'none' ? undefined : env.config.music.find((m) => m.id === D.music) || env.config.music[hashText(text) % Math.max(1, env.config.music.length)]) : undefined))?.file;
     const spec: any = cleanSpec({ ...raw, format: aff ? 'sales' : format, niche, visual, ratio, subtitles: typeof b.subtitles === 'boolean' ? b.subtitles : D.subtitles,
       style: !look && visual === 'doodle' && (!b.style || b.style === 'auto') && env.config.enabledStyles.includes('notebook') ? 'notebook' : style, tool: b.tool, channel: b.channel ?? D.channel, episode: b.episode, mode, media, character: media.nv ? 'nv' : undefined, affiliate: aff,
-      voice: voiceFor(env.config, b.voiceId, Number(b.speed) || 1), look, skin: b.skin, music, sfx: b.sfx !== false }, user.id);
+      voice: voiceFor(env.config, b.voiceId, Number(b.speed) || 1), look, skin: b.skin, music, sfx: b.sfx !== false }, user.id, true);
     const wantIntro = typeof b.intro === 'boolean' ? b.intro : D.intro;
     if (wantIntro && !['director','whiteboard','illustrated'].includes(look||'') && on('feature:intro')) spec.intro = introFor(spec);
     if (usage) rc.log('ai.script', { cost: aiCost(env.config, usage), data: { source, format, niche, ...usage } });
