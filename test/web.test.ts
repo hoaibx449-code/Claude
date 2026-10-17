@@ -101,7 +101,7 @@ test('custom formats from the training page: cleaned, and only released ones are
   assert.deepEqual(Object.keys(c.briefs), ['act']);
   assert.deepEqual(c.formats.map((f) => [f.id, f.base, f.stage]), [['ke-sach', 'act', 'live'], ['thu', 'act', 'test']]);
   const pub = publicConfig(c) as any;
-  assert.deepEqual(pub.formats, [{ id: 'f:ke-sach', name: 'Kể sách', base: 'act', note: 'Dòng đầu' }]);
+  assert.deepEqual(pub.formats, []); // a live label cannot re-enable a retired renderer
 });
 
 

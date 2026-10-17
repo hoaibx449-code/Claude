@@ -11,14 +11,23 @@ async function fixture(run: (f: any) => Promise<void>) {
  const dir=mkdtempSync(join(tmpdir(),'zalo-')), originalFetch=globalThis.fetch;
  try {
   const env: any={DB:database(join(dir,'db.sqlite')),RUNNER_TOKEN:'r'.repeat(32),ZALO_BOT_TOKEN:'test-token',PUBLIC_URL:'https://studio.test',DAILY_SCRIPTS:'20',DAILY_IMAGES:'60',DAILY_RENDERS:'5'};
-  env.config=defaultConfig(env);env.config.zalo.enabled=true;
+  env.config=defaultConfig(env);env.config.zalo.enabled=true;env.OPENAI_TEXT_MODEL='fixture-test';env.config.defaults.textAI='openai';
   const pending: Promise<unknown>[]=[], log: any[]=[], sent: any[]=[];
   const rc: any={userId:null,channel:'zalo',quiet:false,log(type: string, extra: any){log.push({type,...extra});},wait(p: Promise<unknown>){pending.push(p);}};
   let response: any={ok:true,result:{message_id:'reply'}};
-  globalThis.fetch=async (url: any, options: any)=>{assert.ok(String(url).startsWith('https://bot-api.zaloplatforms.com/bot'));if(!String(url).endsWith('/sendChatAction'))sent.push({url:String(url),body:JSON.parse(options.body)});return new Response(JSON.stringify(response),{status:200,headers:{'content-type':'application/json'}});};
+  globalThis.fetch=async (url: any, options: any)=>{
+   if(String(url)==='https://api.openai.com/v1/chat/completions') {
+    const user=JSON.parse(options.body).messages[1].content;
+    const scenes=user.split(/Cảnh \d+: /).slice(1).map((line: string)=>{
+     const lines=line.trim().split(/\[câu \d+\] /).filter(Boolean);
+     return {lines,x:{keys:[lines[0].split(' ')[0]]},diagram:{kind:'sketch',items:[{t:'text',id:'t',text:'Bắt đầu',x:50,y:10,size:'l'},{t:'icon',id:'i',name:'calendar',x:50,y:55,w:30}]}};
+    });
+    return Response.json({choices:[{message:{content:JSON.stringify({title:'Video thử',scenes})}}]});
+   }
+   assert.ok(String(url).startsWith('https://bot-api.zaloplatforms.com/bot'));if(!String(url).endsWith('/sendChatAction'))sent.push({url:String(url),body:JSON.parse(options.body)});return new Response(JSON.stringify(response),{status:200,headers:{'content-type':'application/json'}});};
   const drain=async()=>{while(pending.length)await Promise.all(pending.splice(0));};
   const receive=async (text: any, id='m1', secret?: string)=>zaloWebhook(new Request('https://studio.test/api/zalo/webhook',{method:'POST',headers:{'x-bot-api-secret-token':secret??await webhookSecret(env)},body:JSON.stringify({event_name:'message.text.received',message:{message_id:id,chat:{id:'chat-1'},from:{display_name:'Khách thử'},...(text===undefined?{}:{text})}})}),env,rc);
-  await run({env,rc,sent,log,receive,drain,setResponse:(value: any)=>{response=value;}});
+  await run({env,rc,sent,log,receive,drain,enableAI:()=>{env.OPENAI_API_KEY='fixture-only';},setResponse:(value: any)=>{response=value;}});
  }finally{globalThis.fetch=originalFetch;rmSync(dir,{recursive:true,force:true});}
 }
 test('Zalo normalizes wrapped Bot Platform updates without pretending OA events are Bot messages',()=>{
@@ -61,7 +70,8 @@ test('non-text and quota exhaustion both receive an explicit response',async()=>
  f.env.config.zalo.perDay=1000;await f.receive('GIUP','after-raise');await f.drain();assert.doesNotMatch(f.sent.at(-1).body.text,/Hôm nay bạn đã nhắn/);
 }));
 test('multiline KB creates and queues a video; replay uses the saved checkpoint',async()=>fixture(async f=>{
- await f.receive('KB\nBắt đầu từ một bước nhỏ. Bạn có thể làm ngay hôm nay.','script');await f.drain();
+ f.enableAI();
+ await f.receive('KB\nBắt đầu từ một bước nhỏ. Bạn có thể làm ngay hôm nay.','script');await f.drain();await resumeZalo(f.env,f.rc);await f.drain();
  const row=await f.env.DB.prepare("SELECT * FROM zalo_messages WHERE id='script'").first();assert.equal(row.status,'handled');assert.ok(row.project_id);assert.ok(row.job_id);
  assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM jobs').first()).n,1);
  await f.env.DB.prepare("UPDATE zalo_messages SET status='failed' WHERE id='script'").run();
@@ -82,10 +92,11 @@ test('processing failures remain retryable instead of being permanently marked a
  row=await f.env.DB.prepare("SELECT * FROM zalo_messages WHERE id='retryable'").first();assert.equal(row.status,'handled');assert.equal(row.attempts,2);
 }));
 test('blocked Zalo accounts receive an explanation and cannot queue another video',async()=>fixture(async f=>{
- await f.receive('KB Bắt đầu từ một bước nhỏ. Bạn có thể làm ngay hôm nay.','first');await f.drain();
+ f.enableAI();
+ await f.receive('KB Bắt đầu từ một bước nhỏ. Bạn có thể làm ngay hôm nay.','first');await f.drain();await resumeZalo(f.env,f.rc);await f.drain();
  const link=await f.env.DB.prepare("SELECT user_id FROM zalo_links WHERE chat_id='chat-1'").first();
  await f.env.DB.prepare('INSERT INTO blocked_users(user_id,blocked_at) VALUES(?,?)').bind(link.user_id,Date.now()).run();
- await f.receive('KB Kịch bản khác đủ dài để dựng một video mới.','blocked');await f.drain();
+ await f.receive('KB Kịch bản khác đủ dài để dựng một video mới.','blocked');await f.drain();await resumeZalo(f.env,f.rc);await f.drain();
  assert.match(f.sent.at(-1).body.text,/bị khóa/);assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM jobs').first()).n,1);
 }));
 test('standalone bot like the Zalo Bot SDK: direct webhook, SDK header accepted, old shared-bot setting becomes webhook',async()=>fixture(async f=>{
@@ -138,6 +149,7 @@ test('natural commands get real answers, and a new chat typing a valid command i
  await f.receive('Giọng đọc','n9');await f.drain();assert.match(last(),/kết nối tài khoản/);
 }));
 test('AI work is left to the minute job (a webhook call only lives 30 seconds), acknowledged once',async()=>fixture(async f=>{
+ f.enableAI();
  f.env.GEMINI_API_KEY='g';f.env.config.zalo.scriptSource='mine-ai';
  const res=await (await f.receive('KB Bắt đầu từ một bước nhỏ. Bạn có thể làm ngay hôm nay.','ai')).json();await f.drain();
  assert.equal(res.deferred,true);
@@ -152,18 +164,19 @@ test('AI work is left to the minute job (a webhook call only lives 30 seconds), 
  const quick=await (await f.receive('GIUP','fast')).json();await f.drain();assert.equal(quick.deferred,undefined);
 }));
 test('Zalo video format: the admin default is used, and DINHDANG offers only the ticked formats',async()=>fixture(async f=>{
+ f.enableAI();
  const c=f.env.config; c.zalo.formats={default:'kinetic',allowed:['kinetic','classic-sketch']};
  await f.receive('DINHDANG','d1');await f.drain();
- const list=f.sent.at(-1).body.text;assert.match(list,/1\. Chữ bùng nổ/);assert.match(list,/2\. Sketchnote theo lời/);assert.doesNotMatch(list,/Tin nhắn drama/);
- await f.receive('KB Bắt đầu từ một bước nhỏ. Bạn có thể làm ngay hôm nay.','v1');await f.drain();
+ const list=f.sent.at(-1).body.text;assert.match(list,/1\. Chữ bùng nổ/);assert.match(list,/2\. Whiteboard/);assert.doesNotMatch(list,/Tin nhắn drama/);
+ await f.receive('KB Bắt đầu từ một bước nhỏ. Bạn có thể làm ngay hôm nay.','v1');await f.drain();await resumeZalo(f.env,f.rc);await f.drain();
  let spec=JSON.parse((await f.env.DB.prepare('SELECT spec FROM projects ORDER BY created_at DESC').first()).spec);assert.equal(spec.look,'kinetic');
- await f.receive('DINHDANG 2','d2');await f.drain();assert.match(f.sent.at(-1).body.text,/Sketchnote theo lời/);
+ await f.receive('DINHDANG 2','d2');await f.drain();assert.match(f.sent.at(-1).body.text,/Whiteboard/);
  await f.env.DB.prepare('DELETE FROM jobs').run();
- await f.receive('KB Một câu khác đủ dài để dựng thành video mới nhé.','v2');await f.drain();
+ await f.receive('KB Một câu khác đủ dài để dựng thành video mới nhé.','v2');await f.drain();await resumeZalo(f.env,f.rc);await f.drain();
  spec=JSON.parse((await f.env.DB.prepare('SELECT spec FROM projects ORDER BY created_at DESC').first()).spec);assert.equal(spec.look,undefined);assert.equal(spec.visual,'sketch');
  // one format only: no choice, the default is used whatever was picked before
  c.zalo.formats={default:'split',allowed:[]};
- await f.receive('DINHDANG','d3');await f.drain();assert.match(f.sent.at(-1).body.text,/được dựng theo định dạng: Hai bên đối lập/);
+ await f.receive('DINHDANG','d3');await f.drain();assert.match(f.sent.at(-1).body.text,/Mặc định của web/);
 }));
 
 test('the webhook is never dropped for being quiet, and is put back when something else moves or deletes it',async()=>fixture(async f=>{
