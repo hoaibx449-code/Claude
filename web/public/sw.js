@@ -1,13 +1,13 @@
 // Makes the site installable and fast. The page and its scripts come from the network first
 // (with a short timeout, then the cached copy), so a new version shows up at once; heavy static
 // files (fonts, hand, icons, demo videos) are served from the cache and refreshed in the background.
-const SHELL = 'nv-shell-v23-render', STATIC = 'nv-static-v23-render';
-const SHELL_FILES = ['/', '/app.css', '/compact-ui.css', '/polish.css', '/theme.css', '/helpchat.js', '/app.js', '/home-gallery.js', '/browser-render.js', '/creative-panel.js', '/ui-select.js', '/admin.js', '/banks.js', '/engine.js', '/whiteboard-addon.js', '/illustrated-addon.js', '/icons/icon.svg'];
+const SHELL = 'nv-shell-v24-render', STATIC = 'nv-static-v24-render';
+const SHELL_FILES = ['/', '/app.css', '/compact-ui.css', '/polish.css', '/theme.css', '/helpchat.js', '/app.js', '/home-gallery.js', '/creative-panel.js', '/ui-select.js', '/admin.js', '/banks.js', '/engine.js', '/whiteboard-addon.js', '/illustrated-addon.js', '/icons/icon.svg'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== SHELL && k !== STATIC).map((k) => caches.delete(k))))); self.clients.claim(); });
 
 function networkFirst(req) {
-  const net = fetch(req).then((r) => { if (r.ok) { const copy = r.clone(); caches.open(SHELL).then((c) => c.put(req, copy)); } return r; });
+  const net = (req.mode === 'navigate' ? fetch(req) : fetch(req, { cache: 'no-cache' })).then((r) => { if (r.ok) { const copy = r.clone(); caches.open(SHELL).then((c) => c.put(req, copy)); } return r; });
   const slow = new Promise((ok) => setTimeout(ok, 2500)).then(() => caches.match(req));
   return Promise.race([net.catch(() => caches.match(req)), slow.then((r) => r || net)]).then((r) => r || net);
 }

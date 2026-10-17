@@ -58,10 +58,13 @@ export async function openBrowserRender(spec,projectId,opts){
       setStep(1);setPct(16);note.textContent='Đang dựng khung hình và chọn bộ mã hoá video…';
       let model,scale=0,recMime='';
       // the biggest picture this device can encode: try sharper first, then smaller
+      const candidates=recordingTypes(t=>MediaRecorder.isTypeSupported(t),spoken).filter(t=>!badTypes.has(t));
       for(const sc of [4/3,1,2/3]){
         model=await previewModel(spec,sc,timeline);canvas.width=Math.round(model.W*sc);canvas.height=Math.round(model.H*sc);paintFrame(canvas.getContext('2d'),model,0);
         recMime=await workingType(canvas,recordingTypes(t=>MediaRecorder.isTypeSupported(t),spoken).filter(t=>!badTypes.has(t)),spoken?ctx:null);if(recMime){scale=sc;break;}
       }
+      // the probe can be wrong on some machines: still try the first supported type for real (the start timeout below decides)
+      if(!recMime&&candidates.length){recMime=candidates[0];scale=1;model=await previewModel(spec,1,timeline);canvas.width=model.W;canvas.height=model.H;paintFrame(canvas.getContext('2d'),model,0);}
       if(!recMime)throw new Error('Trình duyệt không mã hoá được video ở máy này ('+((workingType.errors||[]).slice(-2).join('; ')||'không có bộ mã hoá phù hợp')+'). Hãy dùng Chrome/Edge bản mới trên máy tính, hoặc chuyển sang dựng trên Cloud/máy cá nhân.');
       setPct(20);
       const dest=ctx.createMediaStreamDestination(),gain=ctx.createGain();gain.gain.value=spec.audio?.voiceVolume??1;gain.connect(dest);

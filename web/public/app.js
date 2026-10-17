@@ -1932,7 +1932,7 @@ async function showEditor(id) {
       // never let placeholder art reach the video: draw (or redesign) what is missing first
       if (!(await drawAll())) { renderBtn.disabled = false; return; }
       await api(`/api/projects/${id}`, { method: 'PUT', body: { spec } });
-      if(ui.rendering?.mode==='browser'){stopPreview();const {openBrowserRender}=await import('/browser-render.js');await openBrowserRender(spec,id,{h,previewModel,paintFrame,NV,onClose:()=>{if(canvas.isConnected)buildPreview(spec,canvas,playBtn).catch(fail);}});return;}
+      if(ui.rendering?.mode==='browser'){stopPreview();const {openBrowserRender}=await import('/browser-render.js?v=24');await openBrowserRender(spec,id,{h,previewModel,paintFrame,NV,onClose:()=>{if(canvas.isConnected)buildPreview(spec,canvas,playBtn).catch(fail);}});return;}
       const { job } = await api(`/api/projects/${id}/render`, { method: 'POST' }); toast(job.note || 'Đã xếp video vào hàng chờ dựng.'); RenderDesk.open(spec, id, job.id).catch(fail); pollJobs();
       me = await api('/api/me').catch(() => me);
     }
