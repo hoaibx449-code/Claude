@@ -1,4 +1,5 @@
 import {hunterPublic} from './hunter.ts';
+import {feedPhoto,tickFeed} from './image-feed.ts';
 import { creativeResult } from './creative.ts';
 import { creationChoice, designIssues } from './creation-policy.ts';
 // Nét Vẽ Studio API (Cloudflare Worker). Static pages are served from ./public.
@@ -70,6 +71,7 @@ export default {
   // Safety net: if videos wait in the queue (e.g. a start request was lost), start the render machine.
   async scheduled(e: ScheduledController, env: Env, ctx: ExecutionContext) {
     const xenvZ = await effectiveEnv(env);
+    ctx.waitUntil(tickFeed(xenvZ).catch(err=>console.error('imageFeed',err)));
     // Zalo without a webhook: every minute, ask for new messages (see pollZalo)
     if (xenvZ.config.zalo.enabled && (xenvZ as any).ZALO_BOT_TOKEN && (await receiveMode(xenvZ)) === 'poll') {
       const prc: Rc = { userId: null, visitor: null, ip: '', ua: null, channel: 'zalo', quiet: true,
@@ -127,6 +129,8 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
     return asset;
   }
   const env = await effectiveEnv(rawEnv);
+  const feedImage=path.match(/^\/api\/image-feed\/photo\/([a-f0-9]{64})$/);
+  if(feedImage&&method==='GET')return feedPhoto(env,feedImage[1],url.searchParams.get('t')||'');
   if(path.startsWith('/api/illustrated-runner/')){const sub=path.slice('/api/illustrated-runner/'.length);const v=sub.match(/^voice\/([a-f0-9]{24})\/(\d+)$/);if(v)return illustratedVoiceCache(req,env,v[1],Number(v[2]));return sub==='claim'?claimIllustrated(req,env,rc):runner(req,env,sub,rc);}
   if(path.startsWith('/api/whiteboard-runner/')) {const sub=path.slice('/api/whiteboard-runner/'.length);const v=sub.match(/^voice\/([a-f0-9]{24})\/(\d+)$/);if(v)return voiceCache(req,env,v[1],Number(v[2]));return sub==='claim'?claimWhiteboard(req,env,rc):runner(req,env,sub,rc);}
   if (path.startsWith('/api/runner/')) return runner(req, env, path.slice('/api/runner/'.length), rc);
@@ -345,6 +349,8 @@ async function deleteAccount(env: XEnv, rc: Rc, user: User) {
   } while (cursor);
   const anon = 'deleted-' + (await sha256(user.id)).slice(0, 12);
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM image_feed_deliveries WHERE chat_id IN (SELECT chat_id FROM zalo_links WHERE user_id = ?)').bind(user.id),
+    env.DB.prepare('DELETE FROM image_feed_subscribers WHERE chat_id IN (SELECT chat_id FROM zalo_links WHERE user_id = ?)').bind(user.id),
     env.DB.prepare('DELETE FROM zalo_ocr WHERE chat_id IN (SELECT chat_id FROM zalo_links WHERE user_id = ?)').bind(user.id),
     env.DB.prepare('DELETE FROM zalo_messages WHERE chat_id IN (SELECT chat_id FROM zalo_links WHERE user_id = ?)').bind(user.id),
     env.DB.prepare('DELETE FROM zalo_outbox WHERE chat_id IN (SELECT chat_id FROM zalo_links WHERE user_id = ?)').bind(user.id),

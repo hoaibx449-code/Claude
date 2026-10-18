@@ -1,4 +1,5 @@
 import {downloadZaloImage} from './ocr.ts';
+import {feedSubscription} from './image-feed.ts';
 import {requireBudget} from './budget.ts';
 import {imagePromptText} from './ai.ts';
 import {createHunter} from './hunter.ts';
@@ -274,6 +275,10 @@ export async function resumeZalo(env: XEnv, rc: Rc) {
 async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, name: string, isText: boolean, messageId: string, firstTry = true, patient = false) {
   const z = env.config.zalo, t = z.templates;
   const reply = async (s: string) => { const r = await send(env, chatId, s, messageId); rc.log('zalo.reply', { ok: r.ok, data: { chat: chatId, message: messageId, error: r.ok ? undefined : r.error } }); return r; };
+  // Consent commands bypass AI, commercial intents and daily chat quota, especially opt-out.
+  if(isText){const consent=fold(text).trim().toUpperCase().replace(/\s+/g,' ');
+    if(['NHAN ANH','DANG KY NHAN ANH','HUY NHAN ANH'].includes(consent))return reply(await feedSubscription(env,chatId,name,consent!=='HUY NHAN ANH'));
+  }
   const link = await env.DB.prepare('SELECT l.user_id, l.prefs, l.notify, u.email, u.name FROM zalo_links l JOIN users u ON u.id = l.user_id WHERE l.chat_id = ?').bind(chatId).first<any>();
   rc.userId = link?.user_id || null;
   rc.log('zalo.message', { data: { chat: chatId, linked: !!link, text: text.startsWith('[ocr-image]')?'[image OCR]':text.slice(0, 200) } });
@@ -370,7 +375,7 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   if (user && await env.DB.prepare('SELECT 1 FROM blocked_users WHERE user_id = ?').bind(user.id).first()) return reply('Tài khoản đang bị khóa. Vui lòng liên hệ chủ web.');
   // choices made in conversation before an account existed live with the lead
   const prefs = { ...(lead.profile.prefs || {}), ...(link ? JSON.parse(link.prefs || '{}') : {}) };
-  const help = () => reply(fill(t.help, { ten: name || link?.name || 'bạn' }));
+  const help = () => reply(fill(t.help, { ten: name || link?.name || 'bạn' })+'\nNHẬN ẢNH: đăng ký ảnh mới · HỦY NHẬN ẢNH: dừng nhận.');
   // the owner answers a customer the assistant handed over: TL <mã khách> <lời nhắn>
   if (cmd === 'TL' && (await ownerChats(env)).chats.includes(chatId)) {
     const code = (rest[0] || '').toLowerCase(), msg = raw.replace(/^\s*\S+\s+\S+\s*/, '').trim();
@@ -459,8 +464,9 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
     }
     case 'NV': return quickAnswer(env, rc, { ...ctx(), text: 'gặp nhân viên ' + arg });
     case 'TAT': case 'BAT':
+      if(cmd==='TAT')await feedSubscription(env,chatId,name,false);
       await env.DB.prepare('UPDATE zalo_links SET notify = ? WHERE chat_id = ?').bind(cmd === 'BAT' ? 1 : 0, chatId).run();
-      return reply(cmd === 'BAT' ? 'Đã bật thông báo video.' : 'Đã tắt thông báo. Gõ BAT để bật lại.');
+      return reply(cmd === 'BAT' ? 'Đã bật thông báo video. Gõ NHẬN ẢNH nếu muốn đăng ký ảnh tự động.' : 'Đã tắt thông báo và hủy nhận ảnh tự động. Gõ BAT để bật thông báo video; NHẬN ẢNH để nhận ảnh lại.');
     case 'HUYKETNOI':
       await env.DB.prepare('DELETE FROM zalo_links WHERE chat_id = ?').bind(chatId).run();
       rc.log('zalo.unlink', { data: { chat: chatId } });
@@ -659,7 +665,7 @@ async function quickAnswer(env: XEnv, rc: Rc, x: AskCtx, why = '') {
       await notifyOwner(env, 'support', `Khách đang không hài lòng [${code}] ${x.name || ''}: "${x.text.slice(0, 200)}"\nTrả lời khách: TL ${code} <lời nhắn>`);
       return x.reply(`Mình xin lỗi vì đã làm bạn khó chịu 🙏 Chắc mình trả lời chưa đúng ý bạn rồi. Bạn nói giúp mình đang cần gì hoặc chỗ nào chưa ổn nhé, mình cũng đã báo nhân viên vào hỗ trợ bạn ngay.`);
     }
-    case 'optout': await saveLead(env, x.chatId, { optout: 1 }); return x.reply('Dạ mình ghi nhận rồi, sẽ không nhắn trước cho bạn nữa. Khi cần làm video bạn cứ nhắn mình nhé.');
+    case 'optout': await feedSubscription(env,x.chatId,x.name,false); await saveLead(env, x.chatId, { optout: 1 }); return x.reply('Dạ mình ghi nhận rồi, sẽ không nhắn trước cho bạn nữa. Khi cần làm video bạn cứ nhắn mình nhé.');
     case 'limit': { const up = await upsellText(env, x.user); return x.reply('Mỗi gói có hạn mức video mỗi ngày và độ dài tối đa mỗi video; lượt dựng được làm mới mỗi ngày. ' + (up || 'Gõ GIA để xem các gói.')); }
     case 'status': return x.reply(await statusText(env, x.user));
     case 'make': return x.reply('Bạn muốn làm video về chủ đề gì ạ? Bạn chỉ cần nhắn chủ đề (vd: "5 thói quen buổi sáng") hoặc dán nguyên kịch bản của bạn, mình làm luôn và gửi link về đây.');

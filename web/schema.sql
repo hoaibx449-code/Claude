@@ -237,3 +237,10 @@ INSERT INTO hunter_search(id,title,description,content,category,tool) SELECT id,
 
 CREATE TABLE IF NOT EXISTS zalo_ocr (message_id TEXT PRIMARY KEY,chat_id TEXT NOT NULL,content TEXT NOT NULL,uncertain INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS zalo_ocr_chat ON zalo_ocr(chat_id,created_at DESC);
+-- Sheet-driven native Zalo image subscriptions. Delivery ledger survives renames/reordering.
+CREATE TABLE IF NOT EXISTS image_feed (id INTEGER PRIMARY KEY CHECK(id=1), config TEXT NOT NULL, origin TEXT NOT NULL DEFAULT '', initialized INTEGER NOT NULL DEFAULT 0, last_poll INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', lease TEXT NOT NULL DEFAULT '', lease_until INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS image_feed_subscribers (chat_id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1, joined_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS image_feed_items (id TEXT PRIMARY KEY, file_id TEXT NOT NULL, source TEXT NOT NULL, external_id TEXT NOT NULL DEFAULT '', caption TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, baseline INTEGER NOT NULL DEFAULT 0, token TEXT, expires INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS image_feed_created ON image_feed_items(created_at);
+CREATE TABLE IF NOT EXISTS image_feed_deliveries (item_id TEXT NOT NULL, chat_id TEXT NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, slot TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', message_id TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL, PRIMARY KEY(item_id,chat_id));
+CREATE INDEX IF NOT EXISTS image_feed_slot ON image_feed_deliveries(chat_id,slot,status);
