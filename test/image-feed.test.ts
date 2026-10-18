@@ -3,6 +3,34 @@ import {mkdtempSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import
 import {database} from './support/sqlite.ts';import {defaultConfig} from '../web/src/settings.ts';
 import {feedDefault,cleanFeed,csvRows,column,driveImage,sendSlot,feedAdmin,scanFeed,tickFeed,feedSubscription,feedPhoto} from '../web/src/image-feed.ts';
 
+test('Fixed daily times validate, use timezone/day and retain one stable round across cron retries',()=>{
+ const c=cleanFeed({...feedDefault,schedule:'fixed',times:['19:00','08:00','08:00','08:05'],days:[1],windows:['09:00-10:00']});
+ assert.deepEqual(c.times,['08:00','08:05','19:00']);assert.deepEqual(c.windows,['09:00-10:00']);
+ const slot=sendSlot(c,Date.parse('2026-10-19T01:00:12Z'));assert.ok(slot.includes(':at:08:00'));
+ assert.equal(sendSlot(c,Date.parse('2026-10-19T01:04:59Z')),slot);
+ assert.ok(sendSlot(c,Date.parse('2026-10-19T01:05:00Z')).includes(':at:08:05'));
+ assert.equal(sendSlot(c,Date.parse('2026-10-19T01:15:00Z')),'');assert.equal(sendSlot(c,Date.parse('2026-10-20T01:00:00Z')),'');
+ assert.equal(sendSlot(c,Date.parse('2026-10-19T00:59:59Z')),'');
+ const midnight={...c,times:['23:55']};assert.ok(sendSlot(midnight,Date.parse('2026-10-19T17:02:00Z')).includes(':at:23:55'));assert.equal(sendSlot(midnight,Date.parse('2026-10-19T17:05:00Z')),'');
+ for(const times of [[],['25:00'],['8:00'],['08:60']])assert.throws(()=>cleanFeed({...c,times}));
+ assert.equal(cleanFeed({...feedDefault,schedule:undefined,times:undefined}).schedule,'windows');
+});
+
+test('Fixed-time cron sends one queued image per recipient per scheduled round',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'feed-fixed-')),original=globalThis.fetch,clock=Date.now;let now=Date.parse('2026-10-19T01:00:10Z');
+ try{
+ Date.now=()=>now;const env:any={DB:database(join(dir,'db.sqlite')),ZALO_BOT_TOKEN:'test',PUBLIC_URL:'https://studio.test',BUCKET:{async head(){return true;}}};env.config=defaultConfig(env);env.config.zalo.enabled=true;
+ const c={...feedDefault,transport:'apps-script',enabled:true,schedule:'fixed',times:['08:00','08:10'],days:[1]};
+ await feedAdmin(new Request('https://studio.test',{method:'PUT',body:JSON.stringify(c)}),env,'image-feed');
+ await env.DB.prepare("INSERT INTO image_feed_subscribers(chat_id,name,active,joined_at) VALUES('reader','Reader',1,1)").run();
+ for(const id of ['a','b'])await env.DB.prepare('INSERT INTO image_feed_items(id,file_id,source,caption,created_at,baseline,expires,token) VALUES(?,?,?,?,?,0,?,?)').bind(id.repeat(64),id+'1234567890123',c.sheet+'|'+c.gid,id,now-1000,now+86400000,'cached-token').run();
+ const sent:any[]=[];globalThis.fetch=async(url:any,opts:any)=>{assert.ok(String(url).endsWith('/sendPhoto'));sent.push(JSON.parse(opts.body));return Response.json({ok:true,result:{message_id:String(sent.length)}});};
+ await tickFeed(env);assert.equal(sent.length,1);now+=60000;await tickFeed(env);assert.equal(sent.length,1);
+ now=Date.parse('2026-10-19T01:10:05Z');await tickFeed(env);assert.equal(sent.length,2);assert.notEqual(sent[0].photo,sent[1].photo);
+ await tickFeed(env);assert.equal(sent.length,2);
+ }finally{Date.now=clock;globalThis.fetch=original;rmSync(dir,{recursive:true,force:true});}
+});
+
 test('CSV, flexible column mapping, Drive links and overnight schedules',()=>{
  assert.deepEqual(csvRows('Ảnh,Chú thích\r\n"a,b","hai\ndòng ""đẹp"""'),[['Ảnh','Chú thích'],['a,b','hai\ndòng "đẹp"']]);
  assert.equal(column(['Chú thích','Ảnh'],'Link|Ảnh'),1);assert.equal(column(['Ảnh'],'#AA'),26);assert.throws(()=>column(['Ảnh','Ảnh'],'Ảnh'));assert.throws(()=>column(['Ảnh'],'Link'));
