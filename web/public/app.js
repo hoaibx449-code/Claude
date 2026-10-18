@@ -295,9 +295,9 @@ function markNav(name) {
   for (const a of document.querySelectorAll('[data-route]')) a.classList.toggle('on', a.dataset.route === name);
 }
 const PUBLIC = { '#/prompt-hunter':1, '#/tro-giup': 1, '': 1, '#/': 1, '#/mau': 1, '#/goi': 1, '#/tao': 1, '#/thu': 1, '#/dieu-khoan': 1, '#/bao-mat': 1, '#/hoan-tien': 1, '#/cong-dong': 1, '#/dang-nhap-loi': 1 };
-let stopHomeGallery = null;
+let stopHomeGallery = null,stopVideoLibrary=null;
 function route() {
-  stopHomeGallery?.(); stopHomeGallery = null;
+  stopHomeGallery?.(); stopHomeGallery = null;stopVideoLibrary?.();stopVideoLibrary=null;
   stopPreview(); stopDemos();
   // a window left open (payment, player, sign-in) never follows the user to another page
   document.querySelectorAll('.sheet-bg').forEach((x) => x.remove());
@@ -867,53 +867,31 @@ async function createProject(body, btn, onError) {
 }
 
 const MODE_ICON = Object.fromEntries(MODES.map(([k, i]) => [k, i]));
-/** Grid of the user's videos: finished ones show the real video (plays on hover), drafts a frame of their preview. */
-function projectList(projects) {
-  if (!projects.length) return h('div', { class: 'card empty' }, h('h2', {}, 'Chưa có video nào'), h('p', { class: 'muted' }, T('noVideos')), h('a', { class: 'btn', href: '#/tao' }, 'Tạo video đầu tiên'));
-  const io = new IntersectionObserver((entries) => entries.forEach((en) => { if (en.isIntersecting) { io.unobserve(en.target); en.target._draw?.(); } }), { rootMargin: '200px' });
-  return h('div', { class: 'vgrid' }, projects.map((p) => {
-    const href = p.done_job ? `#/xem/${p.id}/${p.done_job}` : '#/p/' + p.id;
-    let media;
-    if (p.done_job) {
-      // the frame the render machine saved shows at once; the video only loads when hovered
-      media = h('video', { preload: 'none', muted: true, playsinline: true, loop: true, 'aria-label': p.title });
-      media.dataset.src = `/api/jobs/${p.done_job}/video?inline=1`;
-      // older videos have no saved frame: take one from the video itself
-      media._thumb = h('img', { class: 'vposter', src: `/api/jobs/${p.done_job}/thumb`, alt: '', loading: 'lazy', onerror: (e) => { e.target.remove(); media.preload = 'metadata'; media.src = media.dataset.src + '#t=1'; } });
-      media.muted = true;
-    } else {
-      media = h('canvas', { 'aria-label': 'Bản xem trước: ' + p.title });
-      media._draw = async () => {
-        try {
-          const { spec } = await api('/api/projects/' + p.id);
-          const dpr = 0.4, model = await previewModel(spec, dpr), { W, H } = NV.logicalSize(spec.ratio);
-          media.width = Math.round(W * dpr); media.height = Math.round(H * dpr);
-          const T0 = model.timeline.scenes[0];
-          paintFrame(media.getContext('2d'), model, Math.max(0.5, Math.min(model.timeline.duration - 0.2, T0.end - 0.5)), { hand: false });
-        } catch {}
-      };
-      io.observe(media);
-    }
-    const tile = h('a', { class: 'vtile' + (p.ratio === '16:9' ? ' wide' : ''), href, 'data-ev': p.done_job ? 'watch' : 'open-project',
-      onmouseenter: () => { if (media.dataset?.src && !media.src) media.src = media.dataset.src; media.play?.().then(() => media._thumb?.classList.add('gone')).catch(() => {}); }, onmouseleave: () => { if (media.pause) { media.pause(); media._thumb?.classList.remove('gone'); try { media.currentTime = 1; } catch {} } } },
-      media, media._thumb || null, p.done_job ? h('span', { class: 'vplay', 'aria-hidden': 'true' }, '▶') : h('span', { class: 'vdraft' }, 'Bản nháp'));
-    return h('article', { class: 'vcard2' }, tile,
-      h('div', { class: 'vmeta' }, h('a', { href: '#/p/' + p.id, class: 'vtitle' }, p.title),
-        h('span', { class: 'muted' }, (p.last_job ? (JOB_TEXT[p.last_job] || p.last_job) + ' · ' : '') + fmtDate(p.updated_at))),
-      h('div', { class: 'vactions' }, p.done_job ? h('a', { class: 'btn small', href }, 'Xem') : null, h('a', { class: 'btn ghost small', href: '#/p/' + p.id }, 'Sửa')));
-  }));
+/** Shared moving preview for the list and grid; only real MP4s become video elements. */
+function libraryMedia(p,placeholder){
+ return p.done_job?h('video',{class:'lib-preview-video',muted:true,playsinline:true,loop:true,preload:'none',poster:`/api/jobs/${p.done_job}/thumb`,'data-preview-src':`/api/jobs/${p.done_job}/video?inline=1`,'aria-label':'Xem trước: '+p.title}):placeholder(p,h,icon);
+}
+function projectList(projects,placeholder){
+ if(!projects.length)return h('div',{class:'card empty'},h('h2',{},'Chưa có video phù hợp'),h('p',{class:'muted'},T('noVideos')));
+ return h('div',{class:'vgrid'},projects.map(p=>{const href=p.done_job?`#/xem/${p.id}/${p.done_job}`:'#/p/'+p.id;return h('article',{class:'vcard2'},h('a',{class:'vtile lib-preview-frame'+(p.ratio==='16:9'?' wide':''),href,'aria-label':p.title},libraryMedia(p,placeholder),p.done_job?h('span',{class:'lib-playback-note'},'Chạm để xem'):null),h('div',{class:'vmeta'},h('a',{href:'#/p/'+p.id,class:'vtitle'},p.title),h('span',{class:'muted'},(p.last_job?(JOB_TEXT[p.last_job]||p.last_job)+' · ':'')+fmtDate(p.updated_at))),h('div',{class:'vactions'},p.done_job?h('a',{class:'btn small',href},'Xem'):null,h('a',{class:'btn ghost small',href:'#/p/'+p.id},'Sửa')));}));
 }
 async function showVideos() {
-  viewed('videos');
-  const box = h('div', {}, skeleton(6));
+  viewed('videos');stopVideoLibrary?.();
+  let disposed=false,manager=null,refreshTimer,refreshFocus=null;stopVideoLibrary=()=>{disposed=true;clearTimeout(refreshTimer);manager?.dispose();if(refreshFocus){window.removeEventListener('focus',refreshFocus);document.removeEventListener('visibilitychange',refreshFocus);}};
+  const {mountVideoPreviews,libraryPlaceholder}=await import('/video-previews.js?v=38');if(disposed)return;
+  let paused=matchMedia('(prefers-reduced-motion: reduce)').matches;try{const saved=store.get('nv_preview_pause');if(saved==='1'||saved==='0')paused=saved==='1';}catch{}
+  const box = h('div', {class:'video-library'}, skeleton(6));
+  const motion=h('button',{type:'button',class:'ghost small','aria-label':'Tự phát xem trước',title:'Tắt tiếng, chỉ phát khi video nằm trong vùng đang xem.',onclick:()=>{paused=!paused;try{store.set('nv_preview_pause',paused?'1':'0');}catch{}manager?.setPaused(paused);paintMotion();}},'');
+  const paintMotion=()=>{motion.textContent=paused?'Bật xem trước':'Tạm dừng xem trước';motion.setAttribute('aria-pressed',String(!paused));};paintMotion();
+  const refreshNote=h('p',{class:'muted library-refresh',role:'status'});
   const tabs = h('div', { class: 'tabs', role: 'tablist' });
   const find = h('input', { type: 'search', placeholder: 'Tìm kiếm dự án…', 'aria-label': 'Tìm kiếm dự án', value: new URLSearchParams(location.hash.split('?')[1] || '').get('q') || '' });
   const sortSel = h('select', { 'aria-label': 'Sắp xếp' }, h('option', { value: 'new' }, 'Sắp xếp: Mới nhất'), h('option', { value: 'old' }, 'Cũ nhất'), h('option', { value: 'name' }, 'Theo tên'));
   const view = h('select', { 'aria-label': 'Cách hiển thị' }, h('option', { value: 'list' }, 'Dạng danh sách'), h('option', { value: 'grid' }, 'Dạng lưới'));
   try { view.value = store.get('nv_vview') || 'list'; } catch {}
   show(h('header', { class: 'pagehead' }, h('div', {}, h('h1', {}, 'Video của tôi'), h('p', { class: 'muted' }, 'Quản lý, chỉnh sửa và theo dõi tất cả các dự án video.')), h('a', { class: 'btn', href: '#/tao' }, icon('plus'), 'Tạo video mới')),
-    tabs, h('div', { class: 'toolbar' }, h('label', { class: 'searchbox' }, icon('search'), find), sortSel, view), box);
-  const { projects } = await api('/api/projects');
+    tabs, h('div', { class: 'toolbar' }, h('label', { class: 'searchbox' }, icon('search'), find), sortSel, view,motion),refreshNote,box);
+  let {projects}=await api('/api/projects');if(disposed)return;
   let cur = 'all';
   const state = (p) => (p.last_job === 'running' || p.last_job === 'queued' ? 'busy' : p.done_job ? 'done' : 'draft');
   const paint = () => {
@@ -924,22 +902,27 @@ async function showVideos() {
     let list = projects.filter((p) => (cur === 'all' || state(p) === cur) && matches(q, p.title));
     if (sortSel.value === 'old') list = [...list].reverse();
     if (sortSel.value === 'name') list = [...list].sort((x, y) => x.title.localeCompare(y.title, 'vi'));
-    box.replaceChildren(view.value === 'grid' ? projectList(list) : projectRows(list, state));
+    manager?.dispose();box.replaceChildren(view.value === 'grid' ? projectList(list,libraryPlaceholder) : projectRows(list,state,libraryPlaceholder));manager=mountVideoPreviews(box,{paused});
   };
   find.addEventListener('input', paint); sortSel.addEventListener('change', paint);
   view.addEventListener('change', () => { try { store.set('nv_vview', view.value); } catch {} paint(); });
   paint();
+  const shape=ps=>JSON.stringify(ps.map(p=>[p.id,p.title,p.updated_at,p.ratio,p.last_job,p.done_job]));
+  let refreshing=false;
+  const refresh=async()=>{if(disposed||refreshing)return;refreshing=true;clearTimeout(refreshTimer);try{if(!document.hidden){const next=(await api('/api/projects')).projects;if(disposed)return;const changed=shape(next)!==shape(projects);projects=next;if(changed)paint();else for(const p of projects){const node=box.querySelector('[data-project-progress="'+p.id+'"]');if(node)node.textContent=Math.max(0,Math.min(100,Number(p.last_progress)||0))+'%';}refreshNote.textContent='';}}catch{if(!disposed)refreshNote.textContent='Chưa cập nhật được tiến độ. Hệ thống sẽ thử lại.';}refreshing=false;if(!disposed&&projects.some(p=>['queued','running'].includes(p.last_job)))refreshTimer=setTimeout(refresh,8000);};
+  refreshFocus=()=>{if(!document.hidden)refresh();};window.addEventListener('focus',refreshFocus);document.addEventListener('visibilitychange',refreshFocus);
+  if(projects.some(p=>['queued','running'].includes(p.last_job)))refreshTimer=setTimeout(refresh,8000);
 }
 /** The user's videos as rows: picture, title, status and the next thing to do. */
-function projectRows(projects, state) {
+function projectRows(projects, state,placeholder) {
   if (!projects.length) return h('div', { class: 'card empty' }, h('h2', {}, 'Chưa có video nào'), h('p', { class: 'muted' }, T('noVideos')), h('a', { class: 'btn', href: '#/tao' }, 'Tạo video đầu tiên'));
   const label = { draft: ['Đang chỉnh sửa', 'queued'], busy: ['Đang dựng', 'running'], done: ['Đã xuất video', 'done'] };
   return h('div', { class: 'vrows' }, projects.map((p) => {
-    const st = state(p), [text, cls] = p.last_job === 'failed' && !p.done_job ? ['Dựng lỗi', 'failed'] : label[st];
+    const st = state(p), [text, cls] = p.last_job==='queued'?['Chờ máy dựng','queued']:p.last_job === 'failed' && !p.done_job ? ['Dựng lỗi', 'failed'] : label[st];
     const href = p.done_job ? `#/xem/${p.id}/${p.done_job}` : '#/p/' + p.id;
-    const thumb = p.done_job ? h('img', { src: `/api/jobs/${p.done_job}/thumb`, alt: '', loading: 'lazy', onerror: (e) => { e.target.replaceWith(h('span', { class: 'noimg' }, icon('film'))); } }) : h('span', { class: 'noimg' }, icon('pen'));
+    const thumb=libraryMedia(p,placeholder);
     return h('article', { class: 'vrow' },
-      h('a', { class: 'vrow-thumb' + (p.ratio === '16:9' ? ' wide' : ''), href, 'aria-label': p.title }, thumb),
+      h('a', { class: 'vrow-thumb lib-preview-frame' + (p.ratio === '16:9' ? ' wide' : ''), href, 'aria-label': p.title }, thumb,p.done_job?h('span',{class:'lib-playback-note'},'Chạm để xem'):null),
       h('div', { class: 'vrow-main' }, h('a', { class: 'vtitle', href: '#/p/' + p.id }, p.title),
         h('span', { class: 'pill ' + cls }, text), h('small', { class: 'muted' }, 'Cập nhật ' + fmtDate(p.updated_at) + (p.shared ? ' · Đã chia sẻ cộng đồng' : ''))),
       h('div', { class: 'vrow-act' },

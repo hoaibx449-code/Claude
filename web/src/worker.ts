@@ -436,6 +436,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
     const r = await env.DB.prepare(
       `SELECT p.id, p.title, p.updated_at, json_extract(p.spec, '$.ratio') AS ratio, json_extract(p.spec, '$.style') AS style, json_extract(p.spec, '$.mode') AS mode,
          (SELECT status FROM jobs j WHERE j.project_id = p.id ORDER BY created_at DESC LIMIT 1) AS last_job,
+         (SELECT progress FROM jobs j WHERE j.project_id = p.id ORDER BY created_at DESC LIMIT 1) AS last_progress,
          (SELECT id FROM jobs j WHERE j.project_id = p.id AND j.status = 'done' ORDER BY created_at DESC LIMIT 1) AS done_job,
          (SELECT 1 FROM community c WHERE c.project_id = p.id LIMIT 1) AS shared
        FROM projects p WHERE p.user_id = ? ORDER BY p.updated_at DESC LIMIT 200`,
