@@ -354,6 +354,7 @@ async function deleteAccount(env: XEnv, rc: Rc, user: User) {
   } while (cursor);
   const anon = 'deleted-' + (await sha256(user.id)).slice(0, 12);
   await env.DB.batch([
+    env.DB.prepare('UPDATE zalo_owners SET active=0,updated_at=? WHERE chat_id IN (SELECT chat_id FROM zalo_links WHERE user_id=?)').bind(Date.now(),user.id),
     env.DB.prepare('DELETE FROM feed_image_tests WHERE user_id = ?').bind(user.id),
     env.DB.prepare('DELETE FROM image_feed_deliveries WHERE chat_id IN (SELECT chat_id FROM zalo_links WHERE user_id = ?)').bind(user.id),
     env.DB.prepare('DELETE FROM image_feed_subscribers WHERE chat_id IN (SELECT chat_id FROM zalo_links WHERE user_id = ?)').bind(user.id),

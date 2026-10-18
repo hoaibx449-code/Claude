@@ -4,10 +4,11 @@ import {feedConfig,cacheImage} from './image-feed.ts';import {zaloApi,origin} fr
 
 async function target(env:XEnv,user:User){
  const own=await env.DB.prepare('SELECT chat_id,name FROM zalo_links WHERE user_id=?').bind(user.id).first<any>();
- return own?{chat:own.chat_id,name:own.name||'Zalo của bạn'}:env.config.zalo.ownerChat?{chat:env.config.zalo.ownerChat,name:'Zalo chủ web'}:null;
+ return own?{chat:own.chat_id,name:(own.name||'Zalo của bạn')+' · …'+String(own.chat_id).slice(-6)}:null;
 }
 export async function runFeedTests(env:XEnv){
  const c=await feedConfig(env),now=Date.now();
+ await env.DB.prepare("UPDATE feed_image_tests SET status='failed',error='Zalo nhận thử không còn khớp với tài khoản đã liên kết. Hãy gửi thử lại.' WHERE status='pending' AND NOT EXISTS(SELECT 1 FROM zalo_links l WHERE l.user_id=feed_image_tests.user_id AND l.chat_id=feed_image_tests.chat_id)").run();
  await env.DB.prepare("UPDATE feed_image_tests SET status='failed',error='Nguồn ảnh đã thay đổi. Chọn lại ảnh để thử.' WHERE status='pending' AND EXISTS(SELECT 1 FROM image_feed_items i WHERE i.id=feed_image_tests.item_id AND i.source<>?)").bind(c.sheet+'|'+c.gid).run();
  await env.DB.prepare("UPDATE feed_image_tests SET status='failed',error='Hết thời gian chờ ảnh. Chạy dongBoAnh rồi thử lại.' WHERE status='pending' AND expires<?").bind(now).run();
  await env.DB.prepare("UPDATE feed_image_tests SET status='unknown',error='Tác vụ bị ngắt. Kiểm tra Zalo trước khi gửi lại.' WHERE status='sending' AND updated_at<?").bind(now-120000).run();
@@ -34,7 +35,7 @@ export async function feedTestAdmin(req:Request,env:XEnv,user:User,sub:string){
   return json({recipient:recipient?.name||'',items:items.results,tests:tests.results});
  }
  if(req.method==='POST'){
-  if(!recipient)throw new HttpError(409,'Chưa có Zalo của quản trị. Kết nối Zalo bằng tài khoản này hoặc cấu hình Zalo chủ web trước.');
+  if(!recipient)throw new HttpError(409,'Chưa có Zalo của quản trị. Hãy liên kết đúng Zalo với tài khoản quản trị này trước. Không tự chuyển sang Zalo chủ web.');
   if(!env.config.zalo.enabled||!(env as any).ZALO_BOT_TOKEN)throw new HttpError(409,'Zalo Bot đang tắt hoặc thiếu token.');
   const b=await body<any>(req,1000);if(!/^[a-f0-9-]{24,64}$/.test(b.requestId||''))throw new HttpError(400,'Mã gửi thử không hợp lệ.');
   const item=await env.DB.prepare('SELECT id FROM image_feed_items WHERE id=? AND source=?').bind(String(b.itemId),c.sheet+'|'+c.gid).first();if(!item)throw new HttpError(404,'Ảnh chưa được đồng bộ từ nguồn đang chọn. Chạy dongBoAnh rồi làm mới danh sách.');

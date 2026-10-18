@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { database } from './support/sqlite.ts';
 import { defaultConfig } from '../web/src/settings.ts';
 import { normalizeMessage, webhookSecret, zaloAdmin, zaloWebhook, resumeZalo } from '../web/src/zalo.ts';
+import {addOwner} from '../web/src/zalo-owners.ts';
 
 async function fixture(run: (f: any) => Promise<void>) {
  const dir=mkdtempSync(join(tmpdir(),'zalo-')), originalFetch=globalThis.fetch;
@@ -265,7 +266,7 @@ test('rich text goes with parse_mode html, and falls back to plain words if Zalo
 test('Prompt Hunter Zalo command is owner-only, publishes with AI metadata and deduplicates delivery',async()=>fixture(async f=>{
  await f.receive('PROMPT Hãy viết một đoạn giới thiệu cho [SẢN PHẨM] với lợi ích cụ thể.','ph-denied');await f.drain();await resumeZalo(f.env,f.rc);
  assert.equal((await f.env.DB.prepare('SELECT COUNT(*) n FROM hunter_prompts').first()).n,0);
- f.env.config.zalo.ownerChat='chat-1';f.enableAI();const original=globalThis.fetch;
+ f.env.config.zalo.ownerChat='chat-1';await addOwner(f.env,'chat-1');f.enableAI();const original=globalThis.fetch;
  globalThis.fetch=async(url:any,opt:any)=>String(url).includes('api.openai.com')?Response.json({choices:[{message:{content:JSON.stringify({title:'Giới thiệu sản phẩm',category:'Viết & nội dung',description:'Thay biến sản phẩm trước khi sử dụng.',tool:'Đa nền tảng'})}}]}):original(url,opt);
  await f.receive('PROMPT Hãy viết một đoạn giới thiệu cho [SẢN PHẨM] với lợi ích cụ thể.','ph-owner');await f.drain();await resumeZalo(f.env,f.rc);
  const p=await f.env.DB.prepare('SELECT * FROM hunter_prompts').first();assert.equal(p.title,'Giới thiệu sản phẩm');assert.equal(p.status,'published');assert.equal(p.ai_state,'ready');

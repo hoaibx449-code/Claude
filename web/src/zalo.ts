@@ -1,3 +1,4 @@
+import {addOwner,ownerRecipients} from './zalo-owners.ts';
 import {downloadZaloImage} from './ocr.ts';
 import {feedSubscription} from './image-feed.ts';
 import {requireBudget} from './budget.ts';
@@ -146,19 +147,10 @@ async function adminUsers(env: XEnv): Promise<string[]> {
   if (!emails.length) return [];
   return (await env.DB.prepare(`SELECT id FROM users WHERE lower(email) IN (${emails.map(() => '?').join(',')})`).bind(...emails).all<any>()).results.map((r) => r.id);
 }
-/** Zalo chats that get the owner's news: the claimed owner chat and every admin's linked Zalo. */
-async function ownerChats(env: XEnv) {
-  const chats = new Set<string>(env.config.zalo.ownerChat ? [env.config.zalo.ownerChat] : []);
-  const admins = await adminUsers(env);
-  if (admins.length) for (const r of (await env.DB.prepare(`SELECT chat_id FROM zalo_links WHERE user_id IN (${admins.map(() => '?').join(',')})`).bind(...admins).all<any>()).results) chats.add(r.chat_id);
-  return { chats: [...chats], admins };
-}
+/** Only the explicitly managed owner roster receives operational notifications. */
+const ownerChats=ownerRecipients;
 
-/**
- * Tell the owner about something they asked to hear about: on Zalo (claimed owner chat and admins'
- * linked chats) and as a notification on the admins' phones/computers (Web Push). Before, only a
- * claimed owner chat was told, so without CHUWEB nobody heard about orders. Every attempt is logged.
- */
+/** Notify only the active, explicitly managed owner roster; every attempt is logged. */
 export async function notifyOwner(env: XEnv, kind: keyof Config['zalo']['notifyOwner'] | 'support', text: string) {
   const z = env.config.zalo;
   if (kind !== 'support' && !z.notifyOwner[kind]) return;
@@ -167,7 +159,7 @@ export async function notifyOwner(env: XEnv, kind: keyof Config['zalo']['notifyO
     const { chats, admins } = await ownerChats(env);
     if (z.enabled && (env as any).ZALO_BOT_TOKEN) for (const c of chats) { const r = await send(env, c, '🔔 ' + text).catch((e) => ({ ok: false, error: String(e.message) })); if (r.ok) zalo++; else error = r.error || error; }
     for (const id of admins) { try { push += (await pushUser(env, id, { title: kind === 'order' ? 'Đơn hàng' : kind === 'support' ? 'Khách cần hỗ trợ' : 'Thông báo', body: text.slice(0, 200), url: kind === 'order' ? '/#/admin/don-hang' : '/#/admin/zalo' }, 'mailto:' + env.config.legal.email)).sent; } catch {} }
-    if (!chats.length && !admins.length) error = 'Chưa có nơi nhận: nhắn CHUWEB <mã> cho bot, hoặc kết nối Zalo bằng tài khoản quản trị.';
+    if (!chats.length && !admins.length) error = 'Chưa có nơi nhận: nhắn CHUWEB <mã> cho bot, hoặc thêm Zalo trong danh sách Chủ web.';
     else if (!zalo && !push) error ||= chats.length ? 'Zalo chưa nhận tin' : 'Chưa có Zalo chủ web và chưa bật thông báo trên thiết bị của quản trị viên.';
   } catch (e: any) { error = String(e.message || e).slice(0, 200); }
   await logEvent(env, { type: 'owner.notify', channel: 'system', ok: !!(zalo || push), data: { kind, zalo, push, error: error || undefined, text: text.slice(0, 120) } }).catch(() => {});
@@ -282,7 +274,7 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   const link = await env.DB.prepare('SELECT l.user_id, l.prefs, l.notify, u.email, u.name FROM zalo_links l JOIN users u ON u.id = l.user_id WHERE l.chat_id = ?').bind(chatId).first<any>();
   rc.userId = link?.user_id || null;
   rc.log('zalo.message', { data: { chat: chatId, linked: !!link, text: text.startsWith('[ocr-image]')?'[image OCR]':text.slice(0, 200) } });
-  const owner = (await ownerChats(env)).chats.includes(chatId) || (!!link && (await adminUsers(env)).includes(link.user_id));
+  const owner = (await ownerChats(env)).chats.includes(chatId);
   if(!isText&&(text.startsWith('[ocr-image]')||text==='[image OCR completed]')){
     if(!z.ocrEnabled)return reply('Đọc chữ từ ảnh đang tắt. Quản trị có thể bật ở Quản trị → Zalo.');
     if(!owner&&!link&&!z.allowGuests)return reply('Bạn cần liên kết tài khoản web với Zalo trước khi đọc ảnh.');
@@ -367,7 +359,7 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
     const u = await env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(row.user_id).first<any>();
     rc.userId = row.user_id; rc.log('zalo.link', { data: { chat: chatId } });
     // the owner linking their own Zalo: owner news comes here from now on
-    if (!z.ownerChat && (await adminUsers(env)).includes(row.user_id)) { await saveOwnerChat(env, chatId); await reply('Tài khoản quản trị: từ giờ đơn hàng, người dùng mới và khách cần hỗ trợ sẽ được báo ở đây.'); }
+    if ((await adminUsers(env)).includes(row.user_id)) await reply('Đã liên kết Zalo của tài khoản quản trị. Thêm Zalo vào danh sách Chủ web nếu muốn nhận thông báo vận hành.');
     return reply(fill(t.linked, { email: u?.email || '', ten: name }));
   }
 
@@ -931,6 +923,7 @@ export function origin(env: XEnv) { return (env as any).PUBLIC_URL || originCach
 export function rememberOrigin(o: string) { if (o.startsWith('https://')) originCache = o; }
 
 async function saveOwnerChat(env: XEnv, chatId: string) {
+  await addOwner(env,chatId);
   const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'config'").first<any>();
   const cfg = row ? JSON.parse(row.value) : {};
   cfg.zalo = { ...(cfg.zalo || {}), ownerChat: chatId };
@@ -1018,7 +1011,7 @@ export async function zaloAdmin(req: Request, env: XEnv, rawEnv: Env, sub: strin
         { k: 'Zalo đã gọi tới web này (bỏ qua nếu dùng hỏi định kỳ)', ok: (!!lastCall && lastCall.ok !== 0) || (await receiveMode(env)) === 'poll', detail: lastCall ? `${new Date(lastCall.ts).toLocaleString('vi-VN')} · ${lastCall.ok ? 'hợp lệ' : (JSON.parse(lastCall.data || '{}').error || 'bị từ chối')}` : 'Chưa có lần gọi nào.', fix: lastCall ? 'Sửa theo lỗi ở trên rồi nhắn lại GIUP.' : 'Zalo chưa gọi tới. Kiểm tra: (1) webhook đúng địa chỉ; (2) trong Zalo Bot Creator đã bật nhận sự kiện tin nhắn (message.text.received); (3) Cloudflare không chặn (tắt Bot Fight Mode / Under Attack cho /api/zalo/webhook); (4) bạn đang nhắn đúng bot có token này.' },
         { k: 'Web đã ghi nhận tin nhắn', ok: !!inbox, detail: inbox ? `Tin gần nhất: ${inbox.status}${inbox.error ? ' — ' + inbox.error : ''}` : 'Chưa có tin nhắn được ghi nhận.', fix: 'Nhắn GIUP cho bot rồi bấm Kiểm tra lại. Nếu không nhận, kiểm tra webhook và token.' },
         { k: 'Phản hồi gần nhất gửi thành công', ok: reply?.status === 'sent', detail: reply ? `${reply.status}${reply.error ? ' — ' + reply.error : ''}` : 'Chưa gửi phản hồi.', fix: 'Xem Hộp thư Zalo để thử gửi lại phản hồi lỗi.' },
-        { k: 'Có Zalo nhận thông báo của chủ web (đơn hàng, người dùng mới, khách cần hỗ trợ)', ok: (await ownerChats(env)).chats.length > 0, detail: `${(await ownerChats(env)).chats.length} Zalo nhận tin`, fix: 'Tạo mã chủ web và gửi CHUWEB <mã> cho bot, hoặc kết nối Zalo bằng chính tài khoản quản trị (web → Kết nối Zalo) rồi gửi CHUWEB.' },
+        { k: 'Có Zalo nhận thông báo của chủ web (đơn hàng, người dùng mới, khách cần hỗ trợ)', ok: (await ownerChats(env)).chats.length > 0, detail: `${(await ownerChats(env)).chats.length} Zalo nhận tin`, fix: 'Quản trị → Zalo → Chủ web: thêm người nhận hoặc tạo mã CHUWEB. Liên kết tài khoản quản trị không tự đăng ký thông báo.' },
         await (async () => { const n = await env.DB.prepare("SELECT ts, ok, data FROM events WHERE type = 'owner.notify' ORDER BY id DESC LIMIT 1").first<any>(); const d = n ? JSON.parse(n.data || '{}') : {};
           return { k: 'Thông báo gần nhất tới chủ web', ok: !!n?.ok, detail: n ? `${new Date(n.ts).toLocaleString('vi-VN')} · Zalo ${d.zalo || 0}, thiết bị ${d.push || 0}${d.error ? ' · ' + d.error : ''} · ${d.text || ''}` : 'Chưa có.', fix: 'Bấm "Gửi tin thử cho chủ web" sau khi có Zalo nhận tin.' }; })(),
         { k: 'Liên kết bot cho người dùng', ok: !!env.config.zalo.botLink, fix: 'Dán đường dẫn bot (https://zalo.me/...) ở mục Zalo.' },
@@ -1055,11 +1048,12 @@ export async function zaloAdmin(req: Request, env: XEnv, rawEnv: Env, sub: strin
   }
   if (sub === 'zalo/simulate' && method === 'POST') {
     // run a message through the same path as a real one, answering in the owner's chat
-    if (!env.config.zalo.ownerChat) throw new HttpError(400, 'Chưa có Zalo chủ web: tạo mã chủ web và nhắn CHUWEB <mã> cho bot trước.');
+    const testOwner=(await ownerChats(env)).chats[0];
+    if (!testOwner) throw new HttpError(400, 'Chưa có Zalo chủ web đang hoạt động. Thêm trong Quản trị → Zalo → Chủ web.');
     const text = String((await body<any>(req, 2000)).text || 'GIUP').slice(0, 1000);
     const id = 'sim-' + randomId(8), now = Date.now(), t0 = Date.now();
     await env.DB.prepare("INSERT INTO zalo_messages (id, chat_id, sender_name, text, is_text, status, received_at, updated_at) VALUES (?, ?, 'Mô phỏng', ?, 1, 'received', ?, ?)")
-      .bind(id, env.config.zalo.ownerChat, text, now, now).run();
+      .bind(id, testOwner, text, now, now).run();
     // watch which way the answer came: the AI, or the prepared answers (and why)
     const seen: { type: string; data?: any }[] = [];
     const watch: Rc = { ...rc, log(type, extra = {}) { seen.push({ type, data: (extra as any).data }); rc.log(type, extra); } };
