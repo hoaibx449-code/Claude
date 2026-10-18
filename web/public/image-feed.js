@@ -1,0 +1,31 @@
+export async function showImageFeed({h,api,body,toast,fail}){
+ body.classList.add('image-feed-admin');
+ if(!document.getElementById('image-feed-style'))document.head.append(h('link',{id:'image-feed-style',rel:'stylesheet',href:'/image-feed.css?v=39'}));
+ const data=await api('/api/admin/image-feed');let c=data.config;
+ const field=(label,node,note)=>h('label',{class:'field'},h('span',{},label),node,note?h('small',{class:'muted'},note):null);
+ const input=(key,type='text')=>h('input',{type,value:c[key],'data-feed-key':key,oninput:e=>{c[key]=type==='number'?Number(e.target.value):e.target.value;if(key==='sheet'){const gid=e.target.value.match(/(?:[?#&])gid=(\d+)/)?.[1];if(gid){c.gid=gid;body.querySelector('[data-feed-key="gid"]').value=gid;}}}});
+ const select=(key,headers=[])=>h('select',{onchange:e=>c[key]=e.target.value},h('option',{value:''},'Không dùng'),c[key]?h('option',{value:c[key],selected:true},c[key]):null,...headers.map((v,i)=>h('option',{value:v&&headers.filter(x=>x===v).length===1?v:'#'+letters(i)},`${letters(i)} · ${v||'(không có tên)'}`)));
+ function letters(i){let s='';for(i++;i;i=Math.floor((i-1)/26))s=String.fromCharCode(65+(i-1)%26)+s;return s;}
+ const mapping=h('div',{class:'form-grid'});
+ const renderMapping=(headers=[])=>mapping.replaceChildren(...['image','id','caption'].map((k,i)=>field(['Cột link ảnh *','Cột mã ảnh (không bắt buộc)','Cột chú thích (không bắt buộc)'][i],headers.length?select(k,headers):input(k),['Nhập tên cột; hoặc #A, #B… Tên thay thế ngăn bằng |.','Mã ổn định giúp đối chiếu; link cùng tệp Drive không bị gửi trùng.','Nội dung gửi cùng ảnh, tối đa 1.800 ký tự.'][i])));
+ renderMapping();const preview=h('div',{'aria-live':'polite'});
+ const action=(label,fn)=>h('button',{type:'button',class:'ghost small',onclick:async e=>{e.currentTarget.disabled=true;try{await fn();}catch(err){fail(err);}finally{e.target.disabled=false;}}},label);
+ const section=(title,...nodes)=>h('section',{class:'card'},h('h2',{},title),...nodes);
+ const state=data.state||{},statuses={sent:'Đã gửi ảnh',failed:'Chưa gửi được',unknown:'Cần kiểm tra Zalo',sending:'Đang gửi'};
+ body.replaceChildren(
+  section('Nguồn ảnh Google Sheet',h('p',{class:'muted'},'Đọc Sheet và ảnh Drive có quyền xem bằng liên kết. Đổi tên tab vẫn giữ kết nối nhờ gid; thêm, đổi hoặc di chuyển cột có thể ánh xạ lại bên dưới.'),
+   h('div',{class:'form-grid'},field('Link hoặc mã Google Sheet',input('sheet')),field('Mã tab (gid)',input('gid')),field('Dòng tiêu đề',input('header','number'))),
+   action('Đọc cột & xem trước',async()=>{const r=await api('/api/admin/image-feed/preview',{method:'POST',body:c});renderMapping(r.headers);preview.replaceChildren(h('p',{class:'muted'},`${r.total} dòng · Chọn cột theo dữ liệu thực tế.`),h('div',{style:'overflow:auto;max-width:100%;max-height:240px'},h('table',{},h('thead',{},h('tr',{},r.headers.map(x=>h('th',{},x)))),h('tbody',{},r.rows.map(row=>h('tr',{},row.map(x=>h('td',{style:'max-width:260px;overflow-wrap:anywhere'},x))))))));}),mapping,preview),
+  section('Lịch gửi & đăng ký',h('div',{class:'form-grid'},field('Múi giờ',input('timezone')),field('Kiểm tra Sheet mỗi (phút)',input('poll','number')),field('Mỗi người nhận tối đa 1 ảnh mỗi (phút)',input('interval','number')),
+   field('Khung giờ gửi',h('textarea',{rows:3,value:c.windows.join('\n'),oninput:e=>c.windows=e.target.value.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean)}),'Mỗi dòng một khung, ví dụ 08:00-12:00 và 14:00-21:00. Hỗ trợ 22:00-02:00.')),
+   h('div',{class:'row',style:'flex-wrap:wrap'},['CN','T2','T3','T4','T5','T6','T7'].map((label,day)=>h('label',{class:'check'},h('input',{type:'checkbox',checked:c.days.includes(day),onchange:e=>c.days=e.target.checked?[...c.days,day]:c.days.filter(d=>d!==day)}),label))),
+   field('Lần đọc nguồn đầu tiên',h('select',{onchange:e=>c.initial=e.target.value},h('option',{value:'skip',selected:c.initial==='skip'},'Chỉ nhận ảnh mới thêm sau đó'),h('option',{value:'send',selected:c.initial==='send'},'Đưa ảnh hiện có vào hàng chờ')),'Mỗi người chỉ nhận ảnh được hệ thống phát hiện sau lần đăng ký đầu tiên. Đổi tùy chọn không gửi lại ảnh đã ghi nhận.'),
+   h('p',{},'Người dùng nhắn bot: NHẬN ẢNH để đăng ký · HỦY NHẬN ẢNH để dừng. Không tự đăng ký thay khách.'),
+   h('label',{class:'check'},h('input',{type:'checkbox',checked:c.enabled,onchange:e=>c.enabled=e.target.checked}),'Bật tự động kiểm tra và gửi ảnh'),
+   action('Lưu cấu hình',async()=>{await api('/api/admin/image-feed',{method:'PUT',body:c});toast('Đã lưu nguồn ảnh và lịch gửi.');}),
+   action('Kiểm tra nguồn ngay (không gửi)',async()=>{await api('/api/admin/image-feed',{method:'PUT',body:c});const r=await api('/api/admin/image-feed/scan',{method:'POST',body:{}});toast(`Đã ghi nhận ${r.added} ảnh · ${r.invalid} dòng lỗi. Chưa gửi tin nhắn.`);}),
+   h('p',{class:'muted','aria-live':'polite'},`Lần đọc gần nhất: ${state.last_poll?new Date(state.last_poll).toLocaleString('vi-VN'):'Chưa đọc'}. ${state.error||''}`)),
+  section('Người đăng ký',h('p',{class:'muted'},'Tối đa 100 người gần nhất. Hủy tại đây có hiệu lực cho các lượt gửi kế tiếp.'),...data.subscribers.map(s=>h('div',{class:'row',style:'flex-wrap:wrap;margin:8px 0'},h('span',{},`${s.name||s.chat_id} · ${s.active?'Đang nhận':'Đã hủy'}`),s.active?action('Hủy nhận',async()=>{await api('/api/admin/image-feed/subscriber',{method:'POST',body:{chat_id:s.chat_id}});await showImageFeed({h,api,body,toast,fail});}):null))),
+  section('Lịch sử gửi ảnh',h('p',{class:'muted'},'50 lượt gần nhất. Khi kết quả không rõ do mất kết nối, kiểm tra cuộc trò chuyện trước khi thử lại để tránh trùng ảnh.'),...data.deliveries.map(d=>h('div',{style:'border-bottom:1px solid var(--line,#ddd);padding:10px 0;overflow-wrap:anywhere'},h('strong',{},`${d.name||d.chat_id} · ${statuses[d.status]||d.status}`),h('p',{class:'muted'},`${new Date(d.updated_at).toLocaleString('vi-VN')} · ${d.error||d.caption||'Ảnh không có chú thích'}`),['failed','unknown'].includes(d.status)?action('Cho phép thử lại theo lịch',async()=>{if(d.status==='unknown'&&!confirm('Đã kiểm tra Zalo và xác nhận khách chưa nhận ảnh?'))return;await api('/api/admin/image-feed/retry',{method:'POST',body:{item_id:d.item_id,chat_id:d.chat_id}});toast('Đã đưa vào lượt gửi tiếp theo.');}):null)))
+ );
+}
