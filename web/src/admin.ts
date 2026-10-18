@@ -1,6 +1,7 @@
 import {hunterAdmin} from './hunter.ts';
 import {feedAdmin} from './image-feed.ts';
 import {googleFeedAdmin} from './feed-google.ts';
+import {bridgeAdmin} from './feed-apps-script.ts';
 // Admin API: settings, users, activity log, analytics. Every route here is admin-only
 // (checked in worker.ts before dispatch) and every change is itself logged.
 import { aiCost } from './log.ts';
@@ -39,6 +40,7 @@ function eventFilter(url: URL) {
 
 export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: string, method: string, rc: Rc, admin: User): Promise<Response> {
   const url = new URL(req.url);
+  const bridge=await bridgeAdmin(req,env,sub);if(bridge)return bridge;
   const google=await googleFeedAdmin(req,env,admin,sub);if(google)return google;
   const feed=await feedAdmin(req,env,sub);if(feed)return feed;
   const hunter=await hunterAdmin(req,env,rc,sub);if(hunter)return hunter;

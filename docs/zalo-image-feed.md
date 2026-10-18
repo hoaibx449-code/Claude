@@ -2,6 +2,8 @@
 
 Quản trị → Ảnh Zalo từ Sheet (`/#/admin/anh-zalo`). Nguồn và lịch lưu riêng trong D1; không phụ thuộc tên Sheet/cột cố định.
 
+Ngoài Google OAuth, có tùy chọn [Apps Script](zalo-apps-script.md) để chuyển dữ liệu/ảnh từ tài khoản Google mà không cần tự tạo OAuth client. Hai phương thức dùng chung lịch gửi và sổ chống trùng; chuyển phương thức không xóa quyền Google đã lưu.
+
 ## Kết nối Google để đọc tệp riêng tư
 
 Google Drive trong ChatGPT chỉ cấp quyền cho phiên chat, không cấp token cho Worker. Website sử dụng OAuth riêng, quyền `https://www.googleapis.com/auth/drive.readonly` để đọc Sheet và ảnh tham chiếu. Không yêu cầu quyền sửa/xóa Drive. Quyền này có thể cần Google xác minh nếu đưa ứng dụng OAuth ra công khai; tài khoản thử nghiệm được khai báo có thể dùng ở chế độ Testing, nhưng refresh token thường hết hạn sau 7 ngày ở chế độ này.

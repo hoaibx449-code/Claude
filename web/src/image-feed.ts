@@ -3,8 +3,8 @@ import type {XEnv} from './worker.ts';
 import {origin,zaloApi} from './zalo.ts';
 import {googleAccess,googleGet} from './feed-google.ts';
 
-export interface FeedConfig { enabled:boolean; sheet:string; gid:string; header:number; image:string; id:string; caption:string; timezone:string; days:number[]; windows:string[]; interval:number; poll:number; initial:'skip'|'send'; }
-export const feedDefault:FeedConfig={enabled:false,sheet:'1362B6hviAe69_o5pgfOs_5RFvZi1-peaUxtQ4fwil20',gid:'102',header:1,image:'Link ảnh Google Drive',id:'ID',caption:'Caption đề xuất',timezone:'Asia/Ho_Chi_Minh',days:[0,1,2,3,4,5,6],windows:['08:00-21:00'],interval:15,poll:5,initial:'skip'};
+export interface FeedConfig { transport?:'google'|'apps-script'; enabled:boolean; sheet:string; gid:string; header:number; image:string; id:string; caption:string; timezone:string; days:number[]; windows:string[]; interval:number; poll:number; initial:'skip'|'send'; }
+export const feedDefault:FeedConfig={transport:'google',enabled:false,sheet:'1362B6hviAe69_o5pgfOs_5RFvZi1-peaUxtQ4fwil20',gid:'102',header:1,image:'Link ảnh Google Drive',id:'ID',caption:'Caption đề xuất',timezone:'Asia/Ho_Chi_Minh',days:[0,1,2,3,4,5,6],windows:['08:00-21:00'],interval:15,poll:5,initial:'skip'};
 export function cleanFeed(v:any):FeedConfig{
  const sheet=String(v.sheet||'').match(/\/d\/([\w-]+)/)?.[1]||String(v.sheet||'').trim();
  const gid=String(v.gid??'0');
@@ -15,7 +15,7 @@ export function cleanFeed(v:any):FeedConfig{
  const occupied=new Set<number>();for(const w of windows){const [a,b]=w.split('-').map((t:string)=>+t.slice(0,2)*60+ +t.slice(3));for(let m=a;m!==b;m=(m+1)%1440){if(occupied.has(m))throw new HttpError(400,'Các khung giờ gửi không được trùng nhau.');occupied.add(m);}}
  const n=(x:any,min:number,max:number)=>Math.min(max,Math.max(min,Math.round(Number(x)||min)));
  const col=(x:any)=>String(x||'').trim().slice(0,150);
- return {enabled:!!v.enabled,sheet,gid,header:n(v.header,1,100),image:col(v.image),id:col(v.id),caption:col(v.caption),timezone:String(v.timezone),days:[...new Set<number>((v.days||[]).filter((d:any)=>Number.isInteger(d)&&d>=0&&d<=6))],windows,interval:n(v.interval,1,1440),poll:n(v.poll,1,1440),initial:v.initial==='send'?'send':'skip'};
+ return {transport:v.transport==='apps-script'?'apps-script':'google',enabled:!!v.enabled,sheet,gid,header:n(v.header,1,100),image:col(v.image),id:col(v.id),caption:col(v.caption),timezone:String(v.timezone),days:[...new Set<number>((v.days||[]).filter((d:any)=>Number.isInteger(d)&&d>=0&&d<=6))],windows,interval:n(v.interval,1,1440),poll:n(v.poll,1,1440),initial:v.initial==='send'?'send':'skip'};
 }
 export function csvRows(text:string){
  const rows:string[][]=[];let row:string[]=[],s='',quoted=false;
@@ -44,8 +44,10 @@ export function sendSlot(c:FeedConfig,now:number){
   }
  }return '';
 }
-async function config(env:XEnv){const r=await env.DB.prepare("SELECT config FROM image_feed WHERE id=1").first<any>();return r?JSON.parse(r.config) as FeedConfig:feedDefault;}
+export async function feedConfig(env:XEnv){const r=await env.DB.prepare("SELECT config FROM image_feed WHERE id=1").first<any>();return r?JSON.parse(r.config) as FeedConfig:feedDefault;}
 async function sheetRows(env:XEnv,c:FeedConfig){
+ if(c.transport==='apps-script'){const snapshot=await env.DB.prepare('SELECT source,headers,rows,header_row FROM feed_bridge_snapshot WHERE id=1').first<any>();if(!snapshot||snapshot.source!==c.sheet+'|'+c.gid||snapshot.header_row!==c.header)throw new HttpError(409,'Chưa có dữ liệu Apps Script. Hãy cài mã và chạy dongBoAnh.');return {headers:JSON.parse(snapshot.headers),rows:JSON.parse(snapshot.rows)};}
+
  if(await googleAccess(env)){
   const meta:any=await (await googleGet(env,`https://sheets.googleapis.com/v4/spreadsheets/${c.sheet}?fields=sheets(properties(sheetId,title,gridProperties))`)).json();
   const tab=meta.sheets?.find((s:any)=>String(s.properties?.sheetId)===c.gid)?.properties;
@@ -63,9 +65,12 @@ async function sheetRows(env:XEnv,c:FeedConfig){
  const rows=csvRows(new TextDecoder().decode(text));if(rows.length>10001)throw new HttpError(400,'Nguồn tối đa 10.000 dòng.');
  return {headers:rows[c.header-1]||[],rows:rows.slice(c.header)};
 }
-async function bounded(r:Response,max:number){const reader=r.body?.getReader();if(!reader)throw new HttpError(400,'Tệp rỗng.');const chunks:Uint8Array[]=[];let n=0;try{while(true){const v=await reader.read();if(v.done)break;n+=v.value.length;if(n>max)throw new HttpError(400,'Tệp vượt giới hạn tải.');chunks.push(v.value);}}finally{await reader.cancel().catch(()=>{});}const out=new Uint8Array(n);let p=0;for(const a of chunks){out.set(a,p);p+=a.length;}return out;}
+export async function bounded(r:Response,max:number){const reader=r.body?.getReader();if(!reader)throw new HttpError(400,'Tệp rỗng.');const chunks:Uint8Array[]=[];let n=0;try{while(true){const v=await reader.read();if(v.done)break;n+=v.value.length;if(n>max)throw new HttpError(400,'Tệp vượt giới hạn tải.');chunks.push(v.value);}}finally{await reader.cancel().catch(()=>{});}const out=new Uint8Array(n);let p=0;for(const a of chunks){out.set(a,p);p+=a.length;}return out;}
 export async function scanFeed(env:XEnv,c:FeedConfig){
- const {headers,rows}=await sheetRows(env,c),img=column(headers,c.image),id=column(headers,c.id),caption=column(headers,c.caption);
+ return ingestFeedRows(env,c,await sheetRows(env,c));
+}
+export async function ingestFeedRows(env:XEnv,c:FeedConfig,{headers,rows}:{headers:string[];rows:string[][]}){
+ const img=column(headers,c.image),id=column(headers,c.id),caption=column(headers,c.caption);
  if(img<0)throw new HttpError(400,'Chọn cột chứa link ảnh trước.');
  const state=await env.DB.prepare('SELECT initialized FROM image_feed WHERE id=1').first<any>();
  const known=new Set((await env.DB.prepare('SELECT id FROM image_feed_items').all<any>()).results.map(r=>r.id));
@@ -82,8 +87,9 @@ export async function scanFeed(env:XEnv,c:FeedConfig){
  await env.DB.prepare("UPDATE image_feed SET initialized=1,last_poll=?,error=?,updated_at=? WHERE id=1").bind(now,invalid?`${invalid} dòng có link ảnh không hợp lệ.`:'',now).run();
  return {added,invalid,rows:rows.length};
 }
-async function cacheImage(env:XEnv,item:any){
+async function cacheImage(env:XEnv,item:any,c:FeedConfig){
  const key='feed/'+item.id,now=Date.now();if(item.expires>now+60000&&await env.BUCKET.head(key))return;
+ if(c.transport==='apps-script')throw new HttpError(409,'Chờ Apps Script chuyển ảnh gốc lên.');
  let url=`https://drive.usercontent.google.com/download?id=${encodeURIComponent(item.file_id)}&export=download`;
  let data:Uint8Array|undefined;
  if(await googleAccess(env))data=await bounded(await googleGet(env,`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(item.file_id)}?alt=media`),8*1024*1024);
@@ -94,8 +100,12 @@ async function cacheImage(env:XEnv,item:any){
   if(!r.ok)throw new Error('Ảnh Drive chưa đọc được: HTTP '+r.status);data=await bounded(r,8*1024*1024);break;
  }
  if(!data)throw new Error('Drive chuyển hướng quá nhiều.');
+ await storeFeedImage(env,item,data);
+}
+export async function storeFeedImage(env:XEnv,item:any,data:Uint8Array){
+ const key='feed/'+item.id,now=Date.now();
  const mime=data[0]===137&&data[1]===80&&data[2]===78&&data[3]===71?'image/png':data[0]===255&&data[1]===216&&data[2]===255?'image/jpeg':new TextDecoder().decode(data.slice(0,4))==='RIFF'&&new TextDecoder().decode(data.slice(8,12))==='WEBP'?'image/webp':'';
- if(!mime)throw new Error('Drive không trả về ảnh PNG/JPEG/WebP. Kiểm tra quyền xem ảnh bằng liên kết.');
+ if(!mime)throw new HttpError(400,'Tệp chưa phải ảnh PNG/JPEG/WebP hợp lệ. Kiểm tra định dạng và quyền đọc ảnh.');
  item.token=randomId(32);item.expires=now+86400000;
  await env.BUCKET.put(key,data,{httpMetadata:{contentType:mime}});
  await env.DB.prepare('UPDATE image_feed_items SET token=?,expires=? WHERE id=?').bind(item.token,item.expires,item.id).run();
@@ -112,7 +122,7 @@ export async function feedSubscription(env:XEnv,chat:string,name:string,on:boole
 }
 export async function tickFeed(env:XEnv){
  const now=Date.now();
- const c=await config(env);
+ const c=await feedConfig(env);
  // One lease for overlapping cron invocations, including temporary-object cleanup.
  const lease=randomId(16);const lock=await env.DB.prepare('UPDATE image_feed SET lease=?,lease_until=? WHERE id=1 AND lease_until<? RETURNING *').bind(lease,now+240000,now).first<any>();if(!lock)return;
  try{
@@ -120,22 +130,22 @@ export async function tickFeed(env:XEnv){
  const expired=await env.DB.prepare('SELECT id FROM image_feed_items WHERE expires>0 AND expires<? LIMIT 20').bind(now).all<any>();
  for(const i of expired.results){await env.BUCKET.delete('feed/'+i.id);await env.DB.prepare('UPDATE image_feed_items SET expires=0,token=NULL WHERE id=? AND expires<?').bind(i.id,now).run();}
  if(!c.enabled||!env.config.zalo.enabled||!(env as any).ZALO_BOT_TOKEN)return;
-  if(now-lock.last_poll>=c.poll*60000)await scanFeed(env,c);
+  if(c.transport!=='apps-script'&&now-lock.last_poll>=c.poll*60000)await scanFeed(env,c);
   const slot=sendSlot(c,now);if(slot){
    // Ten API calls per tick; unserved recipients continue next minute in this same slot.
    const deliveries=await env.DB.prepare(`SELECT * FROM (SELECT i.*,s.chat_id,ROW_NUMBER() OVER(PARTITION BY s.chat_id ORDER BY i.created_at,i.id) AS rn FROM image_feed_items i CROSS JOIN image_feed_subscribers s
     LEFT JOIN image_feed_deliveries d ON d.item_id=i.id AND d.chat_id=s.chat_id
-    WHERE i.source=? AND i.baseline=0 AND s.active=1 AND i.created_at>s.joined_at AND COALESCE(d.status,'') NOT IN ('sent','unknown') AND COALESCE(d.attempts,0)<5
+    WHERE i.source=? AND (?=0 OR i.expires>?) AND i.baseline=0 AND s.active=1 AND i.created_at>s.joined_at AND COALESCE(d.status,'') NOT IN ('sent','unknown') AND COALESCE(d.attempts,0)<5
     AND NOT EXISTS(SELECT 1 FROM zalo_links l JOIN blocked_users b ON b.user_id=l.user_id WHERE l.chat_id=s.chat_id)
     AND NOT EXISTS(SELECT 1 FROM image_feed_deliveries x WHERE x.chat_id=s.chat_id AND x.slot=? AND x.status IN ('sent','unknown','sending'))
-    ) WHERE rn=1 ORDER BY created_at,id LIMIT 10`).bind(c.sheet+'|'+c.gid,slot).all<any>();
+    ) WHERE rn=1 ORDER BY created_at,id LIMIT 10`).bind(c.sheet+'|'+c.gid,c.transport==='apps-script'?1:0,now+60000,slot).all<any>();
    const used=new Set<string>();for(const item of deliveries.results){if(Date.now()-now>45000)break;if(used.has(item.chat_id))continue;used.add(item.chat_id);
     // Persist intent before network I/O. Unknown outcomes require explicit admin retry (no blind duplicate).
     await env.DB.prepare("INSERT INTO image_feed_deliveries(item_id,chat_id,status,attempts,slot,updated_at) VALUES(?,?,'sending',1,?,?) ON CONFLICT(item_id,chat_id) DO UPDATE SET status='sending',attempts=attempts+1,slot=excluded.slot,updated_at=excluded.updated_at").bind(item.id,item.chat_id,slot,now).run();
     let status='failed',error='',message='';try{
      // Recheck opt-out immediately before sending.
      const active=await env.DB.prepare('SELECT active FROM image_feed_subscribers WHERE chat_id=?').bind(item.chat_id).first<any>();if(!active?.active)throw new Error('Đã hủy đăng ký.');
-     await cacheImage(env,item);const site=origin(env)||lock.origin;if(!site?.startsWith('https://'))throw new Error('Chưa có địa chỉ web HTTPS để gửi ảnh.');
+     await cacheImage(env,item,c);const site=origin(env)||lock.origin;if(!site?.startsWith('https://'))throw new Error('Chưa có địa chỉ web HTTPS để gửi ảnh.');
      const r=await zaloApi((env as any).ZALO_BOT_TOKEN,'sendPhoto',{chat_id:item.chat_id,photo:`${site}/api/image-feed/photo/${item.id}?t=${item.token}`,caption:item.caption||undefined});
      status=r.ok?'sent':r.status===0?'unknown':'failed';error=r.error;message=String(r.result?.message_id||'');
     }catch(e:any){error=e.message;}
@@ -153,17 +163,17 @@ export async function feedAdmin(req:Request,env:XEnv,sub:string){
   const state=await env.DB.prepare('SELECT last_poll,error,initialized FROM image_feed WHERE id=1').first<any>();
   const subscribers=await env.DB.prepare('SELECT chat_id,name,active,joined_at FROM image_feed_subscribers ORDER BY joined_at DESC LIMIT 100').all<any>();
   const deliveries=await env.DB.prepare('SELECT d.*,i.caption,s.name FROM image_feed_deliveries d JOIN image_feed_items i ON i.id=d.item_id LEFT JOIN image_feed_subscribers s ON s.chat_id=d.chat_id ORDER BY d.updated_at DESC LIMIT 50').all<any>();
-  return json({config:await config(env),state,subscribers:subscribers.results,deliveries:deliveries.results});
+  return json({config:await feedConfig(env),state,subscribers:subscribers.results,deliveries:deliveries.results});
  }
  if(sub==='image-feed'&&req.method==='PUT'){
   const c=cleanFeed(await body<any>(req,12000));if(c.enabled&&!c.image)throw new HttpError(400,'Chọn cột link ảnh trước khi bật.');
-  const old=await config(env),changed=old.sheet!==c.sheet||old.gid!==c.gid;
+  const old=await feedConfig(env),changed=old.sheet!==c.sheet||old.gid!==c.gid;
   await env.DB.prepare("INSERT INTO image_feed(id,config,origin) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET config=excluded.config,origin=excluded.origin,initialized=CASE WHEN ? THEN 0 ELSE initialized END,last_poll=0,error='' ").bind(JSON.stringify(c),new URL(req.url).origin,changed?1:0).run();return json({config:c});
  }
  if(sub==='image-feed/preview'&&req.method==='POST'){
   const c=cleanFeed(await body<any>(req,12000)),s=await sheetRows(env,c);return json({headers:s.headers,rows:s.rows.slice(0,5),total:s.rows.length});
  }
- if(sub==='image-feed/scan'&&req.method==='POST')return json(await scanFeed(env,await config(env)));
+ if(sub==='image-feed/scan'&&req.method==='POST')return json(await scanFeed(env,await feedConfig(env)));
  if(sub==='image-feed/subscriber'&&req.method==='POST'){
   const b=await body<any>(req,1000);await env.DB.prepare('UPDATE image_feed_subscribers SET active=0 WHERE chat_id=?').bind(String(b.chat_id)).run();return json({ok:true});
  }
