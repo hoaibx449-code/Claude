@@ -100,6 +100,7 @@ export default {
     const xenv = await effectiveEnv(env);
     ctx.waitUntil(Promise.all([
       expireOrders(xenv),
+      env.DB.prepare('DELETE FROM feed_image_tests WHERE created_at < ?').bind(Date.now()-30*86400000).run(),
       env.DB.prepare('DELETE FROM zalo_ocr WHERE created_at < ?').bind(Date.now()-7*86400000).run(),
       env.DB.prepare('DELETE FROM zalo_seen WHERE ts < ?').bind(Date.now() - 2 * 86_400_000).run(),
       env.DB.prepare('DELETE FROM zalo_codes WHERE expires_at < ?').bind(Date.now()).run(),
@@ -353,6 +354,7 @@ async function deleteAccount(env: XEnv, rc: Rc, user: User) {
   } while (cursor);
   const anon = 'deleted-' + (await sha256(user.id)).slice(0, 12);
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM feed_image_tests WHERE user_id = ?').bind(user.id),
     env.DB.prepare('DELETE FROM image_feed_deliveries WHERE chat_id IN (SELECT chat_id FROM zalo_links WHERE user_id = ?)').bind(user.id),
     env.DB.prepare('DELETE FROM image_feed_subscribers WHERE chat_id IN (SELECT chat_id FROM zalo_links WHERE user_id = ?)').bind(user.id),
     env.DB.prepare('DELETE FROM zalo_ocr WHERE chat_id IN (SELECT chat_id FROM zalo_links WHERE user_id = ?)').bind(user.id),

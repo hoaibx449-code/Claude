@@ -4,6 +4,16 @@ Quản trị → Ảnh Zalo từ Sheet (`/#/admin/anh-zalo`). Nguồn và lịch
 
 Ngoài Google OAuth, có tùy chọn [Apps Script](zalo-apps-script.md) để chuyển dữ liệu/ảnh từ tài khoản Google mà không cần tự tạo OAuth client. Hai phương thức dùng chung lịch gửi và sổ chống trùng; chuyển phương thức không xóa quyền Google đã lưu.
 
+## Gửi thử ngay, gồm cả ảnh cũ
+
+Trong mục **Gửi thử ngay**, chọn ảnh đã đồng bộ từ nguồn đang lưu và bấm nút gửi tới Zalo quản trị. Người nhận là Zalo liên kết với tài khoản quản trị hiện tại; nếu chưa liên kết thì dùng Zalo chủ web được cấu hình. Không cho nhập tùy ý chat ID. Khi thiếu cả hai, hướng dẫn kết nối Zalo trước. Bot phải được bật và có token hợp lệ.
+
+Thử ảnh không cần bật tự động, không cần khớp lịch, không cần đăng ký nhận ảnh, và không thay cờ bỏ qua ảnh cũ hoặc sổ giao nhận của người đăng ký. Tối đa 30 yêu cầu mới/ngày/tài khoản; mã yêu cầu chống gửi kép khi cùng thao tác bị gửi lại. Giữ lịch sử thử riêng 30 ngày; xóa cùng tài khoản khi tài khoản bị xóa.
+
+Nếu ảnh gốc đang có trong cache, web gọi `sendPhoto` ngay và chỉ báo thành công khi Zalo xác nhận. Google OAuth/nguồn công khai có thể tải ảnh khi bấm. Với Apps Script, ảnh chưa có cache sẽ tạo yêu cầu chờ tối đa 10 phút; chạy **dongBoAnh** trong Apps Script để chuyển ngay, không phải cài lại mã hoặc chờ trigger 5 phút. Script cũ vẫn tương thích vì sử dụng cùng giao thức lấy việc/chuyển ảnh. Server ưu tiên ảnh đang được yêu cầu thử, cho phép chuyển ảnh cũ chỉ khi có yêu cầu chờ hợp lệ, và gửi thử ngay sau khi nhận ảnh. Nếu không chạy thủ công, script tiếp nhận ở lần trigger kế tiếp.
+
+Giao diện làm mới kết quả mỗi 3 giây khi còn yêu cầu đang chờ/đang gửi, dừng khi rời trang. Các trạng thái: chờ ảnh gốc, đang gửi, Zalo đã xác nhận, lỗi, hoặc chưa rõ kết quả khi mất phản hồi/tác vụ bị ngắt. Trường hợp chưa rõ không tự gửi lại; kiểm tra Zalo trước khi tạo yêu cầu mới. Đổi nguồn khi đang chờ sẽ hủy yêu cầu cũ. Thao tác thử không đưa ảnh cũ vào hàng gửi chung; lịch tự động nếu đã bật vẫn vận hành độc lập.
+
 ## Giờ chỉ định
 
 Trong Lịch gửi & đăng ký → Cách đặt lịch, chọn **Theo giờ chỉ định**, nhập các mốc `HH:mm` cách nhau bằng dấu phẩy hoặc xuống dòng, ví dụ `08:00, 12:30, 19:00`. Hỗ trợ tối đa 48 mốc/ngày, bỏ mốc trùng và sắp xếp theo giờ. Áp dụng múi giờ và các ngày trong tuần đã chọn; chu kỳ gửi/phần khung giờ được ẩn vì không dùng ở chế độ này. Lịch cũ không có `schedule` vẫn chạy theo khung giờ, không tự chuyển sang giờ chỉ định.

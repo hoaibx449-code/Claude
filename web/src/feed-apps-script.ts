@@ -1,12 +1,17 @@
 import {body,HttpError,json,randomId,sha256,timingSafeEqual,useQuota} from './util.ts';
 import type {XEnv} from './worker.ts';
 import {bounded,feedConfig,ingestFeedRows,storeFeedImage,type FeedConfig} from './image-feed.ts';
+import {runFeedTests} from './feed-test.ts';
 
 export const bridgeRevision=async(c:FeedConfig)=>sha256(JSON.stringify([c.sheet,c.gid,c.header,c.image,c.id,c.caption,c.initial]));
-async function tasks(env:XEnv,c:FeedConfig){return (await env.DB.prepare(`SELECT i.id,i.file_id FROM image_feed_items i LEFT JOIN feed_bridge_failures f ON f.item_id=i.id WHERE i.source=? AND i.baseline=0 AND i.expires<? AND COALESCE(f.next_at,0)<?
+async function tasks(env:XEnv,c:FeedConfig){
+ const tests=(await env.DB.prepare("SELECT DISTINCT i.id,i.file_id FROM feed_image_tests t JOIN image_feed_items i ON i.id=t.item_id WHERE t.status='pending' AND t.expires>? AND i.source=? AND i.expires<? LIMIT 3").bind(Date.now(),c.sheet+'|'+c.gid,Date.now()+60000).all<any>()).results;
+ const regular=(await env.DB.prepare(`SELECT i.id,i.file_id FROM image_feed_items i LEFT JOIN feed_bridge_failures f ON f.item_id=i.id WHERE i.source=? AND i.baseline=0 AND i.expires<? AND COALESCE(f.next_at,0)<?
  AND EXISTS(SELECT 1 FROM image_feed_subscribers s LEFT JOIN image_feed_deliveries d ON d.item_id=i.id AND d.chat_id=s.chat_id
  WHERE s.active=1 AND s.joined_at<i.created_at AND COALESCE(d.status,'') NOT IN ('sent','unknown') AND COALESCE(d.attempts,0)<5)
- ORDER BY i.created_at,i.id LIMIT 3`).bind(c.sheet+'|'+c.gid,Date.now()+3600000,Date.now()).all<any>()).results;}
+ ORDER BY i.created_at,i.id LIMIT 3`).bind(c.sheet+'|'+c.gid,Date.now()+3600000,Date.now()).all<any>()).results;
+ return [...tests,...regular].filter((i,n,all)=>all.findIndex(x=>x.id===i.id)===n).slice(0,3);
+}
 export async function bridgeAdmin(req:Request,env:XEnv,sub:string){
  if(!sub.startsWith('image-feed/apps-script'))return null;
  if(req.method==='GET'&&sub==='image-feed/apps-script'){
@@ -49,15 +54,16 @@ export async function bridgeReceive(req:Request,env:XEnv,path:string){
  }
  const image=path.match(/^image\/([a-f0-9]{64})$/);
  if(image&&req.method==='POST'){
-  const item=await env.DB.prepare('SELECT * FROM image_feed_items WHERE id=? AND source=? AND baseline=0').bind(image[1],source).first<any>();if(!item)throw new HttpError(404,'Ảnh không thuộc nguồn đang chọn.');
+  const item=await env.DB.prepare("SELECT * FROM image_feed_items WHERE id=? AND source=? AND (baseline=0 OR EXISTS(SELECT 1 FROM feed_image_tests t WHERE t.item_id=image_feed_items.id AND t.status='pending' AND t.expires>?))").bind(image[1],source,Date.now()).first<any>();if(!item)throw new HttpError(404,'Ảnh không thuộc nguồn đang chọn.');
   if(Number(req.headers.get('content-length'))>8*1024*1024)throw new HttpError(413,'Ảnh tối đa 8 MB.');
-  await storeFeedImage(env,item,await bounded(new Response(req.body),8*1024*1024));await env.DB.prepare('DELETE FROM feed_bridge_failures WHERE item_id=?').bind(item.id).run();return json({ok:true});
+  await storeFeedImage(env,item,await bounded(new Response(req.body),8*1024*1024));await env.DB.prepare('DELETE FROM feed_bridge_failures WHERE item_id=?').bind(item.id).run();await runFeedTests(env);return json({ok:true});
  }
  if(path==='error'&&req.method==='POST'){
   const b=await body<any>(req,1000);const error=String(b.error||'Apps Script lỗi.').slice(0,300).replaceAll(key,'[key]');
   if(/^[a-f0-9]{64}$/.test(b.item_id||'')){
    const item=await env.DB.prepare('SELECT 1 FROM image_feed_items WHERE id=? AND source=?').bind(b.item_id,source).first();
    if(item)await env.DB.prepare('INSERT INTO feed_bridge_failures(item_id,attempts,next_at) VALUES(?,1,?) ON CONFLICT(item_id) DO UPDATE SET attempts=attempts+1,next_at=?').bind(b.item_id,Date.now()+600000,Date.now()+1800000).run();
+   if(item)await env.DB.prepare("UPDATE feed_image_tests SET status='failed',error=?,updated_at=? WHERE item_id=? AND status='pending'").bind(error,Date.now(),b.item_id).run();
   }
   await env.DB.prepare('UPDATE feed_bridge_snapshot SET error=? WHERE id=1').bind(error).run();
   await env.DB.prepare('UPDATE image_feed SET error=? WHERE id=1').bind(error).run();return json({ok:true});

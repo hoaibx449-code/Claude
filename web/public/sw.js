@@ -1,7 +1,7 @@
 // Makes the site installable and fast. The page and its scripts come from the network first
 // (with a short timeout, then the cached copy), so a new version shows up at once; heavy static
 // files (fonts, hand, icons, demo videos) are served from the cache and refreshed in the background.
-const SHELL = 'nv-shell-v42-fixed-feed-times', STATIC = 'nv-static-v42-fixed-feed-times';
+const SHELL = 'nv-shell-v43-immediate-feed-test', STATIC = 'nv-static-v43-immediate-feed-test';
 const SHELL_FILES = ['/', '/app.css?v=36', '/compact-ui.css', '/polish.css', '/theme.css', '/hunter.css?v=37','/video-library.css?v=38','/video-previews.js?v=38', '/interaction.css?v=33','/admin-layout.css?v=33','/checkout.css?v=35', '/helpchat.js', '/app.js', '/home-gallery.js', '/voice-picker.js', '/prompt-hunter.js', '/creative-panel.js', '/ui-select.js', '/admin.js', '/banks.js', '/engine.js', '/whiteboard-addon.js', '/illustrated-addon.js', '/icons/icon.svg'];
 
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).catch(() => {})); self.skipWaiting(); });

@@ -1,6 +1,7 @@
 import {body,HttpError,json,randomId,sha256,timingSafeEqual} from './util.ts';
 import type {XEnv} from './worker.ts';
 import {origin,zaloApi} from './zalo.ts';
+import {runFeedTests} from './feed-test.ts';
 import {googleAccess,googleGet} from './feed-google.ts';
 
 export interface FeedConfig { schedule?:'windows'|'fixed'; times?:string[]; transport?:'google'|'apps-script'; enabled:boolean; sheet:string; gid:string; header:number; image:string; id:string; caption:string; timezone:string; days:number[]; windows:string[]; interval:number; poll:number; initial:'skip'|'send'; }
@@ -100,7 +101,7 @@ export async function ingestFeedRows(env:XEnv,c:FeedConfig,{headers,rows}:{heade
  await env.DB.prepare("UPDATE image_feed SET initialized=1,last_poll=?,error=?,updated_at=? WHERE id=1").bind(now,invalid?`${invalid} dòng có link ảnh không hợp lệ.`:'',now).run();
  return {added,invalid,rows:rows.length};
 }
-async function cacheImage(env:XEnv,item:any,c:FeedConfig){
+export async function cacheImage(env:XEnv,item:any,c:FeedConfig){
  const key='feed/'+item.id,now=Date.now();if(item.expires>now+60000&&await env.BUCKET.head(key))return;
  if(c.transport==='apps-script')throw new HttpError(409,'Chờ Apps Script chuyển ảnh gốc lên.');
  let url=`https://drive.usercontent.google.com/download?id=${encodeURIComponent(item.file_id)}&export=download`;
@@ -142,6 +143,7 @@ export async function tickFeed(env:XEnv){
  // Temporary binaries expire even when sending is switched off.
  const expired=await env.DB.prepare('SELECT id FROM image_feed_items WHERE expires>0 AND expires<? LIMIT 20').bind(now).all<any>();
  for(const i of expired.results){await env.BUCKET.delete('feed/'+i.id);await env.DB.prepare('UPDATE image_feed_items SET expires=0,token=NULL WHERE id=? AND expires<?').bind(i.id,now).run();}
+ await runFeedTests(env);
  if(!c.enabled||!env.config.zalo.enabled||!(env as any).ZALO_BOT_TOKEN)return;
   if(c.transport!=='apps-script'&&now-lock.last_poll>=c.poll*60000)await scanFeed(env,c);
   const slot=sendSlot(c,now);if(slot){
