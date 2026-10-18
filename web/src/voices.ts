@@ -7,7 +7,7 @@ import { standIn } from '../../src/engine/voices.ts';
 import type { User } from './auth.ts';
 import { accessToken } from './gcp.ts';
 import { runnerSecrets } from './settings.ts';
-import { HttpError, json, useQuota, sha256 } from './util.ts';
+import { HttpError, json, useQuota, sha256,readBytes } from './util.ts';
 import type { Rc, XEnv } from './worker.ts';
 
 const SAMPLE = 'Xin chào! Đây là giọng đọc cho video của bạn. Nghe có dễ chịu không?';
@@ -126,9 +126,10 @@ export async function voiceUpload(req: Request, env: XEnv, rc: Rc, user: User) {
   if (!ext) throw new HttpError(415, 'Chỉ nhận tệp MP3, M4A hoặc WAV.');
   const size = Number(req.headers.get('content-length'));
   if (!size || size > 25_000_000) throw new HttpError(413, 'Tệp giọng đọc tối đa 25 MB.');
+  const bytes=await readBytes(req,25_000_000);
   await useQuota(env, user.id, 'voiceup', 20);
   const key = `voice/${user.id.replace(/[^\w-]/g, '')}/${[...crypto.getRandomValues(new Uint8Array(12))].map((b) => b.toString(16).padStart(2, '0')).join('')}.${ext}`;
-  await env.BUCKET.put(key, req.body, { httpMetadata: { contentType: type } });
+  await env.BUCKET.put(key, bytes, { httpMetadata: { contentType: type } });
   rc.log('voice.upload', { data: { bytes: size, ext } });
   return json({ ref: 'r2:' + key });
 }

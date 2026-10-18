@@ -61,6 +61,7 @@ export async function googleFeedAdmin(req:Request,env:XEnv,user:User,sub:string)
 }
 export async function googleFeedCallback(req:Request,env:XEnv){
  const user=await currentUser(env,req);if(!user||!await isAdmin(env,env.config,user))throw new HttpError(403,'Hãy đăng nhập tài khoản quản trị đã bắt đầu kết nối Google.');
+ if(await env.DB.prepare('SELECT 1 FROM blocked_users WHERE user_id=?').bind(user.id).first())throw new HttpError(403,'Tài khoản quản trị đã bị khóa.');
  const u=new URL(req.url),state=u.searchParams.get('state')||'';if(!/^[a-f0-9]{64}$/.test(state))throw new HttpError(400,'Mã kết nối Google không hợp lệ.');
  const row=await env.DB.prepare('DELETE FROM feed_google_states WHERE state=? AND user_id=? AND expires>? RETURNING *').bind(await sha256(state),user.id,Date.now()).first<any>();
  if(!row||row.redirect!==u.origin+callback)throw new HttpError(400,'Phiên kết nối đã hết hạn hoặc đã sử dụng. Hãy kết nối lại.');

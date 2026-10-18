@@ -1,7 +1,7 @@
 // Google sign-in: the browser gets an ID token from Google Identity Services and
 // posts it here. We verify its RS256 signature against Google's public keys,
 // then issue our own session cookie. Only a hash of the session token is stored.
-import { cookie, type Env, HttpError, randomId, sha256 } from './util.ts';
+import { cookie, type Env, HttpError, randomId, sha256,timingSafeEqual } from './util.ts';
 
 const SESSION_DAYS = 7;
 const ISSUERS = ['accounts.google.com', 'https://accounts.google.com'];
@@ -11,7 +11,7 @@ export interface User { id: string; email: string; name: string | null; picture:
 let jwksCache: { keys: any[]; until: number } | null = null;
 async function googleKeys(): Promise<any[]> {
   if (jwksCache && jwksCache.until > Date.now()) return jwksCache.keys;
-  const res = await fetch('https://www.googleapis.com/oauth2/v3/certs');
+  const res = await fetch('https://www.googleapis.com/oauth2/v3/certs',{signal:AbortSignal.timeout(8000),redirect:'error'});
   if (!res.ok) throw new HttpError(502, 'Không kết nối được Google, thử lại sau.');
   const maxAge = Number((res.headers.get('cache-control') || '').match(/max-age=(\d+)/)?.[1] || 3600);
   jwksCache = { keys: ((await res.json()) as any).keys, until: Date.now() + maxAge * 1000 };
@@ -53,6 +53,13 @@ export async function consumeNonce(env: Env, nonce: string) {
   if (!/^[a-f0-9]{32}$/.test(nonce)) throw new HttpError(400, 'Phiên đăng nhập không hợp lệ, tải lại trang.');
   const r = await env.DB.prepare('DELETE FROM used_nonces WHERE nonce = ? AND expires_at > ? RETURNING nonce').bind('pending:' + nonce, Date.now()).first();
   if (!r) throw new HttpError(400, 'Phiên đăng nhập đã hết hạn, tải lại trang rồi đăng nhập lại.');
+}
+
+/** Bind both popup and form_post login to the browser which started it (login CSRF). */
+export const loginNonceCookie=(nonce:string)=>`__Host-nv_login=${nonce}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${nonce?600:0}`;
+export function checkLoginBrowser(req:Request,nonce:string){
+ const bound=cookie(req,'__Host-nv_login')||'';
+ if(!/^[a-f0-9]{32}$/.test(bound)||!timingSafeEqual(bound,nonce))throw new HttpError(403,'Phiên đăng nhập không thuộc trình duyệt này. Hãy bắt đầu đăng nhập lại.');
 }
 
 export async function startSession(env: Env, u: User) {

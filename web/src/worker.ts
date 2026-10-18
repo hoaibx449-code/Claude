@@ -1,11 +1,12 @@
 import {hunterPublic} from './hunter.ts';
+import {secureResponse} from './security.ts';
 import {feedPhoto,tickFeed} from './image-feed.ts';
 import {googleFeedCallback} from './feed-google.ts';
 import {bridgeReceive} from './feed-apps-script.ts';
 import { creativeResult } from './creative.ts';
 import { creationChoice, designIssues } from './creation-policy.ts';
 // Nét Vẽ Studio API (Cloudflare Worker). Static pages are served from ./public.
-import { consumeNonce, currentUser, endSession, newNonce, startSession, type User, verifyGoogleToken } from './auth.ts';
+import { consumeNonce, currentUser, endSession, newNonce, startSession, type User, verifyGoogleToken,loginNonceCookie,checkLoginBrowser } from './auth.ts';
 import { drawImage, type ImageProvider, type TextProvider, writeScript, reviewDirectionFrames, isTextProvider, hasTextAI } from './ai.ts';
 import {claimIllustrated,startIllustrated,assertIllustrated,voiceCache as illustratedVoiceCache} from '../../addons/faciup-illustrated/web.ts';
 import {claimWhiteboard,startWhiteboard,assertWhiteboard,voiceCache} from '../../addons/faciup-whiteboard/web.ts';
@@ -27,7 +28,7 @@ import { checkShare, followUps, keepWebhook, notifyJob, rememberOrigin, resumeZa
 import { pushPublicKey, pushUser, validEndpoint } from './push.ts';
 import { checkAllowed, checkSource, expireOrders, limitsFor, planOf, planRoutes, sepayWebhook } from './plans.ts';
 import { affiliateScene, communityPublic, deleteVideo, introFor, serveObject, shareToCommunity, siteType, storedVideoKey, upload, videoKey } from './media.ts';
-import { body, type Env, HttpError, json, randomId, refundQuota, sha256, timingSafeEqual, today, useQuota } from './util.ts';
+import { body, readBytes, type Env, HttpError, json, randomId, refundQuota, sha256, timingSafeEqual, today, useQuota } from './util.ts';
 
 const MAX_ACTIVE_JOBS = 2;
 const STALE_JOB_MS = 45 * 60_000;
@@ -68,7 +69,7 @@ export default {
     if (api && !rc.quiet && (!QUIET.test(name) || res.status >= 400)) {
       rc.log(res.status >= 500 ? 'error' : 'api', { path: name, ok: res.status < 400, ms: Date.now() - t0, data: error ? { status: res.status, error } : { status: res.status } });
     }
-    return res;
+    return secureResponse(req,res);
   },
   // Safety net: if videos wait in the queue (e.g. a start request was lost), start the render machine.
   async scheduled(e: ScheduledController, env: Env, ctx: ExecutionContext) {
@@ -169,7 +170,7 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
     const q = new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, redirect_uri: url.origin + '/api/auth/google/callback', response_type: 'id_token', response_mode: 'form_post',
       scope: 'openid email profile', nonce, state: nonce + '.' + btoa(next).replace(/=+$/, ''), prompt: 'select_account' });
     rc.log('auth.redirect');
-    return new Response(null, { status: 302, headers: { location: 'https://accounts.google.com/o/oauth2/v2/auth?' + q } });
+    return new Response(null, { status: 302, headers: { location: 'https://accounts.google.com/o/oauth2/v2/auth?' + q,'set-cookie':loginNonceCookie(nonce),'cache-control':'no-store' } });
   }
   if (path === '/api/auth/google/callback' && method === 'POST') return googleCallback(req, env, rc, url);
 
@@ -182,12 +183,14 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
 
   // ---- sign-in
   if (path === '/api/auth/config' && method === 'GET') {
-    return json({ clientId: env.GOOGLE_CLIENT_ID || null, nonce: env.GOOGLE_CLIENT_ID ? await newNonce(env) : null, dev: devAllowed, ui: { ...publicConfig(env.config), voices: (await voicesWithStatus(env)).filter((v) => v.ready) }, ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY, ollama: hasTextAI(env, 'ollama') } });
+    const nonce=env.GOOGLE_CLIENT_ID?await newNonce(env):null;
+    return json({ clientId: env.GOOGLE_CLIENT_ID || null, nonce, dev: devAllowed, ui: { ...publicConfig(env.config), voices: (await voicesWithStatus(env)).filter((v) => v.ready) }, ai: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY, ollama: hasTextAI(env, 'ollama') } },200,nonce?{'set-cookie':loginNonceCookie(nonce)}:{});
   }
   if (path === '/api/auth/google' && method === 'POST') {
     if (!env.GOOGLE_CLIENT_ID) throw new HttpError(503, 'Chủ trang chưa cấu hình đăng nhập Google.');
     const b = await body<{ credential?: string; nonce?: string; consent?: boolean }>(req, 20_000);
     if (b.consent !== true) throw new HttpError(400, 'Bạn cần đồng ý Điều khoản và Chính sách bảo mật để đăng nhập.');
+    checkLoginBrowser(req,String(b.nonce||''));
     await consumeNonce(env, String(b.nonce || ''));
     const u = await verifyGoogleToken(String(b.credential || ''), env.GOOGLE_CLIENT_ID, String(b.nonce));
     if (await blocked(env, u.id)) throw new HttpError(403, BLOCKED);
@@ -258,9 +261,11 @@ function safeNext(v: string | null) {
 async function googleCallback(req: Request, env: XEnv, rc: Rc, url: URL) {
   const back = (next: string, err?: string) => new Response(null, { status: 303, headers: { location: err ? `/#/dang-nhap-loi?m=${encodeURIComponent(err)}` : next } });
   try {
-    const form = await req.formData();
+    if(!req.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded'))throw new HttpError(415,'Định dạng đăng nhập không hợp lệ.');
+    const form = new URLSearchParams(new TextDecoder().decode(await readBytes(req,20000)));
     if (form.get('error')) return back('/', 'Bạn đã huỷ đăng nhập Google.');
     const [nonce, enc] = String(form.get('state') || '').split('.');
+    checkLoginBrowser(req,nonce);
     await consumeNonce(env, nonce);
     let next = '/';
     try { next = safeNext(atob(enc || '')); } catch { /* keep home */ }
