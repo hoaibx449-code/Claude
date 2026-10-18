@@ -3,19 +3,23 @@ import type {XEnv} from './worker.ts';
 import {origin,zaloApi} from './zalo.ts';
 import {googleAccess,googleGet} from './feed-google.ts';
 
-export interface FeedConfig { transport?:'google'|'apps-script'; enabled:boolean; sheet:string; gid:string; header:number; image:string; id:string; caption:string; timezone:string; days:number[]; windows:string[]; interval:number; poll:number; initial:'skip'|'send'; }
-export const feedDefault:FeedConfig={transport:'google',enabled:false,sheet:'1362B6hviAe69_o5pgfOs_5RFvZi1-peaUxtQ4fwil20',gid:'102',header:1,image:'Link ảnh Google Drive',id:'ID',caption:'Caption đề xuất',timezone:'Asia/Ho_Chi_Minh',days:[0,1,2,3,4,5,6],windows:['08:00-21:00'],interval:15,poll:5,initial:'skip'};
+export interface FeedConfig { schedule?:'windows'|'fixed'; times?:string[]; transport?:'google'|'apps-script'; enabled:boolean; sheet:string; gid:string; header:number; image:string; id:string; caption:string; timezone:string; days:number[]; windows:string[]; interval:number; poll:number; initial:'skip'|'send'; }
+export const feedDefault:FeedConfig={schedule:'windows',times:['08:00','12:30','19:00'],transport:'google',enabled:false,sheet:'1362B6hviAe69_o5pgfOs_5RFvZi1-peaUxtQ4fwil20',gid:'102',header:1,image:'Link ảnh Google Drive',id:'ID',caption:'Caption đề xuất',timezone:'Asia/Ho_Chi_Minh',days:[0,1,2,3,4,5,6],windows:['08:00-21:00'],interval:15,poll:5,initial:'skip'};
 export function cleanFeed(v:any):FeedConfig{
  const sheet=String(v.sheet||'').match(/\/d\/([\w-]+)/)?.[1]||String(v.sheet||'').trim();
  const gid=String(v.gid??'0');
  if(!/^[\w-]{20,100}$/.test(sheet)||!/^\d{1,15}$/.test(gid))throw new HttpError(400,'Link Sheet hoặc gid không hợp lệ.');
  try{new Intl.DateTimeFormat('en',{timeZone:v.timezone}).format();}catch{throw new HttpError(400,'Múi giờ không hợp lệ.');}
- const windows=Array.isArray(v.windows)?v.windows:[];
+ const schedule=v.schedule==='fixed'?'fixed':'windows';
+ const times=[...new Set<string>((Array.isArray(v.times)?v.times:[]).map((t:any)=>String(t).trim()))].sort();
+ if(schedule==='fixed'&&(!times.length||times.length>48||times.some(t=>!/^([01]\d|2[0-3]):[0-5]\d$/.test(t))))throw new HttpError(400,'Giờ chỉ định cần dạng HH:mm, ví dụ 08:00, 12:30; tối đa 48 mốc/ngày.');
+ const inputWindows=Array.isArray(v.windows)?v.windows:[];
+ const windows=schedule==='fixed'&&(!inputWindows.length||inputWindows.length>12||inputWindows.some((w:any)=>typeof w!=='string'||!/^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$/.test(w)||w.slice(0,5)===w.slice(6)))?feedDefault.windows:inputWindows;
  if(!windows.length||windows.length>12||windows.some((w:any)=>!/^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$/.test(w)||w.slice(0,5)===w.slice(6)))throw new HttpError(400,'Khung giờ cần dạng 08:00-12:00; hỗ trợ qua nửa đêm.');
- const occupied=new Set<number>();for(const w of windows){const [a,b]=w.split('-').map((t:string)=>+t.slice(0,2)*60+ +t.slice(3));for(let m=a;m!==b;m=(m+1)%1440){if(occupied.has(m))throw new HttpError(400,'Các khung giờ gửi không được trùng nhau.');occupied.add(m);}}
+ const occupied=new Set<number>();for(const w of schedule==='windows'?windows:[]){const [a,b]=w.split('-').map((t:string)=>+t.slice(0,2)*60+ +t.slice(3));for(let m=a;m!==b;m=(m+1)%1440){if(occupied.has(m))throw new HttpError(400,'Các khung giờ gửi không được trùng nhau.');occupied.add(m);}}
  const n=(x:any,min:number,max:number)=>Math.min(max,Math.max(min,Math.round(Number(x)||min)));
  const col=(x:any)=>String(x||'').trim().slice(0,150);
- return {transport:v.transport==='apps-script'?'apps-script':'google',enabled:!!v.enabled,sheet,gid,header:n(v.header,1,100),image:col(v.image),id:col(v.id),caption:col(v.caption),timezone:String(v.timezone),days:[...new Set<number>((v.days||[]).filter((d:any)=>Number.isInteger(d)&&d>=0&&d<=6))],windows,interval:n(v.interval,1,1440),poll:n(v.poll,1,1440),initial:v.initial==='send'?'send':'skip'};
+ return {schedule,times:times.filter(t=>/^([01]\d|2[0-3]):[0-5]\d$/.test(t)),transport:v.transport==='apps-script'?'apps-script':'google',enabled:!!v.enabled,sheet,gid,header:n(v.header,1,100),image:col(v.image),id:col(v.id),caption:col(v.caption),timezone:String(v.timezone),days:[...new Set<number>((v.days||[]).filter((d:any)=>Number.isInteger(d)&&d>=0&&d<=6))],windows,interval:n(v.interval,1,1440),poll:n(v.poll,1,1440),initial:v.initial==='send'?'send':'skip'};
 }
 export function csvRows(text:string){
  const rows:string[][]=[];let row:string[]=[],s='',quoted=false;
@@ -38,6 +42,15 @@ export function driveImage(raw:string){
 export function sendSlot(c:FeedConfig,now:number){
  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:c.timezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(now).map(p=>[p.type,p.value]));
  const day=Date.UTC(+parts.year,+parts.month-1,+parts.day),minute=+parts.hour*60+ +parts.minute,dow=new Date(day).getUTCDay();
+ if(c.schedule==='fixed'){
+  // A scheduled start opens a bounded 10-minute delivery round, so cron jitter and fan-out do not drop recipients.
+  const candidates:{start:number;key:string}[]=[];
+  for(const previous of [false,true])for(const time of c.times||[]){
+   const start=+time.slice(0,2)*60+ +time.slice(3)-(previous?1440:0),wd=previous?(dow+6)%7:dow;
+   if(c.days.includes(wd)&&minute>=start&&minute<start+10)candidates.push({start,key:`${day-(previous?86400000:0)}:at:${time}`});
+  }
+  return candidates.sort((a,b)=>b.start-a.start)[0]?.key||'';
+ }
  for(const w of c.windows){const [a,b]=w.split('-').map(t=>+t.slice(0,2)*60+ +t.slice(3)),overnight=a>b;
   if((overnight?(minute>=a||minute<b):(minute>=a&&minute<b))){const previous=overnight&&minute<b,wd=previous?(dow+6)%7:dow;if(!c.days.includes(wd))continue;
    const elapsed=previous?minute+1440-a:minute-a;return `${day-(previous?86400000:0)}:${w}:${Math.floor(elapsed/c.interval)}`;

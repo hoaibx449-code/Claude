@@ -36,14 +36,19 @@ export async function showImageFeed({h,api,body,toast,fail}){
   }),bridge.configured?action('Thu hồi khóa Apps Script',async()=>{await api('/api/admin/image-feed/apps-script/disconnect',{method:'POST',body:{}});await showImageFeed({h,api,body,toast,fail});}):null,
   action('Làm mới trạng thái',async()=>showImageFeed({h,api,body,toast,fail})),scriptArea);
  googlePanel.hidden=c.transport==='apps-script';scriptPanel.hidden=c.transport!=='apps-script';
+ const intervalField=field('Mỗi người nhận tối đa 1 ảnh mỗi (phút)',input('interval','number'));
+ const windowsField=field('Khung giờ gửi',h('textarea',{rows:3,value:c.windows.join('\n'),oninput:e=>c.windows=e.target.value.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean)}),'Mỗi dòng một khung, ví dụ 08:00-12:00 và 14:00-21:00. Hỗ trợ 22:00-02:00.');
+ const timesField=field('Giờ chỉ định',h('textarea',{rows:2,value:(c.times||['08:00','12:30','19:00']).join(', '),placeholder:'08:00, 12:30, 19:00',oninput:e=>c.times=e.target.value.split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean)}),'Mỗi mốc bắt đầu một lượt gửi, tối đa 1 ảnh/người/mốc. Hệ thống tiếp tục xử lý tối đa 10 phút sau mốc để gửi lần lượt; mốc kế tiếp sẽ bắt đầu lượt mới.');
+ if(!c.times)c.times=['08:00','12:30','19:00'];
+ const refreshSchedule=()=>{const fixed=c.schedule==='fixed';timesField.hidden=!fixed;windowsField.hidden=fixed;intervalField.hidden=fixed;};refreshSchedule();
+ const scheduleField=field('Cách đặt lịch',h('select',{onchange:e=>{c.schedule=e.target.value;refreshSchedule();}},h('option',{value:'windows',selected:c.schedule!=='fixed'},'Theo khung giờ và chu kỳ'),h('option',{value:'fixed',selected:c.schedule==='fixed'},'Theo giờ chỉ định')));
  body.replaceChildren(
   section('Phương thức kết nối',field('Chọn cách lấy dữ liệu và ảnh',transport),'Chuyển phương thức không xóa kết nối Google đã lưu.',action('Lưu phương thức & cấu hình',async()=>{await api('/api/admin/image-feed',{method:'PUT',body:c});toast('Đã lưu phương thức kết nối.');})),
   scriptPanel,googlePanel,
   section('Nguồn ảnh Google Sheet',h('p',{class:'muted'},'Chọn tab bằng gid để đổi tên vẫn giữ kết nối. Với Apps Script, nút xem trước dùng dữ liệu của lần đồng bộ gần nhất.'),
    h('div',{class:'form-grid'},field('Link hoặc mã Google Sheet',input('sheet')),field('Mã tab (gid)',input('gid')),field('Dòng tiêu đề',input('header','number'))),
    action('Đọc cột & xem trước',async()=>{const r=await api('/api/admin/image-feed/preview',{method:'POST',body:c});renderMapping(r.headers);preview.replaceChildren(h('p',{class:'muted'},`${r.total} dòng · Chọn cột theo dữ liệu thực tế.`),h('div',{style:'overflow:auto;max-width:100%;max-height:240px'},h('table',{},h('thead',{},h('tr',{},r.headers.map(x=>h('th',{},x)))),h('tbody',{},r.rows.map(row=>h('tr',{},row.map(x=>h('td',{style:'max-width:260px;overflow-wrap:anywhere'},x))))))));}),mapping,preview),
-  section('Lịch gửi & đăng ký',h('div',{class:'form-grid'},field('Múi giờ',input('timezone')),field('Kiểm tra Sheet mỗi (phút)',input('poll','number')),field('Mỗi người nhận tối đa 1 ảnh mỗi (phút)',input('interval','number')),
-   field('Khung giờ gửi',h('textarea',{rows:3,value:c.windows.join('\n'),oninput:e=>c.windows=e.target.value.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean)}),'Mỗi dòng một khung, ví dụ 08:00-12:00 và 14:00-21:00. Hỗ trợ 22:00-02:00.')),
+  section('Lịch gửi & đăng ký',h('div',{class:'form-grid'},scheduleField,field('Múi giờ',input('timezone')),field('Kiểm tra Sheet mỗi (phút)',input('poll','number')),intervalField),windowsField,timesField,
    h('div',{class:'row',style:'flex-wrap:wrap'},['CN','T2','T3','T4','T5','T6','T7'].map((label,day)=>h('label',{class:'check'},h('input',{type:'checkbox',checked:c.days.includes(day),onchange:e=>c.days=e.target.checked?[...c.days,day]:c.days.filter(d=>d!==day)}),label))),
    field('Lần đọc nguồn đầu tiên',h('select',{onchange:e=>c.initial=e.target.value},h('option',{value:'skip',selected:c.initial==='skip'},'Chỉ nhận ảnh mới thêm sau đó'),h('option',{value:'send',selected:c.initial==='send'},'Đưa ảnh hiện có vào hàng chờ')),'Mỗi người chỉ nhận ảnh được hệ thống phát hiện sau lần đăng ký đầu tiên. Đổi tùy chọn không gửi lại ảnh đã ghi nhận.'),
    h('p',{},'Người dùng nhắn bot: NHẬN ẢNH để đăng ký · HỦY NHẬN ẢNH để dừng. Không tự đăng ký thay khách.'),

@@ -53,6 +53,10 @@ test('Admin switches connection panels and retains both methods with one source 
  const select=nodes.find(n=>n.tag==='select'&&n.kids.some((k:any)=>k.value==='apps-script'));
  assert.equal(script.hidden,true);select.onchange({target:{value:'apps-script'}});assert.equal(google.hidden,true);assert.equal(script.hidden,false);
  select.onchange({target:{value:'google'}});assert.equal(google.hidden,false);assert.equal(script.hidden,true);
+ const schedule=nodes.find(n=>n.tag==='select'&&n.kids.some((k:any)=>k.value==='fixed'));
+ const field=(label:string)=>nodes.find(n=>n.tag==='label'&&n.kids[0]?.kids?.[0]===label);
+ assert.equal(field('Giờ chỉ định').hidden,true);schedule.onchange({target:{value:'fixed'}});assert.equal(field('Giờ chỉ định').hidden,false);assert.equal(field('Khung giờ gửi').hidden,true);assert.equal(field('Mỗi người nhận tối đa 1 ảnh mỗi (phút)').hidden,true);
+ schedule.onchange({target:{value:'windows'}});assert.equal(field('Khung giờ gửi').hidden,false);assert.equal(field('Giờ chỉ định').hidden,true);
  assert.equal(nodes.filter(n=>n.tag==='section'&&title(n)==='Nguồn ảnh Google Sheet').length,1);assert.equal(nodes.filter(n=>n.tag==='section'&&title(n)==='Lịch gửi & đăng ký').length,1);
  }finally{(globalThis as any).document=original;}
 });

@@ -4,6 +4,12 @@ Quản trị → Ảnh Zalo từ Sheet (`/#/admin/anh-zalo`). Nguồn và lịch
 
 Ngoài Google OAuth, có tùy chọn [Apps Script](zalo-apps-script.md) để chuyển dữ liệu/ảnh từ tài khoản Google mà không cần tự tạo OAuth client. Hai phương thức dùng chung lịch gửi và sổ chống trùng; chuyển phương thức không xóa quyền Google đã lưu.
 
+## Giờ chỉ định
+
+Trong Lịch gửi & đăng ký → Cách đặt lịch, chọn **Theo giờ chỉ định**, nhập các mốc `HH:mm` cách nhau bằng dấu phẩy hoặc xuống dòng, ví dụ `08:00, 12:30, 19:00`. Hỗ trợ tối đa 48 mốc/ngày, bỏ mốc trùng và sắp xếp theo giờ. Áp dụng múi giờ và các ngày trong tuần đã chọn; chu kỳ gửi/phần khung giờ được ẩn vì không dùng ở chế độ này. Lịch cũ không có `schedule` vẫn chạy theo khung giờ, không tự chuyển sang giờ chỉ định.
+
+Mỗi mốc bắt đầu một lượt gửi, tối đa một ảnh đang chờ cho mỗi người đủ điều kiện. Một lượt có tối đa 10 phút để cron tiếp tục gửi lần lượt, bao gồm trường hợp cron chậm hoặc Apps Script đang chuyển ảnh. Nếu gặp mốc mới trong khoảng này, mốc mới bắt đầu lượt mới. Quá thời hạn, ảnh chưa gửi sẽ chờ mốc tiếp theo. Mốc gần nửa đêm được tiếp tục sang ngày hôm sau trong phần thời hạn còn lại, nhưng dùng ngày trong tuần của mốc bắt đầu. Không bảo đảm gửi chính xác tới giây hoặc gửi hết mọi người nếu hàng chờ vượt tốc độ tối đa 10 người/phút. Ảnh cần được đồng bộ và chuyển lên trước khi có thể gửi; không tự gửi lại ảnh đã giao thành công.
+
 ## Kết nối Google để đọc tệp riêng tư
 
 Google Drive trong ChatGPT chỉ cấp quyền cho phiên chat, không cấp token cho Worker. Website sử dụng OAuth riêng, quyền `https://www.googleapis.com/auth/drive.readonly` để đọc Sheet và ảnh tham chiếu. Không yêu cầu quyền sửa/xóa Drive. Quyền này có thể cần Google xác minh nếu đưa ứng dụng OAuth ra công khai; tài khoản thử nghiệm được khai báo có thể dùng ở chế độ Testing, nhưng refresh token thường hết hạn sau 7 ngày ở chế độ này.
