@@ -244,3 +244,5 @@ CREATE TABLE IF NOT EXISTS image_feed_items (id TEXT PRIMARY KEY, file_id TEXT N
 CREATE INDEX IF NOT EXISTS image_feed_created ON image_feed_items(created_at);
 CREATE TABLE IF NOT EXISTS image_feed_deliveries (item_id TEXT NOT NULL, chat_id TEXT NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, slot TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', message_id TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL, PRIMARY KEY(item_id,chat_id));
 CREATE INDEX IF NOT EXISTS image_feed_slot ON image_feed_deliveries(chat_id,slot,status);
+CREATE TABLE IF NOT EXISTS feed_google_states (state TEXT PRIMARY KEY, user_id TEXT NOT NULL, verifier TEXT NOT NULL, redirect TEXT NOT NULL, expires INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS feed_google_states_expiry ON feed_google_states(expires);

@@ -1,7 +1,7 @@
 export async function showImageFeed({h,api,body,toast,fail}){
  body.classList.add('image-feed-admin');
  if(!document.getElementById('image-feed-style'))document.head.append(h('link',{id:'image-feed-style',rel:'stylesheet',href:'/image-feed.css?v=39'}));
- const data=await api('/api/admin/image-feed');let c=data.config;
+ const [data,google]=await Promise.all([api('/api/admin/image-feed'),api('/api/admin/image-feed/google')]);let c=data.config;
  const field=(label,node,note)=>h('label',{class:'field'},h('span',{},label),node,note?h('small',{class:'muted'},note):null);
  const input=(key,type='text')=>h('input',{type,value:c[key],'data-feed-key':key,oninput:e=>{c[key]=type==='number'?Number(e.target.value):e.target.value;if(key==='sheet'){const gid=e.target.value.match(/(?:[?#&])gid=(\d+)/)?.[1];if(gid){c.gid=gid;body.querySelector('[data-feed-key="gid"]').value=gid;}}}});
  const select=(key,headers=[])=>h('select',{onchange:e=>c[key]=e.target.value},h('option',{value:''},'Không dùng'),c[key]?h('option',{value:c[key],selected:true},c[key]):null,...headers.map((v,i)=>h('option',{value:v&&headers.filter(x=>x===v).length===1?v:'#'+letters(i)},`${letters(i)} · ${v||'(không có tên)'}`)));
@@ -12,8 +12,21 @@ export async function showImageFeed({h,api,body,toast,fail}){
  const action=(label,fn)=>h('button',{type:'button',class:'ghost small',onclick:async e=>{e.currentTarget.disabled=true;try{await fn();}catch(err){fail(err);}finally{e.target.disabled=false;}}},label);
  const section=(title,...nodes)=>h('section',{class:'card'},h('h2',{},title),...nodes);
  const state=data.state||{},statuses={sent:'Đã gửi ảnh',failed:'Chưa gửi được',unknown:'Cần kiểm tra Zalo',sending:'Đang gửi'};
+ const clientId=h('input',{value:google.clientId,autocomplete:'off',placeholder:'…apps.googleusercontent.com'}),clientSecret=h('input',{type:'password',autocomplete:'new-password',placeholder:'Nhập mới để lưu; không hiển thị khóa đã lưu'});
+ const saveClient=async payload=>{await api('/api/admin/image-feed/google/client',{method:'PUT',body:payload});clientSecret.value='';toast('Đã lưu OAuth. Bấm Kết nối Google để cấp quyền.');await showImageFeed({h,api,body,toast,fail});};
  body.replaceChildren(
-  section('Nguồn ảnh Google Sheet',h('p',{class:'muted'},'Đọc Sheet và ảnh Drive có quyền xem bằng liên kết. Đổi tên tab vẫn giữ kết nối nhờ gid; thêm, đổi hoặc di chuyển cột có thể ánh xạ lại bên dưới.'),
+  section('Kết nối Google Drive',h('p',{'aria-live':'polite'},google.connected?'Đã kết nối · Có thể đọc Sheet và ảnh riêng tư theo quyền tài khoản Google.':google.configured?'Đã lưu cấu hình · Chờ bạn cấp quyền Google.':'Chưa kết nối · Cấu hình OAuth một lần bên dưới.'),
+   action(google.connected?'Kết nối lại Google':'Kết nối Google',async()=>{const r=await api('/api/admin/image-feed/google/connect',{method:'POST',body:{}});location.assign(r.url);}),
+   google.connected?action('Ngắt kết nối',async()=>{await api('/api/admin/image-feed/google/disconnect',{method:'POST',body:{}});await showImageFeed({h,api,body,toast,fail});}):null,
+   h('details',{open:!google.configured},h('summary',{},'Cấu hình OAuth một lần'),
+    h('p',{class:'muted'},'Trong Google Cloud của bạn: bật Google Drive API và Google Sheets API; cấu hình màn hình đồng ý, thêm tài khoản của bạn làm người thử nghiệm nếu ứng dụng ở chế độ Testing; tạo OAuth client loại Web application. Ứng dụng Testing có thể cần cấp quyền lại sau 7 ngày.'),
+    h('a',{href:'https://console.cloud.google.com/apis/credentials',target:'_blank',rel:'noopener noreferrer'},'Mở Google Cloud → Thông tin xác thực'),
+    field('Authorized redirect URI',h('input',{value:google.redirect,readOnly:true}),'Thêm chính xác địa chỉ này vào OAuth client.'),
+    field('Nhập tệp JSON OAuth đã tải từ Google',h('input',{type:'file',accept:'.json,application/json',onchange:async e=>{try{const f=e.target.files?.[0];if(!f)return;if(f.size>12000)throw new Error('Tệp OAuth quá lớn.');await saveClient(JSON.parse(await f.text()));}catch(err){fail(err);}finally{e.target.value='';}}}),'Tệp được gửi qua HTTPS và mã hóa trên máy chủ. Không đưa khóa vào chat hoặc GitHub.'),
+    h('div',{class:'form-grid'},field('OAuth Client ID',clientId),field('OAuth Client secret',clientSecret)),
+    action('Lưu OAuth',async()=>saveClient({client_id:clientId.value,client_secret:clientSecret.value})),
+    h('p',{class:'muted'},'Chỉ yêu cầu quyền đọc Drive. Google yêu cầu chủ tài khoản tự đăng nhập và chấp thuận; token được mã hóa để bot chạy theo lịch khi bạn đóng trình duyệt.'))),
+  section('Nguồn ảnh Google Sheet',h('p',{class:'muted'},'Đọc Sheet và ảnh bằng kết nối Google ở trên; nếu chưa kết nối, chỉ đọc nguồn có quyền xem bằng liên kết. Đổi tên tab vẫn giữ kết nối nhờ gid; thêm, đổi hoặc di chuyển cột có thể ánh xạ lại bên dưới.'),
    h('div',{class:'form-grid'},field('Link hoặc mã Google Sheet',input('sheet')),field('Mã tab (gid)',input('gid')),field('Dòng tiêu đề',input('header','number'))),
    action('Đọc cột & xem trước',async()=>{const r=await api('/api/admin/image-feed/preview',{method:'POST',body:c});renderMapping(r.headers);preview.replaceChildren(h('p',{class:'muted'},`${r.total} dòng · Chọn cột theo dữ liệu thực tế.`),h('div',{style:'overflow:auto;max-width:100%;max-height:240px'},h('table',{},h('thead',{},h('tr',{},r.headers.map(x=>h('th',{},x)))),h('tbody',{},r.rows.map(row=>h('tr',{},row.map(x=>h('td',{style:'max-width:260px;overflow-wrap:anywhere'},x))))))));}),mapping,preview),
   section('Lịch gửi & đăng ký',h('div',{class:'form-grid'},field('Múi giờ',input('timezone')),field('Kiểm tra Sheet mỗi (phút)',input('poll','number')),field('Mỗi người nhận tối đa 1 ảnh mỗi (phút)',input('interval','number')),

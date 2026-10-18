@@ -1,9 +1,10 @@
 import {body,HttpError,json,randomId,sha256,timingSafeEqual} from './util.ts';
 import type {XEnv} from './worker.ts';
 import {origin,zaloApi} from './zalo.ts';
+import {googleAccess,googleGet} from './feed-google.ts';
 
 export interface FeedConfig { enabled:boolean; sheet:string; gid:string; header:number; image:string; id:string; caption:string; timezone:string; days:number[]; windows:string[]; interval:number; poll:number; initial:'skip'|'send'; }
-export const feedDefault:FeedConfig={enabled:false,sheet:'1362B6hviAe69_o5pgfOs_5RFvZi1-peaUxtQ4fwil20',gid:'555495807',header:1,image:'',id:'',caption:'',timezone:'Asia/Ho_Chi_Minh',days:[0,1,2,3,4,5,6],windows:['08:00-21:00'],interval:15,poll:5,initial:'skip'};
+export const feedDefault:FeedConfig={enabled:false,sheet:'1362B6hviAe69_o5pgfOs_5RFvZi1-peaUxtQ4fwil20',gid:'102',header:1,image:'Link ảnh Google Drive',id:'ID',caption:'Caption đề xuất',timezone:'Asia/Ho_Chi_Minh',days:[0,1,2,3,4,5,6],windows:['08:00-21:00'],interval:15,poll:5,initial:'skip'};
 export function cleanFeed(v:any):FeedConfig{
  const sheet=String(v.sheet||'').match(/\/d\/([\w-]+)/)?.[1]||String(v.sheet||'').trim();
  const gid=String(v.gid??'0');
@@ -44,7 +45,18 @@ export function sendSlot(c:FeedConfig,now:number){
  }return '';
 }
 async function config(env:XEnv){const r=await env.DB.prepare("SELECT config FROM image_feed WHERE id=1").first<any>();return r?JSON.parse(r.config) as FeedConfig:feedDefault;}
-async function sheetRows(c:FeedConfig){
+async function sheetRows(env:XEnv,c:FeedConfig){
+ if(await googleAccess(env)){
+  const meta:any=await (await googleGet(env,`https://sheets.googleapis.com/v4/spreadsheets/${c.sheet}?fields=sheets(properties(sheetId,title,gridProperties))`)).json();
+  const tab=meta.sheets?.find((s:any)=>String(s.properties?.sheetId)===c.gid)?.properties;
+  if(!tab)throw new HttpError(400,'Không tìm thấy gid trong Sheet. Hãy kiểm tra mã tab.');
+  const count=Math.min(tab.gridProperties?.columnCount||26,200);let letters='',n=count;while(n){letters=String.fromCharCode(65+(n-1)%26)+letters;n=Math.floor((n-1)/26);}
+  const range="'"+String(tab.title).replace(/'/g,"''")+"'!A1:"+letters+Math.min(tab.gridProperties?.rowCount||10000,10000);
+  const r=await googleGet(env,`https://sheets.googleapis.com/v4/spreadsheets/${c.sheet}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`);
+  const data=JSON.parse(new TextDecoder().decode(await bounded(r,2_000_000)));
+  const rows:string[][]=(data.values||[]).map((row:any[])=>row.map(v=>String(v??'')));
+  return {headers:rows[c.header-1]||[],rows:rows.slice(c.header)};
+ }
  const r=await fetch(`https://docs.google.com/spreadsheets/d/${c.sheet}/export?format=csv&gid=${c.gid}`,{signal:AbortSignal.timeout(15000)});
  if(!r.ok)throw new HttpError(400,`Google Sheet chưa đọc được (HTTP ${r.status}). Kiểm tra quyền xem bằng liên kết.`);
  const text=await bounded(r,2_000_000);if(/text\/html/i.test(r.headers.get('content-type')||''))throw new HttpError(400,'Google trả về trang đăng nhập, chưa phải dữ liệu Sheet.');
@@ -53,7 +65,7 @@ async function sheetRows(c:FeedConfig){
 }
 async function bounded(r:Response,max:number){const reader=r.body?.getReader();if(!reader)throw new HttpError(400,'Tệp rỗng.');const chunks:Uint8Array[]=[];let n=0;try{while(true){const v=await reader.read();if(v.done)break;n+=v.value.length;if(n>max)throw new HttpError(400,'Tệp vượt giới hạn tải.');chunks.push(v.value);}}finally{await reader.cancel().catch(()=>{});}const out=new Uint8Array(n);let p=0;for(const a of chunks){out.set(a,p);p+=a.length;}return out;}
 export async function scanFeed(env:XEnv,c:FeedConfig){
- const {headers,rows}=await sheetRows(c),img=column(headers,c.image),id=column(headers,c.id),caption=column(headers,c.caption);
+ const {headers,rows}=await sheetRows(env,c),img=column(headers,c.image),id=column(headers,c.id),caption=column(headers,c.caption);
  if(img<0)throw new HttpError(400,'Chọn cột chứa link ảnh trước.');
  const state=await env.DB.prepare('SELECT initialized FROM image_feed WHERE id=1').first<any>();
  const known=new Set((await env.DB.prepare('SELECT id FROM image_feed_items').all<any>()).results.map(r=>r.id));
@@ -74,7 +86,8 @@ async function cacheImage(env:XEnv,item:any){
  const key='feed/'+item.id,now=Date.now();if(item.expires>now+60000&&await env.BUCKET.head(key))return;
  let url=`https://drive.usercontent.google.com/download?id=${encodeURIComponent(item.file_id)}&export=download`;
  let data:Uint8Array|undefined;
- for(let i=0;i<5;i++){
+ if(await googleAccess(env))data=await bounded(await googleGet(env,`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(item.file_id)}?alt=media`),8*1024*1024);
+ for(let i=0;!data&&i<5;i++){
   const u=new URL(url);if(u.protocol!=='https:'||u.username||u.password||u.port||!(['drive.google.com','drive.usercontent.google.com'].includes(u.hostname)||u.hostname.endsWith('.googleusercontent.com')))throw new Error('Drive chuyển hướng không hợp lệ.');
   const r=await fetch(url,{redirect:'manual',signal:AbortSignal.timeout(12000)});
   if(r.status>=300&&r.status<400){url=new URL(r.headers.get('location')||'',url).href;await r.body?.cancel();continue;}
@@ -148,7 +161,7 @@ export async function feedAdmin(req:Request,env:XEnv,sub:string){
   await env.DB.prepare("INSERT INTO image_feed(id,config,origin) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET config=excluded.config,origin=excluded.origin,initialized=CASE WHEN ? THEN 0 ELSE initialized END,last_poll=0,error='' ").bind(JSON.stringify(c),new URL(req.url).origin,changed?1:0).run();return json({config:c});
  }
  if(sub==='image-feed/preview'&&req.method==='POST'){
-  const c=cleanFeed(await body<any>(req,12000)),s=await sheetRows(c);return json({headers:s.headers,rows:s.rows.slice(0,5),total:s.rows.length});
+  const c=cleanFeed(await body<any>(req,12000)),s=await sheetRows(env,c);return json({headers:s.headers,rows:s.rows.slice(0,5),total:s.rows.length});
  }
  if(sub==='image-feed/scan'&&req.method==='POST')return json(await scanFeed(env,await config(env)));
  if(sub==='image-feed/subscriber'&&req.method==='POST'){
