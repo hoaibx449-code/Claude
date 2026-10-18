@@ -2,7 +2,24 @@
 
 Quản trị → Ảnh Zalo từ Sheet (`/#/admin/anh-zalo`). Nguồn và lịch lưu riêng trong D1; không phụ thuộc tên Sheet/cột cố định.
 
-1. Cho phép xem Sheet và ảnh Drive bằng liên kết. Phiên bản này không dùng OAuth và không đọc Drive riêng tư. Chỉ tải ảnh PNG/JPEG/WebP tối đa 8 MB qua các máy chủ Google cho phép; không gửi trang HTML hoặc link thay ảnh.
+## Kết nối Google để đọc tệp riêng tư
+
+Google Drive trong ChatGPT chỉ cấp quyền cho phiên chat, không cấp token cho Worker. Website sử dụng OAuth riêng, quyền `https://www.googleapis.com/auth/drive.readonly` để đọc Sheet và ảnh tham chiếu. Không yêu cầu quyền sửa/xóa Drive. Quyền này có thể cần Google xác minh nếu đưa ứng dụng OAuth ra công khai; tài khoản thử nghiệm được khai báo có thể dùng ở chế độ Testing, nhưng refresh token thường hết hạn sau 7 ngày ở chế độ này.
+
+1. Trong Google Cloud của chủ website, bật **Google Drive API** và **Google Sheets API**. Cấu hình OAuth consent screen, thêm email chủ tài khoản làm test user nếu dùng Testing.
+2. Tạo OAuth client loại **Web application**, thêm Authorized redirect URI chính xác:
+   `https://net-ve-studio.netve-nj3kqr.workers.dev/api/image-feed/google/callback`
+   Khi đổi domain, dùng địa chỉ hiển thị trong quản trị của domain mới.
+3. Trong quản trị → Ảnh Zalo từ Sheet → Kết nối Google Drive, nhập tệp JSON OAuth (`web.client_id`, `web.client_secret`) hoặc nhập hai trường trực tiếp. Client secret chỉ ghi, không trả về giao diện. Không đưa tệp này vào chat, mã nguồn hoặc thư mục public.
+4. Bấm **Kết nối Google**, chủ tài khoản tự đăng nhập và chấp thuận quyền đọc. Website kiểm tra phiên quản trị khởi tạo, state một lần 10 phút và PKCE, rồi lưu refresh/access token bằng AES-GCM với khóa dẫn xuất từ RUNNER_TOKEN. Token không gửi xuống trình duyệt và không nằm trong URL ảnh gửi Zalo.
+5. Kết nối xong, bấm đọc cột & xem trước, lưu cấu hình và bật lịch gửi. Nguồn được xác minh: file `1362B6hviAe69_o5pgfOs_5RFvZi1-peaUxtQ4fwil20`, gid `102` (Biểu đồ), cột `Link ảnh Google Drive`, `ID`, `Caption đề xuất`. API tìm tab theo gid ở mỗi lần đọc nên đổi tên tab không làm hỏng kết nối.
+6. **Ngắt kết nối** xóa token và state cục bộ, đồng thời thử thu hồi quyền ở Google. Giữ Client ID/secret cho lần kết nối sau. Đổi client/secret sẽ xóa token cũ. Đổi RUNNER_TOKEN cần nhập/cấp quyền lại.
+
+Khi đã cấp quyền, Worker tự đọc qua Sheets API và Drive `files.get?alt=media`; không cần công khai Sheet/ảnh. Nếu chưa kết nối, hệ thống giữ phương án nguồn công khai bên dưới. Lỗi quyền truy cập không tự chuyển sang gửi link. Tác vụ không thể tự xin quyền Google hoặc tự tạo OAuth client thay chủ tài khoản khi chưa có thông tin xác thực Google Cloud.
+
+Tài liệu Google: https://developers.google.com/identity/protocols/oauth2/web-server và https://developers.google.com/workspace/drive/api/guides/api-specific-auth
+
+1. Dùng kết nối OAuth ở trên; hoặc cho phép xem Sheet và ảnh Drive bằng liên kết khi chưa dùng OAuth. Chỉ tải ảnh PNG/JPEG/WebP tối đa 8 MB qua các máy chủ Google cho phép; không gửi trang HTML hoặc link thay ảnh.
 2. Dán link Sheet, chọn gid ổn định khi đổi tên tab, dòng tiêu đề, bấm đọc cột. Chọn cột ảnh và tùy chọn cột mã/chú thích. Tên cột theo tiêu đề được ưu tiên; có thể nhập các tên thay thế bằng dấu `|`, hoặc vị trí `#A`, `#B`. Khi đổi tên hoặc di chuyển cột không còn khớp, hệ thống báo lỗi để quản trị chọn lại; không đoán sai cột.
 3. Chọn chu kỳ đọc, múi giờ IANA, ngày trong tuần và nhiều khung giờ không trùng (hỗ trợ qua nửa đêm). Mỗi người tối đa một ảnh mỗi khoảng gửi trong khung giờ. Ngoài giờ vẫn ghi nhận ảnh mới, để gửi trong khung tiếp theo. Tác vụ cron mỗi phút nên thời điểm có thể chậm khoảng một phút.
 4. Lần đọc đầu: mặc định bỏ qua ảnh cũ. Tùy chọn đưa ảnh hiện có vào hàng chờ áp dụng cho người đã đăng ký trước thời điểm đọc nguồn. Người đăng ký mới chỉ nhận ảnh được phát hiện sau lần đăng ký đầu tiên, không nhận toàn bộ lịch sử. Hủy rồi đăng ký lại vẫn giữ thời điểm đăng ký đầu tiên và lịch sử chống trùng; ảnh phát sinh trong lúc tạm dừng có thể nhận sau khi đăng ký lại.
