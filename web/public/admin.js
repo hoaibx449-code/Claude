@@ -194,7 +194,7 @@ async function adminUserDetail(id) {
 // ---------------------------------------------------------------- orders
 async function adminOrders(body) {
   const r = await api('/api/admin/orders');
-  const act = (code, what) => async () => { try { await api(`/api/admin/orders/${code}/${what}`, { method: 'POST' }); toast('Đã cập nhật.'); adminOrders(body); } catch (e) { fail(e); } };
+  const act = (code, what) => async () => { try { const result=await api(`/api/admin/orders/${code}/${what}`, { method: 'POST' });if(what==='confirm'&&result.order?.status!=='paid')throw new Error('Chưa xác nhận được trạng thái thanh toán.');toast(what==='confirm'?'Đã thanh toán và cập nhật quyền lợi khách hàng.':'Đã cập nhật đơn.');await adminOrders(body); } catch (e) { fail(e); } };
   body.replaceChildren(h('div', { class: 'stats' },
     h('div', { class: 'stat' }, h('small', {}, 'Doanh thu 30 ngày'), h('b', {}, money(r.last30.revenue)), h('small', {}, `${r.last30.paid} đơn`)),
     h('div', { class: 'stat' }, h('small', {}, 'Chi phí AI + giọng 30 ngày'), h('b', {}, money(r.last30.cost))),

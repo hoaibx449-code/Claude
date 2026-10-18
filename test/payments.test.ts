@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defaultConfig } from '../web/src/settings.ts';
-import { sepayWebhook } from '../web/src/plans.ts';
+import { sepayWebhook,plansAdmin,planRoutes,planOf } from '../web/src/plans.ts';
 
 test('bank payments credit atomically, once per transaction, only to the configured account', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'payments-'));
@@ -60,4 +60,23 @@ test('a yearly order is priced at the yearly price and grants 365 days', async (
     assert.equal(up.plan, plan.id);
     assert.ok(Math.abs(up.expires_at - (t0 + 365 * 86400000)) < 60_000);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('admin confirmation updates order and entitlements together, returns paid, and retries never grant twice',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'manual-paid-'));try{
+ const env:any={DB:database(join(dir,'db.sqlite'))};env.config=defaultConfig(env);env.config.payment.enabled=true;env.config.payment.account='123';
+ const rc:any={log(){},wait(){}};const user:any={id:'u',email:'user@test'};const plan=env.config.plans.find((p:any)=>p.price>0),pack=env.config.doc.packs[0];
+ for(const [code,item,amount] of [['NVPLAN01',plan.id,plan.price],['NVCRED01','credit:'+pack.id,pack.price]]){
+ await env.DB.prepare("INSERT INTO orders(code,user_id,plan,amount,status,created_at) VALUES(?, 'u', ?, ?, 'pending', ?)").bind(code,item,amount,Date.now()).run();
+ const confirm=()=>plansAdmin(new Request('https://test',{method:'POST'}),env,'orders/'+code+'/confirm','POST',rc);
+ const first:any=await (await confirm()).json();assert.equal(first.order.status,'paid');
+ const observed:any=await (await planRoutes(new Request('https://test/api/orders/'+code),env,rc,user,'/api/orders/'+code,'GET')).json();assert.equal(observed.order.status,'paid');
+ const before=item.startsWith('credit:')?(await env.DB.prepare("SELECT balance FROM credits WHERE user_id='u'").first()).balance:(await planOf(env,'u')).expires;
+ assert.equal((await (await confirm()).json() as any).order.status,'paid');
+ const after=item.startsWith('credit:')?(await env.DB.prepare("SELECT balance FROM credits WHERE user_id='u'").first()).balance:(await planOf(env,'u')).expires;assert.equal(after,before);
+ await assert.rejects(planRoutes(new Request('https://test',{method:'POST'}),env,rc,user,'/api/orders/'+code+'/cancel','POST'),{status:409});
+ }
+ assert.equal((await planOf(env,'u')).plan.id,plan.id);
+ assert.equal((await env.DB.prepare("SELECT balance FROM credits WHERE user_id='u'").first()).balance,pack.credits);
+ }finally{rmSync(dir,{recursive:true,force:true});}
 });
