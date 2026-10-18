@@ -42,9 +42,27 @@ export async function showImageFeed({h,api,body,toast,fail}){
  if(!c.times)c.times=['08:00','12:30','19:00'];
  const refreshSchedule=()=>{const fixed=c.schedule==='fixed';timesField.hidden=!fixed;windowsField.hidden=fixed;intervalField.hidden=fixed;};refreshSchedule();
  const scheduleField=field('Cách đặt lịch',h('select',{onchange:e=>{c.schedule=e.target.value;refreshSchedule();}},h('option',{value:'windows',selected:c.schedule!=='fixed'},'Theo khung giờ và chu kỳ'),h('option',{value:'fixed',selected:c.schedule==='fixed'},'Theo giờ chỉ định')));
+ const testPanel=section('Gửi thử ngay'),testStatuses={pending:'Chờ ảnh gốc — chạy dongBoAnh trong Apps Script để chuyển ngay',sending:'Đang gửi tới Zalo',sent:'Zalo đã xác nhận gửi ảnh',failed:'Chưa gửi được',unknown:'Chưa rõ kết quả — kiểm tra Zalo trước khi gửi lại'};
+ let testTimer=null,testRequest=null,selectedTest='';
+ async function renderTests(){
+  clearTimeout(testTimer);const t=await api('/api/admin/image-feed/test'),items=t.items||[],tests=t.tests||[];
+  const picker=h('select',{'aria-label':'Ảnh gửi thử',onchange:e=>{selectedTest=e.target.value;testRequest=null;renderTests().catch(fail);}},...items.map(i=>h('option',{value:i.id,selected:selectedTest===i.id},(i.external_id||i.file_id)+' · '+(i.caption||'Không có chú thích').slice(0,90)+(i.baseline?' · Ảnh cũ':''))));
+  if(!items.some(i=>i.id===selectedTest))selectedTest=items[0]?.id||'';picker.value=selectedTest;
+  const sendTest=action('Gửi thử tới '+(t.recipient||'Zalo quản trị'),async()=>{
+   testRequest=testRequest||crypto.randomUUID();const result=await api('/api/admin/image-feed/test',{method:'POST',body:{itemId:selectedTest,requestId:testRequest}});testRequest=null;
+   toast(result.status==='sent'?'Zalo đã xác nhận gửi ảnh thử.':result.error||testStatuses[result.status]||'Đã ghi nhận yêu cầu.');await renderTests();
+  });sendTest.disabled=!t.recipient||!selectedTest||tests.some(x=>x.item_id===selectedTest&&['pending','sending'].includes(x.status));
+  testPanel.replaceChildren(h('h2',{},'Gửi thử ngay'),h('p',{},'Gửi riêng tới '+(t.recipient||'Zalo quản trị chưa kết nối')+'. Dùng được ảnh cũ; không cần bật lịch hoặc đăng ký nhận ảnh. Không gửi cho người đăng ký khác.'),
+   !t.recipient?h('p',{class:'muted'},'Hãy liên kết Zalo với tài khoản quản trị hoặc cấu hình Zalo chủ web trong mục Zalo.'):null,
+   items.length?field('Chọn ảnh từ nguồn đã lưu',picker):h('p',{class:'muted'},'Chưa có ảnh đồng bộ. Với Apps Script, chạy dongBoAnh rồi bấm Làm mới bên dưới; với Google, bấm Kiểm tra nguồn ngay để lấy danh sách.'),
+   sendTest,action('Làm mới kết quả',renderTests),
+   ...tests.map(x=>h('p',{'aria-live':'polite',class:'muted'},`${new Date(x.created_at).toLocaleString('vi-VN')} · ${testStatuses[x.status]||x.status}${x.error?' · '+x.error:''}`)));
+  if(tests.some(x=>['pending','sending'].includes(x.status)))testTimer=setTimeout(()=>{if(body.isConnected)renderTests().catch(fail);},3000);
+ }
  body.replaceChildren(
   section('Phương thức kết nối',field('Chọn cách lấy dữ liệu và ảnh',transport),'Chuyển phương thức không xóa kết nối Google đã lưu.',action('Lưu phương thức & cấu hình',async()=>{await api('/api/admin/image-feed',{method:'PUT',body:c});toast('Đã lưu phương thức kết nối.');})),
   scriptPanel,googlePanel,
+  testPanel,
   section('Nguồn ảnh Google Sheet',h('p',{class:'muted'},'Chọn tab bằng gid để đổi tên vẫn giữ kết nối. Với Apps Script, nút xem trước dùng dữ liệu của lần đồng bộ gần nhất.'),
    h('div',{class:'form-grid'},field('Link hoặc mã Google Sheet',input('sheet')),field('Mã tab (gid)',input('gid')),field('Dòng tiêu đề',input('header','number'))),
    action('Đọc cột & xem trước',async()=>{const r=await api('/api/admin/image-feed/preview',{method:'POST',body:c});renderMapping(r.headers);preview.replaceChildren(h('p',{class:'muted'},`${r.total} dòng · Chọn cột theo dữ liệu thực tế.`),h('div',{style:'overflow:auto;max-width:100%;max-height:240px'},h('table',{},h('thead',{},h('tr',{},r.headers.map(x=>h('th',{},x)))),h('tbody',{},r.rows.map(row=>h('tr',{},row.map(x=>h('td',{style:'max-width:260px;overflow-wrap:anywhere'},x))))))));}),mapping,preview),
@@ -59,4 +77,5 @@ export async function showImageFeed({h,api,body,toast,fail}){
   section('Người đăng ký',h('p',{class:'muted'},'Tối đa 100 người gần nhất. Hủy tại đây có hiệu lực cho các lượt gửi kế tiếp.'),...data.subscribers.map(s=>h('div',{class:'row',style:'flex-wrap:wrap;margin:8px 0'},h('span',{},`${s.name||s.chat_id} · ${s.active?'Đang nhận':'Đã hủy'}`),s.active?action('Hủy nhận',async()=>{await api('/api/admin/image-feed/subscriber',{method:'POST',body:{chat_id:s.chat_id}});await showImageFeed({h,api,body,toast,fail});}):null))),
   section('Lịch sử gửi ảnh',h('p',{class:'muted'},'50 lượt gần nhất. Khi kết quả không rõ do mất kết nối, kiểm tra cuộc trò chuyện trước khi thử lại để tránh trùng ảnh.'),...data.deliveries.map(d=>h('div',{style:'border-bottom:1px solid var(--line,#ddd);padding:10px 0;overflow-wrap:anywhere'},h('strong',{},`${d.name||d.chat_id} · ${statuses[d.status]||d.status}`),h('p',{class:'muted'},`${new Date(d.updated_at).toLocaleString('vi-VN')} · ${d.error||d.caption||'Ảnh không có chú thích'}`),['failed','unknown'].includes(d.status)?action('Cho phép thử lại theo lịch',async()=>{if(d.status==='unknown'&&!confirm('Đã kiểm tra Zalo và xác nhận khách chưa nhận ảnh?'))return;await api('/api/admin/image-feed/retry',{method:'POST',body:{item_id:d.item_id,chat_id:d.chat_id}});toast('Đã đưa vào lượt gửi tiếp theo.');}):null)))
  );
+ await renderTests().catch(fail);
 }

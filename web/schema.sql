@@ -249,3 +249,6 @@ CREATE INDEX IF NOT EXISTS feed_google_states_expiry ON feed_google_states(expir
 CREATE TABLE IF NOT EXISTS feed_bridge_snapshot(id INTEGER PRIMARY KEY CHECK(id=1),source TEXT NOT NULL,revision TEXT NOT NULL,headers TEXT NOT NULL,rows TEXT NOT NULL,received_at INTEGER NOT NULL,error TEXT NOT NULL DEFAULT '',header_row INTEGER NOT NULL DEFAULT 1);
 
 CREATE TABLE IF NOT EXISTS feed_bridge_failures(item_id TEXT PRIMARY KEY,attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0);
+
+CREATE TABLE IF NOT EXISTS feed_image_tests(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,item_id TEXT NOT NULL,chat_id TEXT NOT NULL,origin TEXT NOT NULL,status TEXT NOT NULL,error TEXT NOT NULL DEFAULT '',message_id TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,expires INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS feed_image_tests_pending ON feed_image_tests(status,expires,item_id);
