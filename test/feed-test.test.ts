@@ -23,6 +23,10 @@ test('Immediate test delivers an old image only to admin, without schedule, subs
  // Linked current admin takes priority over the shared owner; unavailable chat is rejected.
  await env.DB.prepare("INSERT INTO zalo_links(user_id,chat_id,name,linked_at) VALUES('admin','own-admin-chat','Admin',1)").run();
  await feedTestAdmin(req({itemId:item,requestId:'c'.repeat(32)}),env,user,'image-feed/test');assert.equal(sent[1].chat_id,'own-admin-chat');
+ const unavailable='e'.repeat(64);await env.DB.prepare('INSERT INTO image_feed_items(id,file_id,source,created_at,baseline) VALUES(?,?,?,?,1)').bind(unavailable,'private123456789',c.sheet+'|'+c.gid,1).run();
+ await feedTestAdmin(req({itemId:unavailable,requestId:'f'.repeat(32)}),env,user,'image-feed/test');
+ await bridge('error',{item_id:unavailable,error:'Ảnh thiếu quyền đọc.'});
+ const failure=await env.DB.prepare('SELECT status,error FROM feed_image_tests WHERE id=?').bind('f'.repeat(32)).first<any>();assert.equal(failure.status,'failed');assert.match(failure.error,/quyền/);assert.equal(sent.length,2);
  await env.DB.prepare("DELETE FROM zalo_links").run();env.config.zalo.ownerChat='';await assert.rejects(()=>feedTestAdmin(req({itemId:item,requestId:'d'.repeat(32)}),env,user,'image-feed/test'),/Chưa có Zalo/);
  }finally{globalThis.fetch=original;rmSync(dir,{recursive:true,force:true});}
 });

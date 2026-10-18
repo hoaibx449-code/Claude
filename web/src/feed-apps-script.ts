@@ -63,6 +63,7 @@ export async function bridgeReceive(req:Request,env:XEnv,path:string){
   if(/^[a-f0-9]{64}$/.test(b.item_id||'')){
    const item=await env.DB.prepare('SELECT 1 FROM image_feed_items WHERE id=? AND source=?').bind(b.item_id,source).first();
    if(item)await env.DB.prepare('INSERT INTO feed_bridge_failures(item_id,attempts,next_at) VALUES(?,1,?) ON CONFLICT(item_id) DO UPDATE SET attempts=attempts+1,next_at=?').bind(b.item_id,Date.now()+600000,Date.now()+1800000).run();
+   if(item)await env.DB.prepare("UPDATE feed_image_tests SET status='failed',error=?,updated_at=? WHERE item_id=? AND status='pending'").bind(error,Date.now(),b.item_id).run();
   }
   await env.DB.prepare('UPDATE feed_bridge_snapshot SET error=? WHERE id=1').bind(error).run();
   await env.DB.prepare('UPDATE image_feed SET error=? WHERE id=1').bind(error).run();return json({ok:true});
