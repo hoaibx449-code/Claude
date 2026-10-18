@@ -993,14 +993,15 @@ p.center { text-align: center; }
 /* ---------- my videos (reference 6) */
 .vrows { display: flex; flex-direction: column; gap: 10px; }
 .vrow { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; gap: 16px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px 10px 10px; box-shadow: var(--shadow); }
-.vrow-thumb { display: grid; place-items: center; width: 112px; aspect-ratio: 16 / 10; border-radius: 10px; overflow: hidden; background: #eef2fa; color: var(--muted); }
-.vrow-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vrow-thumb { display: grid; place-items: center; justify-self:center; width: 76px; aspect-ratio: 9 / 16; border-radius: 10px; overflow: hidden; background: #eef2fa; color: var(--muted); }
+.vrow-thumb.wide { width:112px; aspect-ratio:16 / 9; }
+.vrow-thumb img { width:100%; height:100%; min-width:0; min-height:0; object-fit:contain; display:block; background:#111827; }
 .vrow-thumb .noimg svg { width: 28px; height: 28px; }
 .vrow-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; align-items: flex-start; }
 .vrow-main .vtitle { font-weight: 700; color: var(--ink); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .vrow-main .vtitle:hover { color: var(--accent); }
 .vrow-act { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-@media (max-width: 640px) { .vrow { grid-template-columns: 88px minmax(0, 1fr); } .vrow-thumb { width: 88px; } .vrow-act { grid-column: 1 / -1; justify-content: flex-start; } }
+@media (max-width: 640px) { .vrow { grid-template-columns: 88px minmax(0, 1fr); } .vrow-thumb { width:64px; } .vrow-thumb.wide { width:88px; } .vrow-act { grid-column: 1 / -1; justify-content: flex-start; } }
 
 /* ---------- admin (reference 7): tiles look like KPI cards */
 .stat { border-radius: var(--radius); }
