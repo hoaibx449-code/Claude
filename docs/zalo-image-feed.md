@@ -6,7 +6,7 @@ Ngoài Google OAuth, có tùy chọn [Apps Script](zalo-apps-script.md) để ch
 
 ## Gửi thử ngay, gồm cả ảnh cũ
 
-Trong mục **Gửi thử ngay**, chọn ảnh đã đồng bộ từ nguồn đang lưu và bấm nút gửi tới Zalo quản trị. Người nhận là Zalo liên kết với tài khoản quản trị hiện tại; nếu chưa liên kết thì dùng Zalo chủ web được cấu hình. Không cho nhập tùy ý chat ID. Khi thiếu cả hai, hướng dẫn kết nối Zalo trước. Bot phải được bật và có token hợp lệ.
+Trong mục **Gửi thử ngay**, chọn ảnh đã đồng bộ từ nguồn đang lưu và bấm nút gửi tới Zalo quản trị. Người nhận chỉ là Zalo liên kết với tài khoản quản trị hiện tại; không tự chuyển sang Zalo chủ web khi chưa liên kết. Không cho nhập tùy ý chat ID. Khi chưa liên kết, hướng dẫn kết nối đúng Zalo trước. Bot phải được bật và có token hợp lệ.
 
 Thử ảnh không cần bật tự động, không cần khớp lịch, không cần đăng ký nhận ảnh, và không thay cờ bỏ qua ảnh cũ hoặc sổ giao nhận của người đăng ký. Tối đa 30 yêu cầu mới/ngày/tài khoản; mã yêu cầu chống gửi kép khi cùng thao tác bị gửi lại. Giữ lịch sử thử riêng 30 ngày; xóa cùng tài khoản khi tài khoản bị xóa.
 
@@ -50,3 +50,5 @@ Danh tính ảnh gồm mã Sheet, gid và ID tệp Drive; cột mã tùy chọn 
 Mỗi cron tối đa 10 người nhận, tiếp tục vào phút sau, ưu tiên ảnh cũ trong hàng chờ. Dữ liệu nguồn tối đa 10.000 dòng, CSV tối đa 2 MB. Chỉ thử tự động tối đa 5 lần nếu Zalo trả lỗi rõ ràng. Mất phản hồi/kết thúc tiến trình khi đang gửi được ghi `unknown`; quản trị kiểm tra Zalo rồi cho phép thử lại để tránh gửi kép. Không thể bảo đảm exactly-once nếu API bên ngoài không hỗ trợ khóa idempotency. Giao diện có 100 đăng ký và 50 giao nhận gần nhất; tải lại trang để xem trạng thái mới.
 
 Kiểm tra nguồn bằng nút quét không tự gửi ảnh; khi chế độ tự động đang bật, ảnh mới ghi nhận sẽ được cron xử lý theo lịch. Muốn kiểm tra hoàn toàn không gửi, tắt tự động trước. Chưa có người đăng ký hoặc nguồn thiếu quyền sẽ không phát sinh tin gửi ảnh.
+
+Quản lý danh sách chủ web và phân biệt người nhận ảnh: [zalo-owners.md](zalo-owners.md).

@@ -11,17 +11,18 @@ test('Immediate test delivers an old image only to admin, without schedule, subs
  const item='a'.repeat(64),requestId='b'.repeat(32);await env.DB.prepare('INSERT INTO image_feed_items(id,file_id,source,caption,created_at,baseline) VALUES(?,?,?,?,?,1)').bind(item,'drive1234567890',c.sheet+'|'+c.gid,'Ảnh cũ',1).run();
  const req=(data:any)=>new Request('https://studio.test',{method:'POST',body:JSON.stringify(data)});
  const call=()=>feedTestAdmin(req({itemId:item,requestId,chat_id:'victim'}),env,user,'image-feed/test');
+ await assert.rejects(call,/Chưa có Zalo/); // Never fall back to owner-chat.
+ await env.DB.prepare("INSERT INTO zalo_links(user_id,chat_id,name,linked_at) VALUES('admin','own-admin-chat','Admin',1)").run();
  let result:any=await (await call())!.json();assert.equal(result.status,'pending');
  const setup:any=await (await bridgeAdmin(req({}),env,'image-feed/apps-script/setup'))!.json();const key=setup.script.match(/const FACIUP_KEY = "([a-f0-9]+)"/)[1];
  const bridge=(path:string,data:any={},type='application/json')=>bridgeReceive(new Request('https://studio.test',{method:'POST',headers:{authorization:'Bearer '+key,'content-type':type},body:type==='application/json'?JSON.stringify(data):data}),env,path);
  const state:any=await (await bridge('config')).json();assert.equal(state.images[0].id,item); // includes skipped old image only for requested admin test
  const sent:any[]=[];globalThis.fetch=async(url:any,opts:any)=>{assert.ok(String(url).endsWith('/sendPhoto'));sent.push(JSON.parse(opts.body));return Response.json({ok:true,result:{message_id:'native-photo'}});};
  await bridge('image/'+item,new Uint8Array([137,80,78,71,13,10,26,10]),'image/png');
- result=await (await call())!.json();assert.equal(result.status,'sent');assert.equal(result.message_id,'native-photo');assert.equal(sent.length,1);assert.equal(sent[0].chat_id,'owner-chat');assert.ok(sent[0].caption.startsWith('[Gửi thử]'));
+ result=await (await call())!.json();assert.equal(result.status,'sent');assert.equal(result.message_id,'native-photo');assert.equal(sent.length,1);assert.equal(sent[0].chat_id,'own-admin-chat');assert.ok(sent[0].caption.startsWith('[Gửi thử]'));
  assert.equal((await env.DB.prepare('SELECT baseline FROM image_feed_items WHERE id=?').bind(item).first<any>()).baseline,1);assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM image_feed_deliveries').first<any>()).n,0);
  await call();assert.equal(sent.length,1);
  // Linked current admin takes priority over the shared owner; unavailable chat is rejected.
- await env.DB.prepare("INSERT INTO zalo_links(user_id,chat_id,name,linked_at) VALUES('admin','own-admin-chat','Admin',1)").run();
  await feedTestAdmin(req({itemId:item,requestId:'c'.repeat(32)}),env,user,'image-feed/test');assert.equal(sent[1].chat_id,'own-admin-chat');
  const unavailable='e'.repeat(64);await env.DB.prepare('INSERT INTO image_feed_items(id,file_id,source,created_at,baseline) VALUES(?,?,?,?,1)').bind(unavailable,'private123456789',c.sheet+'|'+c.gid,1).run();
  await feedTestAdmin(req({itemId:unavailable,requestId:'f'.repeat(32)}),env,user,'image-feed/test');

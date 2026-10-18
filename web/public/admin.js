@@ -54,7 +54,7 @@ async function showAdmin() {
   side?.querySelector('.sidenav.bottom')?.before(sideNav);
   show(h('div', { class: 'admin' }, nav, h('div', { class: 'admin-main' }, h('header', { class: 'admin-head' }, h('h1', {}, title), h('p', { class: 'muted' }, desc)), body)));
   setTimeout(() => nav.querySelector('a.on')?.scrollIntoView({ block: 'nearest', inline: 'center' }), 0);
-  const pages = { 'anh-zalo':async(body)=>{const {showImageFeed}=await import('/image-feed.js?v=43');return showImageFeed({h,api,body,toast,fail});}, 'prompt-hunter':async(body)=>{const {showHunter}=await import('/prompt-hunter.js');return showHunter({h,api,show:(...nodes)=>body.replaceChildren(...nodes.filter(Boolean)),me,toast,fail,detailDialog,openLogin,footer,admin:true});}, 'may-dung': adminRenders, 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings,'ket-noi':adminSettings,'ai':adminSettings,'chi-phi':adminSettings, 'huan-luyen': adminSettings, 'giong-doc': adminSettings };
+  const pages = { 'anh-zalo':async(body)=>{const {showImageFeed}=await import('/image-feed.js?v=44');return showImageFeed({h,api,body,toast,fail});}, 'prompt-hunter':async(body)=>{const {showHunter}=await import('/prompt-hunter.js');return showHunter({h,api,show:(...nodes)=>body.replaceChildren(...nodes.filter(Boolean)),me,toast,fail,detailDialog,openLogin,footer,admin:true});}, 'may-dung': adminRenders, 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings,'ket-noi':adminSettings,'ai':adminSettings,'chi-phi':adminSettings, 'huan-luyen': adminSettings, 'giong-doc': adminSettings };
   await (pages[tab] || adminOverview)(body, tab);
 }
 
@@ -545,7 +545,9 @@ function zaloTab(c, secrets, secretInput, zcheck, inbox) {
     welcome: 'Bán hàng · Lời chào khách mới / khách chào ({ten} {troLy} {thuongHieu})', offer: 'Bán hàng · Bảng giá khi khách hỏi giá ({goi} {goiNam} {thuongHieu})',
     payment: 'Bán hàng · Khi khách chốt: thông tin chuyển khoản ({ma} {tenGoi} {soTien} {nganHang} {stk} {chuTk} {kichHoat})', paid: 'Bán hàng · Khi đã nhận tiền ({soTien} {ma} {tenGoi} {han})',
     upsell: 'Bán hàng · Mời nâng cấp khi hết lượt / video quá dài ({goiGoiY} {giaGoiY} {loiIch} {soGoiY})' };
-  return [
+  const owners=h('section',{class:'card'},h('p',{class:'muted'},'Đang tải danh sách chủ web…'));
+  import('/zalo-owners.js?v=44').then(m=>m.showOwners({h,api,root:owners,fail,toast})).catch(fail);
+  return [owners,
     card('Đọc prompt từ ảnh (OCR)','Gửi ảnh trực tiếp qua Zalo. Bot dùng AI theo thứ tự đã cấu hình để chép chữ, không thực thi prompt. Gửi PROMPT ANH sau khi kiểm tra để đăng/gửi duyệt. Kết quả tạm giữ 7 ngày; tối đa 8 MB mỗi ảnh và 20 ảnh/ngày/người dùng.',check(c.zalo.ocrEnabled,v=>{c.zalo.ocrEnabled=v;},'Cho phép đọc chữ trong ảnh')),
     card('Cách nhận tin nhắn', 'Webhook trực tiếp: Zalo gọi thẳng về web, trả lời ngay (khuyên dùng). Hỏi định kỳ: web tự hỏi Zalo mỗi phút, không cần webhook, trả lời chậm hơn. Bot chỉ có một webhook: hệ thống nào khác dùng chung token bot (Apps Script, n8n, bản chạy thử) sẽ giành mất webhook — hãy gỡ token khỏi nơi đó.',
       h('div', { class: 'grid' }, h('label', {}, 'Chế độ', select([['webhook', 'Webhook trực tiếp (khuyên dùng)'], ['poll', 'Hỏi định kỳ (không cần webhook)']], z.receive === 'poll' ? 'poll' : 'webhook', (v) => { z.receive = v; })),
@@ -559,8 +561,7 @@ function zaloTab(c, secrets, secretInput, zcheck, inbox) {
         action('Kiểm tra lại', async () => { const check = await api('/api/admin/zalo/check'); out.replaceChildren(h('ul', {}, check.steps.map((step) => h('li', { class: step.ok ? 'ok' : 'bad' }, (step.ok ? '✓ ' : '✗ ') + step.k, h('p', { class: 'muted' }, step.detail || step.fix || ''))))); }),
         action('Kết nối webhook', async () => { const r = await api('/api/admin/zalo/connect', { method: 'POST' }); out.replaceChildren(h('p', {}, '✓ Webhook trỏ về: ', h('b', {}, r.url)), r.before && r.before !== r.url ? h('p', { class: 'muted' }, 'Trước đó bot trỏ về: ' + r.before + ' (đã chuyển sang web này).') : null, h('p', { class: 'muted' }, 'Giờ nhắn GIUP cho bot rồi bấm Kiểm tra lại.')); }),
         action('Mô phỏng tin "GIUP"', async () => { const r = await api('/api/admin/zalo/simulate', { method: 'POST', body: { text: 'GIUP' } }); out.replaceChildren(h('p', { class: r.ok ? 'ok' : 'bad' }, r.ok ? '✓ Bot xử lý và gửi phản hồi về Zalo chủ web thành công. Nếu khách vẫn không nhận được, lỗi nằm ở chiều Zalo → web (webhook/sự kiện/Cloudflare).' : '✗ Gửi phản hồi lỗi: ' + (r.replies?.[0]?.error || 'không rõ'))); }),
-        action('Tạo mã chủ web', async () => { const r = await api('/api/admin/zalo/owner-code', { method: 'POST' }); out.replaceChildren('Gửi cho bot: ', h('b', { class: 'memo' }, r.command), ` (hạn ${r.expiresMin} phút)`); }),
-        action('Gửi tin thử cho chủ web', async () => { await api('/api/admin/zalo/test', { method: 'POST' }); toast('Đã gửi.'); })),
+        action('Thử thông báo tới danh sách chủ web', async () => { await api('/api/admin/zalo/test', { method: 'POST' }); toast('Đã gửi.'); })),
       out,
       zcheck?.last?.length ? h('details', {}, h('summary', {}, 'Hoạt động Zalo gần đây'), table(['Lúc', 'Kết quả', 'Chi tiết'], zcheck.last.map((e) => h('tr', {}, h('td', {}, fmtDate(e.ts)), h('td', { class: e.ok ? 'ok' : 'bad' }, e.ok ? 'OK' : 'Lỗi'), h('td', { class: 'data' }, e.data || ''))))) : null),
     assistantTestCard(),
