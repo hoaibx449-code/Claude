@@ -112,9 +112,9 @@ async function confirmOrder(env: XEnv, rc: Rc, code: string, paid: number, ref: 
   const until = (await env.DB.prepare('SELECT expires_at FROM user_plans WHERE user_id = ?').bind(o.user_id).first<any>())?.expires_at;
   rc.userId = o.user_id;
   rc.log('order.paid', { data: { code, plan: o.plan, amount: o.amount, via, until } });
-  await notifyCustomer(env, o.user_id, 'paid', { tenGoi: bought.name, soTien: o.amount.toLocaleString('vi-VN') + 'đ', han: until ? new Date(until).toLocaleDateString('vi-VN') : '', ma: code });
-  await notifyOwner(env, 'order', `Đã nhận ${o.amount.toLocaleString('vi-VN')}đ cho đơn ${code} (gói ${bought.name}).`);
-  return o;
+  try{await notifyCustomer(env, o.user_id, 'paid', { tenGoi: bought.name, soTien: o.amount.toLocaleString('vi-VN') + 'đ', han: until ? new Date(until).toLocaleDateString('vi-VN') : '', ma: code });
+  await notifyOwner(env, 'order', `Đã nhận ${o.amount.toLocaleString('vi-VN')}đ cho đơn ${code} (gói ${bought.name}).`);}catch{rc.log('payment.notify',{ok:false,data:{code}});}
+  return { ...o, status:'paid', paid_at:now };
 }
 
 async function confirmCredits(env: XEnv, rc: Rc, o: any, paid: number, ref: string, via: string, now: number, cutoff: number) {
@@ -136,9 +136,9 @@ async function confirmCredits(env: XEnv, rc: Rc, o: any, paid: number, ref: stri
   if (!results[3].meta.changes) return null;
   rc.userId = o.user_id;
   rc.log('order.paid', { data: { code: o.code, pack: pack.id, credits: pack.credits, amount: o.amount, via } });
-  await notifyCustomer(env, o.user_id, 'paid', { tenGoi: pack.name, soTien: o.amount.toLocaleString('vi-VN') + 'đ', han: '', ma: o.code });
-  await notifyOwner(env, 'order', `Đã nhận ${o.amount.toLocaleString('vi-VN')}đ cho đơn ${o.code} (${pack.name}).`);
-  return o;
+  try{await notifyCustomer(env, o.user_id, 'paid', { tenGoi: pack.name, soTien: o.amount.toLocaleString('vi-VN') + 'đ', han: '', ma: o.code });
+  await notifyOwner(env, 'order', `Đã nhận ${o.amount.toLocaleString('vi-VN')}đ cho đơn ${o.code} (${pack.name}).`);}catch{rc.log('payment.notify',{ok:false,data:{code:o.code}});}
+  return { ...o, status:'paid', paid_at:now };
 }
 
 /**
@@ -182,11 +182,13 @@ export async function planRoutes(req: Request, env: XEnv, rc: Rc, user: User, pa
     const o = await env.DB.prepare('SELECT code, plan, amount, status, created_at, paid_at FROM orders WHERE code = ? AND user_id = ?').bind(m[1], user.id).first<any>();
     if (!o) throw new HttpError(404, 'Không tìm thấy đơn.');
     if (m[2] && method === 'POST') {
-      await env.DB.prepare("UPDATE orders SET status = 'cancelled' WHERE code = ? AND status = 'pending'").bind(o.code).run();
+      if(o.status!=='pending')throw new HttpError(409,'Đơn không còn chờ thanh toán; không thể huỷ.');
+      const changed=await env.DB.prepare("UPDATE orders SET status = 'cancelled' WHERE code = ? AND status = 'pending'").bind(o.code).run();
+      if(!changed.meta.changes)throw new HttpError(409,'Trạng thái đơn vừa thay đổi. Hãy kiểm tra lại.');
       rc.log('order.cancel', { data: { code: o.code } });
       return json({ ok: true });
     }
-    return json({ order: o });
+    return json({ order: {...o,...(o.status==='pending'?{qr:qrUrl(env,o.amount,o.code),bank:env.config.payment.bank,account:env.config.payment.account,accountName:env.config.payment.accountName,memo:o.code,note:env.config.payment.note,holdMinutes:env.config.payment.holdMinutes,auto:!!(env as any).SEPAY_API_KEY}:{})} });
   }
   throw new HttpError(404, 'Không tìm thấy.');
 }
@@ -227,11 +229,12 @@ export async function plansAdmin(req: Request, env: XEnv, sub: string, method: s
       rc.log('admin.order.cancel', { data: { code: m[1] } });
       return json({ ok: true });
     }
-    const o = await env.DB.prepare('SELECT amount FROM orders WHERE code = ?').bind(m[1]).first<any>();
+    const o = await env.DB.prepare('SELECT amount,status FROM orders WHERE code = ?').bind(m[1]).first<any>();
     if (!o) throw new HttpError(404, 'Không tìm thấy đơn.');
+    if(o.status==='paid')return json({ok:true,order:await env.DB.prepare('SELECT code,status,paid_at,plan,amount FROM orders WHERE code=?').bind(m[1]).first()});
     const done = await confirmOrder(env, rc, m[1], o.amount, 'thủ công', 'admin');
     if (!done) throw new HttpError(409, 'Đơn không còn ở trạng thái chờ.');
-    return json({ ok: true });
+    return json({ ok: true,order:done });
   }
   if (sub === 'grant' && method === 'POST') {
     const b = await body<any>(req, 1_000);

@@ -1140,8 +1140,15 @@ function detailDialog(title){
   const dialog=h('dialog',{class:'account-detail','aria-label':title},h('header',{},h('h2',{},title),h('button',{type:'button',class:'ghost small','aria-label':'Đóng '+title,onclick:()=>dialog.close()},'Đóng')),content);
   dialog.addEventListener('close',()=>{dialog.remove();trigger?.focus();},{once:true});document.body.append(dialog);dialog.showModal();return {dialog,content};
 }
+async function refreshMemberState(){
+ if(!me)return;
+ const fresh=await api('/api/me');me=fresh;applyUI(fresh.ui);paintHeader();
+ try{const cached=JSON.parse(store.get('nv_boot')||'null');if(cached){cached.me=fresh;store.set('nv_boot',JSON.stringify(cached));}}catch{}
+ window.dispatchEvent(new Event('nv:member-updated'));return fresh;
+}
 async function showAccount() {
   if(!me)return openLogin();
+  await refreshMemberState().catch(()=>{});
   closeMenu();
   const {dialog,content}=detailDialog('Tài khoản của bạn');
   const show=(...kids)=>content.replaceChildren(...kids.filter(k=>k && k.tagName!=='FOOTER'));
@@ -1149,7 +1156,8 @@ async function showAccount() {
   viewed('account');
   const del = h('input', { placeholder: 'Gõ XOA để xác nhận', maxlength: 4, 'aria-label': 'Gõ XOA để xác nhận xoá tài khoản' });
   const lim = me.limits || {}, used = me.used || {}, left = (k) => Math.max(0, (lim[k] || 0) - (used[k] || 0));
-  const credits = h('dd', {}, '…');
+  const credits = h('dd', {}, '…'),planValue=h('dd'),limitsValue=h('dd'),orderHistory=h('section',{class:'card setgroup account-orders'},h('h2',{},'Đơn hàng của tôi'),h('p',{class:'muted'},'Đang tải…'));
+  const paintEntitlements=()=>{planValue.textContent=(me.plan?.name||'Miễn phí')+(me.plan?.expires?' · đến '+fmtDate(me.plan.expires):'');const l=me.limits||{},u=me.used||{};limitsValue.textContent=Math.max(0,(l.render||0)-(u.render||0))+'/'+(l.render||0)+' lượt dựng · '+Math.max(0,(l.script||0)-(u.script||0))+'/'+(l.script||0)+' lượt AI viết';api('/api/credits').then(c=>{credits.textContent=(c.monthlyLeft?c.monthlyLeft+' video trong gói tháng này · ':'')+c.balance+' credit';}).catch(()=>{credits.textContent='—';});};
   const row = (title, value, action) => h('div', { class: 'setrow' }, h('div', {}, h('b', {}, title), value ? h('p', { class: 'muted' }, value) : null), action || null);
   show(h('header', { class: 'pagehead' }, h('div', {}, h('h1', {}, 'Tài khoản'), h('p', { class: 'muted' }, 'Thông tin, gói đang dùng và dữ liệu của bạn.'))),
     h('section', { class: 'card setgroup' }, h('h2', {}, 'Thông tin'),
@@ -1158,10 +1166,11 @@ async function showAccount() {
       row('Báo khi video xong', 'Nhận thông báo ngay trên điện thoại hoặc máy tính này, không cần Zalo. iPhone: thêm web vào màn hình chính trước.', pushButton(true))),
     h('section', { class: 'card setgroup' }, h('h2', {}, 'Gói và lượt dùng'),
       h('dl', { class: 'summary' },
-        h('dt', {}, 'Gói'), h('dd', {}, (me.plan?.name || 'Miễn phí') + (me.plan?.expires ? ` · đến ${fmtDate(me.plan.expires)}` : '')),
-        h('dt', {}, 'Hôm nay còn'), h('dd', {}, `${left('render')}/${lim.render || 0} lượt dựng` + (me.ai?.gemini || me.ai?.openai || me.ai?.ollama ? ` · ${left('script')}/${lim.script || 0} lượt AI viết` : '')),
+        h('dt', {}, 'Gói'), planValue,
+        h('dt', {}, 'Hôm nay còn'), limitsValue,
         h('dt', {}, 'Số dư credit'), credits),
       V('feature:plans') === 'on' ? h('a', { class: 'btn ghost', href: '#/goi' }, 'Xem bảng giá') : null),
+    orderHistory,
     ui.zalo?.enabled ? h('section', { class: 'card setgroup' }, h('h2', {}, 'Zalo'), row(me.zaloLinked ? 'Đã kết nối' : 'Chưa kết nối', 'Nhận video và tạo video ngay trong Zalo.', h('a', { class: 'btn ghost small', href: '#/zalo' }, me.zaloLinked ? 'Quản lý' : 'Kết nối'))) : null,
     h('section', { class: 'card setgroup' }, h('h2', {}, 'Dữ liệu và quyền riêng tư'),
       row('Tải dữ liệu của tôi', 'Bản sao toàn bộ dữ liệu (JSON): kịch bản, video, đơn hàng, nhật ký.', h('a', { class: 'btn ghost small', href: '/api/account/export', 'data-ev': 'export-data' }, 'Tải về')),
@@ -1174,7 +1183,18 @@ async function showAccount() {
         try { await api('/api/account/delete', { method: 'POST', body: { confirm: 'XOA' } }); toast('Đã xoá tài khoản.'); setTimeout(() => { location.hash = '#/'; location.reload(); }, 1200); } catch (e) { fail(e); }
       } }, 'Xoá vĩnh viễn'))),
     footer());
-  api('/api/credits').then((c) => { credits.textContent = (c.monthlyLeft ? `${c.monthlyLeft} video trong gói tháng này · ` : '') + `${c.balance} credit`; }).catch(() => { credits.textContent = '—'; });
+  paintEntitlements();window.addEventListener('nv:member-updated',paintEntitlements);
+  let historyTimer,lastStatus='';
+  const loadOrders=async()=>{
+   if(!dialog.open)return;
+   try{const data=await api('/api/plans'),signature=JSON.stringify(data.orders.map(o=>[o.code,o.status]));
+    orderHistory.replaceChildren(h('h2',{},'Đơn hàng của tôi'),...(data.orders.length?data.orders.map(o=>h('div',{class:'account-order-row'},h('div',{},h('b',{},o.code),h('small',{class:'muted'},fmtDate(o.created_at))),h('strong',{},money(o.amount)),h('span',{class:'pill '+(o.status==='paid'?'done':o.status==='pending'?'queued':'failed')},{pending:'Chờ thanh toán',paid:'Đã thanh toán',cancelled:'Đã huỷ',expired:'Hết hạn'}[o.status]||o.status),o.status==='pending'?h('button',{type:'button',class:'ghost small',onclick:async()=>{try{const result=await api('/api/orders/'+o.code);if(result.order.status==='paid'){await refreshMemberState();return loadOrders();}if(result.order.status!=='pending')return loadOrders();dialog.close();payModal(result.order,{id:o.plan,name:ui.doc?.packs?.find(p=>'credit:'+p.id===o.plan)?.name||ui.plans?.find(p=>p.id===String(o.plan).split(':')[0])?.name||o.plan});}catch(e){fail(e);}}},'Thanh toán'):null)):[h('p',{class:'muted'},'Bạn chưa có đơn hàng.')]));
+    if(!lastStatus||lastStatus!==signature)await refreshMemberState().catch(()=>{});lastStatus=signature;
+   }catch(e){orderHistory.replaceChildren(h('h2',{},'Đơn hàng của tôi'),h('p',{class:'bad'},e.message),h('button',{class:'ghost small',onclick:loadOrders},'Thử lại'));}
+   if(dialog.open)historyTimer=setTimeout(loadOrders,8000);
+  };
+  dialog.addEventListener('close',()=>{clearTimeout(historyTimer);window.removeEventListener('nv:member-updated',paintEntitlements);},{once:true});
+  loadOrders();
 }
 
 // ---------- plans & payment
@@ -1234,15 +1254,10 @@ async function showPlans() {
   show(h('header', { class: 'pagehead center' }, h('div', {}, h('h1', {}, 'Chọn gói phù hợp với nhu cầu của bạn'),
       h('p', { class: 'muted' }, me ? `Bạn đang dùng gói ${r.current.name || 'Miễn phí'}${r.current.expires ? ` (đến ${fmtDate(r.current.expires)})` : ''}. ` + 'Thanh toán bằng VietQR, kích hoạt tự động trong 1–2 phút.' : 'Dù bạn là cá nhân hay doanh nghiệp, luôn có gói phù hợp. Thanh toán VietQR, kích hoạt tự động.'))),
     toggle, grid,
-    packs.length ? h('section', { class: 'card' }, h('h2', {}, 'Credit phim tài liệu AI'), h('p', { class: 'muted' }, `Mỗi phim tài liệu dùng ${ui.doc?.perVideo || 1} credit (ảnh AI cho từng cảnh).`),
+    packs.length ? h('section', { class: 'card credit-pricing' }, h('h2', {}, 'Credit phim tài liệu AI'), h('p', { class: 'muted' }, `Mỗi phim tài liệu dùng ${ui.doc?.perVideo || 1} credit (ảnh AI cho từng cảnh).`),
       h('div', { class: 'packs' }, packs.map((k) => h('div', { class: 'pack' }, h('b', {}, k.name), h('span', {}, `${k.credits} credit`), h('b', { class: 'amount' }, money(k.price)),
-        h('button', { type: 'button', class: 'ghost small', onclick: (e) => buy({ id: 'credit:' + k.id, name: k.name }, e.currentTarget) }, 'Mua'))))) : null,
-    h('p', { class: 'muted center' }, 'Hạn mức ghi rõ ở từng gói. Chuyển khoản qua mã VietQR; không lưu thông tin thẻ hay tài khoản ngân hàng của bạn. ', h('a', { href: '#/hoan-tien' }, 'Chính sách hoàn tiền')),
-    r.orders.length ? h('div', { class: 'card' }, h('h2', {}, 'Đơn của bạn'), ...r.orders.map((o) => h('div', { class: 'row' },
-      h('code', {}, o.code), money(o.amount), h('span', { class: 'pill ' + (o.status === 'paid' ? 'done' : o.status === 'pending' ? 'queued' : 'failed') }, { pending: 'Chờ thanh toán', paid: 'Đã thanh toán', cancelled: 'Đã huỷ', expired: 'Hết hạn' }[o.status] || o.status),
-      h('small', { class: 'muted' }, fmtDate(o.created_at)),
-      o.status === 'pending' ? h('button', { type: 'button', class: 'small', onclick: (e) => buy({ id: o.plan, name: (plans.find((x) => x.id === String(o.plan).split(':')[0])?.name || o.plan) + (String(o.plan).endsWith(':year') ? ' (1 năm)' : '') }, e.currentTarget) }, 'Thanh toán') : null,
-      o.status === 'pending' ? h('button', { type: 'button', class: 'ghost small', onclick: async () => { await api(`/api/orders/${o.code}/cancel`, { method: 'POST' }).catch(fail); showPlans(); } }, 'Huỷ') : null))) : null,
+        h('button', { type: 'button', class: 'ghost small', onclick: (e) => buy({ id: 'credit:' + k.id, name: k.name }, e.currentTarget) }, 'Mua credit'))))) : null,
+    h('p', { class: 'muted pricing-note' }, 'Hạn mức theo từng gói · Thanh toán VietQR · Không lưu thông tin thẻ hoặc tài khoản ngân hàng. ', h('a', { href: '#/hoan-tien' }, 'Chính sách hoàn tiền')),
     footer());
   paintPlans();
 }
@@ -1253,53 +1268,68 @@ function payModal(order, plan) {
   const bank = bankOf(order.bank), hold = (order.holdMinutes || 15) * 60_000;
   const until = Math.max(Date.now() + 60_000, (order.created_at || Date.now()) + hold);
   const clock = h('b', { class: 'clock' }, '--:--'), ring = h('i', { class: 'ringfill' });
-  const status = h('p', { class: 'wait' }, h('i', { class: 'spin' }), ' Đang chờ nhận tiền… trang tự cập nhật');
+  const status = h('p', { class: 'wait',role:'status','aria-live':'polite' }, h('i', { class: 'spin' }), order.auto?' Đang chờ xác nhận thanh toán…':' Chờ quản trị xác nhận chuyển khoản');
   const copy = (text, what) => h('button', { type: 'button', class: 'ghost small copy', onclick: async () => { try { await navigator.clipboard.writeText(text); toast('Đã sao chép ' + what + '.'); } catch { toast('Hãy bôi đen rồi copy.'); } } }, 'Sao chép');
-  const close = () => { done = true; bg.remove(); };
-  let done = false;
+  const close = () => { done = true;clearTimeout(pollTimer);clearTimeout(tickTimer);window.removeEventListener('focus',checkNow);document.removeEventListener('visibilitychange',checkNow);bg.remove(); };
+  let done = false,pollTimer,tickTimer,checking=false;
+  const checkNow=()=>{if(!document.hidden&&!done){clearTimeout(pollTimer);poll();}};
   const body = h('div', { class: 'paybox' },
     h('div', { class: 'payhead' }, h('div', {}, h('small', { class: 'muted' }, 'Thanh toán gói'), h('h2', {}, plan?.name || order.planName || '')), h('div', { class: 'timer' }, h('span', { class: 'ring' }, ring), clock)),
     h('div', { class: 'pay' },
       h('div', { class: 'qrwrap' }, h('img', { src: order.qr, alt: 'Mã QR chuyển khoản', width: 240, height: 240 }), h('small', { class: 'muted' }, 'Mở app ngân hàng → Quét mã QR')),
       h('div', { class: 'payinfo' },
         h('div', { class: 'bankrow' }, bankLogo(bank, 44), h('div', {}, h('b', {}, bank.name), h('small', { class: 'muted' }, order.accountName))),
-        h('div', { class: 'kv' }, h('span', {}, 'Số tài khoản'), h('b', {}, order.account), copy(order.account, 'số tài khoản')),
-        h('div', { class: 'kv' }, h('span', {}, 'Số tiền'), h('b', { class: 'amount' }, money(order.amount)), copy(String(order.amount), 'số tiền')),
-        h('div', { class: 'kv' }, h('span', {}, 'Nội dung'), h('b', { class: 'memo' }, order.memo), copy(order.memo, 'nội dung')),
+        h('div', { class: 'transfer-row' }, h('span', {}, 'Số tài khoản'), h('b', {}, order.account), copy(order.account, 'số tài khoản')),
+        h('div', { class: 'transfer-row' }, h('span', {}, 'Số tiền'), h('b', { class: 'amount' }, money(order.amount)), copy(String(order.amount), 'số tiền')),
+        h('div', { class: 'transfer-row' }, h('span', {}, 'Nội dung'), h('b', { class: 'memo' }, order.memo), copy(order.memo, 'nội dung')),
         h('p', { class: 'muted small' }, order.note))),
     status,
     h('div', { class: 'row', style: 'justify-content:space-between' }, h('a', { href: '#/hoan-tien', onclick: close }, 'Chính sách hoàn tiền'),
-      h('button', { type: 'button', class: 'ghost small', onclick: async () => { if (!confirm('Huỷ đơn này?')) return; await api(`/api/orders/${order.code}/cancel`, { method: 'POST' }).catch(fail); close(); showPlans(); } }, 'Huỷ đơn')));
+      h('button', { type: 'button', class: 'ghost small', onclick: async () => { if (!confirm('Huỷ đơn này?')) return;try{await api(`/api/orders/${order.code}/cancel`, { method: 'POST' });close();toast('Đã huỷ đơn.');}catch(e){fail(e);checkNow();} } }, 'Huỷ đơn')));
   const bg = h('div', { class: 'sheet-bg', onclick: (e) => { if (e.target === bg) close(); } },
     h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Thanh toán' }, h('button', { type: 'button', class: 'ghost small close', 'aria-label': 'Đóng', onclick: close }, '✕'), body));
   document.body.append(bg);
   const tick = () => {
-    if (done || !document.body.contains(bg)) return;
+    if(!document.body.contains(bg)){close();return;}
+    if(done)return;
     const left = until - Date.now();
     if (left <= 0) {
       clock.textContent = '00:00'; ring.style.cssText = 'transform:rotate(0deg)';
-      status.replaceChildren('⏰ Hết thời gian giữ mã. Nếu bạn đã chuyển khoản, gói vẫn được kích hoạt tự động khi tiền về.');
+      status.replaceChildren('Thời gian hiển thị mã đã hết. Nếu bạn đã chuyển khoản, hãy chờ xác nhận hoặc liên hệ quản trị.');
     } else {
       const m = Math.floor(left / 60000), sec = Math.floor((left % 60000) / 1000);
       clock.textContent = `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
       ring.style.cssText = `transform:rotate(${360 * (left / hold)}deg)`;
       clock.classList.toggle('low', left < 120_000);
-      setTimeout(tick, 1000);
+      tickTimer=setTimeout(tick, 1000);
     }
   };
   tick();
   const poll = async () => {
-    if (done || !document.body.contains(bg)) return;
-    const st = await api('/api/orders/' + order.code).catch(() => null);
-    if (st?.order.status === 'paid') {
-      done = true; track('pay_done', { plan: order.plan });
-      body.replaceChildren(h('div', { class: 'success' }, h('span', { class: 'tick' }, '✓'), h('h2', {}, 'Thanh toán thành công!'), h('p', { class: 'muted' }, `Gói ${plan?.name || ''} đã được kích hoạt. Chúc bạn sáng tạo vui vẻ!`),
-        h('button', { type: 'button', onclick: async () => { bg.remove(); me = await api('/api/me').catch(() => me); location.hash = '#/tao'; } }, 'Tạo video ngay')));
-      return;
-    }
-    setTimeout(poll, 4000);
+    if(!document.body.contains(bg)){close();return;}
+    if(done||checking)return;
+    checking=true;
+    try{
+      const st=await api('/api/orders/'+order.code);
+      if(done||!document.body.contains(bg))return;
+      if(st.order.status==='paid'){
+        done=true;clearTimeout(tickTimer);window.removeEventListener('focus',checkNow);document.removeEventListener('visibilitychange',checkNow);track('pay_done',{plan:order.plan});
+        await refreshMemberState().catch(()=>{});
+        if(document.body.dataset.page==='goi')await showPlans().catch(()=>{});
+        const isCredit=String(order.plan||plan?.id||'').startsWith('credit:');
+        body.replaceChildren(h('div',{class:'success'},h('span',{class:'tick'},'✓'),h('h2',{},'Thanh toán thành công'),h('p',{class:'muted'},isCredit?'Credit đã được cộng vào tài khoản.':'Gói đã được kích hoạt cho tài khoản của bạn.'),h('button',{type:'button',onclick:()=>{close();showAccount();}},'Xem tài khoản'),h('button',{type:'button',class:'ghost',onclick:()=>{close();location.hash='#/tao';}},'Tạo video')));
+        return;
+      }
+      if(['cancelled','expired'].includes(st.order.status)){
+        done=true;clearTimeout(tickTimer);window.removeEventListener('focus',checkNow);document.removeEventListener('visibilitychange',checkNow);
+        body.replaceChildren(h('div',{class:'success'},h('h2',{},st.order.status==='cancelled'?'Đơn đã huỷ':'Đơn đã hết hạn'),h('p',{class:'muted'},'Nếu bạn đã chuyển khoản, hãy liên hệ quản trị kèm mã '+order.code+'.'),h('button',{type:'button',class:'ghost',onclick:close},'Đóng')));return;
+      }
+      status.replaceChildren(h('i',{class:'spin'}),order.auto?' Đang chờ xác nhận thanh toán…':' Chờ quản trị xác nhận chuyển khoản');
+    }catch{if(!done)status.textContent='Chưa kiểm tra được trạng thái. Đang thử kết nối lại…';}
+    finally{checking=false;if(!done&&document.body.contains(bg))pollTimer=setTimeout(poll,4000);}
   };
-  setTimeout(poll, 4000);
+  window.addEventListener('focus',checkNow);document.addEventListener('visibilitychange',checkNow);
+  poll();
 }
 
 // ---------- Zalo
