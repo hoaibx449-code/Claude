@@ -1,7 +1,7 @@
 // Uploaded pictures (reference character, product photos), video playback with seeking,
 // and the community gallery of videos people chose to share.
 import type { User } from './auth.ts';
-import { body, type Env, HttpError, json, sha256, useQuota } from './util.ts';
+import { body, readBytes, type Env, HttpError, json, sha256, useQuota } from './util.ts';
 import { vis } from './settings.ts';
 import type { Rc, XEnv } from './worker.ts';
 
@@ -35,7 +35,7 @@ export async function upload(req: Request, env: XEnv, rc: Rc, user: User) {
   const type = (req.headers.get('content-type') || '').split(';')[0].trim();
   const ext = TYPES[type];
   if (!ext) throw new HttpError(415, 'Chỉ nhận ảnh PNG, JPG hoặc WebP.');
-  const bytes = new Uint8Array(await req.arrayBuffer());
+  const bytes = await readBytes(req,MAX_UPLOAD);
   if (bytes.length < 100 || bytes.length > MAX_UPLOAD) throw new HttpError(413, 'Ảnh cần nhỏ hơn 5 MB.');
   // the bytes must really be that kind of picture
   const sig = (a: number[]) => a.every((b, i) => bytes[i] === b);
@@ -58,7 +58,7 @@ export async function uploadSite(req: Request, env: XEnv, rc: Rc) {
   const type = (req.headers.get('content-type') || '').split(';')[0].trim();
   const ext = SITE_TYPES[type];
   if (!ext) throw new HttpError(415, 'Chỉ nhận ảnh PNG/JPG/WebP, video MP4/WebM hoặc nhạc MP3/M4A.');
-  const bytes = new Uint8Array(await req.arrayBuffer());
+  const bytes = await readBytes(req,SITE_MAX);
   if (bytes.length < 100 || bytes.length > SITE_MAX) throw new HttpError(413, 'Tệp cần nhỏ hơn 60 MB.');
   const sig = (a: number[], at = 0) => a.every((b, i) => bytes[at + i] === b);
   const real = ext === 'png' ? sig([0x89, 0x50, 0x4e, 0x47]) : ext === 'jpg' ? sig([0xff, 0xd8, 0xff]) : ext === 'webp' ? sig([0x52, 0x49, 0x46, 0x46]) && bytes[8] === 0x57

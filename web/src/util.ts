@@ -72,7 +72,7 @@ export function cookie(req: Request, name: string) {
   return m ? m[1] : null;
 }
 
-export async function body<T = any>(req: Request, maxBytes = 200_000): Promise<T> {
+export async function readBytes(req:Request,maxBytes:number):Promise<Uint8Array> {
   if (Number(req.headers.get('content-length')) > maxBytes) throw new HttpError(413, 'Dữ liệu gửi lên quá lớn.');
   const reader = req.body?.getReader();
   const chunks: Uint8Array[] = [];
@@ -91,7 +91,10 @@ export async function body<T = any>(req: Request, maxBytes = 200_000): Promise<T
   const bytes = new Uint8Array(size);
   let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-  const text = new TextDecoder().decode(bytes);
+  return bytes;
+}
+export async function body<T = any>(req: Request, maxBytes = 200_000): Promise<T> {
+  const text = new TextDecoder().decode(await readBytes(req,maxBytes));
   try {
     const value = JSON.parse(text || '{}');
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected an object');
