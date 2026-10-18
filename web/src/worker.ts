@@ -1,6 +1,7 @@
 import {hunterPublic} from './hunter.ts';
 import {feedPhoto,tickFeed} from './image-feed.ts';
 import {googleFeedCallback} from './feed-google.ts';
+import {bridgeReceive} from './feed-apps-script.ts';
 import { creativeResult } from './creative.ts';
 import { creationChoice, designIssues } from './creation-policy.ts';
 // Nét Vẽ Studio API (Cloudflare Worker). Static pages are served from ./public.
@@ -130,6 +131,7 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
     return asset;
   }
   const env = await effectiveEnv(rawEnv);
+  if(path.startsWith('/api/image-feed/bridge/'))return bridgeReceive(req,env,path.slice('/api/image-feed/bridge/'.length));
   if(path==='/api/image-feed/google/callback'&&method==='GET')return googleFeedCallback(req,env);
   const feedImage=path.match(/^\/api\/image-feed\/photo\/([a-f0-9]{64})$/);
   if(feedImage&&method==='GET')return feedPhoto(env,feedImage[1],url.searchParams.get('t')||'');
