@@ -35,14 +35,15 @@ test('a ready video wakes every device with a VAPID-signed, empty push; expired 
   const { db, subs, notes } = fakeDb();
   subs.set('https://fcm.googleapis.com/fcm/send/live', 'u1');
   subs.set('https://fcm.googleapis.com/fcm/send/gone', 'u1');
+  subs.set('https://fcm.googleapis.com/fcm/send/redirect', 'u1');
   const env = { DB: db } as any, key = await pushPublicKey(env);
   assert.equal(b64(key).length, 65, 'uncompressed P-256 public key');
   const calls: any[] = [];
   const real = globalThis.fetch;
-  globalThis.fetch = (async (url: string, init: any) => { calls.push({ url, init }); return new Response(null, { status: url.endsWith('gone') ? 410 : 201 }); }) as any;
+  globalThis.fetch = (async (url: string, init: any) => { assert.equal(init.redirect,'manual');calls.push({ url, init }); return new Response(null, { status: url.endsWith('gone') ? 410 : url.endsWith('redirect')?302:201 }); }) as any;
   try {
     const r = await pushUser(env, 'u1', { title: 'Video đã xong', body: 'x', url: '/#/p/1' });
-    assert.deepEqual(r, { devices: 2, sent: 1 });
+    assert.deepEqual(r, { devices: 3, sent: 1 });
   } finally { globalThis.fetch = real; }
   assert.equal(notes.get('u1').title, 'Video đã xong');
   assert.ok(!subs.has('https://fcm.googleapis.com/fcm/send/gone'));

@@ -11,7 +11,10 @@ export interface User { id: string; email: string; name: string | null; picture:
 let jwksCache: { keys: any[]; until: number } | null = null;
 async function googleKeys(): Promise<any[]> {
   if (jwksCache && jwksCache.until > Date.now()) return jwksCache.keys;
-  const res = await fetch('https://www.googleapis.com/oauth2/v3/certs',{signal:AbortSignal.timeout(8000),redirect:'error'});
+  // Workers supports manual/follow only. Manual also prevents following an unexpected redirect.
+  let res:Response;
+  try { res = await fetch('https://www.googleapis.com/oauth2/v3/certs',{signal:AbortSignal.timeout(8000),redirect:'manual'}); }
+  catch { throw new HttpError(502,'Không kết nối được Google, thử đăng nhập lại sau ít phút.'); }
   if (!res.ok) throw new HttpError(502, 'Không kết nối được Google, thử lại sau.');
   const maxAge = Number((res.headers.get('cache-control') || '').match(/max-age=(\d+)/)?.[1] || 3600);
   jwksCache = { keys: ((await res.json()) as any).keys, until: Date.now() + maxAge * 1000 };

@@ -54,7 +54,7 @@ export async function pushUser(env: Env, userId: string, note: PushNote, contact
   for (const s of subs) {
     if(!validEndpoint(s.endpoint))continue;
     try {
-      const res = await fetch(s.endpoint, { method: 'POST', redirect:'error', headers: { TTL: '86400', Urgency: 'high', 'Content-Length': '0', Authorization: await authHeader(env, s.endpoint, contact) }, signal: AbortSignal.timeout(8000) });
+      const res = await fetch(s.endpoint, { method: 'POST', redirect:'manual', headers: { TTL: '86400', Urgency: 'high', 'Content-Length': '0', Authorization: await authHeader(env, s.endpoint, contact) }, signal: AbortSignal.timeout(8000) });
       if (res.status === 404 || res.status === 410) await env.DB.prepare('DELETE FROM push_subs WHERE endpoint = ?').bind(s.endpoint).run();
       else if (res.ok) sent++;
     } catch {}

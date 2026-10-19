@@ -55,11 +55,20 @@ test('Login browser binding blocks a valid nonce from a different browser and no
 test('Google token validation rejects altered signatures, wrong audience/issuer/nonce and expired/unverified identities',async()=>{
  const original=globalThis.fetch;try{
  const kp=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
- const jwk={...await crypto.subtle.exportKey('jwk',kp.publicKey),kid:'audit-key'};globalThis.fetch=async()=>Response.json({keys:[jwk]});
+ const jwk={...await crypto.subtle.exportKey('jwk',kp.publicKey),kid:'audit-key'};
+ let googleMode:'network'|'redirect'|'ok'='network';
+ globalThis.fetch=async(_url,init)=>{
+  assert.equal(init?.redirect,'manual','Cloudflare Workers rejects redirect:error; never follow redirects for Google keys');
+  if(googleMode==='network')throw new TypeError('network unavailable');
+  if(googleMode==='redirect')return new Response(null,{status:302,headers:{location:'https://attacker.test/keys'}});
+  return Response.json({keys:[jwk]});
+ };
  const enc=(x:any)=>Buffer.from(JSON.stringify(x)).toString('base64url');const now=Math.floor(Date.now()/1000);
  const base={iss:'https://accounts.google.com',aud:'fixture-client',exp:now+3600,iat:now,sub:'12345',email:'admin@test',email_verified:true,nonce:'expected-nonce'};
  const signed=async(payload:any)=>{const text=enc({alg:'RS256',kid:'audit-key'})+'.'+enc(payload);return text+'.'+Buffer.from(await crypto.subtle.sign('RSASSA-PKCS1-v1_5',kp.privateKey,new TextEncoder().encode(text))).toString('base64url');};
- assert.equal((await verifyGoogleToken(await signed(base),'fixture-client','expected-nonce')).email,'admin@test');
+ await assert.rejects(()=>signed(base).then(t=>verifyGoogleToken(t,'fixture-client','expected-nonce')),{status:502});
+ googleMode='redirect';await assert.rejects(()=>signed(base).then(t=>verifyGoogleToken(t,'fixture-client','expected-nonce')),{status:502});
+ googleMode='ok';assert.equal((await verifyGoogleToken(await signed(base),'fixture-client','expected-nonce')).email,'admin@test');
  for(const patch of [{aud:'attacker-client'},{iss:'https://attacker.test'},{exp:now-1},{iat:now+9999},{email_verified:false},{nonce:'stolen-nonce'}])await assert.rejects(()=>signed({...base,...patch}).then(t=>verifyGoogleToken(t,'fixture-client','expected-nonce')));
  const valid=await signed(base),parts=valid.split('.');parts[1]=enc({...base,email:'forged-admin@test'});await assert.rejects(()=>verifyGoogleToken(parts.join('.'),'fixture-client','expected-nonce'));
  await assert.rejects(()=>verifyGoogleToken(enc({alg:'none'})+'.'+enc(base)+'.','fixture-client','expected-nonce'));
