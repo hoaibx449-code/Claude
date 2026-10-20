@@ -1,0 +1,15 @@
+/* A shared creative canvas: drafting grid, sketch strokes and restrained color. */
+body {
+ background-color:var(--paper);
+ background-image:radial-gradient(ellipse at 8% 12%,color-mix(in srgb,var(--accent) 12%,transparent),transparent 42%),radial-gradient(ellipse at 94% 34%,color-mix(in srgb,var(--accent-2) 9%,transparent),transparent 36%),radial-gradient(ellipse at 42% 96%,color-mix(in srgb,var(--accent) 7%,transparent),transparent 45%),linear-gradient(color-mix(in srgb,var(--accent) 4%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--accent) 4%,transparent) 1px,transparent 1px);
+ background-size:auto,auto,auto,44px 44px,44px 44px;
+ background-attachment:fixed;
+ isolation:isolate;
+}
+body::before,body::after{content:"";position:fixed;pointer-events:none;z-index:-1;opacity:.32;width:380px;height:380px;background-repeat:no-repeat;background-size:contain;}
+body::before{top:100px;left:-160px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 400' fill='none' stroke='%237c6ee6' stroke-width='1.4'%3E%3Cpath d='M30 300C75 55 260 30 320 150S170 370 90 260S245 90 370 180'/%3E%3Cpath d='M50 315C90 70 275 45 335 165S185 385 105 275' opacity='.45'/%3E%3Ccircle cx='320' cy='150' r='6'/%3E%3Cpath d='M345 70v24m-12-12h24M95 335v18m-9-9h18'/%3E%3C/svg%3E");}
+body::after{bottom:30px;right:-145px;transform:rotate(18deg);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 400' fill='none' stroke='%238c7be8' stroke-width='1.2'%3E%3Crect x='65' y='75' width='230' height='175' rx='24' transform='rotate(-12 180 160)'/%3E%3Cpath d='m165 122 65 38-65 38zM45 280h240M45 295h160M330 90v30m-15-15h30'/%3E%3Ccircle cx='70' cy='295' r='7' fill='%238c7be8' stroke='none'/%3E%3Ccircle cx='310' cy='280' r='35' stroke-dasharray='4 7'/%3E%3C/svg%3E");}
+body[data-page="admin"]::before,body[data-page="admin"]::after,body[data-page="editor"]::before,body[data-page="editor"]::after{opacity:.1;}
+@media(max-width:650px){body{background-size:auto,auto,auto,32px 32px,32px 32px;background-attachment:scroll;}body::before,body::after{width:250px;height:250px;opacity:.2;}body::before{left:-155px;top:130px;}body::after{right:-155px;bottom:70px;}}
+@media(prefers-color-scheme:dark){body::before,body::after{opacity:.22;}}
+@media print{body{background:#fff!important;}body::before,body::after{display:none;}}
