@@ -603,6 +603,28 @@ const GOOGLE_G = () => { const ns = 'http://www.w3.org/2000/svg', svg = document
   return svg; };
 /** Installed app (home screen) or an in-app browser (Zalo, Facebook...): Google's popup cannot report back there. */
 const popupUnsafe = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true || /Zalo|FBAN|FBAV|Instagram|Line\/|TikTok|musical_ly|wv\)/i.test(navigator.userAgent);
+// Google's SDK inserts an unstyled SVG before its iframe/styles are ready.
+// Keep that intermediate DOM hidden and bounded; the fallback stays usable throughout.
+function mountGoogleButton(slot, fallback, config, callback) {
+  const host = h('div', { class: 'gsi-host', 'aria-hidden': 'true', inert: true });
+  let timer, done = false;
+  const cleanup = () => { clearTimeout(timer); host.removeEventListener('load', ready, true); };
+  const ready = (event) => {
+    if (done || event.target.tagName !== 'IFRAME') return;
+    done = true; cleanup();
+    if (!slot.isConnected) return;
+    fallback.hidden = true; host.classList.add('ready'); host.removeAttribute('aria-hidden'); host.inert = false;
+  };
+  const fail = () => { if (done) return; done = true; cleanup(); host.remove(); };
+  slot.replaceChildren(fallback, host);
+  host.addEventListener('load', ready, true);
+  timer = setTimeout(fail, 7000);
+  try {
+    google.accounts.id.initialize({ client_id: config.clientId, nonce: config.nonce, ux_mode: 'popup', use_fedcm_for_prompt: true, callback });
+    google.accounts.id.renderButton(host, { theme: 'outline', size: 'large', text: 'continue_with', locale: 'vi', shape: 'pill', width: Math.min(300, slot.clientWidth || 300) });
+  } catch { fail(); }
+  return () => { done = true; cleanup(); };
+}
 function openLogin(reason, after) {
   if (me) return;
   if (after) sessionStorage.setItem('nv_after', JSON.stringify(after));
@@ -611,7 +633,8 @@ function openLogin(reason, after) {
   const mode = ui.auth?.google || 'auto', redirect = mode === 'redirect' || (mode === 'auto' && popupUnsafe());
   const next = '/' + (after?.hash || location.hash || '#/');
   const slot = h('div', { class: 'gslot' });
-  const close = () => { bg.remove(); };
+  let disposeGoogle;
+  const close = () => { disposeGoogle?.(); bg.remove(); };
   // say why at the moment of asking: what the sign-in is for, and that the work is kept
   const why = reason === 'create' ? (after?.create?.source === 'topic' ? ['Đăng nhập để AI viết và lưu kịch bản', 'Chủ đề bạn vừa nhập được giữ nguyên; AI bắt đầu viết ngay sau khi đăng nhập.']
       : ['Đăng nhập để lưu và nhận video', 'Kịch bản và lựa chọn của bạn được giữ nguyên; video bắt đầu tạo ngay sau khi đăng nhập.'])
@@ -643,17 +666,13 @@ function openLogin(reason, after) {
   document.body.append(bg);
   if (cfg?.clientId && !redirect) {
     // ordinary browsers: Google's own button (popup); the redirect button is the fallback if it does not load
-    slot.append(h('div', { class: 'sk', style: 'height:44px;width:300px;border-radius:99px' }));
+    slot.append(gBtn);
     Promise.all([loadGis(), api('/api/auth/config')]).then(([, c]) => {
-      google.accounts.id.initialize({
-        client_id: c.clientId, nonce: c.nonce, ux_mode: 'popup', use_fedcm_for_prompt: true,
-        callback: async (r) => {
+      if (!bg.isConnected) return;
+      disposeGoogle = mountGoogleButton(slot, gBtn, c, async (r) => {
           try { await api('/api/auth/google', { method: 'POST', body: { credential: r.credential, nonce: c.nonce, consent: true } }); location.reload(); }
           catch (e) { toast(e.message); setTimeout(() => location.reload(), 2500); }
-        },
       });
-      slot.replaceChildren();
-      google.accounts.id.renderButton(slot, { theme: 'filled_blue', size: 'large', text: 'continue_with', locale: 'vi', shape: 'pill', width: 300 });
     }).catch(() => slot.replaceChildren(gBtn));
   }
 }
