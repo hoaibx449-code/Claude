@@ -39,6 +39,7 @@ function h(tag, attrs, ...kids) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v == null || v === false) continue;
+    if (k === 'href' && /^\/?#\//.test(v)) { el.setAttribute(k, cleanRoute(v)); continue; }
     if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
     else if (k === 'value') el.value = v;
     else if (k === 'style') el.style.cssText = v; // CSSOM: allowed by the CSP, unlike style attributes
@@ -103,8 +104,7 @@ function applyUI(next) {
   document.getElementById('brandAccent').textContent = ui.brand.accent || '';
   document.getElementById('sideBrand').textContent = ui.brand.name;
   document.getElementById('sideAccent').textContent = ui.brand.accent || '';
-  document.title = [ui.brand.name, ui.brand.accent].filter(Boolean).join(' ');
-  document.querySelector('meta[name=description]')?.setAttribute('content', ui.brand.tagline || '');
+  updateRouteMetadata([ui.brand.name, ui.brand.accent].filter(Boolean).join(' '));
   document.getElementById('logout').textContent = T('logout');
   document.getElementById('adminLink').textContent = T('admin');
   // links to switched-off pages disappear (Beta hides prices)
@@ -145,7 +145,7 @@ const VID = (() => { try { let v = localStorage.getItem('nv_vid'); if (!v) { v =
 const queue = [];
 let flushTimer = null, viewStart = Date.now(), currentView = '';
 function track(type, data, extra = {}) {
-  queue.push({ type: 'ui.' + type, ts: Date.now(), path: location.hash || '#/', data, ...extra });
+  queue.push({ type: 'ui.' + type, ts: Date.now(), path: currentRoute() || '#/', data, ...extra });
   if (queue.length >= 25) flush(); else if (!flushTimer) flushTimer = setTimeout(flush, 5000);
 }
 function flush() {
@@ -209,7 +209,7 @@ async function boot() {
   document.getElementById('logout').addEventListener('click', async () => {
     track('click', { what: 'logout' }); flush();
     await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
-    location.hash = '#/'; location.reload();
+    navigate('#/'); location.reload();
   });
   document.getElementById('loginBtn').addEventListener('click', () => openLogin('header'));
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
@@ -218,7 +218,7 @@ async function boot() {
   try { cached = JSON.parse(store.get('nv_boot') || 'null'); } catch {}
   const fresh = Promise.all([api('/api/auth/config').catch(() => null), api('/api/me').catch((e) => (e.status === 401 ? null : undefined))]);
   // a page that needs an account waits for the real answer (no login sheet flashing at a signed-in user)
-  if (cached?.cfg && (cached.me || PUBLIC[location.hash.split('?')[0]])) {
+  if (cached?.cfg && (cached.me || PUBLIC[currentRoute().split('?')[0]])) {
     cfg = cached.cfg; applyUI(cfg.ui); me = cached.me || null; if (me) applyUI(me.ui);
   } else {
     cached = null;
@@ -234,7 +234,7 @@ async function boot() {
     if (m !== undefined) { me = m; if (me) applyUI(me.ui); }
     paintHeader();
     // repaint only if something visible changed (signed out elsewhere, admin renamed things...)
-    if (JSON.stringify([cfg?.ui, me?.user?.id, me?.ui, me?.plan, me?.admin]) !== was && !location.hash.startsWith('#/p/')) { if (me) document.querySelector('.sheet-bg')?.remove(); route(); }
+    if (JSON.stringify([cfg?.ui, me?.user?.id, me?.ui, me?.plan, me?.admin]) !== was && !currentRoute().startsWith('#/p/')) { if (me) document.querySelector('.sheet-bg')?.remove(); route(); }
   }
   // nonce is single-use: never reuse a cached one
   store.set('nv_boot', JSON.stringify({ cfg: { ...cfg, nonce: null }, me }));
@@ -269,9 +269,9 @@ document.addEventListener('submit', (e) => {
   e.preventDefault();
   const q = document.getElementById('topSearchInput').value.trim(), page = document.body.dataset.page;
   const where = page === 'prompt-hunter' || page === 'video' || page === 'mau' || page === 'cong-dong' ? page : V('feature:community') === 'on' ? 'cong-dong' : 'mau';
-  location.hash = `#/${where}${q ? '?q=' + encodeURIComponent(q) : ''}`;
+  navigate(`#/${where}${q ? '?q=' + encodeURIComponent(q) : ''}`);
 });
-const searchTerm = () => fold(new URLSearchParams(location.hash.split('?')[1] || '').get('q') || '');
+const searchTerm = () => fold(new URLSearchParams(currentRoute().split('?')[1] || '').get('q') || '');
 function fold(t) { return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().trim(); }
 const matches = (q, ...texts) => !q || texts.some((t) => fold(t).includes(q));
 
@@ -301,14 +301,14 @@ function route() {
   stopPreview(); stopDemos();
   // a window left open (payment, player, sign-in) never follows the user to another page
   document.querySelectorAll('.sheet-bg').forEach((x) => x.remove());
-  const hash = location.hash.split('?')[0];
+  const hash = currentRoute().split('?')[0];
   const m = hash.match(/^#\/p\/([a-f0-9]{24})$/), w = hash.match(/^#\/xem\/([a-f0-9]{24})\/([a-f0-9]{24})$/);
   markNav(hash === '#/' || hash === '' ? 'home' : w ? 'video' : m ? 'tao' : hash.startsWith('#/admin') ? 'admin' : hash.slice(2));
   // app pages have the side bar (desktop); the home page keeps the wide top bar
   document.body.dataset.page = hash === '#/' || hash === '' ? 'home' : m ? 'editor' : hash.slice(2).split('/')[0];
-  const q = new URLSearchParams(location.hash.split('?')[1] || '').get('q') || '';
+  const q = new URLSearchParams(currentRoute().split('?')[1] || '').get('q') || '';
   const si = document.getElementById('topSearchInput'); if (si && document.activeElement !== si) si.value = q;
-  if (hash === '#/dang-nhap-loi') { toast(new URLSearchParams(location.hash.split('?')[1] || '').get('m') || 'Đăng nhập chưa thành công.'); history.replaceState(null, '', '#/'); }
+  if (hash === '#/dang-nhap-loi') { toast(new URLSearchParams(currentRoute().split('?')[1] || '').get('m') || 'Đăng nhập chưa thành công.'); history.replaceState(null, '', '/'); }
   scrollTo(0, 0);
   if (!me && !PUBLIC[hash] && !m) { showLanding().catch(fatal); return openLogin('route', { hash }); }
   if (!me && (m || w)) { showLanding().catch(fatal); return openLogin('route', { hash }); }
@@ -336,8 +336,8 @@ function fatal(e) {
   show(h('div', { class: 'card' }, h('p', { class: 'error' }, e.message || String(e)), h('a', { href: '#/' }, 'Về trang chủ')));
 }
 function resume(after) {
-  if (after.hash) { location.hash = after.hash; return; }
-  if (after.create) { location.hash = '#/tao'; setTimeout(() => createProject(after.create), 300); }
+  if (after.hash) { navigate(after.hash); return; }
+  if (after.create) { navigate('#/tao'); setTimeout(() => createProject(after.create), 300); }
 }
 const SOCIAL = {
   facebook: ['Facebook', '<path d="M14 8h3V4h-3a4 4 0 0 0-4 4v3H7v4h3v6h4v-6h3l1-4h-4V8z"/>'],
@@ -532,14 +532,14 @@ async function startTry(text, btn, extra = {}, opts = {}) {
       // photos can be large: keep the preview working without them if the browser refuses to store them
       try { save(opts); } catch { save({ ...opts, character: undefined, affiliate: opts.affiliate && { ...opts.affiliate, image: undefined } }); }
       track('try', { format: r.spec.format, mode: opts.mode });
-      location.hash = '#/thu';
+      navigate('#/thu');
     } catch (e) { fail(e); }
   });
 }
 async function showTry() {
   viewed('try');
   let t = null; try { t = JSON.parse(sessionStorage.getItem('nv_try') || 'null'); } catch {}
-  if (!t) { location.hash = '#/tao'; return; }
+  if (!t) { navigate('#/tao'); return; }
   const canvas = h('canvas', { 'aria-label': 'Xem thử video' });
   const run = playDemo(canvas, t.spec, { dpr: 0.75 });
   let style = t.spec.style, skin = t.spec.skin;
@@ -590,7 +590,7 @@ async function showStyles() {
   show(h('header',{class:'pagehead'},h('div',{},h('h1',{},'Gợi ý sáng tạo'),h('p',{class:'description'},'Chọn một hướng tham khảo, rồi mô tả video theo ý bạn.'))),
     h('div',{class:'grid wide-2'},CREATIVE_HINTS.map(([direction,name,note])=>h('article',{class:'card'},
       h('div',{class:'catalog-title'},h('h2',{},name),helpHint(name,note)),
-      h('button',{type:'button',class:'ghost',onclick:()=>{sessionStorage.setItem('nv_direction',direction);location.hash='#/tao';}},'Dùng làm gợi ý')))),footer());
+      h('button',{type:'button',class:'ghost',onclick:()=>{sessionStorage.setItem('nv_direction',direction);navigate('#/tao');}},'Dùng làm gợi ý')))),footer());
 }
 
 // ---------- login sheet
@@ -631,7 +631,7 @@ function openLogin(reason, after) {
   track('login_open', { reason });
   document.querySelector('.sheet-bg')?.remove();
   const mode = ui.auth?.google || 'auto', redirect = mode === 'redirect' || (mode === 'auto' && popupUnsafe());
-  const next = '/' + (after?.hash || location.hash || '#/');
+  const next = cleanRoute(after?.hash || currentRoute());
   const slot = h('div', { class: 'gslot' });
   let disposeGoogle;
   const close = () => { disposeGoogle?.(); bg.remove(); };
@@ -880,7 +880,7 @@ async function createProject(body, btn, onError) {
       const r = await api('/api/projects/generate', { method: 'POST', body: b });
       if (r.note) toast(r.note);
       try { sessionStorage.setItem('autodraw:' + r.id, '1'); } catch {}
-      location.hash = '#/p/' + r.id;
+      navigate('#/p/' + r.id);
     } catch (err) { if(onError)onError(err); else fail(err); }
   });
 }
@@ -904,7 +904,7 @@ async function showVideos() {
   const paintMotion=()=>{motion.textContent=paused?'Bật xem trước':'Tạm dừng xem trước';motion.setAttribute('aria-pressed',String(!paused));};paintMotion();
   const refreshNote=h('p',{class:'muted library-refresh',role:'status'});
   const tabs = h('div', { class: 'tabs', role: 'tablist' });
-  const find = h('input', { type: 'search', placeholder: 'Tìm kiếm dự án…', 'aria-label': 'Tìm kiếm dự án', value: new URLSearchParams(location.hash.split('?')[1] || '').get('q') || '' });
+  const find = h('input', { type: 'search', placeholder: 'Tìm kiếm dự án…', 'aria-label': 'Tìm kiếm dự án', value: new URLSearchParams(currentRoute().split('?')[1] || '').get('q') || '' });
   const sortSel = h('select', { 'aria-label': 'Sắp xếp' }, h('option', { value: 'new' }, 'Sắp xếp: Mới nhất'), h('option', { value: 'old' }, 'Cũ nhất'), h('option', { value: 'name' }, 'Theo tên'));
   const view = h('select', { 'aria-label': 'Cách hiển thị' }, h('option', { value: 'list' }, 'Dạng danh sách'), h('option', { value: 'grid' }, 'Dạng lưới'));
   try { view.value = store.get('nv_vview') || 'list'; } catch {}
@@ -1182,7 +1182,7 @@ async function showAccount() {
       h('p', { class: 'muted' }, 'Xoá vĩnh viễn video, kịch bản, ảnh, liên kết Zalo và thông tin đăng nhập. Chứng từ thanh toán được giữ ẩn danh theo luật kế toán.'),
       h('div', { class: 'row' }, del, h('button', { type: 'button', class: 'danger', 'data-ev': 'delete-account', onclick: async () => {
         if (del.value.trim().toUpperCase() !== 'XOA') return toast('Gõ XOA để xác nhận.');
-        try { await api('/api/account/delete', { method: 'POST', body: { confirm: 'XOA' } }); toast('Đã xoá tài khoản.'); setTimeout(() => { location.hash = '#/'; location.reload(); }, 1200); } catch (e) { fail(e); }
+        try { await api('/api/account/delete', { method: 'POST', body: { confirm: 'XOA' } }); toast('Đã xoá tài khoản.'); setTimeout(() => { navigate('#/'); location.reload(); }, 1200); } catch (e) { fail(e); }
       } }, 'Xoá vĩnh viễn'))),
     footer());
   paintEntitlements();window.addEventListener('nv:member-updated',paintEntitlements);
@@ -1319,7 +1319,7 @@ function payModal(order, plan) {
         await refreshMemberState().catch(()=>{});
         if(document.body.dataset.page==='goi')await showPlans().catch(()=>{});
         const isCredit=String(order.plan||plan?.id||'').startsWith('credit:');
-        body.replaceChildren(h('div',{class:'success'},h('span',{class:'tick'},'✓'),h('h2',{},'Thanh toán thành công'),h('p',{class:'muted'},isCredit?'Credit đã được cộng vào tài khoản.':'Gói đã được kích hoạt cho tài khoản của bạn.'),h('button',{type:'button',onclick:()=>{close();showAccount();}},'Xem tài khoản'),h('button',{type:'button',class:'ghost',onclick:()=>{close();location.hash='#/tao';}},'Tạo video')));
+        body.replaceChildren(h('div',{class:'success'},h('span',{class:'tick'},'✓'),h('h2',{},'Thanh toán thành công'),h('p',{class:'muted'},isCredit?'Credit đã được cộng vào tài khoản.':'Gói đã được kích hoạt cho tài khoản của bạn.'),h('button',{type:'button',onclick:()=>{close();showAccount();}},'Xem tài khoản'),h('button',{type:'button',class:'ghost',onclick:()=>{close();navigate('#/tao');}},'Tạo video')));
         return;
       }
       if(['cancelled','expired'].includes(st.order.status)){
@@ -1371,7 +1371,7 @@ async function showWatch(pid, jobId) {
   show(skeleton(1, 'sk-player'));
   const [{ spec }, { jobs }] = await Promise.all([api('/api/projects/' + pid), api(`/api/projects/${pid}/jobs`)]);
   const job = jobs.find((j) => j.id === jobId);
-  if (!job || job.status !== 'done') { toast('Video chưa sẵn sàng.'); location.hash = '#/p/' + pid; return; }
+  if (!job || job.status !== 'done') { toast('Video chưa sẵn sàng.'); navigate('#/p/' + pid); return; }
   const portrait = spec.ratio === '9:16';
   const video = h('video', { src: `/api/jobs/${jobId}/video?inline=1`, controls: true, playsinline: true, autoplay: true, preload: 'auto', class: 'player' });
   video.addEventListener('ended', () => track('video_end', { job: jobId }));
@@ -1905,7 +1905,7 @@ async function showEditor(id) {
     const wasRunning = jobsBox.dataset.running === '1', running = jobs.some((j) => j.status === 'queued' || j.status === 'running');
     jobsBox.dataset.running = running ? '1' : '';
     // the moment a render finishes, take the user to watch it
-    if (wasRunning && !running && jobs[0]?.status === 'done' && !document.querySelector('dialog.render-desk[open]')) { toast('🎉 Video đã dựng xong!'); location.hash = `#/xem/${id}/${jobs[0].id}`; return; }
+    if (wasRunning && !running && jobs[0]?.status === 'done' && !document.querySelector('dialog.render-desk[open]')) { toast('🎉 Video đã dựng xong!'); navigate(`#/xem/${id}/${jobs[0].id}`); return; }
     jobsBox.replaceChildren(...(jobs.length ? jobs.map((j) => h('div', { class: 'card' },
       h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', { class: 'pill ' + j.status }, JOB_TEXT[j.status] || j.status), h('small', { class: 'muted' }, fmtDate(j.created_at))),
       j.status === 'queued' ? h('small', { class: 'muted' }, `Có ${queueLength} video đang chờ. Máy dựng khởi động trong khoảng 1 phút.`) : null,
@@ -1930,12 +1930,12 @@ async function showEditor(id) {
     } catch (e) { fail(e); }
   } }, 'Tải ảnh bìa' + (coverVis === 'dev' ? DEV : ''));
   const dupBtn = dupVis === 'hidden' ? null : h('button', { type: 'button', class: 'ghost small', disabled: dupVis === 'dev', 'data-ev': 'duplicate', onclick: async () => {
-    try { await save.flush(); const r = await api(`/api/projects/${id}/duplicate`, { method: 'POST', body: { ratio: spec.ratio === '9:16' ? '16:9' : '9:16' } }); location.hash = '#/p/' + r.id; toast('Đã tạo bản ' + (spec.ratio === '9:16' ? 'ngang' : 'dọc') + '.'); }
+    try { await save.flush(); const r = await api(`/api/projects/${id}/duplicate`, { method: 'POST', body: { ratio: spec.ratio === '9:16' ? '16:9' : '9:16' } }); navigate('#/p/' + r.id); toast('Đã tạo bản ' + (spec.ratio === '9:16' ? 'ngang' : 'dọc') + '.'); }
     catch (e) { fail(e); }
   } }, (spec.ratio === '9:16' ? 'Tạo bản ngang' : 'Tạo bản dọc') + (dupVis === 'dev' ? DEV : ''));
   const delBtn = h('button', { type: 'button', class: 'ghost small danger', 'data-ev': 'delete', onclick: async () => {
     if (!confirm('Xoá video này? Không khôi phục được.')) return;
-    try { await api('/api/projects/' + id, { method: 'DELETE' }); location.hash = '#/'; } catch (e) { fail(e); }
+    try { await api('/api/projects/' + id, { method: 'DELETE' }); navigate('#/'); } catch (e) { fail(e); }
   } }, 'Xoá video');
 
   const reviewBtn = spec.look !== 'director' ? null : h('button', { type: 'button', class: 'ghost small', onclick: () => busy(reviewBtn, 'Đang rà soát…', async () => {

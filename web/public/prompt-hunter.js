@@ -17,7 +17,7 @@ export async function showHunter({h,api,show,me,toast,fail,detailDialog,openLogi
  const tags=p=>h('div',{class:'hunter-tags','data-category':categoryId(p.category)},h('span',{class:'hunter-category-tag'},mark(categoryId(p.category)),p.category),h('span',{class:'hunter-tool-tag'},mark(8),p.tool||'Đa nền tảng'));
 
  const search=h('input',{type:'search',placeholder:'Tìm theo ý tưởng, công cụ, nội dung…','aria-label':'Tìm prompt'});
- search.value=new URLSearchParams(location.hash.split('?')[1]||'').get('q')||'';
+ search.value=new URLSearchParams(currentRoute().split('?')[1]||'').get('q')||'';
  let timer;search.oninput=()=>{clearTimeout(timer);timer=setTimeout(()=>load(),300);};
  const filters=h('div',{class:'hunter-categories',role:'group','aria-label':'Phân loại prompt'});
  function paintFilters(){filters.replaceChildren(...['',...cats].map(c=>h('button',{type:'button',class:category===c?'on':'ghost','aria-pressed':String(category===c),onclick:()=>{category=c;paintFilters();load();}},mark(c?categoryId(c):7),c||'Tất cả')));}

@@ -1,3 +1,4 @@
+import {publicNavigation,initialPageContent,PUBLIC_PAGES,isAppPage,pageMetadata,pageSitemap} from './page-routes.ts';
 import {hunterPublic} from './hunter.ts';
 import {solutionPage,solutionSitemap,solutionDownload,solutionList,cleanupSolutionFiles} from './solutions.ts';
 import {secureResponse} from './security.ts';
@@ -124,21 +125,36 @@ export type XEnv = Env & { config: Config };
 async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): Promise<Response> {
   const url = new URL(req.url), path = url.pathname, method = req.method;
   if (!path.startsWith('/api/')) {
+    if(path==='/index.html')return Response.redirect(url.origin+'/'+url.search,301);
+    if(path.length>1&&path.endsWith('/')&&isAppPage(path.slice(0,-1)))return Response.redirect(url.origin+path.slice(0,-1)+url.search,301);
+    if(path==='/sitemap.xml')return new Response(pageSitemap(url.origin),{headers:{'content-type':'application/xml; charset=utf-8'}});
+
     if(path==='/kham-pha'||path.startsWith('/kham-pha/')||path.startsWith('/giai-phap/')||path.startsWith('/tai-nguyen/')||path==='/sitemap-solutions.xml'||path==='/robots.txt'){
       if(method!=='GET'&&method!=='HEAD')throw new HttpError(405,'Chỉ hỗ trợ đọc trang.');
       const env=await effectiveEnv(rawEnv);
-      if(path==='/robots.txt')return new Response('User-agent: *\nDisallow: /api/\nDisallow: /tai-nguyen/\nSitemap: '+url.origin+'/sitemap-solutions.xml\n',{headers:{'content-type':'text/plain; charset=utf-8'}});
+      if(path==='/robots.txt')return new Response('User-agent: *\nDisallow: /api/\nDisallow: /tai-nguyen/\nDisallow: /admin\nDisallow: /p/\nDisallow: /xem/\nSitemap: '+url.origin+'/sitemap.xml\nSitemap: '+url.origin+'/sitemap-solutions.xml\n',{headers:{'content-type':'text/plain; charset=utf-8'}});
       if(path==='/sitemap-solutions.xml')return solutionSitemap(req,env);
       const file=path.match(/^\/tai-nguyen\/([a-f0-9]{24})$/);if(file)return solutionDownload(req,env,file[1]);
       const page=await solutionPage(req,env);if(page)return page;
       throw new HttpError(404,'Không tìm thấy trang.');
     }
-    const asset=await rawEnv.ASSETS.fetch(req);
-    if((path==='/'||path==='/index.html')&&asset.headers.get('content-type')?.includes('text/html')){
+    const appPage=isAppPage(path);
+    const asset=await rawEnv.ASSETS.fetch(appPage?new Request(new URL('/index.html',url),req):req);
+    if(asset.headers.get('content-type')?.includes('text/html')){
+      if(!appPage)return new Response('Không tìm thấy trang.',{status:404,headers:{'content-type':'text/plain; charset=utf-8'}});
       try{
         const config=await load(rawEnv),headers=new Headers(asset.headers);
         headers.delete('content-length');headers.delete('etag');headers.set('cache-control','no-cache');
-        return new HTMLRewriter().on('#loadingText',{element(el){el.setInnerContent(config.config.site.loadingText);}}).transform(new Response(asset.body,{status:asset.status,headers}));
+        const meta=pageMetadata(path,config.config.brand.name+' '+config.config.brand.accent,url.origin,url.search);
+        const initial=await initialPageContent(path,config.config,rawEnv);
+        return new HTMLRewriter()
+          .on('title',{element(el){el.setInnerContent(meta.title);}})
+          .on('meta[name="description"],meta[property="og:description"]',{element(el){el.setAttribute('content',meta.description);}})
+          .on('meta[property="og:title"]',{element(el){el.setAttribute('content',meta.title);}})
+          .on('head',{element(el){el.append('<script type="application/json" id="route-metadata">'+JSON.stringify({pages:PUBLIC_PAGES,brand:[config.config.brand.name,config.config.brand.accent].filter(Boolean).join(' ')}).replace(/</g,'\\u003c')+'</script><link rel="canonical" href="'+meta.canonical+'"><meta name="robots" content="'+(meta.noindex?'noindex,follow':'index,follow')+'"><meta property="og:url" content="'+meta.canonical+'">',{html:true});}})
+          .on('#nav',{element(el){el.setInnerContent(publicNavigation(config.config,path==='/'?'home':path.split('/')[1]),{html:true});}})
+          .on('#view',{element(el){if(initial)el.setInnerContent(initial,{html:true});}})
+          .on('#loadingText',{element(el){el.setInnerContent(config.config.site.loadingText);}}).transform(new Response(asset.body,{status:asset.status,headers}));
       }catch(e){console.error('Loading text configuration unavailable',e);}
     }
     return asset;
@@ -271,7 +287,7 @@ function safeNext(v: string | null) {
 }
 
 async function googleCallback(req: Request, env: XEnv, rc: Rc, url: URL) {
-  const back = (next: string, err?: string) => new Response(null, { status: 303, headers: { location: err ? `/#/dang-nhap-loi?m=${encodeURIComponent(err)}` : next } });
+  const back = (next: string, err?: string) => new Response(null, { status: 303, headers: { location: err ? `/dang-nhap-loi?m=${encodeURIComponent(err)}` : next } });
   try {
     if(!req.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded'))throw new HttpError(415,'Định dạng đăng nhập không hợp lệ.');
     const form = new URLSearchParams(new TextDecoder().decode(await readBytes(req,20000)));
@@ -448,7 +464,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
     return json({ note: n || null });
   }
   if (path === '/api/push/test' && method === 'POST') {
-    const r = await pushUser(env, user.id, { title: 'Thông báo đã bật', body: 'Khi video dựng xong, bạn sẽ nhận tin ở đây.', url: '/#/' }, 'mailto:' + env.config.legal.email);
+    const r = await pushUser(env, user.id, { title: 'Thông báo đã bật', body: 'Khi video dựng xong, bạn sẽ nhận tin ở đây.', url: '/' }, 'mailto:' + env.config.legal.email);
     return json(r);
   }
   // a link anyone can open (7 days): to send the finished video through Zalo or any app
@@ -785,8 +801,8 @@ async function afterJob(env: XEnv, rc: Rc, job: any, ok: boolean, error = '', se
   // the user's phone or computer first (no third party), then Zalo for those who linked it
   try {
     const title = JSON.parse(job.spec).title || 'Video';
-    const r = await pushUser(env, job.user_id, ok ? { title: 'Video đã xong ✓', body: `"${title}" đã dựng xong. Bấm để xem và tải về.`, url: `/#/p/${job.project_id}` }
-      : { title: 'Video chưa dựng được', body: `"${title}": ${String(error).slice(0, 120)}`, url: `/#/p/${job.project_id}` }, 'mailto:' + env.config.legal.email);
+    const r = await pushUser(env, job.user_id, ok ? { title: 'Video đã xong ✓', body: `"${title}" đã dựng xong. Bấm để xem và tải về.`, url: `/p/${job.project_id}` }
+      : { title: 'Video chưa dựng được', body: `"${title}": ${String(error).slice(0, 120)}`, url: `/p/${job.project_id}` }, 'mailto:' + env.config.legal.email);
     if (r.devices) rc.log('push.notify', { projectId: job.project_id, data: { job: job.id, done: ok, ...r } });
   } catch (e: any) { rc.log('push.notify', { ok: false, data: { error: e.message } }); }
   try { await notifyJob(env, rc, job, ok, error, seconds); } catch (e: any) { rc.log('zalo.notify', { ok: false, data: { error: e.message } }); }
