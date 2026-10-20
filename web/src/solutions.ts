@@ -2,7 +2,6 @@ import {body,HttpError,json,randomId,readBytes,useQuota} from './util.ts';
 import {assistantAnswer,isTextProvider} from './ai.ts';
 import {requireBudget} from './budget.ts';
 import {aiCost} from './log.ts';
-import {hunterRisk} from './hunter.ts';
 import type {XEnv,Rc} from './worker.ts';
 
 export const SOLUTION_CATEGORIES=[['bot-tro-ly','Bot & trợ lý AI','✦'],['tu-dong-hoa','Tự động hóa','↗'],['cong-cu','Công cụ & ứng dụng','▦'],['skill-tai-nguyen','Skill & tài nguyên','◇'],['huong-dan','Hướng dẫn','▷']] as const;
@@ -23,7 +22,7 @@ export function solutionInput(v:any){
   const fileId=/^[a-f0-9]{24}$/.test(r.fileId||'')?r.fileId:'',url=r.kind==='code'?'':link(r.url),code=r.kind==='code'?clean(r.code,30000):'';
   if(r.kind==='code'&&!code)throw new HttpError(400,'Hãy nhập mã hoặc nội dung cần sao chép.');
   if(!fileId&&!url&&!code)throw new HttpError(400,'Mỗi tài nguyên cần tệp tải lên, liên kết HTTPS hoặc mã để sao chép.');
-  const risk=hunterRisk(code);if(risk)throw new HttpError(400,risk);
+  if(/(?:sk-[A-Za-z0-9_-]{20,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)/.test(code))throw new HttpError(400,'Mã có thể chứa khóa bí mật. Hãy thay bằng biến môi trường hoặc biến mẫu.');
   return {label:clean(r.label,100)||'Tài nguyên',kind:['download','website','source','video','document','code'].includes(r.kind)?r.kind:'download',version:clean(r.version,40),format:clean(r.format,20).toUpperCase(),fileId:code?'':fileId,url:code||fileId?'':url,code,media:''};
  });
  const versions=(Array.isArray(v.versions)?v.versions:[]).slice(0,30).map((r:any)=>{if(!r||typeof r!=='object'||Array.isArray(r))throw new HttpError(400,'Thông tin phiên bản không hợp lệ.');return {version:clean(r.version,40),notes:clean(r.notes,3000)};}).filter((r:any)=>r.version);
@@ -40,7 +39,11 @@ export async function solutionList(env:XEnv,url:URL,admin=false){
  const platform=clean(url.searchParams.get('platform'),80),q=clean(url.searchParams.get('q'),120);
  const like=(s:string)=>'%'+s.replace(/[\\%_]/g,'\\$&')+'%';
  if(platform){where.push("platform LIKE ? ESCAPE '\\'");args.push(like(platform));}
- if(q){where.push("(title LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' OR platform LIKE ? ESCAPE '\\')");args.push(...Array(4).fill(like(q)));}
+ if(q){
+  const tokens=(q.toLowerCase().match(/[\p{L}\p{N}]{2,}/gu)||[]).slice(0,12);
+  where.push('('+(tokens.length?'id IN (SELECT id FROM solution_search WHERE solution_search MATCH ?) OR ':'')+"title LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' OR platform LIKE ? ESCAPE '\\')");
+  if(tokens.length)args.push(tokens.map(t=>'"'+t+'"').join(' OR '));args.push(...Array(4).fill(like(q)));
+ }
  const sql=where.join(' AND '),page=Math.max(1,Math.min(10000,Number(url.searchParams.get('page'))||1))|0,size=18;
  const count=await env.DB.prepare('SELECT COUNT(*) AS n FROM solutions WHERE '+sql).bind(...args).first<any>();
  const rows=await env.DB.prepare('SELECT id,slug,title,summary,category,status,platform,level,pricing,price,cover,updated_at FROM solutions WHERE '+sql+' ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?').bind(...args,size,(page-1)*size).all<any>();
@@ -93,8 +96,8 @@ export async function solutionAdmin(req:Request,env:XEnv,rc:Rc,sub:string){
 }
 export async function solutionKnowledge(env:XEnv,question:string){
  const terms=[...new Set(fold(question).match(/[a-z0-9]{3,}/g)||[])].filter(t=>!['toi','cho','cua','tim','giup','minh','ban','giai','phap','cong','nhung','nao','kham','pha','thu','vien','cac'].includes(t)).slice(0,12);
- if(!terms.length)return /giai phap|kham pha/.test(fold(question))?(await env.DB.prepare("SELECT id,slug,title,summary,category,platform FROM solutions WHERE status='published' ORDER BY updated_at DESC LIMIT 5").all<any>()).results:[];
- return (await env.DB.prepare("SELECT s.id,s.slug,s.title,s.summary,s.category,s.platform FROM solution_search JOIN solutions s ON s.id=solution_search.id WHERE solution_search MATCH ? AND s.status='published' ORDER BY bm25(solution_search,0,5,3,1,2,2) LIMIT 5").bind(terms.map(t=>'"'+t+'"').join(' OR ')).all<any>()).results;
+ if(!terms.length)return /giai phap|kham pha/.test(fold(question))?(await env.DB.prepare("SELECT id,slug,title,summary,category,platform,substr(content,1,2400) AS excerpt,substr(instructions,1,2400) AS instructions,substr(requirements,1,1000) AS requirements FROM solutions WHERE status='published' ORDER BY updated_at DESC LIMIT 5").all<any>()).results:[];
+ return (await env.DB.prepare("SELECT s.id,s.slug,s.title,s.summary,s.category,s.platform,substr(s.content,1,2400) AS excerpt,substr(s.instructions,1,2400) AS instructions,substr(s.requirements,1,1000) AS requirements FROM solution_search JOIN solutions s ON s.id=solution_search.id WHERE solution_search MATCH ? AND s.status='published' ORDER BY bm25(solution_search,0,5,3,1,2,2) LIMIT 5").bind(terms.map(t=>'"'+t+'"').join(' OR ')).all<any>()).results;
 }
 /** Only abandoned uploads expire. Saved drafts, pending, retired and published references all retain files. */
 export async function cleanupSolutionFiles(env:XEnv,now=Date.now()){

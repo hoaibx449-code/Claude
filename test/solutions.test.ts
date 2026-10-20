@@ -11,10 +11,11 @@ test('solutions publish, filter, retain stable URLs, update atomically, and expo
  let data=await solutionList(env,new URL('https://studio.test/api/solutions'));assert.equal(data.total,1);assert.equal(data.items[0].slug,p.slug);assert.equal(data.items[0].content,undefined);
  data=await solutionList(env,new URL('https://studio.test/api/solutions?format=ZIP&platform=Zalo&pricing=free&category=bot-tro-ly'));assert.equal(data.total,1);assert.deepEqual(data.formats,['ZIP']);
  assert.equal((await solutionList(env,new URL('https://studio.test/api/solutions?format=PDF'))).total,0);
+ assert.equal((await solutionList(env,new URL('https://studio.test/api/solutions?q=gui%20anh'))).total,1);assert.equal((await solutionList(env,new URL('https://studio.test/api/solutions?q=%25'))).total,0);
  let res=await solutionPage(request('/giai-phap/'+p.slug),env);assert.equal(res!.status,200);let html=await res!.text();assert.match(html,/rel="canonical" href="https:\/\/studio.test\/giai-phap\/zalo-bot-gui-anh"/);assert.match(html,/Mã nguồn/);assert.match(html,/Phiên bản 1.0/);assert.doesNotMatch(html,/Nội dung bí mật/);
  assert.equal((await solutionPage(request('/giai-phap/'+d.slug),env))!.status,404);
  const sitemap=await (await solutionSitemap(request('/sitemap-solutions.xml'),env)).text();assert.match(sitemap,/zalo-bot-gui-anh/);assert.doesNotMatch(sitemap,/noi-dung-bi-mat/);
- assert.equal((await solutionKnowledge(env,'zalo bot'))[0].id,p.id);assert.equal((await solutionKnowledge(env,'bí mật')).length,0);
+ const knowledge=(await solutionKnowledge(env,'zalo bot'))[0];assert.equal(knowledge.id,p.id);assert.equal(knowledge.instructions,sample.instructions);assert.equal(knowledge.excerpt,sample.content);assert.equal((await solutionKnowledge(env,'bí mật')).length,0);
  await assert.rejects(()=>save(env,{...sample,slug:'doi-url',updated_at:p.updated_at},p.id),{status:400});
  const changed=await save(env,{...sample,slug:p.slug,updated_at:p.updated_at,title:'Zalo bot mới'},p.id);await assert.rejects(()=>save(env,{...sample,slug:p.slug,updated_at:p.updated_at},p.id),{status:409});
  const file='a'.repeat(24);await env.DB.prepare('INSERT INTO solution_files(id,name,bytes,created_at) VALUES(?,?,?,1)').bind(file,'skill.md',4).run();files.set('solutions/'+file,new TextEncoder().encode('test'));
@@ -47,6 +48,7 @@ test('actual Worker gates admin management and uploads; public routes are HTML a
 
 test('assistant discovers published solutions and input rejects dangerous URLs and invalid publication',async()=>{const {env,clean}=fixture();try{
  assert.throws(()=>solutionInput({...sample,resources:[{url:'javascript:alert(1)'}]}),{status:400});assert.throws(()=>solutionInput({...sample,cover:'https://user:pass@example.com/x'}),{status:400});assert.throws(()=>solutionInput({...sample,resources:[]}),{status:400});
+ assert.equal(solutionInput({...sample,resources:[{kind:'code',code:'const API_KEY = process.env.API_KEY;'}]}).resources[0].code,'const API_KEY = process.env.API_KEY;');
  const p=await save(env,sample);await save(env,{...sample,title:'Bot đang duyệt',status:'pending'});
  env.config.site.helpBot.enabled=true;const r=await helpChat(request('/api/help/chat','POST',{text:'tìm zalo bot gửi ảnh'}),env,rc,null);const out:any=await r.json();assert.equal(out.sources.length,1);assert.equal(out.sources[0].url,'/giai-phap/'+p.slug);assert.match(out.reply,/1 giải pháp công khai/);
  }finally{clean();}});
