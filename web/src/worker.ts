@@ -426,6 +426,10 @@ async function clientEvents(req: Request, env: XEnv, rc: Rc) {
 }
 
 async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: User, path: string, method: string, devAllowed: boolean, rc: Rc): Promise<Response> {
+  const solutionView=path.match(/^\/api\/solution-view\/([a-z0-9-]{1,100})$/);
+  if(solutionView&&method==='GET'){const target=new URL('/giai-phap/'+solutionView[1],req.url);const page=await solutionPage(new Request(target,req),env,true);if(page)return page;}
+  const solutionFile=path.match(/^\/api\/solution-files\/([a-f0-9]{24})$/);
+  if(solutionFile&&(method==='GET'||method==='HEAD'))return solutionDownload(req,env,solutionFile[1]);
   if (path === '/api/me' && method === 'GET') {
     const used = await env.DB.prepare('SELECT kind, n FROM usage WHERE user_id = ? AND day = ?').bind(user.id, today()).all<any>();
     const { plan, expires } = await planOf(env, user.id);
