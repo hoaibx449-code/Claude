@@ -55,7 +55,7 @@ async function showAdmin() {
   side?.querySelector('.sidenav.bottom')?.before(sideNav);
   show(h('div', { class: 'admin' }, nav, h('div', { class: 'admin-main' }, h('header', { class: 'admin-head' }, h('h1', {}, title), h('p', { class: 'muted' }, desc)), body)));
   setTimeout(() => nav.querySelector('a.on')?.scrollIntoView({ block: 'nearest', inline: 'center' }), 0);
-  const pages = { 'giai-phap':async(body)=>{const {showSolutionsAdmin}=await import('/solutions-admin.js?v=50');return showSolutionsAdmin({h,api,body,toast,fail});}, 'anh-zalo':async(body)=>{const {showImageFeed}=await import('/image-feed.js?v=44');return showImageFeed({h,api,body,toast,fail});}, 'prompt-hunter':async(body)=>{const {showHunter}=await import('/prompt-hunter.js');return showHunter({h,api,show:(...nodes)=>body.replaceChildren(...nodes.filter(Boolean)),me,toast,fail,detailDialog,openLogin,footer,admin:true});}, 'may-dung': adminRenders, 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings,'ket-noi':adminSettings,'ai':adminSettings,'chi-phi':adminSettings, 'huan-luyen': adminSettings, 'giong-doc': adminSettings };
+  const pages = { 'giai-phap':async(body)=>{const {showSolutionsAdmin}=await import('/solutions-admin.js?v=55');return showSolutionsAdmin({h,api,body,toast,fail});}, 'anh-zalo':async(body)=>{const {showImageFeed}=await import('/image-feed.js?v=44');return showImageFeed({h,api,body,toast,fail});}, 'prompt-hunter':async(body)=>{const {showHunter}=await import('/prompt-hunter.js');return showHunter({h,api,show:(...nodes)=>body.replaceChildren(...nodes.filter(Boolean)),me,toast,fail,detailDialog,openLogin,footer,admin:true});}, 'may-dung': adminRenders, 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings,'ket-noi':adminSettings,'ai':adminSettings,'chi-phi':adminSettings, 'huan-luyen': adminSettings, 'giong-doc': adminSettings };
   await (pages[tab] || adminOverview)(body, tab);
 }
 
@@ -202,7 +202,7 @@ async function adminOrders(body) {
     h('div', { class: 'stat' }, h('small', {}, 'Lãi gộp ước tính'), h('b', {}, money(r.last30.revenue - r.last30.cost)))),
     card('Đơn hàng', 'Đơn được kích hoạt tự động khi SePay báo tiền; có thể xác nhận tay nếu khách chuyển sai nội dung.',
       table(['Mã', 'Email', 'Gói', 'Số tiền', 'Trạng thái', 'Tạo lúc', 'Trả lúc', 'Qua', ''], r.orders.map((o) => h('tr', {},
-        h('td', {}, h('code', {}, o.code)), h('td', {}, o.email || o.user_id), h('td', {}, o.plan), h('td', {}, money(o.amount)),
+        h('td', {}, h('code', {}, o.code)), h('td', {}, o.email || o.user_id), h('td', {}, o.solution_title||o.plan), h('td', {}, money(o.amount)),
         h('td', { class: o.status === 'paid' ? 'ok' : o.status === 'pending' ? null : 'bad' }, { pending: 'Chờ', paid: 'Đã trả', cancelled: 'Huỷ', expired: 'Hết hạn' }[o.status] || o.status),
         h('td', {}, fmtDate(o.created_at)), h('td', {}, o.paid_at ? fmtDate(o.paid_at) : ''), h('td', {}, o.via || ''),
         h('td', {}, o.status === 'pending' ? [h('button', { type: 'button', class: 'small', onclick: act(o.code, 'confirm') }, 'Xác nhận đã trả'), h('button', { type: 'button', class: 'ghost small', onclick: act(o.code, 'cancel') }, 'Huỷ')] : null))))));

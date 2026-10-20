@@ -1,14 +1,14 @@
 // Makes the site installable and fast. The page and its scripts come from the network first
 // (with a short timeout, then the cached copy), so a new version shows up at once; heavy static
 // files (fonts, hand, icons, demo videos) are served from the cache and refreshed in the background.
-const SHELL = 'nv-shell-v54-shared-shell', STATIC = 'nv-static-v54-shared-shell';
-const SHELL_FILES = ['/navigation.js?v=54','/', '/app.css?v=47', '/compact-ui.css', '/polish.css', '/theme.css', '/hunter.css?v=37','/video-library.css?v=38','/video-previews.js?v=38', '/interaction.css?v=33','/admin-layout.css?v=50','/checkout.css?v=35', '/helpchat.js?v=51', '/app.js?v=54', '/home-gallery.js', '/voice-picker.js', '/prompt-hunter.js', '/creative-panel.js', '/ui-select.js', '/admin.js?v=51', '/banks.js', '/engine.js', '/whiteboard-addon.js', '/illustrated-addon.js', '/icons/icon.svg'];
+const SHELL = 'nv-shell-v55-solution-purchases', STATIC = 'nv-static-v55-solution-purchases';
+const SHELL_FILES = ['/navigation.js?v=54','/', '/app.css?v=47', '/compact-ui.css', '/polish.css', '/theme.css', '/hunter.css?v=37','/video-library.css?v=38','/video-previews.js?v=38', '/interaction.css?v=33','/admin-layout.css?v=50','/checkout.css?v=35', '/helpchat.js?v=51', '/app.js?v=55', '/home-gallery.js', '/voice-picker.js', '/prompt-hunter.js', '/creative-panel.js', '/ui-select.js', '/admin.js?v=55', '/banks.js', '/engine.js', '/whiteboard-addon.js', '/illustrated-addon.js', '/icons/icon.svg'];
 
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== SHELL && k !== STATIC).map((k) => caches.delete(k))))); self.clients.claim(); });
 
 function networkFirst(req) {
-  const net = (req.mode === 'navigate' ? fetch(req) : fetch(req, { cache: 'no-cache' })).then((r) => { if (r.ok) { const copy = r.clone(); caches.open(SHELL).then((c) => c.put(req, copy)); } return r; });
+  const net = (req.mode === 'navigate' ? fetch(req) : fetch(req, { cache: 'no-cache' })).then((r) => { if (r.ok && !/no-store|private/i.test(r.headers.get('cache-control')||'')) { const copy = r.clone(); caches.open(SHELL).then((c) => c.put(req, copy)); } return r; });
   const slow = new Promise((ok) => setTimeout(ok, 2500)).then(() => caches.match(req));
   return Promise.race([net.catch(() => caches.match(req)), slow.then((r) => r || net)]).then((r) => r || net);
 }
@@ -22,6 +22,7 @@ function staleWhileRevalidate(req) {
 self.addEventListener('fetch', (e) => {
   const u = new URL(e.request.url);
   if (e.request.method !== 'GET' || u.origin !== location.origin || u.pathname.startsWith('/api/')) return;
+  if(u.pathname.startsWith('/giai-phap/')||u.pathname.startsWith('/tai-nguyen/')){e.respondWith(fetch(e.request,{cache:'no-store'}));return;}
   if (u.pathname.startsWith('/assets/') || u.pathname.startsWith('/icons/') || u.pathname === '/demos.json' || u.pathname === '/blank.svg') e.respondWith(staleWhileRevalidate(e.request));
   else e.respondWith(networkFirst(e.request));
 });

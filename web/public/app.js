@@ -369,15 +369,17 @@ let solutionNavigation = 0;
 async function showSolutionPage() {
  const ticket=++solutionNavigation, key=location.pathname+location.search;
  markNav('kham-pha');document.body.dataset.page='kham-pha';document.body.classList.add('solutions-site');view.classList.add('solutions-main');
- if(view.dataset.solutionPath===key){if(!view.querySelector('footer'))view.append(footer());return;}
+ const accessUser=me?.user?.id||'';if(view.dataset.solutionAccessUser!==undefined&&view.dataset.solutionAccessUser!==accessUser)delete view.dataset.solutionPath;view.dataset.solutionAccessUser=accessUser;
+ if(view.dataset.solutionPath===key&&!(me&&view.querySelector('[data-solution-locked]')&&view.dataset.solutionCheckedUser!==accessUser)){if(!view.querySelector('footer'))view.append(footer());return;}
  delete view.dataset.solutionPath;show(skeleton(3));
  try{
-  const res=await fetch(key,{credentials:'same-origin',headers:{accept:'text/html'}});
+  const endpoint=me&&/^\/giai-phap\//.test(location.pathname)?'/api/solution-view/'+location.pathname.split('/')[2]:key;
+  const res=await fetch(endpoint,{credentials:'same-origin',cache:'no-store',headers:{accept:'text/html','x-nv':'1'}});
   if(!res.ok)throw new Error('Không tải được giải pháp. Vui lòng thử lại.');
   const doc=new DOMParser().parseFromString(await res.text(),'text/html');
   if(ticket!==solutionNavigation||location.pathname+location.search!==key)return;
   const content=doc.querySelector('main.solutions-main');if(!content)throw new Error('Nội dung giải pháp chưa sẵn sàng.');
-  show(...Array.from(content.childNodes),footer());view.dataset.solutionPath=key;document.title=doc.title;
+  show(...Array.from(content.childNodes),footer());view.dataset.solutionPath=key;view.dataset.solutionCheckedUser=accessUser;document.title=doc.title;
   for(const selector of ['meta[name="description"]','meta[name="robots"]','meta[property="og:title"]','meta[property="og:description"]','meta[property="og:url"]','link[rel="canonical"]']){
    const incoming=doc.querySelector(selector);if(!incoming)continue;const old=document.querySelector(selector);if(old)old.replaceWith(document.importNode(incoming,true));else document.head.append(document.importNode(incoming,true));
   }
@@ -385,6 +387,11 @@ async function showSolutionPage() {
   doc.querySelectorAll('script[type="application/ld+json"]').forEach(n=>{const schema=document.createElement('script');schema.type='application/ld+json';schema.dataset.solutionSchema='';schema.textContent=n.textContent;document.head.append(schema);});
  }catch(e){if(ticket===solutionNavigation)fatal(e);}
 }
+document.addEventListener('click',async e=>{
+ const button=e.target.closest?.('[data-buy-solution]');if(!button)return;
+ if(!me)return openLogin('route',{hash:currentRoute()});
+ await busy(button,'Đang tạo đơn…',async()=>{try{const {order}=await api('/api/orders',{method:'POST',body:{plan:'solution:'+button.dataset.buySolution}});payModal(order,{id:order.plan,name:button.dataset.solutionTitle,solutionUrl:location.pathname});}catch(err){if(err.status===409){delete view.dataset.solutionPath;showSolutionPage();}else fail(err);}});
+});
 document.addEventListener('submit',e=>{const form=e.target.closest?.('form.catalog-search');if(!form)return;e.preventDefault();const q=new URLSearchParams(new FormData(form));navigate(form.getAttribute('action')+'?'+q.toString());});
 document.addEventListener('click',async e=>{const b=e.target.closest?.('[data-copy-resource]');if(!b)return;const code=b.closest('.resource-code')?.querySelector('code');if(!code)return;try{await navigator.clipboard.writeText(code.textContent);b.textContent='Đã sao chép';}catch{toast('Hãy chọn nội dung để sao chép.');}});
 function route() {
@@ -1284,7 +1291,8 @@ async function showAccount() {
   const loadOrders=async()=>{
    if(!dialog.open)return;
    try{const data=await api('/api/plans'),signature=JSON.stringify(data.orders.map(o=>[o.code,o.status]));
-    orderHistory.replaceChildren(h('h2',{},'Đơn hàng của tôi'),...(data.orders.length?data.orders.map(o=>h('div',{class:'account-order-row'},h('div',{},h('b',{},o.code),h('small',{class:'muted'},fmtDate(o.created_at))),h('strong',{},money(o.amount)),h('span',{class:'pill '+(o.status==='paid'?'done':o.status==='pending'?'queued':'failed')},{pending:'Chờ thanh toán',paid:'Đã thanh toán',cancelled:'Đã huỷ',expired:'Hết hạn'}[o.status]||o.status),o.status==='pending'?h('button',{type:'button',class:'ghost small',onclick:async()=>{try{const result=await api('/api/orders/'+o.code);if(result.order.status==='paid'){await refreshMemberState();return loadOrders();}if(result.order.status!=='pending')return loadOrders();dialog.close();payModal(result.order,{id:o.plan,name:ui.doc?.packs?.find(p=>'credit:'+p.id===o.plan)?.name||ui.plans?.find(p=>p.id===String(o.plan).split(':')[0])?.name||o.plan});}catch(e){fail(e);}}},'Thanh toán'):null)):[h('p',{class:'muted'},'Bạn chưa có đơn hàng.')]));
+    orderHistory.replaceChildren(h('h2',{},'Đơn hàng của tôi'),...(data.orders.length?data.orders.map(o=>h('div',{class:'account-order-row'},h('div',{},h('b',{},o.code),h('small',{class:'muted'},fmtDate(o.created_at))),h('strong',{},money(o.amount)),h('span',{class:'pill '+(o.status==='paid'?'done':o.status==='pending'?'queued':'failed')},{pending:'Chờ thanh toán',paid:'Đã thanh toán',cancelled:'Đã huỷ',expired:'Hết hạn'}[o.status]||o.status),o.status==='pending'?h('button',{type:'button',class:'ghost small',onclick:async()=>{try{const result=await api('/api/orders/'+o.code);if(result.order.status==='paid'){await refreshMemberState();return loadOrders();}if(result.order.status!=='pending')return loadOrders();dialog.close();payModal(result.order,{id:o.plan,solutionUrl:o.solutionUrl,name:o.title||ui.doc?.packs?.find(p=>'credit:'+p.id===o.plan)?.name||ui.plans?.find(p=>p.id===String(o.plan).split(':')[0])?.name||o.plan});}catch(e){fail(e);}}},'Thanh toán'):null)):[h('p',{class:'muted'},'Bạn chưa có đơn hàng.')]));
+    if(data.ownedSolutions?.length)orderHistory.append(h('h2',{},'Giải pháp đã mua'),...data.ownedSolutions.map(s=>h('div',{class:'account-order-row'},h('strong',{},s.title),h('a',{class:'btn ghost small',href:'/giai-phap/'+s.slug,onclick:()=>dialog.close()},'Sử dụng ngay'))));
     if(!lastStatus||lastStatus!==signature)await refreshMemberState().catch(()=>{});lastStatus=signature;
    }catch(e){orderHistory.replaceChildren(h('h2',{},'Đơn hàng của tôi'),h('p',{class:'bad'},e.message),h('button',{class:'ghost small',onclick:loadOrders},'Thử lại'));}
    if(dialog.open)historyTimer=setTimeout(loadOrders,8000);
@@ -1370,7 +1378,7 @@ function payModal(order, plan) {
   let done = false,pollTimer,tickTimer,checking=false;
   const checkNow=()=>{if(!document.hidden&&!done){clearTimeout(pollTimer);poll();}};
   const body = h('div', { class: 'paybox' },
-    h('div', { class: 'payhead' }, h('div', {}, h('small', { class: 'muted' }, 'Thanh toán gói'), h('h2', {}, plan?.name || order.planName || '')), h('div', { class: 'timer' }, h('span', { class: 'ring' }, ring), clock)),
+    h('div', { class: 'payhead' }, h('div', {}, h('small', { class: 'muted' }, String(order.plan||plan?.id||'').startsWith('solution:')?'Thanh toán giải pháp':'Thanh toán gói'), h('h2', {}, plan?.name || order.planName || '')), h('div', { class: 'timer' }, h('span', { class: 'ring' }, ring), clock)),
     h('div', { class: 'pay' },
       h('div', { class: 'qrwrap' }, h('img', { src: order.qr, alt: 'Mã QR chuyển khoản', width: 240, height: 240 }), h('small', { class: 'muted' }, 'Mở app ngân hàng → Quét mã QR')),
       h('div', { class: 'payinfo' },
@@ -1412,6 +1420,10 @@ function payModal(order, plan) {
         done=true;clearTimeout(tickTimer);window.removeEventListener('focus',checkNow);document.removeEventListener('visibilitychange',checkNow);track('pay_done',{plan:order.plan});
         await refreshMemberState().catch(()=>{});
         if(document.body.dataset.page==='goi')await showPlans().catch(()=>{});
+        if(String(order.plan||plan?.id||'').startsWith('solution:')){
+          if(/^\/giai-phap\//.test(location.pathname)){delete view.dataset.solutionPath;await showSolutionPage();}
+          body.replaceChildren(h('div',{class:'success'},h('span',{class:'tick'},'✓'),h('h2',{},'Đã mở khóa giải pháp'),h('p',{class:'muted'},'Thanh toán thành công. Bạn có thể xem hướng dẫn và tải tài nguyên.'),h('button',{type:'button',onclick:()=>{close();const target=plan?.solutionUrl||'/kham-pha';if(location.pathname!==target)navigate(target);}},'Sử dụng giải pháp')));return;
+        }
         const isCredit=String(order.plan||plan?.id||'').startsWith('credit:');
         body.replaceChildren(h('div',{class:'success'},h('span',{class:'tick'},'✓'),h('h2',{},'Thanh toán thành công'),h('p',{class:'muted'},isCredit?'Credit đã được cộng vào tài khoản.':'Gói đã được kích hoạt cho tài khoản của bạn.'),h('button',{type:'button',onclick:()=>{close();showAccount();}},'Xem tài khoản'),h('button',{type:'button',class:'ghost',onclick:()=>{close();navigate('#/tao');}},'Tạo video')));
         return;

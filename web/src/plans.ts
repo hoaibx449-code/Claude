@@ -1,3 +1,4 @@
+import {solutionAmount} from './solution-access.ts';
 // Plans, limits and bank-transfer payments.
 // Each user is on the free plan unless a paid plan is active. A plan sets daily limits and
 // which styles / voices / ways of starting are allowed. Payment: the user gets a VietQR code
@@ -86,6 +87,19 @@ async function confirmOrder(env: XEnv, rc: Rc, code: string, paid: number, ref: 
   const o = await env.DB.prepare("SELECT * FROM orders WHERE code = ? AND status = 'pending' AND amount <= ? AND created_at > ?")
     .bind(code, paid, cutoff).first<any>();
   if (!o) return null;
+  if(String(o.plan).startsWith('solution:')){
+    const product=await env.DB.prepare("SELECT id,title FROM solutions WHERE id=? AND status IN ('published','retired')").bind(o.plan.slice(9)).first<any>();
+    if(!product)return null;
+    const receipt=via==='admin'?'admin:'+code:'sepay:'+ref.slice(0,80);
+    const results=await env.DB.batch([
+      env.DB.prepare(`INSERT INTO payment_receipts(ref,order_code,received_at) SELECT ?,code,? FROM orders WHERE code=? AND status='pending' AND amount<=? AND created_at>? ON CONFLICT(ref) DO NOTHING`).bind(receipt,now,code,paid,cutoff),
+      env.DB.prepare(`UPDATE orders SET status='paid',paid_at=?,ref=?,via=? WHERE code=? AND status='pending' AND EXISTS(SELECT 1 FROM payment_receipts WHERE ref=? AND order_code=orders.code)`).bind(now,ref.slice(0,80),via,code,receipt),
+    ]);
+    if(!results[1].meta.changes)return null;
+    rc.log('order.paid',{data:{code,solution:product.id,amount:o.amount,via}});
+    try{await notifyCustomer(env,o.user_id,'paid',{tenGoi:product.title,soTien:o.amount.toLocaleString('vi-VN')+'đ',han:'',ma:code});await notifyOwner(env,'order',`Đã thanh toán giải pháp ${product.title}, đơn ${code}.`);}catch{rc.log('payment.notify',{ok:false,data:{code}});}
+    return {...o,status:'paid',paid_at:now};
+  }
   // a pack of documentary credits
   if (String(o.plan).startsWith('credit:')) return confirmCredits(env, rc, o, paid, ref, via, now, cutoff);
   const bought = planOrder(env.config.plans, o.plan);
@@ -149,9 +163,14 @@ async function confirmCredits(env: XEnv, rc: Rc, o: any, paid: number, ref: stri
 export async function createOrder(env: XEnv, rc: Rc, user: User, want: string) {
   const p = env.config.payment;
   if (!p.enabled || !p.account) throw new HttpError(503, 'Thanh toán đang tạm đóng. Liên hệ quản trị viên.');
+  const product=want.startsWith('solution:')?await env.DB.prepare("SELECT id,title,price,pricing FROM solutions WHERE id=? AND status='published'").bind(want.slice(9)).first<any>():null;
+  if(want.startsWith('solution:')){
+    if(!product||product.pricing!=='paid'||!solutionAmount(product.price))throw new HttpError(400,'Giải pháp chưa mở bán.');
+    if(await env.DB.prepare("SELECT 1 FROM orders WHERE user_id=? AND plan=? AND status='paid'").bind(user.id,want).first())throw new HttpError(409,'Bạn đã sở hữu giải pháp này.');
+  }
   const pack = want.startsWith('credit:') ? env.config.doc.packs.find((x) => 'credit:' + x.id === want) : null;
   const pick = pack ? null : planOrder(env.config.plans, want);
-  const plan = pack ? { id: want, name: pack.name, price: pack.price } : pick && pick.plan.visible && pick.price > 0 ? pick : null;
+  const plan = product?{id:want,name:product.title,price:solutionAmount(product.price)}:pack ? { id: want, name: pack.name, price: pack.price } : pick && pick.plan.visible && pick.price > 0 ? pick : null;
   if (!plan) throw new HttpError(400, 'Gói không hợp lệ.');
   // reuse a pending order for the same plan instead of piling up new ones
   let o = await env.DB.prepare("SELECT * FROM orders WHERE user_id = ? AND plan = ? AND status = 'pending' AND created_at > ?").bind(user.id, plan.id, Date.now() - p.expiryDays * DAY).first<any>();
@@ -170,8 +189,9 @@ export async function createOrder(env: XEnv, rc: Rc, user: User, want: string) {
 export async function planRoutes(req: Request, env: XEnv, rc: Rc, user: User, path: string, method: string): Promise<Response> {
   if (path === '/api/plans' && method === 'GET') {
     const { plan, expires } = await planOf(env, user.id);
-    const orders = (await env.DB.prepare('SELECT code, plan, amount, status, created_at, paid_at FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 10').bind(user.id).all<any>()).results;
-    return json({ current: { id: plan.id, name: plan.name, expires, limits: plan.limits }, orders, payment: env.config.payment.enabled ? { note: env.config.payment.note } : null });
+    const orders = (await env.DB.prepare("SELECT o.code,o.plan,o.amount,o.status,o.created_at,o.paid_at,s.title,('/giai-phap/'||s.slug) solutionUrl FROM orders o LEFT JOIN solutions s ON o.plan='solution:'||s.id WHERE o.user_id=? ORDER BY o.created_at DESC LIMIT 10").bind(user.id).all<any>()).results;
+    const ownedSolutions=(await env.DB.prepare("SELECT DISTINCT s.id,s.slug,s.title FROM solutions s JOIN orders o ON o.plan='solution:'||s.id WHERE o.user_id=? AND o.status='paid' AND s.status IN ('published','retired') ORDER BY s.title").bind(user.id).all<any>()).results;
+    return json({ownedSolutions, current: { id: plan.id, name: plan.name, expires, limits: plan.limits }, orders, payment: env.config.payment.enabled ? { note: env.config.payment.note } : null });
   }
   if (path === '/api/orders' && method === 'POST') {
     const want = String((await body<any>(req, 500)).plan);
@@ -217,7 +237,7 @@ export async function expireOrders(env: XEnv) {
 // ---------------------------------------------------------------- admin
 export async function plansAdmin(req: Request, env: XEnv, sub: string, method: string, rc: Rc): Promise<Response> {
   if (sub === 'orders' && method === 'GET') {
-    const rows = (await env.DB.prepare('SELECT o.*, u.email FROM orders o LEFT JOIN users u ON u.id = o.user_id ORDER BY o.created_at DESC LIMIT 300').all<any>()).results;
+    const rows = (await env.DB.prepare(`SELECT o.*, u.email, s.title AS solution_title FROM orders o LEFT JOIN users u ON u.id = o.user_id LEFT JOIN solutions s ON o.plan='solution:'||s.id ORDER BY o.created_at DESC LIMIT 300`).all<any>()).results;
     const sum = await env.DB.prepare("SELECT COALESCE(SUM(amount), 0) AS revenue, COUNT(*) AS paid FROM orders WHERE status = 'paid' AND paid_at > ?").bind(Date.now() - 30 * DAY).first<any>();
     const cost = await env.DB.prepare('SELECT ROUND(COALESCE(SUM(cost), 0)) AS cost FROM events WHERE ts > ? AND cost > 0').bind(Date.now() - 30 * DAY).first<any>();
     return json({ orders: rows, last30: { revenue: sum?.revenue || 0, paid: sum?.paid || 0, cost: cost?.cost || 0 } });
