@@ -1,3 +1,7 @@
+// Safe when loaded by both the current shell and a cached older shell.
+(() => {
+ if (window.__nvNavigationReady) return;
+ window.__nvNavigationReady = true;
 // One URL format for links, browser history, and legacy bookmarks.
 'use strict';
 function cleanRoute(value) {
@@ -57,3 +61,6 @@ function updateRouteMetadata(brand) {
  document.querySelector('link[rel="canonical"]')?.setAttribute('href',location.origin+location.pathname);
 }
 window.addEventListener('hashchange',()=>updateRouteMetadata());
+
+ Object.assign(window, {cleanRoute,currentRoute,navigate,updateRouteMetadata});
+})();

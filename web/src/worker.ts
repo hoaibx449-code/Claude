@@ -139,7 +139,7 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
       throw new HttpError(404,'Không tìm thấy trang.');
     }
     const appPage=isAppPage(path);
-    const asset=await rawEnv.ASSETS.fetch(appPage?new Request(new URL('/index.html',url),req):req);
+    const asset=await rawEnv.ASSETS.fetch(appPage?new Request(new URL('/',url),req):req);
     if(asset.headers.get('content-type')?.includes('text/html')){
       if(!appPage)return new Response('Không tìm thấy trang.',{status:404,headers:{'content-type':'text/plain; charset=utf-8'}});
       try{
