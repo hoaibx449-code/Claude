@@ -32,4 +32,5 @@ try{
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   assert.deepEqual(errors,[]);console.log('PASS clean routes, legacy bookmark, back/reload, metadata, header and overflow at '+width+'px');await page.close();
  }
+ const old=await context.newPage();await old.route('**/navigation.js*',route=>route.abort());await old.goto('https://fixture.test/#/bao-mat');await old.locator('#view').getByText('Bảo mật thử',{exact:true}).waitFor();assert.equal(new URL(old.url()).pathname,'/bao-mat');console.log('PASS cached shell loads bundled router when navigation script is absent');await old.close();
 }finally{await browser.close();}
