@@ -14,6 +14,7 @@ try{
  const context=await browser.newContext();await context.route('**/*',async route=>{
   const request=route.request(),u=new URL(request.url());if(u.origin!=='https://fixture.test')return route.abort();
   try{
+   if(u.pathname==='/shared-style-fixture')return route.fulfill({contentType:'text/html',body:readFileSync(join(root,'index.html'),'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/g,'')});
    if(u.pathname==='/admin-fixture')return route.fulfill({contentType:'text/html',body:'<!doctype html><html lang="vi"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/solutions.css"></head><body style="padding:24px"><div id="admin-body"></div><div id="feedback"></div><script type="module" src="/fixture.js"></script></body></html>'});
    if(u.pathname==='/fixture.js')return route.fulfill({contentType:'application/javascript',body:`${helper}\nimport {showSolutionsAdmin} from '/solutions-admin.js';const api=async(path,options={})=>{const r=await fetch(path,{method:options.method||'GET',headers:{'content-type':'application/json'},body:options.body?JSON.stringify(options.body):undefined});const d=await r.json();if(!r.ok)throw new Error(d.error);return d;};showSolutionsAdmin({h,api,body:document.getElementById('admin-body'),toast:msg=>document.getElementById('feedback').textContent=msg,fail:e=>document.getElementById('feedback').textContent=e.message});`});
    if(u.pathname==='/api/help/chat'){const res=await helpChat(new Request(request.url(),{method:'POST',body:request.postDataBuffer()}),env,rc,null);return route.fulfill({status:res.status,contentType:'application/json',body:await res.text()});}
@@ -25,7 +26,15 @@ try{
   }catch(e){return route.fulfill({status:e.status||500,contentType:'application/json',body:JSON.stringify({error:e.message})});}
  });
  const page=await context.newPage();page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));
+ const metrics=()=>page.evaluate(()=>{
+  const read=el=>{const s=getComputedStyle(el);return {font:s.fontFamily,size:s.fontSize,weight:s.fontWeight};};
+  return {body:read(document.body),brand:read(document.querySelector('.top .brand')),menu:read(document.querySelector('.top .nav a')),button:read(document.querySelector('.top .btn')),logo:getComputedStyle(document.querySelector('.top .logo')).width};
+ });
  for(const width of [390,800,1440]){
+  await page.setViewportSize({width,height:900});
+  await page.goto('https://fixture.test/shared-style-fixture');const shared=await metrics();
+  await page.goto('https://fixture.test/kham-pha');const catalog=await metrics();
+  assert.deepEqual(catalog,shared,'shared typography at '+width+'px');console.log('PASS shared body, brand, menu, button typography and logo size at '+width+'px');
   await page.setViewportSize({width,height:1000});await page.goto('https://fixture.test/kham-pha');await page.getByRole('heading',{name:'Thư viện giải pháp FACIUP',exact:true}).waitFor();assert.equal(await page.locator('.solution-card').count(),5);assert.ok(await page.locator('.top>.brand').isVisible());assert.ok(await page.locator('.top>.nav').isVisible());assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:join(out,'catalog-'+width+'.png'),fullPage:true});
   await page.locator('.solution-card-cta').first().click();await page.getByRole('heading',{name:'Tài nguyên',exact:true}).waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:join(out,'detail-'+width+'.png'),fullPage:true});
   console.log('PASS public list/detail '+width+'px, header visible, no overflow');
