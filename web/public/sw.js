@@ -1,8 +1,8 @@
 // Makes the site installable and fast. The page and its scripts come from the network first
 // (with a short timeout, then the cached copy), so a new version shows up at once; heavy static
 // files (fonts, hand, icons, demo videos) are served from the cache and refreshed in the background.
-const SHELL = 'nv-shell-v51-clean-routes', STATIC = 'nv-static-v51-clean-routes';
-const SHELL_FILES = ['/navigation.js?v=51','/', '/app.css?v=47', '/compact-ui.css', '/polish.css', '/theme.css', '/hunter.css?v=37','/video-library.css?v=38','/video-previews.js?v=38', '/interaction.css?v=33','/admin-layout.css?v=50','/checkout.css?v=35', '/helpchat.js?v=51', '/app.js?v=51', '/home-gallery.js', '/voice-picker.js', '/prompt-hunter.js', '/creative-panel.js', '/ui-select.js', '/admin.js?v=51', '/banks.js', '/engine.js', '/whiteboard-addon.js', '/illustrated-addon.js', '/icons/icon.svg'];
+const SHELL = 'nv-shell-v54-shared-shell', STATIC = 'nv-static-v54-shared-shell';
+const SHELL_FILES = ['/navigation.js?v=54','/', '/app.css?v=47', '/compact-ui.css', '/polish.css', '/theme.css', '/hunter.css?v=37','/video-library.css?v=38','/video-previews.js?v=38', '/interaction.css?v=33','/admin-layout.css?v=50','/checkout.css?v=35', '/helpchat.js?v=51', '/app.js?v=54', '/home-gallery.js', '/voice-picker.js', '/prompt-hunter.js', '/creative-panel.js', '/ui-select.js', '/admin.js?v=51', '/banks.js', '/engine.js', '/whiteboard-addon.js', '/illustrated-addon.js', '/icons/icon.svg'];
 
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== SHELL && k !== STATIC).map((k) => caches.delete(k))))); self.clients.claim(); });

@@ -16,7 +16,7 @@ function normalizeLegacyRoute() {
 function navigate(value) {
   const target = new URL(cleanRoute(value), location.origin);
   if (target.origin !== location.origin) return;
-  if (/^\/(kham-pha|giai-phap|tai-nguyen)(\/|$)/.test(target.pathname)) {
+  if (/^\/(tai-nguyen)(\/|$)/.test(target.pathname)) {
     location.assign(target.href); return;
   }
   if (target.pathname + target.search === location.pathname + location.search && !location.hash) return;
@@ -45,11 +45,12 @@ document.addEventListener('click', e => {
   if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.download || (a.target && a.target !== '_self')) return;
   const u = new URL(a.href, location.href);
   if (u.pathname === '/tai-khoan' && document.getElementById('account') && !document.getElementById('account').hidden) return;
-  if (u.origin !== location.origin || /^\/(api|assets|kham-pha|giai-phap|tai-nguyen)(\/|$)/.test(u.pathname) || /\.[a-z0-9]+$/i.test(u.pathname) || (u.hash && !u.hash.startsWith('#/'))) return;
+  if (u.origin !== location.origin || /^\/(api|assets|tai-nguyen)(\/|$)/.test(u.pathname) || /\.[a-z0-9]+$/i.test(u.pathname) || (u.hash && !u.hash.startsWith('#/'))) return;
   e.preventDefault(); navigate(u.pathname + u.search + u.hash);
 });
 
 function updateRouteMetadata(brand) {
+ if (/^\/(kham-pha|giai-phap)(\/|$)/.test(location.pathname)) return;
  const data=JSON.parse(document.getElementById('route-metadata')?.textContent||'{}');
  const item=data.pages?.[location.pathname];
  document.title=(item?.[0]||'Khu vực cá nhân')+' | '+(brand||data.brand||'FACIUP Studio');
