@@ -1,4 +1,5 @@
 import {hunterPublic} from './hunter.ts';
+import {solutionPage,solutionSitemap,solutionDownload,solutionList,cleanupSolutionFiles} from './solutions.ts';
 import {secureResponse} from './security.ts';
 import {feedPhoto,tickFeed} from './image-feed.ts';
 import {googleFeedCallback} from './feed-google.ts';
@@ -74,6 +75,7 @@ export default {
   // Safety net: if videos wait in the queue (e.g. a start request was lost), start the render machine.
   async scheduled(e: ScheduledController, env: Env, ctx: ExecutionContext) {
     const xenvZ = await effectiveEnv(env);
+    if(new Date(e.scheduledTime).getUTCMinutes()===0)ctx.waitUntil(cleanupSolutionFiles(xenvZ).catch(err=>console.error('solutionFileCleanup',err)));
     ctx.waitUntil(tickFeed(xenvZ).catch(err=>console.error('imageFeed',err)));
     // Zalo without a webhook: every minute, ask for new messages (see pollZalo)
     if (xenvZ.config.zalo.enabled && (xenvZ as any).ZALO_BOT_TOKEN && (await receiveMode(xenvZ)) === 'poll') {
@@ -122,6 +124,15 @@ export type XEnv = Env & { config: Config };
 async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): Promise<Response> {
   const url = new URL(req.url), path = url.pathname, method = req.method;
   if (!path.startsWith('/api/')) {
+    if(path==='/kham-pha'||path.startsWith('/kham-pha/')||path.startsWith('/giai-phap/')||path.startsWith('/tai-nguyen/')||path==='/sitemap-solutions.xml'||path==='/robots.txt'){
+      if(method!=='GET'&&method!=='HEAD')throw new HttpError(405,'Chỉ hỗ trợ đọc trang.');
+      const env=await effectiveEnv(rawEnv);
+      if(path==='/robots.txt')return new Response('User-agent: *\nDisallow: /api/\nDisallow: /tai-nguyen/\nSitemap: '+url.origin+'/sitemap-solutions.xml\n',{headers:{'content-type':'text/plain; charset=utf-8'}});
+      if(path==='/sitemap-solutions.xml')return solutionSitemap(req,env);
+      const file=path.match(/^\/tai-nguyen\/([a-f0-9]{24})$/);if(file)return solutionDownload(req,env,file[1]);
+      const page=await solutionPage(req,env);if(page)return page;
+      throw new HttpError(404,'Không tìm thấy trang.');
+    }
     const asset=await rawEnv.ASSETS.fetch(req);
     if((path==='/'||path==='/index.html')&&asset.headers.get('content-type')?.includes('text/html')){
       try{
@@ -133,6 +144,7 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
     return asset;
   }
   const env = await effectiveEnv(rawEnv);
+  if(path==='/api/solutions'&&method==='GET')return json(await solutionList(env,url));
   if(path.startsWith('/api/image-feed/bridge/'))return bridgeReceive(req,env,path.slice('/api/image-feed/bridge/'.length));
   if(path==='/api/image-feed/google/callback'&&method==='GET')return googleFeedCallback(req,env);
   const feedImage=path.match(/^\/api\/image-feed\/photo\/([a-f0-9]{64})$/);

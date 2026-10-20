@@ -24,3 +24,5 @@ body .top>.nav a,body .top>.brand,body .top .who>a{font-weight:700}
 body .top>.nav a:hover{box-shadow:none!important;outline:none;text-decoration:underline;text-underline-offset:7px;text-decoration-thickness:2px}
 body .top>.nav a.on{font-weight:800;color:var(--accent)}
 body .top :is(a,button,input):focus-visible{outline:2px solid var(--accent)!important;outline-offset:3px;box-shadow:none!important}
+
+@media(max-width:1023px){.tabbar{grid-template-columns:repeat(6,minmax(0,1fr))}.tabbar a{min-width:0}.tabbar .nav-label{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
