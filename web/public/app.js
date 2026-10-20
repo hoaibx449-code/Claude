@@ -16,7 +16,7 @@ function normalizeLegacyRoute() {
 function navigate(value) {
   const target = new URL(cleanRoute(value), location.origin);
   if (target.origin !== location.origin) return;
-  if (/^\/(kham-pha|giai-phap|tai-nguyen)(\/|$)/.test(target.pathname)) {
+  if (/^\/(tai-nguyen)(\/|$)/.test(target.pathname)) {
     location.assign(target.href); return;
   }
   if (target.pathname + target.search === location.pathname + location.search && !location.hash) return;
@@ -45,11 +45,12 @@ document.addEventListener('click', e => {
   if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.download || (a.target && a.target !== '_self')) return;
   const u = new URL(a.href, location.href);
   if (u.pathname === '/tai-khoan' && document.getElementById('account') && !document.getElementById('account').hidden) return;
-  if (u.origin !== location.origin || /^\/(api|assets|kham-pha|giai-phap|tai-nguyen)(\/|$)/.test(u.pathname) || /\.[a-z0-9]+$/i.test(u.pathname) || (u.hash && !u.hash.startsWith('#/'))) return;
+  if (u.origin !== location.origin || /^\/(api|assets|tai-nguyen)(\/|$)/.test(u.pathname) || /\.[a-z0-9]+$/i.test(u.pathname) || (u.hash && !u.hash.startsWith('#/'))) return;
   e.preventDefault(); navigate(u.pathname + u.search + u.hash);
 });
 
 function updateRouteMetadata(brand) {
+ if (/^\/(kham-pha|giai-phap)(\/|$)/.test(location.pathname)) return;
  const data=JSON.parse(document.getElementById('route-metadata')?.textContent||'{}');
  const item=data.pages?.[location.pathname];
  document.title=(item?.[0]||'Khu vực cá nhân')+' | '+(brand||data.brand||'FACIUP Studio');
@@ -335,6 +336,7 @@ document.addEventListener('submit', (e) => {
   if (e.target.id !== 'topSearch') return;
   e.preventDefault();
   const q = document.getElementById('topSearchInput').value.trim(), page = document.body.dataset.page;
+  if(page==='kham-pha'){navigate('/kham-pha'+(q?'?q='+encodeURIComponent(q):''));return;}
   const where = page === 'prompt-hunter' || page === 'video' || page === 'mau' || page === 'cong-dong' ? page : V('feature:community') === 'on' ? 'cong-dong' : 'mau';
   navigate(`#/${where}${q ? '?q=' + encodeURIComponent(q) : ''}`);
 });
@@ -363,11 +365,36 @@ function markNav(name) {
 }
 const PUBLIC = { '#/prompt-hunter':1, '#/tro-giup': 1, '': 1, '#/': 1, '#/mau': 1, '#/goi': 1, '#/tao': 1, '#/thu': 1, '#/dieu-khoan': 1, '#/bao-mat': 1, '#/hoan-tien': 1, '#/cong-dong': 1, '#/dang-nhap-loi': 1 };
 let stopHomeGallery = null,stopVideoLibrary=null;
+let solutionNavigation = 0;
+async function showSolutionPage() {
+ const ticket=++solutionNavigation, key=location.pathname+location.search;
+ markNav('kham-pha');document.body.dataset.page='kham-pha';document.body.classList.add('solutions-site');view.classList.add('solutions-main');
+ if(view.dataset.solutionPath===key){if(!view.querySelector('footer'))view.append(footer());return;}
+ delete view.dataset.solutionPath;show(skeleton(3));
+ try{
+  const res=await fetch(key,{credentials:'same-origin',headers:{accept:'text/html'}});
+  if(!res.ok)throw new Error('Không tải được giải pháp. Vui lòng thử lại.');
+  const doc=new DOMParser().parseFromString(await res.text(),'text/html');
+  if(ticket!==solutionNavigation||location.pathname+location.search!==key)return;
+  const content=doc.querySelector('main.solutions-main');if(!content)throw new Error('Nội dung giải pháp chưa sẵn sàng.');
+  show(...Array.from(content.childNodes),footer());view.dataset.solutionPath=key;document.title=doc.title;
+  for(const selector of ['meta[name="description"]','meta[name="robots"]','meta[property="og:title"]','meta[property="og:description"]','meta[property="og:url"]','link[rel="canonical"]']){
+   const incoming=doc.querySelector(selector);if(!incoming)continue;const old=document.querySelector(selector);if(old)old.replaceWith(document.importNode(incoming,true));else document.head.append(document.importNode(incoming,true));
+  }
+  document.querySelectorAll('script[data-solution-schema]').forEach(n=>n.remove());
+  doc.querySelectorAll('script[type="application/ld+json"]').forEach(n=>{const schema=document.createElement('script');schema.type='application/ld+json';schema.dataset.solutionSchema='';schema.textContent=n.textContent;document.head.append(schema);});
+ }catch(e){if(ticket===solutionNavigation)fatal(e);}
+}
+document.addEventListener('submit',e=>{const form=e.target.closest?.('form.catalog-search');if(!form)return;e.preventDefault();const q=new URLSearchParams(new FormData(form));navigate(form.getAttribute('action')+'?'+q.toString());});
+document.addEventListener('click',async e=>{const b=e.target.closest?.('[data-copy-resource]');if(!b)return;const code=b.closest('.resource-code')?.querySelector('code');if(!code)return;try{await navigator.clipboard.writeText(code.textContent);b.textContent='Đã sao chép';}catch{toast('Hãy chọn nội dung để sao chép.');}});
 function route() {
   stopHomeGallery?.(); stopHomeGallery = null;stopVideoLibrary?.();stopVideoLibrary=null;
   stopPreview(); stopDemos();
   // a window left open (payment, player, sign-in) never follows the user to another page
   document.querySelectorAll('.sheet-bg').forEach((x) => x.remove());
+  if(/^\/(kham-pha|giai-phap)(\/|$)/.test(location.pathname)){scrollTo(0,0);showSolutionPage();return;}
+  ++solutionNavigation;delete view.dataset.solutionPath;document.body.classList.remove('solutions-site');view.classList.remove('solutions-main');
+  document.querySelectorAll('script[data-solution-schema]').forEach(n=>n.remove());
   const hash = currentRoute().split('?')[0];
   const m = hash.match(/^#\/p\/([a-f0-9]{24})$/), w = hash.match(/^#\/xem\/([a-f0-9]{24})\/([a-f0-9]{24})$/);
   markNav(hash === '#/' || hash === '' ? 'home' : w ? 'video' : m ? 'tao' : hash.startsWith('#/admin') ? 'admin' : hash.slice(2));
