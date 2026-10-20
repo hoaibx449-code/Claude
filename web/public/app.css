@@ -713,7 +713,7 @@ button.small, .btn.small { font-size: var(--fs-sm); }
 .nv-select > select { position: absolute; inset: 0; opacity: 0; pointer-events: none; width: 100%; height: 100%; }
 .nv-select > button { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); text-align: left;
   background: var(--card); color: var(--ink); border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px; min-height: 46px; box-shadow: none; font-weight: var(--fw-medium); }
-.nv-select > button:hover { transform: none; border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); box-shadow: none; }
+.nv-select > button:hover, .nv-select > button[aria-expanded="true"] { background: var(--card); color: var(--ink); transform: none; border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); box-shadow: none; }
 .nv-select > button[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent); }
 .nv-select > button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .nv-select > button::after { content: ""; flex: none; width: 10px; height: 10px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg) translate(-2px, -2px); transition: transform .15s; }
