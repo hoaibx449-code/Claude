@@ -71,7 +71,7 @@ export async function helpChat(req: Request, env: XEnv, rc: Rc, user: User | nul
   const catalog = (await env.DB.prepare("SELECT category,COUNT(*) AS total FROM hunter_prompts WHERE status='published' GROUP BY category ORDER BY total DESC,category").all<any>()).results;
   const total = catalog.reduce((n,p)=>n+Number(p.total),0);
   const asksPrompt = /\b(prompts?|promt|hunter)\b/.test(fold(question+' '+history.filter(t=>t.role==='user').slice(-1).map(t=>t.text).join(' ')));
-  const links = (rows:any[])=>rows.map(p=>({title:p.title,url:'/#/prompt-hunter?q='+encodeURIComponent(p.title)}));
+  const links = (rows:any[])=>rows.map(p=>({title:p.title,url:'/prompt-hunter?q='+encodeURIComponent(p.title)}));
   const library = { published:total, suggested:prompts.length };
   const promptReply = () => prompts.length
     ? `Thư viện hiện có ${total} prompt công khai. Dưới đây là ${prompts.length} gợi ý trong thư viện: ${prompts.map(p=>p.title).join('; ')}. Bạn muốn dùng prompt cho việc gì hoặc công cụ nào để mình tìm sát hơn? Mở các bài bên dưới để xem và copy đầy đủ.`

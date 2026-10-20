@@ -65,12 +65,12 @@ export async function googleFeedCallback(req:Request,env:XEnv){
  const u=new URL(req.url),state=u.searchParams.get('state')||'';if(!/^[a-f0-9]{64}$/.test(state))throw new HttpError(400,'Mã kết nối Google không hợp lệ.');
  const row=await env.DB.prepare('DELETE FROM feed_google_states WHERE state=? AND user_id=? AND expires>? RETURNING *').bind(await sha256(state),user.id,Date.now()).first<any>();
  if(!row||row.redirect!==u.origin+callback)throw new HttpError(400,'Phiên kết nối đã hết hạn hoặc đã sử dụng. Hãy kết nối lại.');
- if(u.searchParams.has('error'))return Response.redirect(u.origin+'/#/admin/anh-zalo',303);
+ if(u.searchParams.has('error'))return Response.redirect(u.origin+'/admin/anh-zalo',303);
  const code=u.searchParams.get('code');if(!code||code.length>4000)throw new HttpError(400,'Google chưa cung cấp mã cấp quyền.');
  const client:Client=await read(env,'client');if(!client)throw new HttpError(409,'Cấu hình Google đã thay đổi.');
  const token=await tokenRequest({...client,grant_type:'authorization_code',code,redirect_uri:row.redirect,code_verifier:await decrypt(env,row.verifier)});
  if(!String(token.scope||'').split(' ').includes(SCOPE))throw new HttpError(403,'Cần chấp thuận quyền đọc Google Drive để lấy ảnh riêng tư.');
  if(!token.refresh_token)throw new HttpError(409,'Google chưa cấp quyền chạy định kỳ. Hãy kết nối lại và chấp thuận quyền truy cập ngoại tuyến.');
  await write(env,'token',{refresh_token:token.refresh_token,access_token:token.access_token,expires:Date.now()+Number(token.expires_in||3600)*1000});
- return new Response(null,{status:303,headers:{location:u.origin+'/#/admin/anh-zalo','cache-control':'no-store','referrer-policy':'no-referrer'}});
+ return new Response(null,{status:303,headers:{location:u.origin+'/admin/anh-zalo','cache-control':'no-store','referrer-policy':'no-referrer'}});
 }

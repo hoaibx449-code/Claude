@@ -43,7 +43,7 @@
         if (r.ai === false) { const label = document.createElement('small'); label.textContent = 'Hướng dẫn dự phòng · AI chưa trả lời'; wait.prepend(label, document.createElement('br')); }
         for (const source of r.sources || []) {
           const solution=/^\/giai-phap\/[a-z0-9-]{1,100}$/.test(source.url||'');
-          if (!solution&&!source.url?.startsWith('/#/prompt-hunter?q=')) continue;
+          if (!solution&&!source.url?.startsWith('/prompt-hunter?q=')&&!source.url?.startsWith('/#/prompt-hunter?q=')) continue;
           const link = document.createElement('a'); link.href = source.url; link.textContent = (solution?'Xem giải pháp: ':'Xem prompt: ') + source.title; link.className = 'help-source'; wait.append(link);
         }
         history.push({ role: 'user', text }, { role: 'bot', text: r.reply }); keep();

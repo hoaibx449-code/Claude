@@ -3,7 +3,7 @@
   "short_name": "Nét Vẽ",
   "description": "Tạo video bàn tay vẽ có giọng đọc tiếng Việt từ kịch bản.",
   "lang": "vi",
-  "start_url": "/#/",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
@@ -16,3 +16,5 @@
     { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
   ]
 }
+
+

@@ -39,7 +39,7 @@ const evName = (t) => EVENT_NAMES[t] || t;
 const VIS_NAMES = { on: 'Hiện', dev: 'Đang phát triển', hidden: 'Ẩn' };
 
 async function showAdmin() {
-  const tab = ADMIN_TABS.some(([k]) => k === location.hash.split('/')[2]) ? location.hash.split('/')[2] : 'tong-quan';
+  const tab = ADMIN_TABS.some(([k]) => k === currentRoute().split('/')[2]) ? currentRoute().split('/')[2] : 'tong-quan';
   viewed('admin', { tab });
   const [, defaultTitle, desc] = ADMIN_TABS.find(([k]) => k === tab);
   const title=ui.labels?.adminMenu?.[tab]||defaultTitle;
@@ -138,7 +138,7 @@ async function adminLog(body) {
 // ---------------------------------------------------------------- users
 // links between tabs: remembered here, picked up once the target tab has loaded
 let pendingUser = null, pendingLog = null;
-function openUser(id) { pendingUser = id; location.hash = '#/admin/nguoi-dung'; }
+function openUser(id) { pendingUser = id; navigate('#/admin/nguoi-dung'); }
 async function adminUsers(body) {
   const r = await api('/api/admin/users');
   let q = '';
@@ -184,7 +184,7 @@ async function adminUserDetail(id) {
     h('p', {}, 'Gói hiện tại: ', h('b', {}, r.plan ? `${r.plan.plan} đến ${fmtDate(r.plan.expires_at)}` : 'Miễn phí')),
     h('div', { class: 'row' }, 'Cấp gói ', select(plans.map((p) => [p.id, p.name]), grantPlan, (v) => { grantPlan = v; }), ' trong ', input(grantDays, (v) => { grantDays = v; }, { type: 'number', min: 1, style: 'width:90px' }), ' ngày',
       h('button', { type: 'button', class: 'small', onclick: async () => { try { await api('/api/admin/grant', { method: 'POST', body: { user: id, plan: grantPlan, days: grantDays } }); toast('Đã cấp gói.'); adminUserDetail(id); } catch (e) { fail(e); } } }, 'Cấp'),
-      blockBtn, h('button', { type: 'button', class: 'ghost small', onclick: () => { dialog.close(); pendingLog = { user: id }; location.hash = '#/admin/nhat-ky'; } }, 'Xem toàn bộ nhật ký')),
+      blockBtn, h('button', { type: 'button', class: 'ghost small', onclick: () => { dialog.close(); pendingLog = { user: id }; navigate('#/admin/nhat-ky'); } }, 'Xem toàn bộ nhật ký')),
     h('h3', {}, 'Credit'), creditCell({...r.user,credits:r.user.credits||0}),
     h('h3', {}, 'Video'), r.projects.length ? h('ul', {}, r.projects.map((p) => h('li', {}, p.title, h('small', { class: 'muted' }, ' · ' + fmtDate(p.updated_at))))) : h('p', { class: 'muted' }, 'Chưa có.'),
     h('h3', {}, 'Lần dựng'), r.jobs.length ? table(['Lúc', 'Trạng thái', 'Lỗi'], r.jobs.map((j) => h('tr', {}, h('td', {}, fmtDate(j.created_at)), h('td', {}, JOB_TEXT[j.status] || j.status), h('td', { class: 'bad' }, j.error || '')))) : h('p', { class: 'muted' }, 'Chưa có.'),
