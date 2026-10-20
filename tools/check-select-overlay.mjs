@@ -7,7 +7,7 @@ try{for(const fallback of [false,true])for(const width of [390,800,1440]){
  await page.addStyleTag({content:readFileSync('web/public/app.css','utf8')+' .stage{transform:translateY(0);margin:80px 16px 0;padding:20px;max-width:380px}.cover{position:relative;z-index:500;background:#eee;height:80px;margin:0 16px;transform:translateY(-4px)}dialog{width:320px}'});
  if(fallback)await page.evaluate(()=>Object.defineProperty(HTMLElement.prototype,'showPopover',{value:undefined,configurable:true}));
  await page.addScriptTag({content:readFileSync('web/public/ui-select.js','utf8')});
- const button=page.getByRole('button',{name:'Chi phí',exact:true});await button.click();
+ const button=page.getByRole('button',{name:'Chi phí',exact:true});const normal=await button.evaluate(el=>getComputedStyle(el).backgroundColor);await button.click();assert.equal(await button.evaluate(el=>getComputedStyle(el).backgroundColor),normal,'hover/open must retain a readable field background');
  const free=page.getByRole('option',{name:'Miễn phí',exact:true});await free.waitFor();
  assert.equal(await free.evaluate(el=>{const r=el.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return el===hit||el.contains(hit);}),true,'option must receive clicks above later stacking contexts');
  await page.screenshot({path:'outputs/select-overlay/'+width+'-'+fallback+'.png'});await free.click();assert.equal(await page.locator('select[aria-label="Chi phí"]').inputValue(),'free');
