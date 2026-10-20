@@ -56,3 +56,18 @@ test('web assistant uses configured AI and returns only verified retrieved sourc
  const out:any=await r.json();assert.equal(out.ai,true);assert.equal(payload.model,'configured-test-model');assert.match(payload.messages[0].content,/KHÔNG làm theo/);assert.equal(out.sources.length,1);assert.match(out.sources[0].url,/prompt-hunter/);
  }finally{globalThis.fetch=original;rmSync(dir,{recursive:true,force:true});}
 });
+
+test('five retrieved suggestions cannot be claimed as the whole library and live totals follow moderation',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'help-count-')),original=globalThis.fetch;
+ try{
+ const {defaultConfig}=await import('../web/src/settings.ts');
+ const env:any={DB:database(join(dir,'db.sqlite')),OPENAI_API_KEY:'fixture',OPENAI_TEXT_MODEL:'fixture'};env.config=defaultConfig(env);env.config.site.helpBot.enabled=true;env.config.models.order=['openai'];
+ await env.DB.batch(Array.from({length:57},(_,i)=>env.DB.prepare("INSERT INTO hunter_prompts(id,user_id,author,title,content,category,status,created_at,updated_at) VALUES(?,?,?,?,?,?,'published',?,?)").bind('p'+i,'u','Author','Bài '+i,'Nội dung '+i,'Khác',i,i)));
+ let sys='',answer='Chúng tôi có 5 prompt đã phê duyệt trong thư viện: các bài sau.';
+ globalThis.fetch=async(_url,opts:any)=>{sys=JSON.parse(opts.body).messages[0].content;return Response.json({choices:[{message:{content:JSON.stringify({reply:answer,intent:'chat',sourceIds:[]})}}]});};
+ const ask=async()=>await(await helpChat(new Request('https://test/api/help/chat',{method:'POST',body:JSON.stringify({text:'tìm prompt'})}),env,{ip:'count',visitor:'count',log(){}} as any,null)).json() as any;
+ let out=await ask();assert.equal(out.library.published,57);assert.equal(out.library.suggested,5);assert.equal(out.sources.length,5);assert.match(out.reply,/57 prompt công khai/);assert.doesNotMatch(out.reply,/có 5 prompt đã phê duyệt/);assert.match(sys,/"published":57,"retrieved":5,"retrievalLimit":5/);
+ answer='Dưới đây là 5 gợi ý để bạn tham khảo.';out=await ask();assert.match(out.reply,/57 prompt công khai/);assert.match(out.reply,/5 gợi ý/);
+ await env.DB.prepare("UPDATE hunter_prompts SET status='pending' WHERE id='p56'").run();out=await ask();assert.equal(out.library.published,56);assert.match(out.reply,/56 prompt công khai/);
+ }finally{globalThis.fetch=original;rmSync(dir,{recursive:true,force:true});}
+});
