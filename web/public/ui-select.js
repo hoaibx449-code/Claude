@@ -77,9 +77,16 @@
     if (open && open.sel === sel) { close(); return; }
     close();
     const { list, items, choose } = build(sel, wrap, btn);
-    wrap.append(list);
-    const r = btn.getBoundingClientRect();
-    if (window.innerHeight - r.bottom < Math.min(320, list.scrollHeight) + 16 && r.top > window.innerHeight - r.bottom) list.classList.add('up');
+    const r = btn.getBoundingClientRect(), inset = 8;
+    const topLayer = typeof list.showPopover === 'function';
+    if (topLayer) list.setAttribute('popover', 'manual');
+    (topLayer ? wrap : sel.closest('dialog[open]') || document.body).append(list);
+    Object.assign(list.style, {position:'fixed',inset:'auto',margin:'0',zIndex:'10000',boxSizing:'border-box',width:Math.min(r.width,innerWidth-inset*2)+'px',left:Math.max(inset,Math.min(r.left,innerWidth-r.width-inset))+'px',top:r.bottom+6+'px'});
+    if (topLayer) list.showPopover();
+    const below=innerHeight-r.bottom-inset-6, above=r.top-inset-6;
+    const upwards=below<Math.min(320,list.scrollHeight)&&above>below;
+    list.style.maxHeight=Math.max(40,Math.min(320,upwards?above:below))+'px';
+    list.style.top=Math.max(inset,upwards?r.top-6-list.getBoundingClientRect().height:r.bottom+6)+'px';
     btn.setAttribute('aria-expanded', 'true');
     let active = Math.max(0, items.findIndex((li) => li.getAttribute('aria-selected') === 'true'));
     const mark = () => { items.forEach((li, i) => li.classList.toggle('active', i === active)); items[active]?.scrollIntoView({ block: 'nearest' }); btn.setAttribute('aria-activedescendant', ''); };
@@ -121,7 +128,8 @@
 
   const scan = (root) => { if (root.tagName === 'SELECT') enhance(root); else root.querySelectorAll?.('select').forEach(enhance); };
   new MutationObserver((muts) => { for (const m of muts) for (const n of m.addedNodes) if (n.nodeType === 1) scan(n); }).observe(document.documentElement, { childList: true, subtree: true });
-  document.addEventListener('DOMContentLoaded', () => scan(document.body));
-  window.addEventListener('resize', close);
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>scan(document.body),{once:true});else scan(document.body);
+  window.addEventListener('resize',close);
+  document.addEventListener('scroll',e=>{if(open&&!open.list.contains(e.target))close();},true);
   window.addEventListener('hashchange', () => { close(); stopAudio(); });
 })();

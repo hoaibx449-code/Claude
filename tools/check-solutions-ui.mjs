@@ -32,7 +32,7 @@ try{
    if(u.pathname==='/kham-pha'||u.pathname.startsWith('/kham-pha/')||u.pathname.startsWith('/giai-phap/')){const res=await solutionPage(new Request(request.url()),env);return route.fulfill({status:res.status,headers:Object.fromEntries(res.headers),body:await res.text()});}
    if(['/','/bao-mat'].includes(u.pathname))return route.fulfill({contentType:'text/html',body:readFileSync(join(root,'index.html'),'utf8')});
    if(u.pathname==='/api/legal')return route.fulfill({json:{privacy:'Chính sách thử',terms:'Điều khoản thử',refund:'Hoàn tiền thử'}});
-   const file=resolve(root,'.'+u.pathname);if(file.startsWith(root)&&existsSync(file))return route.fulfill({body:readFileSync(file),contentType:file.endsWith('.css')?'text/css':file.endsWith('.js')?'application/javascript':'application/octet-stream'});
+   const file=resolve(root,'.'+u.pathname);if(file.startsWith(root)&&existsSync(file))return route.fulfill({body:readFileSync(file),contentType:file.endsWith('.svg')?'image/svg+xml':file.endsWith('.css')?'text/css':file.endsWith('.js')?'application/javascript':'application/octet-stream'});
    return route.fulfill({status:404,body:'Not found'});
   }catch(e){return route.fulfill({status:e.status||500,contentType:'application/json',body:JSON.stringify({error:e.message})});}
  });
