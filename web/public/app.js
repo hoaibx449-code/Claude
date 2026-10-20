@@ -257,7 +257,7 @@ function closeMenu() { const m = document.getElementById('userMenu'); if (m) m.h
 async function openMenu() { if(me) await showAccount(); }
 
 document.addEventListener('click', (e) => {
-  if(e.target.closest('a[href="#/tai-khoan"]') && me){e.preventDefault();showAccount();return;}
+  if(e.target.closest('a[href="/tai-khoan"]') && me){e.preventDefault();showAccount();return;}
   const acc = document.getElementById('account'), m = document.getElementById('userMenu');
   if (acc && e.target.closest('#account')) { m.hidden ? openMenu() : closeMenu(); return; }
   if (m && !m.hidden && !e.target.closest('#userMenu')) closeMenu();

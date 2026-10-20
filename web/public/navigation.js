@@ -40,6 +40,7 @@ document.addEventListener('click', e => {
   const a = e.target.closest?.('a[href]');
   if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.download || (a.target && a.target !== '_self')) return;
   const u = new URL(a.href, location.href);
+  if (u.pathname === '/tai-khoan' && document.getElementById('account') && !document.getElementById('account').hidden) return;
   if (u.origin !== location.origin || /^\/(api|assets|kham-pha|giai-phap|tai-nguyen)(\/|$)/.test(u.pathname) || /\.[a-z0-9]+$/i.test(u.pathname) || (u.hash && !u.hash.startsWith('#/'))) return;
   e.preventDefault(); navigate(u.pathname + u.search + u.hash);
 });
