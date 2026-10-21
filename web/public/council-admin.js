@@ -12,6 +12,8 @@ export async function showCouncil({h,api,body,toast,fail}) {
   }},label);
   const reload=()=>showCouncil({h,api,body,toast,fail});
   const call=(path,body={})=>api('/api/admin/council'+path,{method:'POST',body});
+  const state={queued:'Đang xếp hàng',running:'Đang làm',pending:'Chờ duyệt',approved:'Đã duyệt',revision:'Chờ chỉnh sửa',rejected:'Đã từ chối',paused:'Tạm dừng',cancelled:'Đã hủy'};
+  const plainText=value=>String(value).replace(/\*{3,}/g,'').replace(/\*\*([^*]+)\*\*/g,'$1').replace(/^#{1,6}\s+/gm,'');
   const explanation=h('p',{class:'muted'},'Nhóm chỉ thảo luận và đề xuất. Duyệt không tự đăng bài hay thực hiện. Máy chủ tiếp tục từng lượt khi bạn đóng web hoặc tắt máy. Mỗi lượt AI khoảng một phút; có thể chậm hơn khi dự phòng/hết hạn mức.');
   const agentsBox=h('div',{});
   function renderAgents(){
@@ -67,34 +69,61 @@ export async function showCouncil({h,api,body,toast,fail}) {
     connection,pair,
     h('p',{},data.links.length?`${data.links.length} tài khoản quản trị đã ghép Telegram.`:'Chưa có tài khoản ghép Telegram.'),
     h('p',{class:'muted'},'Chỉ tài khoản Telegram đã ghép với quản trị còn quyền mới được dùng lệnh hoặc nút duyệt. Đổi token điều phối sẽ xóa các liên kết; cần kết nối và ghép lại.'));
-  let brief='';
+  let brief='',title='';
   let selectedJob='',poll=null;
-  const create=section('Giao nhiệm vụ',field('Yêu cầu sáng tạo nội dung đa kênh',area('',v=>brief=v,4)),
-    action('Mở phiên thảo luận',async()=>{const r=await call('/jobs',{brief});toast('Đã nhận nhiệm vụ · Phiên #'+r.id);await detail(r.id);status.scrollIntoView({block:'start',behavior:'smooth'});}));
+  const jobsList=h('div',{});
+  function renderJobs(){
+    jobsList.replaceChildren(...data.jobs.map(j=>h('div',{class:'row'},h('div',{},h('strong',{},j.title||j.brief.slice(0,90)),h('p',{class:'muted'},
+      `${state[j.status]||j.status} · ${new Date(j.created_at||Date.now()).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})}`)),action('Xem phiên',()=>detail(j.id)))));
+  }
+  const create=section('Giao nhiệm vụ',
+    h('p',{class:'muted'},'Viết yêu cầu bên dưới, hoặc mở menu Telegram để thao tác bằng nút. Không cần nhớ mã phiên.'),
+    field('Tên phiên (có thể để trống để tự đặt)',input('',v=>title=v,{placeholder:'Ví dụ: Cà phê văn phòng — Tuần 1',maxlength:90})),
+    field('Yêu cầu sáng tạo nội dung đa kênh',area('',v=>brief=v,4)),
+    action('Mở phiên thảo luận',async()=>{const r=await call('/jobs',{brief,title});toast('Đã nhận nhiệm vụ.');await detail(r.id);status.scrollIntoView({block:'start',behavior:'smooth'});}),
+    action('Mở menu Telegram',async()=>{await call('/menu');toast('Đã gửi menu vào nhóm Telegram đã ghép.');}));
   async function detail(id){
     selectedJob=id;clearTimeout(poll);
     const r=await api('/api/admin/council/jobs/'+id),job=r.job;
     if(selectedJob!==id||!body.isConnected)return;
+    const listed=data.jobs.find(j=>j.id===id);
+    if(listed)Object.assign(listed,{title:job.title,brief:job.brief,status:job.status});
+    else data.jobs.unshift({id,title:job.title,brief:job.brief,status:job.status,created_at:job.created_at});
+    renderJobs();
     const controls=[];
     if(job.status==='pending')for(const [label,decision] of [['Duyệt','approved'],['Yêu cầu sửa','revision'],['Từ chối','rejected']])controls.push(action(label,async()=>{await call('/jobs/'+id+'/decision',{action:decision});await detail(id);}));
     if(job.status==='paused')controls.push(action('Tiếp tục sau khi kiểm tra cấu hình',async()=>{await call('/jobs/'+id+'/resume');await detail(id);}));
     if(['paused','queued','running'].includes(job.status))controls.push(action('Hủy phiên',async()=>{await call('/jobs/'+id+'/cancel');await detail(id);}));
     let feedback='';
-    if(job.status==='revision')controls.push(field('Yêu cầu chỉnh sửa',area('',v=>feedback=v)),action('Mở phiên sửa',async()=>{const next=await call('/jobs/'+id+'/revise',{feedback});await detail(next.id);}));
+    if(['revision','approved'].includes(job.status))controls.push(
+      job.status==='approved'?h('p',{},'Bản này đã được chốt và lưu. Bạn có thể tải nội dung hoặc làm phiên bản tiếp. Hệ thống chưa tự dựng video hay đăng bài.'):null,
+      field(job.status==='approved'?'Yêu cầu cho phiên bản tiếp':'Yêu cầu chỉnh sửa',area('',v=>feedback=v)),action(job.status==='approved'?'Làm phiên bản tiếp':'Mở phiên sửa',async()=>{const next=await call('/jobs/'+id+'/revise',{feedback});await detail(next.id);}));
+    const name=job.title||job.brief.slice(0,90),rename=input(name,()=>{},{maxlength:90,'aria-label':'Tên phiên mới'});
+    if(job.status==='approved')controls.push(action('Tải nội dung đã duyệt',async()=>{
+      const latest=plainText(r.turns.at(-1)?.text||''),url=URL.createObjectURL(new Blob([name+'\n\n'+latest],{type:'text/plain;charset=utf-8'}));
+      const a=document.createElement('a');a.href=url;a.download=name.replace(/[<>:"/\\|?*]/g,'-')+'.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }));
     const agents=job.snapshot?.agents||[],ordered=agents.length?[...agents.slice(1),agents[0]]:[];
-    status.replaceChildren(section('Phiên #'+id,h('p',{},r.progress?.summary||'Trạng thái: '+job.status),h('p',{},job.brief),
+    status.replaceChildren(section(name,h('p',{},r.progress?.summary||state[job.status]||job.status),
+      h('details',{},h('summary',{},'Đổi tên phiên'),rename,action('Lưu tên phiên',async()=>{await call('/jobs/'+id+'/rename',{title:rename.value});await detail(id);})),
+      h('h3',{},'Nhiệm vụ'),h('p',{},job.brief),
       section('Phân công trong phiên',h('ol',{},...ordered.map(a=>h('li',{},h('strong',{},a.name+': '),a.prompt.replace(/\s+/g,' ').slice(0,190)))),
         h('p',{},`${job.snapshot?.rounds||1} vòng thảo luận, sau đó tổng biên tập trình quản trị duyệt.`)),
       job.error?h('p',{class:'bad'},job.error):null,
-      ...r.turns.map(t=>h('article',{},h('h3',{},`${t.agent_id} · ${t.provider}/${t.model}`),h('pre',{style:'white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit'},t.text))),
+      ...r.turns.map(t=>h('article',{},h('h3',{},`${agents.find(a=>a.id===t.agent_id)?.name||t.agent_id}`),
+        h('p',{class:'muted'},`${t.provider} · ${t.model}`),h('pre',{style:'white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit'},plainText(t.text)))),
       h('p',{},'Tin Telegram đã gửi: '+r.deliveries.filter(x=>x.sent===1).length+'/'+r.deliveries.length+
         (r.deliveries.some(x=>x.sent===-1)?' · Có tin đã hủy do ngắt ghép/thu hồi quyền.':'')),
       ...controls,action('Cập nhật phiên',()=>detail(id))));
-    if(['queued','running','pending'].includes(job.status))poll=setTimeout(()=>{
-      if(body.isConnected&&selectedJob===id)detail(id).catch(fail);
-    },12000);
+    const refresh=()=>{
+      if(!body.isConnected||selectedJob!==id)return;
+      if(status.contains(document.activeElement)&&['INPUT','TEXTAREA'].includes(document.activeElement.tagName))poll=setTimeout(refresh,12000);
+      else detail(id).catch(fail);
+    };
+    if(['queued','running','pending'].includes(job.status))poll=setTimeout(refresh,12000);
   }
-  const jobs=section('Lịch sử thảo luận',action('Làm mới danh sách',reload),
-    ...data.jobs.map(j=>h('div',{class:'row'},h('span',{},`${j.brief.slice(0,95)} · ${j.status}`),action('Xem phiên',()=>detail(j.id)))));
-  body.replaceChildren(settings,telegram,agentsBox,create,jobs,status);
+  renderJobs();
+  const jobs=section('Lịch sử thảo luận',action('Làm mới danh sách',reload),jobsList);
+  const setup=h('details',{open:!c.enabled},h('summary',{},'Kết nối và cài đặt nhóm AI'),settings,telegram,agentsBox);
+  body.replaceChildren(create,jobs,status,setup);
 }

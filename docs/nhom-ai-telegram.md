@@ -30,33 +30,53 @@ Mở `/admin/nhom-ai` sau khi đăng nhập quản trị. Bản mới tắt sẵ
 6. Xác nhận đã kiểm tra tài khoản miễn phí, giữ bật Chỉ dùng lựa chọn miễn phí,
    bật nhóm và Lưu cấu hình. Mặc định tối đa 20 lượt AI/ngày UTC, 1 vòng thảo luận.
 
-## Dùng
+## Giao nhiệm vụ không cần nhớ lệnh
 
-Gửi `/brief@username_bot Lên ý tưởng nội dung cà phê 7 ngày, đối tượng dân văn phòng,
-Facebook/TikTok/YouTube/Instagram, mục tiêu tăng nhận diện, giọng gần gũi.`
+1. Trên Faciup, bấm **Mở menu Telegram**. Bot gửi các nút vào nhóm đã ghép.
+2. Trong Telegram, bấm **Giao nhiệm vụ** và trả lời tin nhắn của bot bằng lời bình thường.
+   Ví dụ: “Lên nội dung cà phê 7 ngày cho dân văn phòng, Facebook/TikTok/YouTube/
+   Instagram, mục tiêu nhận diện thương hiệu, giọng gần gũi.”
+3. Bot tự lấy tên từ yêu cầu, gửi **Đã nhận nhiệm vụ**, phân công và thứ tự thảo luận.
+   Bấm **Đổi tên phiên** nếu muốn tên khác. Mã kỹ thuật không dùng làm tên hiển thị.
+4. Bấm **Tiến độ** hoặc **Phiên gần đây** để chọn phiên theo tên. Không cần gõ ID.
+
+Trên web, điền **Tên phiên** và **Yêu cầu**, rồi bấm Mở phiên thảo luận. Có thể để
+trống tên để tự đặt. Lịch sử hiển thị tên, trạng thái và thời gian tạo. Cài đặt kết nối,
+khóa và vai trò được tách vào phần **Kết nối và cài đặt nhóm AI**.
 
 Mỗi phút máy chủ xử lý tối đa một lời trả lời AI. AI sau nhận brief, tài liệu và
 ý kiến trước đó. Sau số vòng đã chọn, tổng biên tập đưa bản trình duyệt, giữ cả
 bất đồng và dữ kiện cần xác minh. Nhóm không có trình duyệt web hay công cụ đăng bài.
 
-Ngay khi nhận brief hợp lệ, bot điều phối gửi mã phiên, xác nhận nhận việc,
+Ngay khi nhận brief hợp lệ, bot điều phối gửi tên phiên, xác nhận nhận việc,
 phân công từng chuyên gia và thứ tự thảo luận. Xác nhận này không gọi mô hình AI.
 Trước từng lượt, bot báo trợ lý nào đang làm; khi lỗi, đổi mô hình hoặc đạt trần ngày,
 bot báo trạng thái để bạn biết vì sao phải chờ. Tin được lưu để thử gửi lại khi mạng lỗi.
 
-Gửi `/tientrinh@Faciup_bot` để xem phiên gần nhất trong nhóm, hoặc thêm ID phiên để
-xem một phiên cụ thể; thay username nếu bạn dùng bot khác. Chỉ quản trị đã ghép
-đúng nhóm mới đọc được tiến độ. Tin thông thường chưa phải lệnh giao việc sẽ được
-hướng dẫn dùng `/brief`, tránh hiểu lầm rằng hệ thống đã nhận nhiệm vụ.
+Chỉ quản trị đã ghép đúng nhóm mới đọc được tiến độ hoặc dùng các nút. Tin thông
+thường chỉ được dùng làm nhiệm vụ sau khi bạn bấm Giao nhiệm vụ; không tự mở phiên
+từ mọi câu chuyện trong nhóm. Lượt nhập có hiệu lực 15 phút và gắn riêng người/nhóm.
+Trong Telegram, trả lời tin hỏi của bot giúp bot nhận được nội dung khi bật Privacy Mode.
+Các lệnh cũ vẫn được giữ tương thích nhưng không bắt buộc cho quy trình mới.
 
 Giao nhiệm vụ trên web mở ngay phần phân công và tiến độ phiên. Phần này tự cập nhật
 khoảng 12 giây/lần khi còn đang chạy hoặc chờ duyệt. Có thể đóng web: công việc vẫn
 tiếp tục trên máy chủ. Bot không tự chọn lại vai trò ngoài cấu hình đã lưu cho phiên.
 
-Chọn **Duyệt**, **Yêu cầu sửa**, **Từ chối** trên Faciup hoặc Telegram. Duyệt chỉ
-ghi nhận quyết định; không tạo video hay đăng bài. Sau Yêu cầu sửa, dùng
-`/sua@username_bot ID nội dung sửa`, hoặc mở phiên trên web và nhập phản hồi.
-Chủ đề AI tự đề xuất chỉ mở phiên mới khi quản trị gửi brief mới.
+## Sau khi duyệt
+
+Chọn **Duyệt nội dung**, **Yêu cầu sửa**, **Từ chối** bằng nút. Sau khi duyệt:
+
+- Bản nội dung được chốt và lưu, trạng thái là **Đã duyệt**.
+- **Xem nội dung** trong Telegram hoặc **Tải nội dung đã duyệt** trên web để lấy bản cuối.
+- **Làm phiên bản tiếp**: bot hỏi điều bạn muốn thay đổi, tạo phiên mới có liên kết
+  với bản gốc và giữ nguyên nội dung/quyết định của phiên đã duyệt.
+- **Giao nhiệm vụ** để mở một việc khác.
+
+Duyệt chỉ ghi nhận quyết định, chưa tự dựng video hoặc đăng bài. Chủ đề AI tự đề xuất
+chỉ mở phiên mới khi quản trị giao việc. Telegram dùng entities in đậm và khoảng trống
+giữa các mục, không in nguyên các dấu Markdown như ba dấu sao. Không diễn giải HTML
+từ câu trả lời của AI.
 
 ## Giới hạn và bảo mật
 
