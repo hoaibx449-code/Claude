@@ -132,3 +132,12 @@ Mặc định các trợ lý dùng thứ tự nhà cung cấp và mô hình tron
 Chính sách miễn phí vẫn áp dụng: OpenAI và Gemini ngoài danh sách cho phép bị chặn khi bật chỉ dùng miễn phí. Mục “Thứ tự mô hình và các lựa chọn bị bỏ qua” giải thích lựa chọn thực tế, thiếu khóa và các mô hình bị chặn. Lỗi mới được lưu theo lượt, nhà cung cấp, mô hình và thời gian; không lưu nội dung lỗi thô hay khóa bí mật. Không thể khôi phục chi tiết lỗi cũ chưa được lưu.
 
 Khi đã sửa cấu hình hoặc hạn mức, mở phiên và bấm “Tiếp tục với cấu hình hiện tại”. Phiên giữ nguyên các lượt đã hoàn tất, cập nhật lựa chọn mô hình của từng trợ lý và tiếp tục tại lượt còn thiếu. Tin báo lỗi Telegram không còn bị chặn bởi tin cũ gửi thất bại; nếu Telegram cũng gặp lỗi, web hiển thị tin hết số lần thử và nút “Thử gửi lại tin Telegram bị lỗi”.
+
+
+### Trò chuyện tự nhiên với trợ lý chung
+
+Quản trị đã ghép có thể gửi câu hỏi thông thường, không cần lệnh hoặc chọn Giao nhiệm vụ trước. Trợ lý xác nhận đã nhận tin ngay, sau đó xử lý trên máy chủ theo lịch khoảng một phút. Trợ lý trả lời trực tiếp, hỏi thêm khi thiếu thông tin hoặc mở phiên thảo luận để chuyên gia cùng làm. Trợ lý chỉ tư vấn, viết nháp và điều phối; chưa có quyền truy cập lịch, gửi thư, đăng bài hay thực hiện bên ngoài. Lịch sử gần đây chỉ lấy từ cùng quản trị và cùng nhóm để hiểu câu tiếp nối.
+
+Nếu Telegram bật Group Privacy và bot không là quản trị nhóm, tin nhắn thường có thể không được chuyển tới web. Cách dùng ngay: chọn Trả lời (Reply) vào tin của bot rồi gửi nội dung. Để bot nhận tin thường trong nhóm riêng: mở @BotFather, gửi /setprivacy, chọn @Faciup_bot, chọn Disable; xóa bot khỏi nhóm rồi thêm lại theo hướng dẫn Telegram. Không đổi token và không cần cấp quyền quản trị nhóm. Kiểm tra lại mục Kết nối Telegram trên web: trạng thái nhận tin thường và thời điểm cuối nhận tin giúp phân biệt Telegram chưa chuyển tin với AI đang xử lý. Việc tắt Group Privacy cho phép bot nhận tin trong các nhóm đã tham gia; chỉ thêm bot vào nhóm riêng tin cậy. Server vẫn chỉ xử lý quản trị đã ghép còn quyền, không phản hồi người lạ hay bot khác.
+
+Menu bị trôi: bấm Mở menu Telegram trên web để đăng ký danh sách lệnh /menu, /troly, /tientrinh, gửi bảng điều khiển mới và thử ghim tin (nếu bot đã có quyền ghim). Không có quyền ghim thì bạn tự ghim tin; các chức năng khác vẫn hoạt động. Mỗi bảng điều khiển có nút Trò chuyện với trợ lý chung.
