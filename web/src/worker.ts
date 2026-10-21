@@ -1,6 +1,7 @@
 import {publicNavigation,initialPageContent,PUBLIC_PAGES,isAppPage,pageMetadata,pageSitemap} from './page-routes.ts';
 import {councilWebhook,tickCouncil} from './council.ts';
 import {hunterPublic} from './hunter.ts';
+import {liveOverview} from './live.ts';
 import {solutionPage,solutionSitemap,solutionDownload,solutionList,cleanupSolutionFiles} from './solutions.ts';
 import {secureResponse} from './security.ts';
 import {feedPhoto,tickFeed} from './image-feed.ts';
@@ -162,6 +163,10 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
     return asset;
   }
   const env = await effectiveEnv(rawEnv);
+  if(path==='/api/faciup-live'&&method==='GET'){
+    rc.quiet=true;
+    return json(await liveOverview(env,env.config),200,{'cache-control':'public, max-age=30'});
+  }
   if(path==='/api/solutions'&&method==='GET')return json(await solutionList(env,url));
   if(path.startsWith('/api/image-feed/bridge/'))return bridgeReceive(req,env,path.slice('/api/image-feed/bridge/'.length));
   if(path==='/api/image-feed/google/callback'&&method==='GET')return googleFeedCallback(req,env);

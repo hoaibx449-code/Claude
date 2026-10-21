@@ -309,82 +309,7 @@ async function boot() {
   cookieNotice();
   if (me?.needConsent) consentAgain();
   // something the guest wanted before signing in
-  if (me) { let after = null; try { after = JSON.parse(sessionStorage.getItem('nv_after') || 'null'); sessionStorage.removeItem('nv_after'); } catch {} if (after) resume(after); }
-}
-function paintHeader() {
-  const acc = document.getElementById('account');
-  document.getElementById('loginBtn').hidden = !!me;
-  acc.hidden = !me;
-  if (me) acc.textContent = (me.user.name || me.user.email || '?').trim().charAt(0).toUpperCase();
-  document.getElementById('bellBtn').hidden = !me;
-  document.getElementById('sideAdmin').hidden = !me?.admin;
-  closeMenu();
-}
-// everything about the account lives in one menu behind the avatar
-function closeMenu() { const m = document.getElementById('userMenu'); if (m) m.hidden = true; document.getElementById('account')?.setAttribute('aria-expanded', 'false'); }
-async function openMenu() { if(me) await showAccount(); }
-
-document.addEventListener('click', (e) => {
-  if(e.target.closest('a[href="/tai-khoan"]') && me){e.preventDefault();showAccount();return;}
-  const acc = document.getElementById('account'), m = document.getElementById('userMenu');
-  if (acc && e.target.closest('#account')) { m.hidden ? openMenu() : closeMenu(); return; }
-  if (m && !m.hidden && !e.target.closest('#userMenu')) closeMenu();
-});
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
-// one search box for the whole site: community videos, formats, or the user's own videos
-document.addEventListener('submit', (e) => {
-  if (e.target.id !== 'topSearch') return;
-  e.preventDefault();
-  const q = document.getElementById('topSearchInput').value.trim(), page = document.body.dataset.page;
-  if(page==='kham-pha'){navigate('/kham-pha'+(q?'?q='+encodeURIComponent(q):''));return;}
-  const where = page === 'prompt-hunter' || page === 'video' || page === 'mau' || page === 'cong-dong' ? page : V('feature:community') === 'on' ? 'cong-dong' : 'mau';
-  navigate(`#/${where}${q ? '?q=' + encodeURIComponent(q) : ''}`);
-});
-const searchTerm = () => fold(new URLSearchParams(currentRoute().split('?')[1] || '').get('q') || '');
-function fold(t) { return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().trim(); }
-const matches = (q, ...texts) => !q || texts.some((t) => fold(t).includes(q));
-
-async function showHelp() {
-  viewed('help');
-  const qa = [
-    ['Tạo video đầu tiên thế nào?', 'Bấm "Tạo video", dán kịch bản hoặc gõ chủ đề, chọn định dạng rồi bấm Tạo. Xem trước ngay trên trang, sửa từng cảnh, rồi bấm Xuất video.'],
-    ['Video mất bao lâu?', 'Thường vài phút cho video dưới một phút. Trang Video của tôi hiện tiến độ; có thể bật thông báo khi video xong.'],
-    ['Giọng đọc lỗi hoặc khác giọng đã chọn?', 'Khi dịch vụ giọng đang lỗi, video được đọc bằng giọng miễn phí cùng giới tính để không bị hỏng. Quản trị viên xem lý do ở trang Giọng đọc.'],
-    ['Tạo video qua Zalo?', ui.zalo?.enabled ? 'Nhắn yêu cầu tư vấn qua Zalo. Bạn cũng có thể gửi KB + kịch bản để dựng và TT để xem tiến độ.' : 'Tính năng Zalo chưa mở.'],
-    ['Huỷ gói, hoàn tiền?', 'Xem Chính sách hoàn tiền ở cuối trang.'],
-  ];
-  show(h('header', { class: 'pagehead' }, h('div', {}, h('h1', {}, 'Trợ giúp'), h('p', { class: 'muted' }, 'Câu hỏi thường gặp và cách liên hệ.'))),
-    h('div', { class: 'faq' }, qa.map(([q, a]) => h('details', {}, h('summary', {}, q), h('p', {}, a)))),
-    h('div', { class: 'row' }, ui.zalo?.enabled && ui.zalo.botLink ? h('a', { class: 'btn', href: ui.zalo.botLink, target: '_blank', rel: 'noopener' }, 'Tư vấn qua Zalo') : null,
-      ui.legal?.email && !/example\.(com|org)$/i.test(ui.legal.email) ? h('a', { class: 'btn ghost', href: 'mailto:' + ui.legal.email }, 'Gửi email hỗ trợ') : null),
-    footer());
-}
-
-function markNav(name) {
-  for (const a of document.querySelectorAll('[data-route]')) a.classList.toggle('on', a.dataset.route === name);
-}
-const PUBLIC = { '#/prompt-hunter':1, '#/tro-giup': 1, '': 1, '#/': 1, '#/mau': 1, '#/goi': 1, '#/tao': 1, '#/thu': 1, '#/dieu-khoan': 1, '#/bao-mat': 1, '#/hoan-tien': 1, '#/cong-dong': 1, '#/dang-nhap-loi': 1 };
-let stopHomeGallery = null,stopVideoLibrary=null;
-let solutionNavigation = 0;
-async function showSolutionPage() {
- const ticket=++solutionNavigation, key=location.pathname+location.search;
- markNav('kham-pha');document.body.dataset.page='kham-pha';document.body.classList.add('solutions-site');view.classList.add('solutions-main');
- const accessUser=me?.user?.id||'';if(view.dataset.solutionAccessUser!==undefined&&view.dataset.solutionAccessUser!==accessUser)delete view.dataset.solutionPath;view.dataset.solutionAccessUser=accessUser;
- if(view.dataset.solutionPath===key&&!(me&&view.querySelector('[data-solution-locked]')&&view.dataset.solutionCheckedUser!==accessUser)){if(!view.querySelector('footer'))view.append(footer());return;}
- delete view.dataset.solutionPath;show(skeleton(3));
- try{
-  const endpoint=me&&/^\/giai-phap\//.test(location.pathname)?'/api/solution-view/'+location.pathname.split('/')[2]:key;
-  const res=await fetch(endpoint,{credentials:'same-origin',cache:'no-store',headers:{accept:'text/html','x-nv':'1'}});
-  if(!res.ok)throw new Error('Không tải được giải pháp. Vui lòng thử lại.');
-  const doc=new DOMParser().parseFromString(await res.text(),'text/html');
-  if(ticket!==solutionNavigation||location.pathname+location.search!==key)return;
-  const content=doc.querySelector('main.solutions-main');if(!content)throw new Error('Nội dung giải pháp chưa sẵn sàng.');
-  show(...Array.from(content.childNodes),footer());view.dataset.solutionPath=key;view.dataset.solutionCheckedUser=accessUser;document.title=doc.title;
-  for(const selector of ['meta[name="description"]','meta[name="robots"]','meta[property="og:title"]','meta[property="og:description"]','meta[property="og:url"]','link[rel="canonical"]']){
-   const incoming=doc.querySelector(selector);if(!incoming)continue;const old=document.querySelector(selector);if(old)old.replaceWith(document.importNode(incoming,true));else document.head.append(document.importNode(incoming,true));
-  }
-  document.querySelectorAll('script[data-solution-schema]').forEach(n=>n.remove());
-  doc.querySelectorAll('script[type="application/ld+json"]').forEach(n=>{const schema=document.createElement('script');schema.type='application/ld+json';schema.dataset.solutionSchema='';schema.textContent=n.textContent;document.head.append(schema);});
+  if (me) { let after = null; try { after = JSON.…1817 tokens truncated…schema);});
  }catch(e){if(ticket===solutionNavigation)fatal(e);}
 }
 document.addEventListener('click',async e=>{
@@ -395,6 +320,7 @@ document.addEventListener('click',async e=>{
 document.addEventListener('submit',e=>{const form=e.target.closest?.('form.catalog-search');if(!form)return;e.preventDefault();const q=new URLSearchParams(new FormData(form));navigate(form.getAttribute('action')+'?'+q.toString());});
 document.addEventListener('click',async e=>{const b=e.target.closest?.('[data-copy-resource]');if(!b)return;const code=b.closest('.resource-code')?.querySelector('code');if(!code)return;try{await navigator.clipboard.writeText(code.textContent);b.textContent='Đã sao chép';}catch{toast('Hãy chọn nội dung để sao chép.');}});
 function route() {
+  stopLive?.();stopLive=null;
   stopHomeGallery?.(); stopHomeGallery = null;stopVideoLibrary?.();stopVideoLibrary=null;
   stopPreview(); stopDemos();
   // a window left open (payment, player, sign-in) never follows the user to another page
@@ -415,6 +341,7 @@ function route() {
   if (!me && (m || w)) { showLanding().catch(fatal); return openLogin('route', { hash }); }
   const go = m ? showEditor(m[1])
     : w ? showWatch(w[1], w[2])
+    : hash === '#/faciup-live' ? showFaciupLive()
     : hash === '#/prompt-hunter' ? showPromptHunter()
     : hash === '#/cong-dong' ? showCommunity()
     : hash.startsWith('#/admin') && me?.admin ? showAdmin()
@@ -469,7 +396,7 @@ const footer = () => h('footer', { class: 'site' },
     ui.legal?.address ? h('span', {}, ui.legal.address) : null, ui.legal?.taxId ? h('span', {}, 'MST ' + ui.legal.taxId) : null,
     ui.legal?.email && !/example\.(com|org)$/i.test(ui.legal.email) ? h('a', { href: 'mailto:' + ui.legal.email }, ui.legal.email) : null),
   socialLinks(),
-  h('nav', { class: 'policies', 'aria-label': 'Chính sách' }, h('a', { href: '#/dieu-khoan' }, 'Điều khoản'), h('a', { href: '#/bao-mat' }, 'Bảo mật'),
+  h('nav', { class: 'policies', 'aria-label': 'Liên kết website' }, h('a',{href:'/faciup-live'},ui.labels?.navigation?.['faciup-live']||'Faciup Live'), h('a', { href: '#/dieu-khoan' }, 'Điều khoản'), h('a', { href: '#/bao-mat' }, 'Bảo mật'),
     V('feature:plans') === 'on' ? h('a', { href: '#/hoan-tien' }, 'Hoàn tiền') : null, h('a', { href: '#/tro-giup' }, 'Trợ giúp')));
 
 // ---------- notifications on this device when a video is ready (Web Push, no third party)
@@ -2156,3 +2083,9 @@ async function buildPreview(spec, canvas, playBtn) {
 document.addEventListener('DOMContentLoaded', () => boot().catch(fatal));
 
 async function showPromptHunter(){viewed('prompt-hunter');const {showHunter}=await import('/prompt-hunter.js');return showHunter({h,api,show,me,toast,fail,detailDialog,openLogin,footer});}
+
+async function showFaciupLive(){
+ const routeAtStart=currentRoute(),ticket=solutionNavigation;const {showLive}=await import('/faciup-live.js?v=68');
+ if(currentRoute()!==routeAtStart||ticket!==solutionNavigation)return;
+ stopLive=showLive({h,show,api,footer});
+}
