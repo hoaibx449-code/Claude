@@ -2,6 +2,7 @@ import { body, HttpError, json, randomId, sha256, timingSafeEqual, type Env } fr
 import { decrypt, encrypt, isAdmin } from './settings.ts';
 import type { XEnv, Rc } from './worker.ts';
 import type { User } from './auth.ts';
+import { councilWorkflow, councilWorkflowText } from './council-workflow.ts';
 import { councilQuality } from './council-quality.ts';
 import { councilGenerate, councilRoute, councilRouting, councilFailure, FREE_GEMINI, type CouncilAgent, type CouncilModel } from './council-ai.ts';
 import { councilPlain, councilTitle, titleText, councilState, councilMenu, councilButtons, councilTelegramFormat } from './council-present.ts';
@@ -9,7 +10,7 @@ import { councilPlain, councilTitle, titleText, councilState, councilMenu, counc
 interface CouncilConfig {
   enabled: boolean; freeOnly: boolean; freeConfirmed: boolean; dailyCalls: number; rounds: number;
   brand: string; agents: CouncilAgent[];
-  assistant?: boolean; proposedBrief?: string;
+  assistant?: boolean; proposedBrief?: string; workflowCard?: boolean;
 }
 const ROLES = [
   ['editor','Tổng biên tập','Tổng hợp nội dung riêng cho Facebook, TikTok, YouTube và Instagram: hook, kịch bản/bài viết, caption, CTA, ý tưởng hình ảnh. Nêu bất đồng và việc cần kiểm chứng để quản trị duyệt.'],
@@ -59,13 +60,16 @@ async function adminExists(env:XEnv,id:string){
   return !!user&&await isAdmin(env,env.config,user);
 }
 export async function telegramCall(token:string,method:string,data:any){
-  if(method==='sendMessage'&&typeof data.text==='string')data={...data,...councilTelegramFormat(data.text),link_preview_options:{is_disabled:true}};
+  if(['sendMessage','editMessageText'].includes(method)&&typeof data.text==='string')data={...data,...councilTelegramFormat(data.text),link_preview_options:{is_disabled:true}};
   try {
     const res=await fetch(`https://api.telegram.org/bot${token}/${method}`,{method:'POST',redirect:'manual',
       headers:{'content-type':'application/json'},body:JSON.stringify(data),signal:AbortSignal.timeout(8000)});
-    if(!res.ok)throw new Error();
-    const j:any=await res.json();if(!j.ok)throw new Error();return j.result;
-  }catch{throw new HttpError(502,'Telegram chưa kết nối được. Kiểm tra token và quyền gửi trong nhóm.');}
+    const j:any=await res.json();
+    if(method==='editMessageText'&&j.error_code===400&&/message is not modified/i.test(j.description||''))return true;
+    if(method==='editMessageText'&&j.error_code===400&&/message to edit not found|message can't be edited/i.test(j.description||''))throw new HttpError(410,'Thẻ Telegram không còn sửa được.');
+    if(j.error_code===429)throw new HttpError(429,'Telegram yêu cầu chờ.',{retryAfter:Math.min(3600,Math.max(1,Number(j.parameters?.retry_after)||120))});
+    if(!res.ok||!j.ok)throw new Error();return j.result;
+  }catch(error){if(error instanceof HttpError)throw error;throw new HttpError(502,'Telegram chưa kết nối được. Kiểm tra token và quyền gửi trong nhóm.');}
 }
 async function registerCouncilMenu(token:string){
   await telegramCall(token,'setMyCommands',{commands:[{command:'menu',description:'Mở bảng điều khiển nhóm AI'},
@@ -140,11 +144,31 @@ export function councilProgress(job:any){
   return {phase,completed:step,total,round,currentAgent:step<total?agent.name:'',
     summary:`${phase} · đã hoàn tất ${step}/${total} lượt${step<total?' · '+(step===total-1?'Tổng hợp cuối':`Vòng ${round}`)+' · '+agent.name:''}`};
 }
-function openingMessage(name:string,c:CouncilConfig,brief:string){
-  return `ĐÃ NHẬN NHIỆM VỤ\nPhiên: ${name}\n\nNHIỆM VỤ\n${brief.slice(0,600)}\n\nPHÂN CÔNG\n${councilAssignments(c)}\n\n`+
-    `CÁCH LÀM\n${c.rounds} vòng thảo luận: ${c.agents.slice(1).map(a=>a.name).join(' → ')}. Sau đó ${c.agents[0].name} tổng hợp để bạn duyệt.\n`+
-    'Phiên đang xếp hàng trên máy chủ. Mỗi lượt AI xử lý theo lịch khoảng một phút; có thể chậm hơn khi đông việc hoặc cần dự phòng. '+
-    'Bot sẽ báo đang làm và trở ngại. Bấm Xem tiến độ để theo dõi. Bạn không cần gửi lại nhiệm vụ.';
+// One durable message per session; edits do not consume AI calls.
+async function syncWorkflowCard(env:XEnv,c:CouncilConfig,id:string,create=false,reset=false){
+  const job=await env.DB.prepare('SELECT * FROM council_jobs WHERE id=?').bind(id).first<any>();
+  if(!job?.chat_id||!await adminExists(env,job.user_id)||!await env.DB.prepare('SELECT 1 FROM council_links WHERE user_id=? AND chat_id=?').bind(job.user_id,job.chat_id).first())return false;
+  if(create)await env.DB.prepare('INSERT OR IGNORE INTO council_cards(job_id,chat_id) VALUES(?,?)').bind(id,job.chat_id).run();
+  if(reset)await env.DB.prepare('UPDATE council_cards SET failures=0,next_at=0 WHERE job_id=?').bind(id).run();
+  const now=Date.now(),card=await env.DB.prepare('UPDATE council_cards SET lease_until=?,checked_at=? WHERE job_id=? AND lease_until<=? AND next_at<=? AND failures<4 RETURNING *')
+    .bind(now+30000,now,id,now,now).first<any>();
+  if(!card)return false;
+  try{
+    const token=await secret(env,'bot:'+c.agents[0].id);if(!token)throw new Error();
+    const tokenHash=await sha256(token),message=councilWorkflowText(job,now,c.enabled),buttons=councilButtons(id,job.status);
+    const hash=await sha256(JSON.stringify([message,buttons]));
+    const messageId=card.token_hash===tokenHash?card.message_id:0;
+    if(messageId&&card.content_hash===hash)return true;
+    const result=await telegramCall(token,messageId?'editMessageText':'sendMessage',{chat_id:job.chat_id,...(messageId?{message_id:messageId}:{}),text:message,reply_markup:buttons});
+    const sentId=messageId||result?.message_id;if(!Number.isSafeInteger(sentId)||sentId<=0)throw new Error();
+    await env.DB.prepare('UPDATE council_cards SET message_id=?,token_hash=?,content_hash=?,failures=0,next_at=0 WHERE job_id=?').bind(sentId,tokenHash,hash,id).run();
+    return true;
+  }catch(error){
+    const gone=error instanceof HttpError&&error.status===410;
+    const delay=error instanceof HttpError&&error.status===429?Number(error.extra?.retryAfter)*1000:120000;
+    await env.DB.prepare("UPDATE council_cards SET message_id=CASE WHEN ? THEN 0 ELSE message_id END,content_hash=CASE WHEN ? THEN '' ELSE content_hash END,failures=failures+1,next_at=? WHERE job_id=?")
+      .bind(gone?1:0,gone?1:0,Date.now()+delay,id).run();return false;
+  }finally{await env.DB.prepare('UPDATE council_cards SET lease_until=0 WHERE job_id=?').bind(id).run();}
 }
 
 async function createJob(env:XEnv,userId:string,brief:string,chat='',source:string|null=null,parent:string|null=null,name='',assistant=false){
@@ -156,12 +180,12 @@ async function createJob(env:XEnv,userId:string,brief:string,chat='',source:stri
     if(!route.plan.length)throw new HttpError(409,agent.name+': chưa có mô hình sẵn sàng. '+[...new Set(route.skipped.map(x=>x.reason))].join(' '));
   }
   const id=randomId(12),now=Date.now();
-  const sessionTitle=titleText(name||brief),parts=chat?councilMessageParts(assistant?
-    `TRỢ LÝ CHUNG ĐÃ NHẬN TIN\n\n${brief.slice(0,500)}\n\nTôi sẽ trả lời, hỏi thêm nếu thiếu thông tin hoặc phân công đội ngũ khi cần thảo luận. Đang xử lý trên máy chủ, thường bắt đầu trong khoảng một phút. Bấm Tiến độ nếu cần kiểm tra.`:openingMessage(sessionTitle,c,brief)):[];
+  const sessionTitle=titleText(name||brief),snapshot={...c,sessionTitle,assistant,workflowCard:true};
+  const parts=chat?[councilWorkflowText({snapshot,brief,step:0,status:'queued',error:'',next_at:0})]:[];
   const results=await env.DB.batch([env.DB.prepare(`INSERT OR IGNORE INTO council_jobs(id,user_id,brief,snapshot,status,chat_id,source,parent,created_at,updated_at)
     SELECT ?,?,?,?,'queued',?,?,?,?,? WHERE (SELECT COUNT(*) FROM council_jobs WHERE status IN ('queued','running','delegating'))<3
     AND (SELECT COUNT(*) FROM council_jobs WHERE created_at>?)<20`)
-    .bind(id,userId,brief,JSON.stringify({...c,sessionTitle,assistant}),chat,source,parent,now,now,now-86400000),
+    .bind(id,userId,brief,JSON.stringify(snapshot),chat,source,parent,now,now,now-86400000),
     ...parts.map((part,i)=>env.DB.prepare(`INSERT OR IGNORE INTO council_outbox(id,job_id,chat_id,agent_id,text,review,next_at)
       SELECT ?,?,?,?,?,0,0 WHERE EXISTS(SELECT 1 FROM council_jobs WHERE id=?)`)
       .bind(`${id}:opening:${i}`,id,chat,c.agents[0].id,part,id)),
@@ -175,10 +199,11 @@ async function createJob(env:XEnv,userId:string,brief:string,chat='',source:stri
   if(chat)await flushOutbox(env,c,id,2).catch(()=>{});
   return id;
 }
-async function renameJob(env:Env,job:any,name:string){
+async function renameJob(env:XEnv,job:any,name:string){
   if(!name.trim()||name.length>90)throw new HttpError(400,'Tên phiên cần từ 1 đến 90 ký tự.');
   const snapshot=JSON.parse(job.snapshot);snapshot.sessionTitle=titleText(name);
   await env.DB.prepare('UPDATE council_jobs SET snapshot=?,updated_at=? WHERE id=?').bind(JSON.stringify(snapshot),Date.now(),job.id).run();
+  await syncWorkflowCard(env,await config(env),job.id).catch(()=>{});
   return snapshot.sessionTitle as string;
 }
 async function reviseJob(env:XEnv,user:string,job:any,feedback:string,source:string|null=null){
@@ -196,6 +221,7 @@ async function decide(env:XEnv,id:string,action:string,by:string){
   await outbox(env,row,'decision','',`${action==='approved'?'ĐÃ DUYỆT NỘI DUNG':action==='rejected'?'ĐÃ TỪ CHỐI':'CẦN CHỈNH SỬA'}\nPhiên: ${councilTitle(row)}\n\n`+
     (action==='approved'?'Bản nội dung đã được chốt và lưu.\n\nBƯỚC TIẾP THEO\nBấm Xem nội dung để lấy bản đã duyệt, hoặc Làm phiên bản tiếp để tạo một phiên mới từ phản hồi của bạn. Bản đã duyệt được giữ lại.\n\nDuyệt chỉ ghi nhận quyết định; hệ thống chưa tự dựng video hay đăng bài.':
       action==='revision'?'Bấm Gửi yêu cầu sửa, rồi viết điều bạn muốn thay đổi bằng lời bình thường.':'Đã ghi nhận từ chối. Bạn có thể giao nhiệm vụ mới từ menu.'));
+  await syncWorkflowCard(env,await config(env),id).catch(()=>{});
   if(row.chat_id)await flushOutbox(env,await config(env),id).catch(()=>{});
 }
 
@@ -289,7 +315,7 @@ export async function councilAdmin(req:Request,env:XEnv,sub:string,admin:User,rc
     const b=await body<any>(req,35000),link=await env.DB.prepare('SELECT chat_id FROM council_links WHERE user_id=?').bind(admin.id).first<any>();
     const id=await createJob(env,admin.id,text(b.brief,8001),link?.chat_id||'',null,null,text(b.title,90),b.mode==='assistant');rc.log('admin.council.create',{data:{id}});return json({id},201);
   }
-  const match=route.match(/^\/jobs\/([a-f0-9]{24})(?:\/(decision|revise|resume|restart|cancel|rename|retry-delivery))?$/);
+  const match=route.match(/^\/jobs\/([a-f0-9]{24})(?:\/(decision|revise|resume|restart|cancel|rename|retry-delivery|progress))?$/);
   if(match){
     const id=match[1],action=match[2],job=await env.DB.prepare('SELECT * FROM council_jobs WHERE id=?').bind(id).first<any>();
     if(!job)throw new HttpError(404,'Không tìm thấy phiên.');
@@ -298,12 +324,13 @@ export async function councilAdmin(req:Request,env:XEnv,sub:string,admin:User,rc
       const deliveries=await env.DB.prepare('SELECT id,agent_id,sent,attempts,text FROM council_outbox WHERE job_id=? ORDER BY rowid').bind(id).all<any>();
       const c=await config(env),snapshot=JSON.parse(job.snapshot);
       const attempts=await env.DB.prepare('SELECT step,provider,model,reason,created_at FROM council_attempts WHERE job_id=? ORDER BY id DESC LIMIT 30').bind(id).all<any>();
-      return json({job:{...job,title:councilTitle(job),snapshot},progress:councilProgress(job),turns:turns.results.map(t=>({...t,displayText:councilPlain(t.text),warnings:councilQuality(t.text,job.brief,!snapshot.assistant&&t.step>=(snapshot.agents.length-1)*snapshot.rounds,snapshot.brand)})),deliveries:deliveries.results,attempts:attempts.results,
+      return json({job:{...job,title:councilTitle(job),snapshot},workflow:councilWorkflow(job,Date.now(),c.enabled),card:await env.DB.prepare('SELECT failures,next_at,checked_at,message_id FROM council_cards WHERE job_id=?').bind(id).first(),progress:councilProgress(job),turns:turns.results.map(t=>({...t,displayText:councilPlain(t.text),warnings:councilQuality(t.text,job.brief,!snapshot.assistant&&t.step>=(snapshot.agents.length-1)*snapshot.rounds,snapshot.brand)})),deliveries:deliveries.results,attempts:attempts.results,
         routing:(snapshot.assistant?snapshot.agents.slice(0,1):snapshot.agents).map((a:CouncilAgent)=>({agent:a.id,...councilRoute(env,a,c.freeOnly,c.freeConfirmed)}))});
     }
     if(method==='POST'){
       const b=await body<any>(req,40000);
-      if(action==='decision')await decide(env,id,text(b.action,20),admin.id);
+      if(action==='progress'){const ok=await syncWorkflowCard(env,await config(env),id,true,true);if(!ok)throw new HttpError(409,'Chưa cập nhật được thẻ. Kiểm tra ghép quản trị, token và quyền gửi Telegram.');}
+      else if(action==='decision')await decide(env,id,text(b.action,20),admin.id);
       else if(action==='rename')return json({title:await renameJob(env,job,text(b.title,91))});
       else if(action==='revise'){
         return json({id:await reviseJob(env,admin.id,job,text(b.feedback,1800))},201);
@@ -329,6 +356,7 @@ export async function councilAdmin(req:Request,env:XEnv,sub:string,admin:User,rc
       }else if(action==='cancel'){
         await env.DB.prepare("UPDATE council_jobs SET status='cancelled',lease='',lease_until=0,updated_at=? WHERE id=? AND status IN ('queued','running','paused','delegating')").bind(Date.now(),id).run();
       }else throw new HttpError(405,'Thao tác không hợp lệ.');
+      await syncWorkflowCard(env,await config(env),id).catch(()=>{});
       rc.log('admin.council.'+action,{data:{id}});return json({ok:true});
     }
   }
@@ -390,7 +418,13 @@ export async function councilWebhook(req:Request,env:XEnv){
   const showStatus=async(id='')=>{
     const job=await findJob(id);
     if(!job){await reply('Chưa có phiên trong nhóm này. Bấm Giao nhiệm vụ để bắt đầu.',councilMenu());return;}
-    await reply(`TIẾN ĐỘ\nPhiên: ${councilTitle(job)}\n\nTÌNH TRẠNG\n${councilProgress(job).summary}\n${job.error||''}\n\nPHÂN CÔNG\n${councilAssignments(JSON.parse(job.snapshot))}`,councilButtons(job.id,job.status));
+    if(!await syncWorkflowCard(env,await config(env),job.id,true,true))await reply('Chưa cập nhật được thẻ quy trình. Kiểm tra kết nối Telegram trên FACIUP.',councilButtons(job.id,job.status));
+    else{
+      const card=await env.DB.prepare('SELECT message_id FROM council_cards WHERE job_id=?').bind(job.id).first<any>();
+      const token=await secret(env,'bot:'+c.agents[0].id);
+      if(token&&card?.message_id)await telegramCall(token,'sendMessage',{chat_id:chat,text:'Đã cập nhật quy trình: '+councilTitle(job),
+        reply_parameters:{message_id:card.message_id,allow_sending_without_reply:true},reply_markup:councilButtons(job.id,job.status)}).catch(()=>{});
+    }
   };
   const ask=async(mode:string,job?:any)=>{
     if(['brief','revise','assistant'].includes(mode)&&!c.enabled)throw new HttpError(409,'Nhóm AI đang tắt. Bật nhóm và lưu cấu hình trên Faciup trước.');
@@ -500,7 +534,9 @@ async function flushOutbox(env:XEnv,c:CouncilConfig,jobId='',limit=1){
       const buttons=item.review||item.id.includes(':opening:')||item.id.includes(':decision:')?councilButtons(item.job_id,item.job_status):undefined;
       const message=item.text.replaceAll('Phiên #'+item.job_id,'Phiên: '+councilTitle(item)).replaceAll('#'+item.job_id,councilTitle(item))
         .replaceAll('/tientrinh '+item.job_id,'nút Xem tiến độ').replaceAll('/sua '+item.job_id,'nút Gửi yêu cầu sửa');
-      await telegramCall(token,'sendMessage',{chat_id:item.chat_id,text:message,...(buttons?{reply_markup:buttons}:{})});
+      if(item.id.endsWith(':opening:0')&&JSON.parse(item.snapshot).workflowCard){
+        if(!await syncWorkflowCard(env,c,item.job_id,true))throw new Error();
+      }else await telegramCall(token,'sendMessage',{chat_id:item.chat_id,text:message,...(buttons?{reply_markup:buttons}:{})});
       await env.DB.prepare('UPDATE council_outbox SET sent=1 WHERE id=?').bind(item.id).run();
     }catch{
       await env.DB.prepare('UPDATE council_outbox SET next_at=? WHERE id=?').bind(Date.now()+120000,item.id).run();
@@ -517,10 +553,13 @@ export async function tickCouncil(env:XEnv){
   if(!locked)return;
   try{
     await flushOutbox(env,c);
+    const card=await env.DB.prepare('SELECT job_id FROM council_cards WHERE failures<4 AND next_at<=? ORDER BY checked_at LIMIT 1').bind(Date.now()).first<any>();
+    if(card)await syncWorkflowCard(env,c,card.job_id).catch(()=>{});
     const job=await env.DB.prepare("SELECT * FROM council_jobs WHERE status IN ('queued','running','delegating') AND next_at<=? AND lease_until<? ORDER BY created_at LIMIT 1").bind(now,now).first<any>();
     if(!job)return;
     const notify=async(key:string,message:string)=>{
       if(!job.chat_id)return;
+      if(JSON.parse(job.snapshot).workflowCard){await syncWorkflowCard(env,c,job.id).catch(()=>{});if(key.startsWith('start:'))return;}
       // A resumed attempt needs a fresh alert, while a retried cron delivery stays idempotent.
       await outbox(env,job,'status:'+key+':'+job.updated_at,c.agents[0].id,`TIẾN ĐỘ\nPhiên: ${councilTitle(job)}\n\n${message}`);
       await flushOutbox(env,c,job.id).catch(()=>{});
@@ -589,8 +628,8 @@ export async function tickCouncil(env:XEnv){
       if(!fresh.enabled||!await adminExists(env,job.user_id)){
         await env.DB.prepare("UPDATE council_jobs SET status='paused',lease='',lease_until=0,error='Nhóm đã tắt hoặc quyền quản trị bị thu hồi.' WHERE id=? AND lease=?").bind(job.id,lease).run();return;
       }
-      const message=snapshot.assistant?`TRỢ LÝ CHUNG\n\n${answer}`+(coordinated?.action==='delegate'?'\n\nĐang mở phiên để các chuyên gia thảo luận. Nội dung cuối vẫn chờ bạn duyệt.':'\n\nBạn có thể tiếp tục trả lời tin này để trò chuyện.'):
-        `${job.step>=last?'BẢN TRÌNH DUYỆT':'THẢO LUẬN'}\nPhiên: ${councilTitle(job)}\nTrợ lý: ${agent.name}\n\n${answer}`+
+      const message=snapshot.assistant?`TRỢ LÝ CHUNG\nPhiên: ${councilTitle(job)}\nTrợ lý: Trợ lý chung\nBước 1/1\n\n${answer}`+(coordinated?.action==='delegate'?'\n\nĐang mở phiên để các chuyên gia thảo luận. Nội dung cuối vẫn chờ bạn duyệt.':'\n\nBạn có thể tiếp tục trả lời tin này để trò chuyện.'):
+        `${job.step>=last?'BẢN TRÌNH DUYỆT':'THẢO LUẬN'}\nPhiên: ${councilTitle(job)}\nTrợ lý: ${agent.name}\nBước ${job.step+1}/${last+1}\n\n${answer}`+
         (job.step>=last?'\n\nBƯỚC TIẾP THEO\nChọn Duyệt nội dung, Yêu cầu sửa hoặc Từ chối bằng các nút bên dưới. Duyệt sẽ chốt và lưu nội dung; chưa tự dựng video hay đăng bài.':'');
       const parts=job.chat_id?councilMessageParts(message):[];
       // Persist transcript, outgoing messages and the step cursor in a single transaction.
@@ -605,6 +644,7 @@ export async function tickCouncil(env:XEnv){
           .bind(coordinated?(coordinated.action==='delegate'?'delegating':'answered'):job.step>=last?'pending':'queued',
             coordinated?.brief??null,coordinated?.brief??null,Date.now(),job.id,lease),
       ]);
+      await syncWorkflowCard(env,c,job.id).catch(()=>{});
       if(job.chat_id)await flushOutbox(env,c,job.id,3).catch(()=>{});
     }catch(error){
       const reason=councilFailure(error);

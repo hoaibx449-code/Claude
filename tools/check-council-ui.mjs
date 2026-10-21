@@ -1,5 +1,6 @@
 import {chromium} from 'playwright';
 import {readFileSync,mkdirSync} from 'node:fs';
+import {councilWorkflow} from '../web/src/council-workflow.ts';
 import {councilDefaults} from '../web/src/council.ts';
 import assert from 'node:assert/strict';
 
@@ -15,7 +16,7 @@ try{
     await page.goto('https://studio.test/');
     await page.addStyleTag({content:readFileSync('web/public/app.css','utf8')+readFileSync('web/public/admin-layout.css','utf8')});
     await page.addScriptTag({content:helper+'\n'+module});
-    await page.evaluate(async(config)=>{
+    await page.evaluate(async({config,workflow})=>{
       const jobs=[{id:'a'.repeat(24),title:'Cà phê văn phòng — Tuần 1',brief:'Ý tưởng cà phê đa kênh',status:'pending'}];
       window.saved=null;window.errors=[];
       const api=async(path,opts={})=>{
@@ -25,11 +26,11 @@ try{
         if(path.endsWith('/decision')){jobs[0].status=opts.body.action;return{ok:true};}
         if(path.endsWith('/pair'))return{command:'/link@Faciup_bot '+'b'.repeat(32)};
         if(path.endsWith('/telegram-status'))return{configured:true,username:'Faciup_bot',webhookMatches:true,secretConfigured:true,pendingUpdates:0,naturalMessagesReady:false,lastReceivedAt:0};
-        if(path.endsWith('/jobs/'+'a'.repeat(24)))return{job:{...jobs[0],brief:'Brief',error:'',snapshot:config},progress:{summary:'Chờ quản trị duyệt · đã hoàn tất 5/5 lượt'},turns:[{agent_id:'editor',provider:'gemini',model:'free',text:'<img src=x onerror="window.pwned=true"> Đề xuất đa kênh'}],deliveries:[{sent:0,attempts:4}],attempts:[{step:0,provider:'gemini',model:'free',reason:'AI gemini: HTTP 429. Hết hạn mức.',created_at:Date.now()}],routing:[{agent:'strategy',routing:'global',plan:[{provider:'ollama',model:'cloud-model'},{provider:'gemini',model:'free'}],skipped:[{provider:'openai',model:'paid',reason:'Bị chặn bởi chính sách chỉ dùng miễn phí.'}]}]};
+        if(path.endsWith('/jobs/'+'a'.repeat(24)))return{workflow,job:{...jobs[0],brief:'Brief',error:'',snapshot:config},progress:{summary:'Chờ quản trị duyệt · đã hoàn tất 5/5 lượt'},turns:[{agent_id:'editor',provider:'gemini',model:'free',text:'<img src=x onerror="window.pwned=true"> Đề xuất đa kênh'}],deliveries:[{sent:0,attempts:4}],attempts:[{step:0,provider:'gemini',model:'free',reason:'AI gemini: HTTP 429. Hết hạn mức.',created_at:Date.now()}],routing:[{agent:'strategy',routing:'global',plan:[{provider:'ollama',model:'cloud-model'},{provider:'gemini',model:'free'}],skipped:[{provider:'openai',model:'paid',reason:'Bị chặn bởi chính sách chỉ dùng miễn phí.'}]}]};
         return {config:JSON.parse(JSON.stringify(config)),secrets:{},links:[],jobs,calls:0,freeModels:['gemini-3.5-flash-lite']};
       };
       await showCouncil({h,api,body:document.getElementById('body'),toast:()=>{},fail:e=>window.errors.push(e.message)});
-    },councilDefaults());
+    },{config:councilDefaults(),workflow:councilWorkflow({snapshot:councilDefaults(),brief:'Brief',status:'pending',step:5})});
     assert.equal(await page.getByLabel('Bật nhóm AI',{exact:true}).isChecked(),false);
     assert.equal(await page.getByLabel('Chỉ dùng lựa chọn miễn phí',{exact:false}).isChecked(),true);
     await page.getByRole('button',{name:'Thêm trợ lý',exact:true}).click();
@@ -45,6 +46,8 @@ try{
     await page.getByRole('button',{name:'Hỏi trợ lý chung',exact:true}).click();
     assert.equal(await page.evaluate(()=>window.created.mode),'assistant');
     await page.getByRole('button',{name:'Mở phiên thảo luận',exact:true}).click();
+    await page.getByRole('heading',{name:'Quy trình vận hành',exact:true}).waitFor();
+    assert.equal(await page.getByRole('progressbar').getAttribute('value'),'5');
     await page.getByRole('heading',{name:'Phân công trong phiên',exact:true}).waitFor();
     await page.getByRole('button',{name:'Xem phiên',exact:true}).click();
     await page.getByRole('button',{name:'Duyệt',exact:true}).waitFor();

@@ -115,10 +115,22 @@ export async function showCouncil({h,api,body,toast,fail}) {
       const latest=plainText(r.turns.at(-1)?.displayText||r.turns.at(-1)?.text||''),url=URL.createObjectURL(new Blob([name+'\n\n'+latest],{type:'text/plain;charset=utf-8'}));
       const a=document.createElement('a');a.href=url;a.download=name.replace(/[<>:"/\\|?*]/g,'-')+'.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     }));
+    if(job.chat_id)controls.push(action('Cập nhật thẻ Telegram',async()=>{await call('/jobs/'+id+'/progress');toast('Đã cập nhật thẻ quy trình Telegram.');await detail(id);}));
     const agents=job.snapshot?.agents||[],ordered=job.snapshot?.assistant?agents.slice(0,1).map(a=>({...a,name:'Trợ lý chung',prompt:'Hỏi đáp, tư vấn, hỏi thêm khi cần và điều phối chuyên gia.'})):agents.length?[...agents.slice(1),agents[0]]:[];
     status.replaceChildren(section(name,h('p',{},r.progress?.summary||state[job.status]||job.status),
       h('details',{},h('summary',{},'Đổi tên phiên'),rename,action('Lưu tên phiên',async()=>{await call('/jobs/'+id+'/rename',{title:rename.value});await detail(id);})),
       h('h3',{},'Nhiệm vụ'),h('p',{},job.brief),
+      r.workflow?section('Quy trình vận hành',
+        h('p',{},r.workflow.phase+' · Hoàn tất '+r.workflow.completed+'/'+r.workflow.total+' lượt AI'),
+        h('progress',{value:r.workflow.completed,max:r.workflow.total,'aria-label':'Số lượt AI hoàn tất',style:'width:100%;accent-color:#16835b'}),
+        h('ol',{style:'padding-left:24px'},...r.workflow.steps.map(s=>h('li',{style:'margin:10px 0;padding:10px;border-left:4px solid '+({done:'#16835b',working:'#2563eb',waiting:'#a86b00',blocked:'#c53030',rejected:'#c53030'}[s.state]||'#777')},
+          h('strong',{},s.icon+' '+(s.round?'Vòng '+s.round+' · ':'')+s.label),h('p',{class:'muted'},({done:'Đã xong',working:'Đang thực hiện',waiting:'Đang chờ',blocked:'Bị dừng',rejected:'Cần thay đổi'}[s.state])+' · '+s.description)))),
+        r.workflow.current?h('p',{},'Đang ở bước: '+r.workflow.current):null,
+        r.workflow.next?h('p',{},'Tiếp theo: '+r.workflow.next):null,
+        r.workflow.retryAt?h('p',{},'Tự thử lại sau: '+new Date(r.workflow.retryAt).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})):null,
+        h('h3',{},'Bạn cần làm gì'),h('p',{},r.workflow.action),
+        r.card?.failures>=4?h('p',{class:'bad'},'Thẻ Telegram gửi thất bại nhiều lần. Kiểm tra kết nối rồi bấm Cập nhật thẻ Telegram.'):null,
+        h('p',{class:'muted'},'Thẻ Telegram được cập nhật tại chỗ; từng lần sửa không tạo thông báo mới. Lỗi có thông báo riêng.')):null,
       section('Phân công trong phiên',h('ol',{},...ordered.map(a=>h('li',{},h('strong',{},a.name+': '),a.prompt.replace(/\s+/g,' ').slice(0,190)))),
         h('p',{},job.snapshot?.assistant?'Trợ lý chung hỏi đáp, tư vấn và phân công khi cần. Chưa thực thi bên ngoài.':`${job.snapshot?.rounds||1} vòng thảo luận, sau đó tổng biên tập trình quản trị duyệt.`)),
       job.error?h('p',{class:'bad'},job.error):null,
