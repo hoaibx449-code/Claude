@@ -74,6 +74,9 @@ test('council: model errors survive pause, bypass a failed Telegram receipt, and
     let detail=await (await f.request('/api/admin/council/jobs/'+id,{headers:{cookie:f.adminCookie}})).json() as any;
     assert.equal(detail.job.status,'paused');assert.match(detail.attempts[0].reason,/HTTP 429/);
     assert.ok(!JSON.stringify(detail).includes('private-provider-body'));assert.ok(!JSON.stringify(detail).includes('secret-never-echo'));
+    const alerts=sent.filter(x=>x.text.includes('HTTP 429')).length;
+    assert.equal((await f.write('/jobs/'+id+'/resume')).status,200);await tickCouncil(f.env);
+    assert.equal(sent.filter(x=>x.text.includes('HTTP 429')).length,alerts+1,'a resumed failure sends a fresh alert');
     await f.env.DB.prepare('INSERT INTO council_turns VALUES(?,?,?,?,?,?,?)').bind(id,0,'strategy','gemini',FREE_GEMINI[0],'Đã hoàn tất trước đó.',Date.now()).run();
     await f.env.DB.prepare('UPDATE council_jobs SET step=1 WHERE id=?').bind(id).run();
     c.agents.forEach(a=>a.routing='global');await f.save(c);

@@ -445,7 +445,8 @@ export async function tickCouncil(env:XEnv){
     if(!job)return;
     const notify=async(key:string,message:string)=>{
       if(!job.chat_id)return;
-      await outbox(env,job,'status:'+key,c.agents[0].id,`TIẾN ĐỘ\nPhiên: ${councilTitle(job)}\n\n${message}`);
+      // A resumed attempt needs a fresh alert, while a retried cron delivery stays idempotent.
+      await outbox(env,job,'status:'+key+':'+job.updated_at,c.agents[0].id,`TIẾN ĐỘ\nPhiên: ${councilTitle(job)}\n\n${message}`);
       await flushOutbox(env,c,job.id).catch(()=>{});
     };
     if(!await adminExists(env,job.user_id)){
