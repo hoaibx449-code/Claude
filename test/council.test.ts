@@ -32,7 +32,7 @@ async function fixture(){
   };
   const secret=async(key:string,value:string)=>env.DB.prepare('INSERT OR REPLACE INTO council_secrets VALUES(?,?)').bind(key,await encrypt(env,value)).run();
   const hook=async(payload:any,header='hook-secret')=>request('/api/council/telegram',{method:'POST',headers:{'content-type':'application/json','x-telegram-bot-api-secret-token':header},body:JSON.stringify(payload)});
-  const webhookMessage=(id:number,from=55,chat=-100,text='/brief Nội dung cà phê')=>({update_id:id,message:{message_id:id,from:{id:from,is_bot:false},chat:{id:chat,type:'supergroup'},text}});
+  const webhookMessage=(id:number,from=55,chat=-100,text='/brief Nội dung cà phê')=>({update_id:id,message:{message_id:id,from:{id:from,is_bot:false},chat:{id:chat,type:'supergroup'},text,...(!text.startsWith('/')?{reply_to_message:{message_id:1,from:{id:123456,is_bot:true}}}:{})}});
   const enabled=()=>{const c=councilDefaults();return {...c,enabled:true,freeConfirmed:true,agents:c.agents.map(a=>({...a,routing:"custom" as const}))};};
   const close=()=>{clearCache();rmSync(dir,{recursive:true,force:true});};
   return {env,user,adminCookie,memberCookie,request,write,save,secret,hook,webhookMessage,enabled,close};
@@ -72,6 +72,36 @@ test('council: workflow card edits one message, backs off, recovers deleted card
   }finally{globalThis.fetch=orig;f.close();}
 });
 
+test('council: natural menu is free and shared-group reports never consume a pending dialog',async()=>{
+  clearCache();const f=await fixture(),orig=globalThis.fetch,sent:any[]=[];
+  try{
+    await f.save(f.enabled());await f.secret('bot:editor','123456:fake');await f.secret('webhook','hook-secret');
+    await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
+    globalThis.fetch=async(url,options)=>{
+      assert.ok(String(url).startsWith('https://api.telegram.org/'),'menu never calls a model');
+      if(String(url).endsWith('/sendMessage'))sent.push(JSON.parse(options?.body as string));
+      return Response.json({ok:true,result:{message_id:1,id:123456,username:'Faciup_bot'}});
+    };
+    const plain=(id:number,text:string,user=55)=>{const u=f.webhookMessage(id,user,-100,text);delete (u.message as any).reply_to_message;return u;};
+    await f.hook(plain(1,'Trợ lý ơi!'));assert.equal(sent.length,1);
+    assert.ok(sent[0].reply_markup.inline_keyboard.flat().some((b:any)=>b.callback_data==='ui:assistant'));
+    assert.ok(sent[0].reply_markup.inline_keyboard.flat().some((b:any)=>b.callback_data==='ui:new'));
+    await f.hook(plain(1,'Trợ lý ơi!'));assert.equal(sent.length,1,'redelivery is deduplicated');
+    await f.hook(plain(20,'/brief@Other_bot Báo cáo của bot khác'));await f.hook(plain(2,'Báo cáo doanh số hôm nay'));await f.hook(plain(3,'Trợ lý ơi',66));assert.equal(sent.length,1);
+    await f.hook({update_id:4,callback_query:{id:'cb',from:{id:55},message:{chat:{id:-100,type:'supergroup'}},data:'ui:new'}});
+    assert.equal(sent.at(-1).reply_markup.force_reply,true);const count=sent.length;
+    await f.hook(plain(5,'Báo cáo khác sau khi bấm nút'));
+    const other=f.webhookMessage(6,55,-100,'Trả lời bot báo cáo');other.message.reply_to_message!.from.id=999999;await f.hook(other);
+    assert.equal(sent.length,count);assert.equal((await f.env.DB.prepare('SELECT COUNT(*) n FROM council_jobs').first<any>()).n,0);
+    assert.equal((await f.env.DB.prepare('SELECT mode FROM council_dialogs').first<any>()).mode,'brief');
+    await f.hook(f.webhookMessage(7,55,-100,'Kế hoạch nội dung 7 ngày'));assert.match(sent.at(-1).text,/ĐÃ NHẬN NHIỆM VỤ/);
+    await f.hook(plain(8,'Trợ lý, giải thích cách duyệt nội dung'));
+    const jobs=await f.env.DB.prepare('SELECT brief,snapshot FROM council_jobs ORDER BY created_at').all<any>();
+    assert.equal(jobs.results.length,2);assert.equal(jobs.results[1].brief,'giải thích cách duyệt nội dung');assert.equal(JSON.parse(jobs.results[1].snapshot).assistant,true);
+    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) n FROM council_usage').first<any>()).n,0);
+  }finally{globalThis.fetch=orig;f.close();}
+});
+
 test('council: inherited routing follows Ollama-first settings, migrates legacy defaults and explains skipped choices',()=>{
   const agent=councilDefaults().agents[1];
   const env:any={AI_ORDER:'ollama,openai,gemini',OLLAMA_TEXT_MODEL:'cloud-model',OLLAMA_TEXT_FALLBACK:'backup-cloud',
@@ -98,13 +128,13 @@ test('council: general assistant validates decisions and rejects malformed or un
     assert.throws(()=>assistantAnswer(value));
 });
 
-test('council: linked plain text reaches the general assistant, preserves context and delegates once without executing',async()=>{
+test('council: linked replies reach the general assistant, preserves context and delegates once without executing',async()=>{
   clearCache();const f=await fixture(),orig=globalThis.fetch,sent:any[]=[];let calls=0;try{
     const c=f.enabled();c.agents=c.agents.slice(0,2);await f.save(c);
     await f.secret('webhook','hook-secret');await f.secret('bot:editor','123456:fake');
     await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
     globalThis.fetch=async(url,options)=>{
-      if(String(url).startsWith('https://api.telegram.org/')){if(String(url).endsWith('/sendMessage'))sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});}
+      if(String(url).startsWith('https://api.telegram.org/')){if(String(url).endsWith('/sendMessage'))sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1,id:123456,username:'Faciup_bot'}});}
       calls++;const b=JSON.parse(options?.body as string);assert.match(b.systemInstruction.parts[0].text,/trợ lý chung/);
       if(calls===2){const input=JSON.parse(b.contents[0].parts[0].text);assert.ok(input.history.some((x:any)=>x.question==='Bạn hỗ trợ tôi được những việc gì?'));}
       return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(calls===1?
@@ -140,7 +170,7 @@ test('council: privacy diagnostics distinguish normal-message access and menu re
       if(method==='getWebhookInfo')return Response.json({ok:true,result:{url:'https://studio.test/api/council/telegram'}});
       if(method==='getChatMember')return Response.json({ok:true,result:{status:groupAdmin?'administrator':'member'}});
       if(method==='pinChatMessage')return new Response('{}',{status:403});
-      return Response.json({ok:true,result:{message_id:1}});
+      return Response.json({ok:true,result:{message_id:1,id:123456,username:'Faciup_bot'}});
     };
     const check=async()=> (await f.request('/api/admin/council/telegram-status',{headers:{cookie:f.adminCookie}})).json() as Promise<any>;
     let d=await check();assert.equal(d.naturalMessagesReady,false);assert.equal(d.groupChecked,true);assert.equal(d.lastReceivedAt,0);
@@ -158,7 +188,7 @@ test('council: model errors survive pause, bypass a failed Telegram receipt, and
     await f.save(c);await f.secret('bot:editor','123456:secret-never-echo');
     await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
     globalThis.fetch=async(url,options)=>{
-      if(String(url).startsWith('https://api.telegram.org/')){if(String(url).endsWith('/sendMessage'))sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});}
+      if(String(url).startsWith('https://api.telegram.org/')){if(String(url).endsWith('/sendMessage'))sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1,id:123456,username:'Faciup_bot'}});}
       return new Response('private-provider-body',{status:429});
     };
     const created=await f.write('/jobs',{brief:'Lịch sử thế giới trong 7 ngày'}),{id}=await created.json() as any;
@@ -180,7 +210,7 @@ test('council: model errors survive pause, bypass a failed Telegram receipt, and
     const resumed=await councilAdmin(new Request('https://studio.test/api/admin/council/jobs/'+id+'/resume',{method:'POST',body:'{}'}),f.env,'council/jobs/'+id+'/resume',f.user,{log(){}} as any);
     assert.equal(resumed.status,200);
     globalThis.fetch=async(url,options)=>{
-      if(String(url).startsWith('https://api.telegram.org/'))return Response.json({ok:true,result:{message_id:1}});
+      if(String(url).startsWith('https://api.telegram.org/'))return Response.json({ok:true,result:{message_id:1,id:123456,username:'Faciup_bot'}});
       assert.equal(String(url),'https://ollama.com/api/chat');assert.equal(JSON.parse(options?.body as string).model,'working-cloud');
       return Response.json({done:true,message:{content:Array.from({length:7},(_,i)=>'Ngày '+(i+1)+' – Chủ đề và nội dung cụ thể.').join('\n\n')}});
     };
@@ -314,7 +344,7 @@ test('council: persisted Telegram outbox delivers role messages and review butto
     await f.secret('bot:editor','123456:fake-server-secret');
     await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
     globalThis.fetch=async(url,options)=>{
-      if(String(url).startsWith('https://api.telegram.org/')){sent.push({...JSON.parse(options?.body as string),method:String(url).split('/').at(-1)});return Response.json({ok:true,result:{message_id:1}});}
+      if(String(url).startsWith('https://api.telegram.org/')){sent.push({...JSON.parse(options?.body as string),method:String(url).split('/').at(-1)});return Response.json({ok:true,result:{message_id:1,id:123456,username:'Faciup_bot'}});}
       return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:'Nội dung đề xuất.'}]}}]});
     };
     const result=await f.write('/jobs',{brief:'Nội dung cho các kênh'}),{id}=await result.json() as any;
@@ -332,7 +362,7 @@ test('council: immediate task receipt, roles and progress use no AI and are rest
     await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
     globalThis.fetch=async(url,options)=>{
       assert.ok(String(url).startsWith('https://api.telegram.org/'),'receipts and status must not consume model quota');
-      sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});
+      if(/\/(?:sendMessage|editMessageText)$/.test(String(url)))sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1,id:123456,username:'Faciup_bot'}});
     };
     await f.hook(f.webhookMessage(1));await f.hook(f.webhookMessage(1));
     assert.equal(sent.length,1);assert.match(sent[0].text,/ĐÃ NHẬN NHIỆM VỤ/);
@@ -354,7 +384,7 @@ test('council: receipt delivery failure preserves accepted job and retries witho
     globalThis.fetch=async(url,options)=>{
       if(String(url).startsWith('https://api.telegram.org/')){
         if(fail)return new Response('{}',{status:503});
-        sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});
+        sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1,id:123456,username:'Faciup_bot'}});
       }
       return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:'Đề xuất.'}]}}]});
     };
@@ -373,7 +403,7 @@ test('council: exhausted models and daily quota produce visible progress alerts 
     await f.save(c);await f.secret('bot:editor','123456:fake-server-secret');
     await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
     globalThis.fetch=async(url,options)=>{
-      if(String(url).startsWith('https://api.telegram.org/')){sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});}
+      if(String(url).startsWith('https://api.telegram.org/')){sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1,id:123456,username:'Faciup_bot'}});}
       models++;return new Response('{}',{status:429});
     };
     const first=await f.write('/jobs',{brief:'Phiên có mô hình lỗi'}),{id}=await first.json() as any;
@@ -432,7 +462,7 @@ test('council: named sessions, button-only delegation, rename and approved follo
     globalThis.fetch=async(url,options)=>{
       assert.ok(String(url).startsWith('https://api.telegram.org/'),'menus never call a model');
       if(String(url).endsWith('/sendMessage'))sent.push(JSON.parse(options?.body as string));
-      return Response.json({ok:true,result:{message_id:1}});
+      return Response.json({ok:true,result:{message_id:1,id:123456,username:'Faciup_bot'}});
     };
     const callback=(id:number,data:string,user=55,chat=-100)=>({update_id:id,callback_query:{id:'cb',from:{id:user},message:{chat:{id:chat,type:'supergroup'}},data}});
     assert.equal((await f.write('/menu')).status,200);
@@ -514,7 +544,7 @@ test('council: low-quality responses trigger fallback before persistence and an 
     c.agents[0].models=c.agents[0].models.slice(0,1);await f.save(c);
     await f.secret('bot:editor','123456:fake');await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
     globalThis.fetch=async(url,options)=>{
-      if(String(url).startsWith('https://api.telegram.org/')){sent.push(JSON.parse(options?.body as string).text);return Response.json({ok:true,result:{message_id:1}});}
+      if(String(url).startsWith('https://api.telegram.org/')){sent.push(JSON.parse(options?.body as string).text);return Response.json({ok:true,result:{message_id:1,id:123456,username:'Faciup_bot'}});}
       calls++;if(calls===1)return Response.json({done:true,message:{content:'Nội dung tiếng Việt bị chèn 공유.'}});
       return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:calls===2?'Chiến lược phù hợp với yêu cầu.':'Chỉ có ý tưởng chung, chưa có lịch từng ngày.'}]}}]});
     };
@@ -536,7 +566,7 @@ test('council: multipart delivery remains contiguous and failed parts cannot sil
   clearCache();const f=await fixture(),orig=globalThis.fetch,sent:string[]=[];try{
     await f.save(f.enabled());await f.secret('bot:editor','123456:fake');
     await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
-    globalThis.fetch=async(_url,options)=>{if(String(_url).endsWith('/sendMessage'))sent.push(JSON.parse(options?.body as string).text);return Response.json({ok:true,result:{message_id:1}});};
+    globalThis.fetch=async(_url,options)=>{if(String(_url).endsWith('/sendMessage'))sent.push(JSON.parse(options?.body as string).text);return Response.json({ok:true,result:{message_id:1,id:123456,username:'Faciup_bot'}});};
     const {id}=await (await f.write('/jobs',{brief:'Kiểm tra gửi nhiều phần'})).json() as any;
     await f.env.DB.prepare("UPDATE council_jobs SET status='pending' WHERE id=?").bind(id).run();sent.length=0;
     for(const [key,message] of [['0:0','Phần một'],['status:start:0','Tiến độ khác'],['0:1','Phần hai'],['0:2','Phần ba']])

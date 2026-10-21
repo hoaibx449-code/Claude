@@ -86,7 +86,7 @@ export async function showCouncil({h,api,body,toast,fail}) {
       `${j.progress?.phase||state[j.status]||j.status} · ${new Date(j.created_at||Date.now()).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})}`),j.error?h('p',{class:'bad'},j.error):null),action('Xem phiên',()=>detail(j.id)))));
   }
   const create=section('Giao nhiệm vụ',
-    h('p',{class:'muted'},'Hỏi trợ lý chung bằng lời bình thường để được trả lời, hỏi thêm hoặc phân công đội ngũ. Nếu muốn cả đội thảo luận ngay, chọn Mở phiên thảo luận.'),
+    h('p',{class:'muted'},'Trong Telegram, nhắn “trợ lý ơi” hoặc “mở menu trợ lý” để hiện nút thao tác. Hỏi trực tiếp bằng “trợ lý, …” hoặc Trả lời (Reply) tin bot. Các tin khác trong nhóm được bỏ qua. Nếu muốn cả đội thảo luận ngay, chọn Mở phiên thảo luận.'),
     field('Tên phiên (có thể để trống để tự đặt)',input('',v=>title=v,{placeholder:'Ví dụ: Cà phê văn phòng — Tuần 1',maxlength:90})),
     field('Yêu cầu sáng tạo nội dung đa kênh',area('',v=>brief=v,4)),
     action('Mở phiên thảo luận',async()=>{const r=await call('/jobs',{brief,title});toast('Đã nhận nhiệm vụ.');await detail(r.id);status.scrollIntoView({block:'start',behavior:'smooth'});}),

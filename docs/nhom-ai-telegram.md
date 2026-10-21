@@ -54,7 +54,7 @@ Trước từng lượt, bot báo trợ lý nào đang làm; khi lỗi, đổi m
 bot báo trạng thái để bạn biết vì sao phải chờ. Tin được lưu để thử gửi lại khi mạng lỗi.
 
 Chỉ quản trị đã ghép đúng nhóm mới đọc được tiến độ hoặc dùng các nút. Tin thông
-thường chỉ được dùng làm nhiệm vụ sau khi bạn bấm Giao nhiệm vụ; không tự mở phiên
+thường chỉ được dùng làm nhiệm vụ khi bạn gọi trực tiếp trợ lý hoặc Reply tin bot sau khi bấm nút; không tự mở phiên
 từ mọi câu chuyện trong nhóm. Lượt nhập có hiệu lực 15 phút và gắn riêng người/nhóm.
 Trong Telegram, trả lời tin hỏi của bot giúp bot nhận được nội dung khi bật Privacy Mode.
 Các lệnh cũ vẫn được giữ tương thích nhưng không bắt buộc cho quy trình mới.
@@ -136,7 +136,7 @@ Khi đã sửa cấu hình hoặc hạn mức, mở phiên và bấm “Tiếp t
 
 ### Trò chuyện tự nhiên với trợ lý chung
 
-Quản trị đã ghép có thể gửi câu hỏi thông thường, không cần lệnh hoặc chọn Giao nhiệm vụ trước. Trợ lý xác nhận đã nhận tin ngay, sau đó xử lý trên máy chủ theo lịch khoảng một phút. Trợ lý trả lời trực tiếp, hỏi thêm khi thiếu thông tin hoặc mở phiên thảo luận để chuyên gia cùng làm. Trợ lý chỉ tư vấn, viết nháp và điều phối; chưa có quyền truy cập lịch, gửi thư, đăng bài hay thực hiện bên ngoài. Lịch sử gần đây chỉ lấy từ cùng quản trị và cùng nhóm để hiểu câu tiếp nối.
+Quản trị đã ghép nhắn “trợ lý ơi”, “tro ly oi”, “Faciup ơi” hoặc “mở menu trợ lý” để hiện bảng nút: Trò chuyện với trợ lý chung, Giao nhiệm vụ, Tiến độ và Phiên gần đây. Mở menu không gọi AI, kể cả khi nhóm AI đang tắt. Hỏi trực tiếp bằng “trợ lý, giải thích…” hoặc dùng Trả lời (Reply) vào tin của bot. Tin báo cáo thông thường, tin trả lời bot khác và lệnh có @username của bot khác được bỏ qua, kể cả đang chờ bạn nhập nhiệm vụ; tin đó không tiêu thụ lượt nhập 15 phút. Sau khi bấm nút, dùng Reply vào tin bot để gửi nội dung; mở menu sẽ hủy lượt nhập đang chờ. Trợ lý xác nhận đã nhận tin ngay, sau đó xử lý trên máy chủ theo lịch khoảng một phút. Trợ lý trả lời trực tiếp, hỏi thêm khi thiếu thông tin hoặc mở phiên thảo luận để chuyên gia cùng làm. Trợ lý chỉ tư vấn, viết nháp và điều phối; chưa có quyền truy cập lịch, gửi thư, đăng bài hay thực hiện bên ngoài. Lịch sử gần đây chỉ lấy từ cùng quản trị và cùng nhóm để hiểu câu tiếp nối.
 
 Nếu Telegram bật Group Privacy và bot không là quản trị nhóm, tin nhắn thường có thể không được chuyển tới web. Cách dùng ngay: chọn Trả lời (Reply) vào tin của bot rồi gửi nội dung. Để bot nhận tin thường trong nhóm riêng: mở @BotFather, gửi /setprivacy, chọn @Faciup_bot, chọn Disable; xóa bot khỏi nhóm rồi thêm lại theo hướng dẫn Telegram. Không đổi token và không cần cấp quyền quản trị nhóm. Kiểm tra lại mục Kết nối Telegram trên web: trạng thái nhận tin thường và thời điểm cuối nhận tin giúp phân biệt Telegram chưa chuyển tin với AI đang xử lý. Việc tắt Group Privacy cho phép bot nhận tin trong các nhóm đã tham gia; chỉ thêm bot vào nhóm riêng tin cậy. Server vẫn chỉ xử lý quản trị đã ghép còn quyền, không phản hồi người lạ hay bot khác.
 
