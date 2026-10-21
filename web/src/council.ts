@@ -243,9 +243,13 @@ async function flushOutbox(env:XEnv,c:CouncilConfig){
     (SELECT 1 FROM council_outbox prev WHERE prev.job_id=o.job_id AND prev.rowid<o.rowid AND prev.sent=0)
     ORDER BY o.rowid LIMIT 1`).bind(Date.now()).all<any>();
   for(const item of items.results){
-    if(!await adminExists(env,item.user_id))continue;
+    if(!await adminExists(env,item.user_id)){
+      await env.DB.prepare('UPDATE council_outbox SET sent=-1 WHERE id=?').bind(item.id).run();continue;
+    }
     // Unlinking revokes future delivery, even for already queued messages.
-    if(!await env.DB.prepare('SELECT 1 FROM council_links WHERE user_id=? AND chat_id=?').bind(item.user_id,item.chat_id).first())continue;
+    if(!await env.DB.prepare('SELECT 1 FROM council_links WHERE user_id=? AND chat_id=?').bind(item.user_id,item.chat_id).first()){
+      await env.DB.prepare('UPDATE council_outbox SET sent=-1 WHERE id=?').bind(item.id).run();continue;
+    }
     const token=await secret(env,'bot:'+item.agent_id)||await secret(env,'bot:'+c.agents[0].id);
     if(!token)continue;
     try{

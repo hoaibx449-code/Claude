@@ -74,7 +74,8 @@ export async function showCouncil({h,api,body,toast,fail}) {
     if(job.status==='revision')controls.push(field('Yêu cầu chỉnh sửa',area('',v=>feedback=v)),action('Mở phiên sửa',async()=>{const next=await call('/jobs/'+id+'/revise',{feedback});await detail(next.id);}));
     status.replaceChildren(section('Phiên #'+id,h('p',{},'Trạng thái: '+job.status),h('p',{},job.brief),job.error?h('p',{class:'bad'},job.error):null,
       ...r.turns.map(t=>h('article',{},h('h3',{},`${t.agent_id} · ${t.provider}/${t.model}`),h('pre',{style:'white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit'},t.text))),
-      h('p',{},'Tin Telegram đã gửi: '+r.deliveries.filter(x=>x.sent).length+'/'+r.deliveries.length),
+      h('p',{},'Tin Telegram đã gửi: '+r.deliveries.filter(x=>x.sent===1).length+'/'+r.deliveries.length+
+        (r.deliveries.some(x=>x.sent===-1)?' · Có tin đã hủy do ngắt ghép/thu hồi quyền.':'')),
       ...controls,action('Cập nhật phiên',()=>detail(id))));
   }
   const jobs=section('Lịch sử thảo luận',action('Làm mới danh sách',reload),
