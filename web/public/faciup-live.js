@@ -1,9 +1,9 @@
-// Faciup Live: two rooms. "Điều hành" has FACIUP in the centre with the idle robots circling it;
-// "Phòng họp" seats the robots of the current session round a table, and when the turn passes the
-// file flies from one robot to the next (or back to FACIUP). Beside it, how long each agent takes and
-// the latest handovers; below, the team KPIs. Everything comes from /api/faciup-live (times and
-// public names only); agents added in Quản trị → Nhóm AI appear on their own. Work is given in the
-// admin pages, never here.
+// Faciup Live: the AI team on a 24-hour dial. FACIUP glows in the centre, the agents are robots that
+// keep circling it, the orange hand marks the time in Vietnam and a dot on the ring marks each hour
+// an agent worked today. When a turn passes, the file flies from one robot to the next (or back to
+// FACIUP). Beside it, how long each agent takes and the latest handovers; below, the team KPIs.
+// Everything comes from /api/faciup-live (times and public names only); agents added in Quản trị →
+// Nhóm AI appear on their own. Work is given in the admin pages, never here.
 const NS='http://www.w3.org/2000/svg';
 const BADGE={
  target:'<circle r="4.5" fill="none" stroke="#fff" stroke-width="1.8"/><circle r="1.6" fill="#fff"/>',
@@ -45,74 +45,75 @@ const DOC='<svg viewBox="0 0 30 24" aria-hidden="true"><path d="M1 3h10l3 3h15v1
 export function showLive({h,show,api,footer}){
  let stopped=false,busy=false,data=null,stale=false,raf=0,last=performance.now(),clockSkew=0;
  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
- const orbits=document.createElementNS(NS,'svg');orbits.setAttribute('viewBox','0 0 600 520');orbits.setAttribute('preserveAspectRatio','none');orbits.setAttribute('class','fl-bg');orbits.setAttribute('aria-hidden','true');
- const trail=document.createElementNS(NS,'svg');trail.setAttribute('class','fl-trail');trail.setAttribute('aria-hidden','true');
- const execN=h('small',{}),meetN=h('small',{}),tray=h('div',{class:'fl-tray'}),hub=h('div',{class:'fl-hub'},h('div',{class:'fl-core'},h('b',{},'FACIUP')));
- const exec=h('section',{class:'fl-room fl-exec','aria-label':'Phòng điều hành'},h('h2',{},h('i',{},'⌘'),'Phòng điều hành',execN),orbits,hub,tray);
- const table=h('div',{class:'fl-table'}),session=h('div',{class:'fl-session'}),empty=h('div',{class:'fl-empty'},'Chưa có phiên họp');
- const meet=h('section',{class:'fl-room fl-meet','aria-label':'Phòng họp'},h('h2',{},h('i',{},'☷'),'Phòng họp',meetN),table,session,empty);
- const rooms=h('div',{class:'fl-rooms'},exec,meet,trail);
+ const svg=(tag,attrs={})=>{const e=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e;};
+ const ang=hr=>hr/24*2*Math.PI-Math.PI/2;
+ // the dial (viewBox 1000×1000): night/day halves, hour ticks, today's activity dots, orbits, beams, the hand
+ const marks=svg('g'),orbits=svg('g'),beams=svg('g'),hand=svg('g',{class:'fl-hand'});
+ hand.append(svg('circle',{r:16,class:'fl-hand-glow'}),svg('circle',{r:9}));
+ const dial=svg('svg',{viewBox:'0 0 1000 1000',class:'fl-dial','aria-hidden':'true'});
+ const defs=svg('defs'),halves=svg('linearGradient',{id:'fl-dn',x1:0,y1:0,x2:0,y2:1});
+ for(const [o,c] of [['0','var(--fl-night)'],['.5','var(--fl-night)'],['.5','var(--fl-day)'],['1','var(--fl-day)']])halves.append(svg('stop',{offset:o,'stop-color':c}));
+ const rim=svg('linearGradient',{id:'fl-rim',x1:0,y1:0,x2:1,y2:1});for(const [o,c] of [['0','#7c3aed'],['.5','#db2777'],['1','#f97316']])rim.append(svg('stop',{offset:o,'stop-color':c}));
+ defs.append(halves,rim);dial.append(defs,svg('circle',{cx:500,cy:500,r:462,class:'fl-face'}),svg('circle',{cx:500,cy:500,r:462,class:'fl-rim'}));
+ for(let i=0;i<24;i++){const a=ang(i),big=i%3===0,r1=big?412:424;dial.append(svg('line',{x1:500+r1*Math.cos(a),y1:500+r1*Math.sin(a),x2:500+438*Math.cos(a),y2:500+438*Math.sin(a),class:big?'fl-tick fl-tick-big':'fl-tick'}));
+  if(big){const t=svg('text',{x:500+384*Math.cos(a),y:500+384*Math.sin(a)+8,class:'fl-hour'});t.textContent=pad(i);dial.append(t);}}
+ for(const [y,txt] of [[300,'ĐÊM'],[722,'NGÀY']]){const t=svg('text',{x:500,y,class:'fl-half'});t.textContent=txt;dial.append(t);}
+ dial.append(orbits,beams,marks,hand);
+ const hub=h('div',{class:'fl-hub'},h('div',{class:'fl-core'},h('b',{},'FACIUP'),h('small',{},'')));
+ const now=h('div',{class:'fl-now'},h('i',{}),h('span',{},'Đang kết nối…')),tray=h('div',{class:'fl-tray'});
+ const stage=h('section',{class:'fl-stage','aria-label':'Đội AI FACIUP trên mặt đồng hồ 24 giờ'},dial,hub,tray,now);
+ const trail=svg('svg',{class:'fl-trail','aria-hidden':'true'});stage.append(trail);
  const times=h('ul',{class:'fl-times'}),count=h('small',{}),log=h('ul',{class:'fl-log'});
  const side=h('aside',{class:'fl-side'},h('div',{class:'fl-panel'},h('h2',{},'Thời gian xử lý',count),times),h('div',{class:'fl-panel'},h('h2',{},'Bàn giao gần đây'),log));
  const kpis=h('section',{class:'fl-kpis','aria-label':'Chỉ số hoạt động'});
- const page=h('div',{class:'fl-live'},h('h1',{class:'sr'},'Faciup Live'),rooms,side,kpis);
+ const page=h('div',{class:'fl-live'},h('h1',{class:'sr'},'Faciup Live'),stage,side,kpis);
  show(page,footer());
- let bots=[],key='',meeting=null;const lastTurn=new Map();
+ let bots=[],key='';const lastTurn=new Map();
  function build(list){
   const k=list.map(a=>a.id+a.name+a.color+a.icon).join('|');if(k===key)return;key=k;
-  const keep=new Map(bots.map(b=>[b.id,b]));orbits.replaceChildren();
+  const keep=new Map(bots.map(b=>[b.id,b]));orbits.replaceChildren();beams.replaceChildren();
+  const rings=Math.min(3,Math.max(1,Math.ceil(list.length/3)));
+  for(let r=0;r<rings;r++)orbits.append(svg('circle',{cx:500,cy:500,r:[190,265,335][r],class:'fl-orbit'}));
   bots=list.map((s,j)=>{const i=j+1,old=keep.get(s.id);keep.delete(s.id);
-   const ring=j%3,o=old?.o||{rx:[150,205,250][ring],ry:[92,130,165][ring],tilt:([-14,10,-4][ring]+j*6)*Math.PI/180,ph:j/list.length*Math.PI*2,sp:(.06+.025*ring)*(j%2?-1:1)};
-   if(j<3){const e=document.createElementNS(NS,'ellipse');for(const [a,v] of Object.entries({cx:300,cy:285,rx:o.rx,ry:o.ry,transform:`rotate(${o.tilt*180/Math.PI} 300 285)`,class:'fl-orbit'}))e.setAttribute(a,v);orbits.append(e);}
+   const ring=j%rings,o=old?.o||{r:[190,265,335][ring],ph:j/list.length*Math.PI*2,sp:(.16-.03*ring)*(ring%2?-1:1),wob:j};
+   const beam=svg('line',{x1:500,y1:500,x2:500,y2:500,class:'fl-beam',stroke:s.color});beams.append(beam);
    let el=old?.el;
    if(!el||old.icon!==s.icon||old.color!==s.color){old?.el.remove();el=h('div',{class:'fl-bot fl-new',role:'img','aria-label':s.name});el.style.setProperty('--c',s.color);
     el.innerHTML=`<div class="fl-bubble"></div><i class="fl-pulse"></i><div class="fl-shadow"></div><div class="fl-body">${robot(s.color,s.icon,j+'_'+s.id.replace(/\W/g,''))}</div><div class="fl-tag"><b></b><span></span></div>`;
-    rooms.append(el);setTimeout(()=>el.classList.remove('fl-new'),900);}
-   return {id:s.id,i,icon:s.icon,color:s.color,el,o,s,pos:old?.pos||null,left:false};});
+    stage.append(el);setTimeout(()=>el.classList.remove('fl-new'),900);}
+   return {id:s.id,i,icon:s.icon,color:s.color,el,o,s,beam,pos:[0,0],left:false};});
   for(const b of keep.values())b.el.remove();}
- const rel=(el,fx,fy)=>{const r=el.getBoundingClientRect(),p=rooms.getBoundingClientRect();return [r.left-p.left+r.width*fx,r.top-p.top+r.height*fy,r];};
- const hubPos=()=>{const [x,y]=rel(hub,.5,.5);return [x,y];};
- function target(b){
-  const seat=meeting?meeting.members.indexOf(b.i):-1;
-  if(seat>=0&&!b.s.live){const [cx,cy]=rel(table,.5,.5),[mx,my,mr]=rel(meet,0,0),tr=table.getBoundingClientRect(),s=SEATS[seat%SEATS.length],w=b.el.offsetWidth;
-   // keep the robot and its name tag inside the room on small screens
-   return [Math.min(Math.max(cx+s[0]*tr.width*.5,mx+w/2+4),mx+mr.width-w/2-4),Math.min(Math.max(cy+s[1]*tr.height*.55+28,my+b.el.offsetHeight+44),my+mr.height-30)];}
-  const [ex,ey,r]=rel(exec,0,0),sx=r.width/600,sy=r.height/520,o=b.o,x0=o.rx*Math.cos(o.ph),y0=o.ry*Math.sin(o.ph);
-  return [ex+(300+x0*Math.cos(o.tilt)-y0*Math.sin(o.tilt))*sx,ey+(285+x0*Math.sin(o.tilt)+y0*Math.cos(o.tilt))*sy+28];}
- function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;const off=stale||!data?.runtime?.enabled;
-  for(const b of bots){const inMeet=meeting&&meeting.members.includes(b.i)&&!b.s.live;
-   if(!inMeet&&(!off||b.s.live)&&!reduce)b.o.ph+=b.o.sp*dt*(LOOK[b.s.state]==='work'?2.2:1);
-   const [tx,ty]=target(b);if(!b.pos||reduce)b.pos=[tx,ty];
-   const dx=tx-b.pos[0],dy=ty-b.pos[1],d=Math.hypot(dx,dy),v=d>40?380*dt:d;
-   if(d>v){b.pos[0]+=dx/d*v;b.pos[1]+=dy/d*v;}else b.pos=[tx,ty];
-   if(Math.abs(dx)>2&&d>40)b.left=dx<0;
-   b.el.classList.toggle('fl-walk',d>40);b.el.classList.toggle('fl-left',b.left);
-   b.el.style.transform=`translate(${(b.pos[0]-b.el.offsetWidth/2).toFixed(1)}px,${(b.pos[1]-b.el.offsetHeight).toFixed(1)}px)`;
-   b.el.style.zIndex=5+Math.round(b.pos[1]/10);}
+ // robots keep circling: faster while working, slower when the team is off
+ function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;const r=stage.getBoundingClientRect(),sc=r.width/1000,off=stale||!data?.runtime?.enabled;
+  for(const b of bots){const look=stale?'off':LOOK[b.s.state]||'idle',k=look==='work'?2.6:off&&!b.s.live?.35:1;
+   if(!reduce){b.o.ph+=b.o.sp*dt*k;b.o.wob+=dt*1.4;}
+   b.left=b.o.sp>0?Math.sin(b.o.ph)>0:Math.sin(b.o.ph)<0;
+   const x=500+b.o.r*Math.cos(b.o.ph),y=500+b.o.r*Math.sin(b.o.ph)+Math.sin(b.o.wob)*6;b.pos=[x*sc,y*sc];
+   b.el.style.transform=`translate(${(x*sc-b.el.offsetWidth/2).toFixed(1)}px,${(y*sc-b.el.offsetHeight*.62).toFixed(1)}px)`;b.el.style.zIndex=5+Math.round(y/50);
+   b.el.classList.toggle('fl-left',b.left);
+   b.beam.setAttribute('x2',x.toFixed(1));b.beam.setAttribute('y2',y.toFixed(1));b.beam.classList.toggle('on',look==='work');}
+  const p=ang(((Date.now()+clockSkew+7*3600e3)%864e5)/36e5);hand.setAttribute('transform',`translate(${500+462*Math.cos(p)} ${500+462*Math.sin(p)})`);
   if(!stopped)raf=requestAnimationFrame(frame);}
- // the file flies along a curve from one seat to the next (index 0 = FACIUP)
- function fly(from,to,color){if(reduce)return;const at=i=>{const b=bots.find(x=>x.i===i);return i===0||!b?.pos?hubPos():[b.pos[0],b.pos[1]-b.el.offsetHeight*.6];};
-  const p0=at(from),p1=at(to),r=rooms.getBoundingClientRect();trail.setAttribute('viewBox',`0 0 ${r.width} ${r.height}`);
-  const mid=[(p0[0]+p1[0])/2,Math.min(p0[1],p1[1])-90],path=document.createElementNS(NS,'path');
-  for(const [a,v] of Object.entries({d:`M${p0[0]} ${p0[1]} Q${mid[0]} ${mid[1]} ${p1[0]} ${p1[1]}`,stroke:color,class:'fl-path'}))path.setAttribute(a,v);trail.append(path);
-  const doc=h('div',{class:'fl-doc'});doc.innerHTML=DOC;rooms.append(doc);
-  const L=path.getTotalLength();let k=0;const go=()=>{if(stopped)return;k+=1/85;const p=path.getPointAtLength(Math.min(1,k)*L);doc.style.transform=`translate(${p.x-15}px,${p.y-12}px)`;if(k<1)requestAnimationFrame(go);else{doc.remove();setTimeout(()=>path.remove(),300);}};go();}
+ // the file flies along a curve from one robot to the next (index 0 = FACIUP)
+ function fly(from,to,color){if(reduce)return;const r=stage.getBoundingClientRect(),at=i=>{const b=bots.find(x=>x.i===i);return i===0||!b?[r.width/2,r.height/2]:[b.pos[0],b.pos[1]-b.el.offsetHeight*.3];};
+  const p0=at(from),p1=at(to);trail.setAttribute('viewBox',`0 0 ${r.width} ${r.height}`);
+  const mid=[(p0[0]+p1[0])/2+(r.width/2-(p0[0]+p1[0])/2)*.5,(p0[1]+p1[1])/2+(r.height/2-(p0[1]+p1[1])/2)*.5-60],path=svg('path',{d:`M${p0[0]} ${p0[1]} Q${mid[0]} ${mid[1]} ${p1[0]} ${p1[1]}`,stroke:color,class:'fl-path'});trail.append(path);
+  const doc=h('div',{class:'fl-doc'});doc.innerHTML=DOC;stage.append(doc);
+  const L=path.getTotalLength();let k=0;const go=()=>{if(stopped)return;k+=1/85;const q=path.getPointAtLength(Math.min(1,k)*L);doc.style.transform=`translate(${q.x-15}px,${q.y-12}px)`;if(k<1)requestAnimationFrame(go);else{doc.remove();setTimeout(()=>path.remove(),300);}};go();}
  const runFor=s=>s.since?(Date.now()+clockSkew-s.since)/1000:0;
  const nameOf=i=>i===0?'FACIUP':data.runtime.agents[i]?.name||'Agent';
  function tagText(s,look){return look==='live24'?`Trực 24/7 · ~${fmt(s.avg)}`:look==='work'?`Đang xử lý ${fmt(runFor(s))}`:look==='wait'?`Chờ lượt${s.avg?' · ~'+fmt(s.avg):''}`:look==='review'?'Chờ duyệt':look==='off'?(stale?'Mất kết nối':'Nhóm đang tắt'):s.avg?`TB ${fmt(s.avg)}/lượt`:'Sẵn sàng';}
- function paint(){const r=data.runtime,lead=r.agents[0];
-  hub.dataset.state=stale?'off':meeting?.current===0||LOOK[lead?.state]==='work'?'work':LOOK[lead?.state]||'idle';
+ function paintMarks(){marks.replaceChildren();const list=data.runtime.agents;
+  list.forEach((a,i)=>{for(const [hr,n] of a.hours||[]){const t=ang(hr+.5),rr=446-((i*7)%5)*6;const c=svg('circle',{cx:500+rr*Math.cos(t),cy:500+rr*Math.sin(t),r:Math.min(9,4+n),fill:i===0?'#a21caf':a.color,class:'fl-mark'});const tt=svg('title');tt.textContent=`${i===0?'FACIUP':a.name} · ${pad(hr)}:00 · ${n} lượt`;c.append(tt);marks.append(c);}});}
+ function paint(){const r=data.runtime,lead=r.agents[0],meeting=r.sessions[0]||null;
+  const hl=stale?'off':meeting?.current===0&&meeting.state==='running'||LOOK[lead?.state]==='work'?'work':LOOK[lead?.state]||'idle';hub.dataset.state=hl;
+  hub.querySelector('small').textContent=hl==='work'?'Đang tổng hợp':hl==='review'?'Chờ duyệt':hl==='off'?(stale?'Mất kết nối':'Đang tắt'):meeting?`Phiên #${meeting.n} · lượt ${meeting.step+1}`:'Sẵn sàng';
   tray.textContent='Chờ duyệt · '+r.review;tray.classList.toggle('on',r.review>0);
   for(const b of bots){const look=stale?'off':LOOK[b.s.state]||'idle',turn=meeting?.current===b.i;
-   b.el.className='fl-bot fl-'+look+(b.el.classList.contains('fl-new')?' fl-new':'')+(b.el.classList.contains('fl-walk')?' fl-walk':'')+(b.left?' fl-left':'')+(b.s.live?' fl-24':'')+(turn?' fl-turn':'');
+   b.el.className='fl-bot fl-'+look+(b.el.classList.contains('fl-new')?' fl-new':'')+(b.left?' fl-left':'')+(b.s.live?' fl-24':'')+(turn?' fl-turn':'');
    b.el.querySelector('b').textContent=b.s.name;b.el.querySelector('.fl-tag span').textContent=tagText(b.s,look);
    b.el.querySelector('.fl-bubble').textContent=turn?`Lượt ${meeting.step+1}`:'';}
-  const others=r.sessions.length-1;
-  session.replaceChildren(...(meeting?[h('b',{},'Phiên #'+meeting.n),h('span',{},`Lượt ${meeting.step+1} · ${nameOf(meeting.current)}`),others>0?h('small',{},`+${others} phiên chờ`):'']:[]));
-  empty.classList.toggle('on',!meeting);
-  const inExec=bots.filter(b=>b.s.live||!meeting?.members.includes(b.i)).length;
-  execN.textContent=`${inExec+1} agent · ${vn(Date.now())} · ${stale?'mất kết nối':r.enabled?'trực tuyến':'nhóm AI đang tắt'}`;
-  meetN.textContent=meeting?meeting.members.length+' agent đang họp':'';
+  now.lastChild.textContent=stale?'Mất kết nối · đang thử lại':`${vn(Date.now()+clockSkew)} giờ VN · ${r.enabled?'trực tuyến':'nhóm AI đang tắt'}`;now.classList.toggle('fl-off',stale||!r.enabled);
   const rows=[...(lead?[{s:{...lead,name:'FACIUP · tổng hợp',color:'#a21caf'}}]:[]),...bots];
   if(times.children.length!==rows.length)times.replaceChildren(...rows.map(()=>h('li',{},h('i',{}),h('span',{}),h('span',{class:'t'}),h('span',{class:'bar'},h('b',{})))));
   rows.forEach((a,i)=>{const li=times.children[i],s=a.s,look=stale?'off':LOOK[s.state]||'idle',el=runFor(s);li.style.setProperty('--c',s.color);li.className=look==='work'||look==='live24'?'fl-row-on':look==='off'?'fl-row-off':'';
@@ -129,7 +130,7 @@ export function showLive({h,show,api,footer}){
  function gauge(p){const r=28,c=2*Math.PI*r;return `<svg viewBox="0 0 70 70" aria-hidden="true"><defs><linearGradient id="flg"><stop offset="0" stop-color="#7c3aed"/><stop offset=".6" stop-color="#f43f5e"/><stop offset="1" stop-color="#f97316"/></linearGradient></defs><circle cx="35" cy="35" r="${r}" fill="none" stroke="#f3ecff" stroke-width="8"/><circle cx="35" cy="35" r="${r}" fill="none" stroke="url(#flg)" stroke-width="8" stroke-linecap="round" stroke-dasharray="${c*p} ${c}" transform="rotate(-90 35 35)"/></svg>`;}
  function paintKpis(){const r=data.runtime,k=r.kpi||{},d=k.yesterday?Math.round((k.today-k.yesterday)/k.yesterday*100):null,dt=k.avgToday&&k.avgYesterday?k.avgToday-k.avgYesterday:null,mx=Math.max(1,...(k.top||[]).map(x=>x.n));
   kpis.innerHTML=`<div class="fl-kpi"><div class="lbl">Lượt hoàn thành hôm nay</div><div class="val">${k.today||0}<small>lượt</small></div><div class="delta ${d<0?'down':''}">${d===null?'Chưa có số hôm qua':(d>=0?'▲ ':'▼ ')+Math.abs(d)+'% so với hôm qua'}</div>${spark(k.series||[0,0,0,0,0,0,0],'#a21caf')}</div>
-  <div class="fl-kpi"><div class="lbl">Phiên họp hiện tại</div><div class="trio"><div><b class="fl-hot">${r.running}</b><span>Đang xử lý</span></div><div><b>${r.queued}</b><span>Chờ lượt</span></div><div><b>${r.review}</b><span>Chờ duyệt</span></div></div></div>
+  <div class="fl-kpi"><div class="lbl">Nhiệm vụ hiện tại</div><div class="trio"><div><b class="fl-hot">${r.running}</b><span>Đang xử lý</span></div><div><b>${r.queued}</b><span>Chờ lượt</span></div><div><b>${r.review}</b><span>Chờ duyệt</span></div></div></div>
   <div class="fl-kpi"><div class="lbl">Thời gian TB mỗi lượt</div><div class="val">${k.avgToday?fmt(k.avgToday):'—'}</div><div class="delta ${dt>0?'down':''}">${!k.avgToday?'Hôm nay chưa có lượt':dt===null?'Chưa có số hôm qua':dt<=0?`▼ ${Math.abs(dt)} giây, nhanh hơn hôm qua`:`▲ ${dt} giây so với hôm qua`}</div></div>
   <div class="fl-kpi"><div class="lbl">Tỉ lệ được duyệt · 30 ngày</div><div class="gauge">${gauge(k.decided?k.approved/k.decided:0)}<div><div class="val">${k.decided?Math.round(k.approved/k.decided*100)+'%':'—'}</div><div class="delta">${k.decided?`${k.approved}/${k.decided} kết quả`:'Chưa có kết quả duyệt'}</div></div></div></div>
   <div class="fl-kpi"><div class="lbl">Làm nhiều nhất hôm nay</div>${k.top?.length?`<ul class="fl-top">${k.top.map(x=>`<li data-c="${x.color}" data-w="${x.n/mx*100}"><span></span><span class="fl-b"><i></i></span><span>${x.n}</span></li>`).join('')}</ul>`:'<p class="delta">Chưa có lượt hôm nay</p>'}</div>`;
@@ -139,8 +140,8 @@ export function showLive({h,show,api,footer}){
   if(stopped)return;page.classList.toggle('fl-stale',stale);if(!data)return;
   const r=data.runtime;r.sessions=r.sessions||[];build(r.agents.slice(1));
   // a session whose turn moved since the last poll hands its file on
-  for(const s of r.sessions){const was=lastTurn.get(s.n);if(was!==undefined&&was!==s.current&&s.n===r.sessions[0].n)fly(was,s.current,s.current===0?'#a21caf':r.agents[s.current]?.color||'#f97316');lastTurn.set(s.n,s.current);}
-  meeting=r.sessions[0]||null;paint();paintLog();paintKpis();}
+  for(const s of r.sessions){const was=lastTurn.get(s.n);if(was!==undefined&&was!==s.current)fly(was,s.current,s.current===0?'#a21caf':r.agents[s.current]?.color||'#f97316');lastTurn.set(s.n,s.current);}
+  paint();paintMarks();paintLog();paintKpis();}
  load();raf=requestAnimationFrame(frame);
  const tick=setInterval(()=>{if(data)paint();},1000),poll=setInterval(load,10000),visible=()=>{if(!document.hidden)load();};
  document.addEventListener('visibilitychange',visible);

@@ -840,8 +840,8 @@ body { background: var(--paper); }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* buttons: solid blue, quiet ghost */
-button, .btn { background: var(--blue); box-shadow: 0 6px 14px -8px rgba(31, 94, 255, .7); border-radius: 10px; }
-button:hover, .btn:hover { background: var(--blue-2); box-shadow: 0 8px 18px -8px rgba(31, 94, 255, .75); }
+button, .btn { background: var(--grad); box-shadow: 0 6px 14px -8px var(--glow); border-radius: 10px; transition: filter .2s, transform .15s, box-shadow .2s; }
+button:hover, .btn:hover { background: var(--grad); filter: saturate(1.2) brightness(1.05); box-shadow: 0 8px 18px -8px var(--glow); }
 button.ghost, .btn.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line); box-shadow: none; }
 button.ghost:hover, .btn.ghost:hover { background: var(--blue-soft); border-color: color-mix(in srgb, var(--blue) 35%, var(--line)); color: var(--accent); }
 .btn .ic, button .ic { width: 18px; height: 18px; flex: none; }

@@ -48,7 +48,16 @@ html[data-theme="classic"] {
 @media (prefers-color-scheme: dark) {
   :root, html[data-theme] { --paper: #0b1020; --card: #121a30; --ink: #eef2ff; --muted: #9aa6c7; --line: #22304f; --blue-soft: #1b2347;
     --grad-soft: linear-gradient(135deg, #131d3a 0%, #0f1730 100%); --page-bg: none; --side-bg: #0f1529; --side-on: rgba(255, 255, 255, .08); }
+  :root, html[data-theme="aurora"] { --paper: #120a22; --card: #1c1233; --ink: #f7f0ff; --muted: #b9a6dc; --line: #33224f; --blue-soft: #2a1a47; --accent: #a78bfa;
+    --grad-soft: linear-gradient(135deg, #24133f 0%, #2a1424 100%); --side-bg: linear-gradient(180deg, #1a0b33 0%, #2b0f3d 100%); }
 }
+
+/* vibrant purple–orange: brand name, active menu and headlines carry the gradient */
+:root:not([data-theme]) .brand .accent, html[data-theme="aurora"] .brand .accent { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+:root:not([data-theme]) .nav a.on, html[data-theme="aurora"] .nav a.on { border-image: var(--grad) 1; }
+html[data-theme="aurora"] .brand .logo { background: var(--grad); }
+html[data-theme="aurora"] main.wrap .home-minimal h1 { background: linear-gradient(100deg, var(--ink) 25%, var(--accent) 62%, #f97316 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+html[data-theme="aurora"] .tabbar a.on, html[data-theme="aurora"] .tabbar a[aria-current] { color: var(--accent); }
 
 body { background-color: var(--paper); background-image: var(--page-bg); background-attachment: fixed; background-repeat: no-repeat; }
 .top { background: color-mix(in srgb, var(--card) 82%, transparent); backdrop-filter: saturate(1.4) blur(10px); }
