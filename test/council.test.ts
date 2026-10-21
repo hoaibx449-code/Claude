@@ -10,6 +10,7 @@ import {defaultConfig,clearCache,encrypt} from '../web/src/settings.ts';
 import {cleanCouncil,councilDefaults,tickCouncil,telegramParts,councilWebhook,councilAdmin} from '../web/src/council.ts';
 import {councilPlan,councilGenerate,FREE_GEMINI} from '../web/src/council-ai.ts';
 import {sha256} from '../web/src/util.ts';
+import {councilTelegramFormat,councilTitle} from '../web/src/council-present.ts';
 
 async function fixture(){
   const dir=mkdtempSync(join(tmpdir(),'council-'));
@@ -43,7 +44,7 @@ test('council: actual Worker protects reads, writes, CSRF, blocked admins and pr
         const r=await f.request(path,{headers:{cookie}});assert.equal(r.status,status);assert.equal(r.headers.get('cache-control'),'no-store');
       }
     }
-    for(const route of ['/jobs','/pair','/connect','/unlink']){
+    for(const route of ['/jobs','/pair','/connect','/unlink','/menu']){
       for(const headers of [{cookie:f.adminCookie},{cookie:f.adminCookie,'x-nv':'1',origin:'https://evil.test'},{cookie:f.memberCookie,'x-nv':'1'}])
         assert.equal((await f.request('/api/admin/council'+route,{method:'POST',headers,body:'{}'})).status,403);
     }
@@ -156,15 +157,75 @@ test('council: persisted Telegram outbox delivers role messages and review butto
     const c=f.enabled();c.agents=c.agents.slice(0,2);await f.save(c);
     await f.secret('bot:editor','123456:fake-server-secret');
     await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
-    const result=await f.write('/jobs',{brief:'Nội dung cho các kênh'}),{id}=await result.json() as any;
     globalThis.fetch=async(url,options)=>{
       if(String(url).startsWith('https://api.telegram.org/')){sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});}
       return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:'Nội dung đề xuất.'}]}}]});
     };
+    const result=await f.write('/jobs',{brief:'Nội dung cho các kênh'}),{id}=await result.json() as any;
     await tickCouncil(f.env);await tickCouncil(f.env);await tickCouncil(f.env);await tickCouncil(f.env);
-    assert.equal(sent.length,2);assert.match(sent[0].text,/Chiến lược/);
-    assert.equal(sent[1].reply_markup.inline_keyboard[0][0].callback_data,'approved:'+id);
-    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_outbox WHERE sent=1').first<any>()).n,2);
+    assert.equal(sent.length,5);assert.match(sent[0].text,/ĐÃ NHẬN NHIỆM VỤ/);assert.match(sent[0].text,/PHÂN CÔNG/);
+    assert.match(sent[1].text,/Chiến lược/);assert.match(sent[1].text,/đang làm/);
+    assert.ok(sent.some(x=>x.reply_markup?.inline_keyboard?.flat().some((b:any)=>b.callback_data==='approved:'+id)));
+    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_outbox WHERE sent=1').first<any>()).n,5);
+  }finally{globalThis.fetch=orig;f.close();}
+});
+
+test('council: immediate task receipt, roles and progress use no AI and are restricted to the linked group',async()=>{
+  clearCache();const f=await fixture(),orig=globalThis.fetch,sent:any[]=[];try{
+    await f.save(f.enabled());await f.secret('bot:editor','123456:fake-server-secret');await f.secret('webhook','hook-secret');
+    await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
+    globalThis.fetch=async(url,options)=>{
+      assert.ok(String(url).startsWith('https://api.telegram.org/'),'receipts and status must not consume model quota');
+      sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});
+    };
+    await f.hook(f.webhookMessage(1));await f.hook(f.webhookMessage(1));
+    assert.equal(sent.length,1);assert.match(sent[0].text,/ĐÃ NHẬN NHIỆM VỤ/);
+    for(const agent of f.enabled().agents)assert.ok(sent[0].text.includes(agent.name));
+    const job=await f.env.DB.prepare('SELECT * FROM council_jobs').first<any>();
+    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_jobs').first<any>()).n,1);
+    const detail=await f.request('/api/admin/council/jobs/'+job.id,{headers:{cookie:f.adminCookie}}),d=await detail.json() as any;
+    assert.equal(d.progress.completed,0);assert.equal(d.progress.total,5);assert.equal(d.progress.currentAgent,'Chiến lược');
+    await f.hook(f.webhookMessage(2,55,-100,'/tientrinh@Faciup_bot'));assert.match(sent.at(-1).text,/TIẾN ĐỘ/);assert.match(sent.at(-1).text,/PHÂN CÔNG/);
+    const before=sent.length;await f.hook(f.webhookMessage(3,66,-100,'/tientrinh '+job.id));await f.hook(f.webhookMessage(4,55,-200,'/tientrinh '+job.id));assert.equal(sent.length,before);
+    await f.hook(f.webhookMessage(5,55,-100,'Làm bài về cà phê'));assert.match(sent.at(-1).text,/chưa mở phiên/);
+  }finally{globalThis.fetch=orig;f.close();}
+});
+
+test('council: receipt delivery failure preserves accepted job and retries without another opening message',async()=>{
+  clearCache();const f=await fixture(),orig=globalThis.fetch,sent:any[]=[];let fail=true;try{
+    const c=f.enabled();c.agents=c.agents.slice(0,2);await f.save(c);await f.secret('bot:editor','123456:fake-server-secret');
+    await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
+    globalThis.fetch=async(url,options)=>{
+      if(String(url).startsWith('https://api.telegram.org/')){
+        if(fail)return new Response('{}',{status:503});
+        sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});
+      }
+      return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:'Đề xuất.'}]}}]});
+    };
+    const result=await f.write('/jobs',{brief:'Nội dung đã nhận'});assert.equal(result.status,201);
+    const item=await f.env.DB.prepare('SELECT * FROM council_outbox').first<any>();assert.equal(item.sent,0);assert.equal(item.attempts,1);
+    fail=false;await f.env.DB.prepare('UPDATE council_outbox SET next_at=0').run();
+    await tickCouncil(f.env);await tickCouncil(f.env);
+    assert.equal(sent.filter(x=>x.text.startsWith('ĐÃ NHẬN NHIỆM VỤ')).length,1);
+    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_jobs').first<any>()).n,1);
+  }finally{globalThis.fetch=orig;f.close();}
+});
+
+test('council: exhausted models and daily quota produce visible progress alerts without extra AI calls',async()=>{
+  clearCache();const f=await fixture(),orig=globalThis.fetch,sent:any[]=[];let models=0;try{
+    const c=f.enabled();c.agents=c.agents.slice(0,2);c.agents[1].models=c.agents[1].models.slice(0,1);c.dailyCalls=1;
+    await f.save(c);await f.secret('bot:editor','123456:fake-server-secret');
+    await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
+    globalThis.fetch=async(url,options)=>{
+      if(String(url).startsWith('https://api.telegram.org/')){sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});}
+      models++;return new Response('{}',{status:429});
+    };
+    const first=await f.write('/jobs',{brief:'Phiên có mô hình lỗi'}),{id}=await first.json() as any;
+    await tickCouncil(f.env);
+    assert.equal((await f.env.DB.prepare('SELECT status FROM council_jobs WHERE id=?').bind(id).first<any>()).status,'paused');
+    assert.ok(sent.some(x=>x.text.includes('Phiên tạm dừng')));assert.equal(models,1);
+    await f.write('/jobs',{brief:'Phiên chờ quota ngày sau'});await tickCouncil(f.env);
+    assert.ok(sent.some(x=>x.text.includes('Đã đạt trần lượt AI hôm nay')));assert.equal(models,1);
   }finally{globalThis.fetch=orig;f.close();}
 });
 
@@ -202,8 +263,58 @@ test('council: pairing generates the real bot username and replies to success, m
     await f.hook(f.webhookMessage(3,55,-100,'/link@Faciup_bot'));assert.match(sent.at(-1).text,/thiếu mã/);
     await f.hook(f.webhookMessage(4,55,-100,'/link@Faciup_bot '+'c'.repeat(32)));assert.match(sent.at(-1).text,/không hợp lệ/);
     const privateMessage=f.webhookMessage(5,55,55,p.command);privateMessage.message.chat.type='private';await f.hook(privateMessage);assert.match(sent.at(-1).text,/nhóm Telegram riêng/);
-    await f.hook(f.webhookMessage(6,55,-100,'/brief@Faciup_bot Nội dung'));assert.match(sent.at(-1).text,/nhóm AI đang tắt/);
+    await f.hook(f.webhookMessage(6,55,-100,'/brief@Faciup_bot Nội dung'));assert.match(sent.at(-1).text,/Nhóm AI đang tắt/i);
     const before=sent.length;await f.hook(f.webhookMessage(7,66,-100,'/brief Nội dung'));assert.equal(sent.length,before,'strangers still cannot use the group');
     await f.hook(f.webhookMessage(8,66,66,'/help'));assert.match(sent.at(-1).text,/quản trị Faciup/);
   }finally{globalThis.fetch=orig;f.close();}
+});
+
+test('council: named sessions, button-only delegation, rename and approved follow-up preserve the original',async()=>{
+  clearCache();const f=await fixture(),orig=globalThis.fetch,sent:any[]=[];try{
+    await f.save(f.enabled());await f.secret('bot:editor','123456:fake-server-secret');await f.secret('webhook','hook-secret');
+    await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
+    globalThis.fetch=async(url,options)=>{
+      assert.ok(String(url).startsWith('https://api.telegram.org/'),'menus never call a model');
+      if(String(url).endsWith('/sendMessage'))sent.push(JSON.parse(options?.body as string));
+      return Response.json({ok:true,result:{message_id:1}});
+    };
+    const callback=(id:number,data:string,user=55,chat=-100)=>({update_id:id,callback_query:{id:'cb',from:{id:user},message:{chat:{id:chat,type:'supergroup'}},data}});
+    assert.equal((await f.write('/menu')).status,200);
+    assert.equal(sent.at(-1).reply_markup.inline_keyboard[0][0].callback_data,'ui:new');
+    await f.hook(callback(1,'ui:new'));assert.equal(sent.at(-1).reply_markup.force_reply,true);
+    await f.hook(f.webhookMessage(2,66,-100,'Không được tạo phiên'));
+    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_jobs').first<any>()).n,0);
+    await f.hook(f.webhookMessage(3,55,-100,'Chiến dịch cà phê tháng 11\nViết nội dung đa kênh'));
+    let job=await f.env.DB.prepare('SELECT * FROM council_jobs').first<any>();
+    assert.equal(councilTitle(job),'Chiến dịch cà phê tháng 11');assert.ok(!sent.at(-1).text.includes(job.id));
+    assert.ok(sent.at(-1).entities.some((e:any)=>e.type==='bold'));
+    await f.hook(callback(4,'ui:rename:'+job.id));
+    await f.hook(f.webhookMessage(5,55,-100,'Cà phê văn phòng — Tuần 1'));
+    job=await f.env.DB.prepare('SELECT * FROM council_jobs WHERE id=?').bind(job.id).first<any>();assert.equal(councilTitle(job),'Cà phê văn phòng — Tuần 1');
+    await f.hook(callback(6,'ui:history'));
+    assert.ok(sent.at(-1).reply_markup.inline_keyboard.flat().some((b:any)=>b.text.includes('Cà phê văn phòng')));
+    assert.ok(!JSON.stringify(sent.at(-1).text).includes(job.id));
+    await f.env.DB.prepare("UPDATE council_jobs SET status='pending',step=5 WHERE id=?").bind(job.id).run();
+    await f.env.DB.prepare('INSERT INTO council_turns VALUES(?,?,?,?,?,?,?)').bind(job.id,0,'editor','gemini','m','**Bản đã duyệt**\n***Không hiện dấu sao***\n<img src=x onerror=alert(1)>',Date.now()).run();
+    await f.hook(callback(7,'approved:'+job.id));
+    assert.match(sent.at(-1).text,/ĐÃ DUYỆT NỘI DUNG/);assert.match(sent.at(-1).text,/chưa tự dựng video hay đăng bài/);
+    assert.ok(sent.at(-1).reply_markup.inline_keyboard.flat().some((b:any)=>b.callback_data==='ui:revise:'+job.id));
+    await f.hook(callback(8,'ui:view:'+job.id));
+    assert.ok(!sent.at(-1).text.includes('***'));assert.equal(sent.at(-1).parse_mode,undefined);assert.ok(sent.at(-1).text.includes('<img'));
+    await f.hook(callback(9,'ui:revise:'+job.id));
+    await f.hook(f.webhookMessage(10,55,-100,'Đổi caption ngắn hơn'));
+    const child=await f.env.DB.prepare('SELECT * FROM council_jobs WHERE parent=?').bind(job.id).first<any>();
+    assert.ok(child);assert.match(councilTitle(child),/bản tiếp/);
+    assert.equal((await f.env.DB.prepare('SELECT status FROM council_jobs WHERE id=?').bind(job.id).first<any>()).status,'approved');
+    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_turns WHERE job_id=?').bind(job.id).first<any>()).n,1);
+    const before=sent.length;await f.hook(callback(11,'ui:view:'+job.id,55,-200));await f.hook(callback(12,'ui:new',66));assert.equal(sent.length,before);
+  }finally{globalThis.fetch=orig;f.close();}
+});
+
+test('council: Telegram bold uses safe entities without raw triple stars, HTML parsing or broken Unicode offsets',()=>{
+  const result=councilTelegramFormat('🚀 **Cà phê**\n\nPHÂN CÔNG\n***Rõ ràng***\n<b>Văn bản thường</b>');
+  assert.ok(!result.text.includes('***'));assert.ok(!result.text.includes('**'));
+  assert.ok(result.text.includes('<b>Văn bản thường</b>'));
+  const entity=result.entities.find(e=>result.text.slice(e.offset,e.offset+e.length)==='Cà phê');assert.ok(entity);assert.equal(entity.offset,3);
+  assert.ok(result.entities.every(e=>e.type==='bold'&&e.length>0&&e.offset+e.length<=result.text.length));
 });
