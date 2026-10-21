@@ -279,6 +279,9 @@ CREATE TABLE IF NOT EXISTS council_jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NUL
   lease TEXT NOT NULL DEFAULT '',lease_until INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '',
   decided_by TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS council_jobs_queue ON council_jobs(status,next_at,created_at);
+CREATE TABLE IF NOT EXISTS council_attempts(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL,step INTEGER NOT NULL,
+  provider TEXT NOT NULL,model TEXT NOT NULL,reason TEXT NOT NULL,created_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS council_attempts_job ON council_attempts(job_id,id);
 CREATE TABLE IF NOT EXISTS council_turns(job_id TEXT NOT NULL,step INTEGER NOT NULL,agent_id TEXT NOT NULL,provider TEXT NOT NULL,
   model TEXT NOT NULL,text TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(job_id,step));
 CREATE TABLE IF NOT EXISTS council_outbox(id TEXT PRIMARY KEY,job_id TEXT NOT NULL,chat_id TEXT NOT NULL,agent_id TEXT NOT NULL,text TEXT NOT NULL,
