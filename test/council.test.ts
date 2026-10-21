@@ -362,7 +362,7 @@ test('council: immediate task receipt, roles and progress use no AI and are rest
     await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
     globalThis.fetch=async(url,options)=>{
       assert.ok(String(url).startsWith('https://api.telegram.org/'),'receipts and status must not consume model quota');
-      sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1,id:123456,username:'Faciup_bot'}});
+      if(/\/(?:sendMessage|editMessageText)$/.test(String(url)))sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1,id:123456,username:'Faciup_bot'}});
     };
     await f.hook(f.webhookMessage(1));await f.hook(f.webhookMessage(1));
     assert.equal(sent.length,1);assert.match(sent[0].text,/ĐÃ NHẬN NHIỆM VỤ/);
