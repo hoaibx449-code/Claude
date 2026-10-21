@@ -7,10 +7,11 @@ import {database} from './support/sqlite.ts';
 import worker from '../web/src/worker.ts';
 import {startSession} from '../web/src/auth.ts';
 import {defaultConfig,clearCache,encrypt} from '../web/src/settings.ts';
-import {assistantAnswer,cleanCouncil,councilDefaults,tickCouncil,telegramParts,councilWebhook,councilAdmin} from '../web/src/council.ts';
+import {assistantAnswer,cleanCouncil,councilDefaults,tickCouncil,telegramParts,councilMessageParts,councilWebhook,councilAdmin} from '../web/src/council.ts';
 import {councilPlan,councilGenerate,councilRoute,councilRouting,councilFailure,FREE_GEMINI} from '../web/src/council-ai.ts';
+import {councilQuality} from '../web/src/council-quality.ts';
 import {sha256} from '../web/src/util.ts';
-import {councilTelegramFormat,councilTitle} from '../web/src/council-present.ts';
+import {councilPlain,councilTelegramFormat,councilTitle} from '../web/src/council-present.ts';
 
 async function fixture(){
   const dir=mkdtempSync(join(tmpdir(),'council-'));
@@ -147,7 +148,7 @@ test('council: model errors survive pause, bypass a failed Telegram receipt, and
     globalThis.fetch=async(url,options)=>{
       if(String(url).startsWith('https://api.telegram.org/'))return Response.json({ok:true,result:{message_id:1}});
       assert.equal(String(url),'https://ollama.com/api/chat');assert.equal(JSON.parse(options?.body as string).model,'working-cloud');
-      return Response.json({done:true,message:{content:'Bản tổng hợp.'}});
+      return Response.json({done:true,message:{content:Array.from({length:7},(_,i)=>'Ngày '+(i+1)+' – Chủ đề và nội dung cụ thể.').join('\n\n')}});
     };
     await tickCouncil(f.env);
     detail=await f.env.DB.prepare('SELECT * FROM council_jobs WHERE id=?').bind(id).first<any>();assert.equal(detail.status,'pending');assert.equal(detail.step,2);
@@ -235,7 +236,7 @@ test('council: durable turns, fallback cursor, bounded daily calls and final app
     await tickCouncil(f.env);assert.equal(calls,3,'approval never triggers execution');
     c.dailyCalls=3;await f.save(c);const more=await f.write('/jobs',{brief:'Một phiên khác'});assert.equal(more.status,201);
     await tickCouncil(f.env);assert.equal(calls,3,'daily cap blocks another request');
-    const queued=await f.env.DB.prepare("SELECT * FROM council_jobs WHERE status='running'").first<any>();assert.match(queued.error,/trần/);assert.ok(queued.next_at>Date.now());
+    const queued=await f.env.DB.prepare("SELECT * FROM council_jobs WHERE next_at>0").first<any>();assert.match(queued.error,/trần/);assert.ok(queued.next_at>Date.now());
   }finally{globalThis.fetch=orig;f.close();}
 });
 
@@ -438,4 +439,98 @@ test('council: Telegram bold uses safe entities without raw triple stars, HTML p
   assert.ok(result.text.includes('<b>Văn bản thường</b>'));
   const entity=result.entities.find(e=>result.text.slice(e.offset,e.offset+e.length)==='Cà phê');assert.ok(entity);assert.equal(entity.offset,3);
   assert.ok(result.entities.every(e=>e.type==='bold'&&e.length>0&&e.offset+e.length<=result.text.length));
+});
+
+test('council: plain presentation removes Markdown and decorative fonts, converts tables and keeps Vietnamese and HTML literal',()=>{
+  const input='### 𝐊ế hoạch\r\n\r\n* *TikTok*: _nội dung_ **rõ ràng**\n\n| Ngày | Ý tưởng |\n| --- | --- |\n| 1 | Cà phê |\n| 2 | Văn phòng |\n\n`caption` và 2 * 3\n<img src=x onerror=alert(1)>';
+  const plain=councilPlain(input);
+  assert.match(plain,/Kế hoạch/);assert.match(plain,/• TikTok: nội dung rõ ràng/);
+  assert.match(plain,/Ngày: 1\nÝ tưởng: Cà phê/);assert.match(plain,/Ngày: 2/);
+  assert.ok(!/[\*`|]/.test(plain));assert.ok(plain.includes('2 × 3'));assert.ok(plain.includes('<img'));
+  assert.equal(councilPlain(plain),plain,'normalization is idempotent');
+  assert.equal(councilPlain('Caption: \\"Cà phê\\".'),'Caption: "Cà phê".');
+  const formatted=councilTelegramFormat(input);assert.ok(!/[\uE000\uE001]/.test(formatted.text));
+  assert.ok(formatted.entities.every(e=>e.offset+e.length<=formatted.text.length));
+});
+
+test('council: long messages split at paragraphs and label each part without corrupting emoji or Vietnamese',()=>{
+  const paragraph='Ngày 1: Nội dung tiếng Việt có dấu và gia đình 👨‍👩‍👧‍👦. '+ 'Một câu hoàn chỉnh. '.repeat(60)+'\n\n';
+  const raw=paragraph.repeat(6),parts=telegramParts(raw);
+  assert.equal(parts.join(''),raw);assert.ok(parts.length>1);assert.ok(parts.slice(0,-1).every(p=>p.endsWith('\n\n')));
+  const marked=councilMessageParts('THẢO LUẬN\nPhiên: Kế hoạch tuần\nTrợ lý: Biên kịch\n\n'+raw);
+  assert.ok(marked.every((p,i)=>p.includes(`Phần ${i+1}/${marked.length}`)&&p.includes('Phiên: Kế hoạch tuần')&&p.length<=3400));
+  const emoji='👨‍👩‍👧‍👦'.repeat(800);assert.ok(telegramParts(emoji).every(p=>!p.startsWith('\u200d')&&!p.endsWith('\u200d')));
+});
+
+test('council: content checks detect mixed scripts, missing days and unfilled placeholders without claiming factual validation',()=>{
+  assert.ok(councilQuality('Viết nội dung 공유 cho người xem.','Lập kế hoạch tiếng Việt').length);
+  assert.deepEqual(councilQuality('공유','Dịch sang tiếng Hàn'),[]);
+  assert.ok(councilQuality('Tóm tắt ý tưởng đa kênh.','Kế hoạch nội dung 7 ngày',true).some(w=>w.includes('7 ngày')));
+  const plan=Array.from({length:7},(_,i)=>'Ngày '+(i+1)+': Nội dung cụ thể.').join('\n\n');
+  assert.deepEqual(councilQuality(plan,'Kế hoạch 7 ngày',true),[]);
+  assert.ok(councilQuality('Đăng cho {brand}.','Lập bài đăng',true).length);
+  assert.deepEqual(councilQuality('Đăng cho {brand}.','Viết template bài đăng',true),[]);
+});
+
+test('council: low-quality responses trigger fallback before persistence and an incomplete final cannot reach approval',async()=>{
+  clearCache();const f=await fixture(),orig=globalThis.fetch,sent:string[]=[];let calls=0;try{
+    f.env.OLLAMA_API_KEY='private';f.env.OLLAMA_URL='https://ollama.com';
+    const c=f.enabled();c.agents=c.agents.slice(0,2);
+    c.agents[1].models=[{provider:'ollama',model:'test-cloud'},{provider:'gemini',model:FREE_GEMINI[0]}];
+    c.agents[0].models=c.agents[0].models.slice(0,1);await f.save(c);
+    await f.secret('bot:editor','123456:fake');await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
+    globalThis.fetch=async(url,options)=>{
+      if(String(url).startsWith('https://api.telegram.org/')){sent.push(JSON.parse(options?.body as string).text);return Response.json({ok:true,result:{message_id:1}});}
+      calls++;if(calls===1)return Response.json({done:true,message:{content:'Nội dung tiếng Việt bị chèn 공유.'}});
+      return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:calls===2?'Chiến lược phù hợp với yêu cầu.':'Chỉ có ý tưởng chung, chưa có lịch từng ngày.'}]}}]});
+    };
+    const {id}=await (await f.write('/jobs',{brief:'Kế hoạch nội dung 3 ngày cho văn phòng'})).json() as any;
+    await tickCouncil(f.env);
+    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) n FROM council_turns').first<any>()).n,0);
+    assert.ok(!sent.some(t=>t.includes('공유')),'corrupt content never reaches Telegram');
+    await f.env.DB.prepare('UPDATE council_jobs SET next_at=0').run();await tickCouncil(f.env);
+    assert.equal((await f.env.DB.prepare('SELECT provider FROM council_turns').first<any>()).provider,'gemini');
+    await tickCouncil(f.env);
+    const job=await f.env.DB.prepare('SELECT * FROM council_jobs WHERE id=?').bind(id).first<any>();
+    assert.equal(job.status,'paused');assert.match(job.error,/thiếu ngày/);
+    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) n FROM council_turns').first<any>()).n,1);
+    assert.equal((await f.write('/jobs/'+id+'/decision',{action:'approved'})).status,409);
+  }finally{globalThis.fetch=orig;f.close();}
+});
+
+test('council: multipart delivery remains contiguous and failed parts cannot silently drop out of a series',async()=>{
+  clearCache();const f=await fixture(),orig=globalThis.fetch,sent:string[]=[];try{
+    await f.save(f.enabled());await f.secret('bot:editor','123456:fake');
+    await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
+    globalThis.fetch=async(_url,options)=>{sent.push(JSON.parse(options?.body as string).text);return Response.json({ok:true,result:{message_id:1}});};
+    const {id}=await (await f.write('/jobs',{brief:'Kiểm tra gửi nhiều phần'})).json() as any;
+    await f.env.DB.prepare("UPDATE council_jobs SET status='pending' WHERE id=?").bind(id).run();sent.length=0;
+    for(const [key,message] of [['0:0','Phần một'],['status:start:0','Tiến độ khác'],['0:1','Phần hai'],['0:2','Phần ba']])
+      await f.env.DB.prepare('INSERT INTO council_outbox(id,job_id,chat_id,agent_id,text) VALUES(?,?,?,?,?)').bind(id+':'+key,id,'-100','editor',message).run();
+    await tickCouncil(f.env);await tickCouncil(f.env);await tickCouncil(f.env);await tickCouncil(f.env);
+    assert.deepEqual(sent,['Phần một','Phần hai','Phần ba','Tiến độ khác']);
+    await f.env.DB.prepare('INSERT INTO council_outbox(id,job_id,chat_id,agent_id,text,attempts) VALUES(?,?,?,?,?,4)')
+      .bind(id+':1:0',id,'-100','editor','Phần đầu đang lỗi').run();
+    await f.env.DB.prepare('INSERT INTO council_outbox(id,job_id,chat_id,agent_id,text) VALUES(?,?,?,?,?)')
+      .bind(id+':1:1',id,'-100','editor','Không được bỏ qua phần đầu').run();
+    sent.length=0;await tickCouncil(f.env);assert.equal(sent.length,0);
+  }finally{globalThis.fetch=orig;f.close();}
+});
+
+test('council: unsafe historical turns pause without AI spending and restart preserves the original transcript',async()=>{
+  clearCache();const f=await fixture(),orig=globalThis.fetch;try{
+    const c=f.enabled();c.agents=c.agents.slice(0,2);await f.save(c);
+    const {id}=await (await f.write('/jobs',{brief:'Kế hoạch nội dung cho văn phòng'})).json() as any;
+    await f.env.DB.prepare('INSERT INTO council_turns VALUES(?,?,?,?,?,?,?)').bind(id,0,'strategy','ollama','test','Nội dung lỗi 공유.',Date.now()).run();
+    await f.env.DB.prepare('UPDATE council_jobs SET step=1 WHERE id=?').bind(id).run();
+    globalThis.fetch=async()=>{throw new Error('must not consume an AI call');};await tickCouncil(f.env);
+    const old=await f.env.DB.prepare('SELECT * FROM council_jobs WHERE id=?').bind(id).first<any>();assert.equal(old.status,'paused');assert.match(old.error,/Lịch sử/);
+    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) n FROM council_usage').first<any>()).n,0);
+    const d=await (await f.request('/api/admin/council/jobs/'+id,{headers:{cookie:f.adminCookie}})).json() as any;
+    assert.ok(d.turns[0].warnings.length);assert.ok(d.turns[0].text.includes('공유'),'raw history is preserved');
+    const restarted=await f.write('/jobs/'+id+'/restart');assert.equal(restarted.status,201);const next=await restarted.json() as any;
+    assert.notEqual(next.id,id);assert.equal((await f.env.DB.prepare('SELECT parent FROM council_jobs WHERE id=?').bind(next.id).first<any>()).parent,id);
+    assert.equal((await f.env.DB.prepare('SELECT status FROM council_jobs WHERE id=?').bind(id).first<any>()).status,'cancelled');
+    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) n FROM council_turns WHERE job_id=?').bind(id).first<any>()).n,1);
+  }finally{globalThis.fetch=orig;f.close();}
 });

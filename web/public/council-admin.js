@@ -83,7 +83,7 @@ export async function showCouncil({h,api,body,toast,fail}) {
   const jobsList=h('div',{});
   function renderJobs(){
     jobsList.replaceChildren(...data.jobs.map(j=>h('div',{class:'row'},h('div',{},h('strong',{},j.title||j.brief.slice(0,90)),h('p',{class:'muted'},
-      `${state[j.status]||j.status} · ${new Date(j.created_at||Date.now()).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})}`),j.error?h('p',{class:'bad'},j.error):null),action('Xem phiên',()=>detail(j.id)))));
+      `${j.progress?.phase||state[j.status]||j.status} · ${new Date(j.created_at||Date.now()).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})}`),j.error?h('p',{class:'bad'},j.error):null),action('Xem phiên',()=>detail(j.id)))));
   }
   const create=section('Giao nhiệm vụ',
     h('p',{class:'muted'},'Hỏi trợ lý chung bằng lời bình thường để được trả lời, hỏi thêm hoặc phân công đội ngũ. Nếu muốn cả đội thảo luận ngay, chọn Mở phiên thảo luận.'),
@@ -97,7 +97,7 @@ export async function showCouncil({h,api,body,toast,fail}) {
     const r=await api('/api/admin/council/jobs/'+id),job=r.job;
     if(selectedJob!==id||!body.isConnected)return;
     const listed=data.jobs.find(j=>j.id===id);
-    if(listed)Object.assign(listed,{title:job.title,brief:job.brief,status:job.status,error:job.error});
+    if(listed)Object.assign(listed,{title:job.title,brief:job.brief,status:job.status,error:job.error,progress:r.progress});
     else data.jobs.unshift({id,title:job.title,brief:job.brief,status:job.status,created_at:job.created_at});
     renderJobs();
     const controls=[];
@@ -105,13 +105,14 @@ export async function showCouncil({h,api,body,toast,fail}) {
     if(job.status==='paused')controls.push(action('Tiếp tục với cấu hình hiện tại',async()=>{await call('/jobs/'+id+'/resume');await detail(id);}));
     if(r.deliveries.some(x=>x.sent===0&&x.attempts>=4))controls.push(action('Thử gửi lại tin Telegram bị lỗi',async()=>{await call('/jobs/'+id+'/retry-delivery');await detail(id);}));
     if(['paused','queued','running','delegating'].includes(job.status))controls.push(action('Hủy phiên',async()=>{await call('/jobs/'+id+'/cancel');await detail(id);}));
+    if(job.error?.includes('chất lượng')||r.turns.some(t=>(t.warnings||[]).length))controls.push(action('Làm lại từ yêu cầu gốc',async()=>{const next=await call('/jobs/'+id+'/restart');await detail(next.id);}));
     let feedback='';
     if(['revision','approved'].includes(job.status))controls.push(
       job.status==='approved'?h('p',{},'Bản này đã được chốt và lưu. Bạn có thể tải nội dung hoặc làm phiên bản tiếp. Hệ thống chưa tự dựng video hay đăng bài.'):null,
       field(job.status==='approved'?'Yêu cầu cho phiên bản tiếp':'Yêu cầu chỉnh sửa',area('',v=>feedback=v)),action(job.status==='approved'?'Làm phiên bản tiếp':'Mở phiên sửa',async()=>{const next=await call('/jobs/'+id+'/revise',{feedback});await detail(next.id);}));
     const name=job.title||job.brief.slice(0,90),rename=input(name,()=>{},{maxlength:90,'aria-label':'Tên phiên mới'});
     if(job.status==='approved')controls.push(action('Tải nội dung đã duyệt',async()=>{
-      const latest=plainText(r.turns.at(-1)?.text||''),url=URL.createObjectURL(new Blob([name+'\n\n'+latest],{type:'text/plain;charset=utf-8'}));
+      const latest=plainText(r.turns.at(-1)?.displayText||r.turns.at(-1)?.text||''),url=URL.createObjectURL(new Blob([name+'\n\n'+latest],{type:'text/plain;charset=utf-8'}));
       const a=document.createElement('a');a.href=url;a.download=name.replace(/[<>:"/\\|?*]/g,'-')+'.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     }));
     const agents=job.snapshot?.agents||[],ordered=job.snapshot?.assistant?agents.slice(0,1).map(a=>({...a,name:'Trợ lý chung',prompt:'Hỏi đáp, tư vấn, hỏi thêm khi cần và điều phối chuyên gia.'})):agents.length?[...agents.slice(1),agents[0]]:[];
@@ -121,17 +122,18 @@ export async function showCouncil({h,api,body,toast,fail}) {
       section('Phân công trong phiên',h('ol',{},...ordered.map(a=>h('li',{},h('strong',{},a.name+': '),a.prompt.replace(/\s+/g,' ').slice(0,190)))),
         h('p',{},job.snapshot?.assistant?'Trợ lý chung hỏi đáp, tư vấn và phân công khi cần. Chưa thực thi bên ngoài.':`${job.snapshot?.rounds||1} vòng thảo luận, sau đó tổng biên tập trình quản trị duyệt.`)),
       job.error?h('p',{class:'bad'},job.error):null,
-      section('Thứ tự mô hình và các lựa chọn bị bỏ qua',
+      h('details',{},h('summary',{},'Chẩn đoán mô hình'),section('Thứ tự mô hình và các lựa chọn bị bỏ qua',
         h('p',{class:'muted'},'Mô hình được gọi theo thứ tự bên dưới. Tiếp tục sẽ cập nhật cấu hình mô hình của trợ lý, giữ nguyên các lượt đã hoàn tất.'),
         ...(r.routing||[]).map(route=>h('div',{},h('strong',{},(agents.find(a=>a.id===route.agent)?.name||route.agent)+' · '+(route.routing==='global'?'Theo cài đặt chung':'Danh sách riêng')),
           h('p',{},route.plan.length?route.plan.map(m=>m.provider+'/'+m.model).join(' → '):'Chưa có mô hình sẵn sàng.'),
-          ...route.skipped.map(m=>h('p',{class:'muted'},'Bỏ qua '+m.provider+(m.model?'/'+m.model:'')+': '+m.reason))))),
+          ...route.skipped.map(m=>h('p',{class:'muted'},'Bỏ qua '+m.provider+(m.model?'/'+m.model:'')+': '+m.reason)))))),
       (r.attempts||[]).length?section('Lịch sử lỗi mô hình',...(r.attempts||[]).map(a=>h('p',{},new Date(a.created_at).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})+' · Lượt '+(a.step+1)+' · '+a.provider+'/'+a.model+' — '+a.reason))):null,
-      ...r.turns.map(t=>h('article',{},h('h3',{},`${agents.find(a=>a.id===t.agent_id)?.name||t.agent_id}`),
-        h('p',{class:'muted'},`${t.provider} · ${t.model}`),h('pre',{style:'white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit'},plainText(t.text)))),
+      ...r.turns.map(t=>h('article',{style:'margin-top:18px;padding-top:12px;border-top:1px solid var(--line,#ddd)'},h('details',{open:t===r.turns.at(-1)},h('summary',{},`${agents.find(a=>a.id===t.agent_id)?.name||t.agent_id} · Lượt ${(t.step??r.turns.indexOf(t))+1}`),
+        h('p',{class:'muted'},`${t.provider} · ${t.model}`),...(t.warnings||[]).map(w=>h('p',{class:'bad'},'Cần rà soát nội dung lịch sử: '+w)),h('div',{class:'council-text',style:'white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit;font-size:16px;line-height:1.75;letter-spacing:normal'},t.displayText??plainText(t.text))))),
       h('p',{},'Tin Telegram đã gửi: '+r.deliveries.filter(x=>x.sent===1).length+'/'+r.deliveries.length+
         (r.deliveries.some(x=>x.sent===0&&x.attempts>=4)?' · Có tin gửi thất bại sau 4 lần. Kiểm tra token, quyền gửi tin và dùng nút Thử gửi lại.':'')+
         (r.deliveries.some(x=>x.sent===-1)?' · Có tin đã hủy do ngắt ghép/thu hồi quyền.':'')),
+      h('details',{},h('summary',{},'Nhật ký gửi Telegram'),...(r.deliveries||[]).map((d,i)=>h('div',{},h('p',{class:'muted'},'Tin '+(i+1)+' · '+(d.sent===1?'Đã gửi':d.sent===-1?'Đã hủy':d.attempts>=4?'Gửi thất bại':'Đang chờ')+' · '+d.attempts+' lần thử'),h('div',{style:'white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7'},plainText(d.text||''))))),
       ...controls,action('Cập nhật phiên',()=>detail(id))));
     const refresh=()=>{
       if(!body.isConnected||selectedJob!==id)return;
