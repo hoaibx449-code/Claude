@@ -2,13 +2,54 @@ import { HttpError, type Env } from './util.ts';
 
 export type CouncilProvider = 'gemini' | 'ollama' | 'openai';
 export interface CouncilModel { provider: CouncilProvider; model: string }
-export interface CouncilAgent { id: string; name: string; prompt: string; models: CouncilModel[] }
+export interface CouncilAgent { id: string; name: string; prompt: string; models: CouncilModel[]; routing?: 'global' | 'custom' }
 // Explicit free-tier catalogue checked 2026-10-21. Billing status belongs to the account,
 // not to the model ID: cloud use additionally requires the admin's free-account confirmation.
 export const FREE_GEMINI = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite'];
 export function councilPlan(models: CouncilModel[], freeOnly: boolean, freeConfirmed: boolean) {
   return models.filter(m => !freeOnly || (freeConfirmed && (m.provider === 'ollama' ||
     (m.provider === 'gemini' && FREE_GEMINI.includes(m.model)))));
+}
+
+// Older installations shipped this exact Gemini-only default, without a routing field.
+export function councilRouting(agent: CouncilAgent): 'global' | 'custom' {
+  return agent.routing || (agent.models.length===FREE_GEMINI.length && agent.models.every((m,i)=>
+    m.provider==='gemini' && m.model===FREE_GEMINI[i]) ? 'global' : 'custom');
+}
+export function councilRoute(env: Env, agent: CouncilAgent, freeOnly: boolean, freeConfirmed: boolean) {
+  const split=(value:string|undefined)=>(value||'').split(',').map(x=>x.trim()).filter(Boolean);
+  const providers=['ollama','gemini','openai'] as const;
+  const order=[...new Set([...split(env.AI_ORDER),...providers])].filter(p=>providers.includes(p as any));
+  const configured:Record<string,string[]>={
+    ollama:[env.OLLAMA_TEXT_MODEL||'',...split(env.OLLAMA_TEXT_FALLBACK)],
+    gemini:[env.GEMINI_TEXT_MODEL||FREE_GEMINI[0],...split(env.GEMINI_TEXT_FALLBACK),...FREE_GEMINI],
+    openai:[env.OPENAI_TEXT_MODEL||'',...split(env.OPENAI_TEXT_FALLBACK)],
+  };
+  const routing=councilRouting(agent);
+  const candidates=routing==='custom'?agent.models:order.flatMap(provider=>configured[provider]
+    .filter(Boolean).map(model=>({provider:provider as CouncilProvider,model})));
+  const seen=new Set<string>(), skipped:{provider:string;model:string;reason:string}[]=[];
+  const plan:CouncilModel[]=[];
+  for(const m of candidates){
+    const key=m.provider+'/'+m.model;if(seen.has(key))continue;seen.add(key);
+    let reason='';
+    if(!councilPlan([m],freeOnly,freeConfirmed).length)
+      reason=freeOnly&&!freeConfirmed?'Chưa xác nhận tài khoản dùng hạn mức miễn phí.':'Bị chặn bởi chính sách chỉ dùng miễn phí.';
+    else if(m.provider==='ollama'&&env.OLLAMA_URL&&env.OLLAMA_URL.replace(/\/$/,'')!=='https://ollama.com')
+      reason='Cần Ollama Cloud tại https://ollama.com để chạy khi máy tính tắt.';
+    else if(!(m.provider==='ollama'?env.OLLAMA_API_KEY:m.provider==='gemini'?env.GEMINI_API_KEY:env.OPENAI_API_KEY))
+      reason='Chưa cấu hình khóa '+(m.provider==='ollama'?'Ollama Cloud':m.provider)+'.';
+    if(reason)skipped.push({...m,reason});else plan.push(m);
+  }
+  if(routing==='global'&&!configured.ollama.some(Boolean))skipped.push({provider:'ollama',model:'',reason:'Chưa chọn mô hình Ollama Cloud trong API & token.'});
+  return {routing,plan,skipped};
+}
+
+export function councilFailure(error:unknown) {
+  // Never persist provider bodies, request URLs or arbitrary network error strings.
+  if(error instanceof HttpError)return error.message;
+  if(error instanceof Error && ['TimeoutError','AbortError'].includes(error.name))return 'Nhà cung cấp không trả lời trong 22 giây.';
+  return 'Không kết nối được nhà cung cấp hoặc phản hồi không hợp lệ.';
 }
 
 export async function councilGenerate(env: Env, model: CouncilModel, system: string, input: string) {
@@ -36,7 +77,13 @@ export async function councilGenerate(env: Env, model: CouncilModel, system: str
       headers:{'content-type':'application/json',authorization:`Bearer ${env.OPENAI_API_KEY}`},
       body:JSON.stringify({model:model.model,instructions:system,input,store:false,max_output_tokens:2200})});
   }
-  if (!response.ok) throw new HttpError(response.status === 429 ? 429 : 502, `AI ${model.provider}: HTTP ${response.status}.`);
+  if (!response.ok) {
+    const explanation=response.status===429?'Hết hạn mức hoặc bị giới hạn tốc độ; kiểm tra hạn mức tài khoản.':
+      [401,403].includes(response.status)?'Khóa không hợp lệ hoặc tài khoản không có quyền dùng mô hình.':
+      response.status===404?'Tên mô hình không tồn tại hoặc chưa được cấp cho tài khoản.':
+      response.status>=500?'Nhà cung cấp đang gặp sự cố.':'Nhà cung cấp từ chối yêu cầu.';
+    throw new HttpError(response.status === 429 ? 429 : 502, `AI ${model.provider}: HTTP ${response.status}. ${explanation}`);
+  }
   const j:any = await response.json();
   let text = '';
   if (model.provider === 'gemini') {

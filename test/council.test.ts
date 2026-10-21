@@ -8,7 +8,7 @@ import worker from '../web/src/worker.ts';
 import {startSession} from '../web/src/auth.ts';
 import {defaultConfig,clearCache,encrypt} from '../web/src/settings.ts';
 import {cleanCouncil,councilDefaults,tickCouncil,telegramParts,councilWebhook,councilAdmin} from '../web/src/council.ts';
-import {councilPlan,councilGenerate,FREE_GEMINI} from '../web/src/council-ai.ts';
+import {councilPlan,councilGenerate,councilRoute,councilRouting,councilFailure,FREE_GEMINI} from '../web/src/council-ai.ts';
 import {sha256} from '../web/src/util.ts';
 import {councilTelegramFormat,councilTitle} from '../web/src/council-present.ts';
 
@@ -32,10 +32,68 @@ async function fixture(){
   const secret=async(key:string,value:string)=>env.DB.prepare('INSERT OR REPLACE INTO council_secrets VALUES(?,?)').bind(key,await encrypt(env,value)).run();
   const hook=async(payload:any,header='hook-secret')=>request('/api/council/telegram',{method:'POST',headers:{'content-type':'application/json','x-telegram-bot-api-secret-token':header},body:JSON.stringify(payload)});
   const webhookMessage=(id:number,from=55,chat=-100,text='/brief Nội dung cà phê')=>({update_id:id,message:{message_id:id,from:{id:from,is_bot:false},chat:{id:chat,type:'supergroup'},text}});
-  const enabled=()=>({...councilDefaults(),enabled:true,freeConfirmed:true});
+  const enabled=()=>{const c=councilDefaults();return {...c,enabled:true,freeConfirmed:true,agents:c.agents.map(a=>({...a,routing:"custom" as const}))};};
   const close=()=>{clearCache();rmSync(dir,{recursive:true,force:true});};
   return {env,user,adminCookie,memberCookie,request,write,save,secret,hook,webhookMessage,enabled,close};
 }
+
+test('council: inherited routing follows Ollama-first settings, migrates legacy defaults and explains skipped choices',()=>{
+  const agent=councilDefaults().agents[1];
+  const env:any={AI_ORDER:'ollama,openai,gemini',OLLAMA_TEXT_MODEL:'cloud-model',OLLAMA_TEXT_FALLBACK:'backup-cloud',
+    OLLAMA_URL:'https://ollama.com',OLLAMA_API_KEY:'private-ollama-key',GEMINI_API_KEY:'private-gemini-key',
+    OPENAI_API_KEY:'private-openai-key',OPENAI_TEXT_MODEL:'paid'};
+  let route=councilRoute(env,agent,true,true);
+  assert.deepEqual(route.plan.slice(0,2).map(m=>m.provider+'/'+m.model),['ollama/cloud-model','ollama/backup-cloud']);
+  assert.ok(route.plan.every(m=>m.provider!=='openai'));
+  assert.ok(route.skipped.some(m=>m.provider==='openai'&&m.reason.includes('miễn phí')));
+  const legacy={...agent};delete legacy.routing;assert.equal(councilRouting(legacy),'global');
+  assert.equal(councilRoute(env,{...agent,routing:'custom'},true,true).plan[0].provider,'gemini');
+  route=councilRoute({...env,OLLAMA_URL:'http://localhost:11434'},agent,true,true);
+  assert.equal(route.plan[0].provider,'gemini');assert.ok(route.skipped.some(m=>m.reason.includes('máy tính tắt')));
+  route=councilRoute({...env,OLLAMA_API_KEY:''},agent,true,true);
+  assert.ok(route.skipped.some(m=>m.reason.includes('Chưa cấu hình khóa Ollama')));
+  assert.ok(!JSON.stringify(route).includes('private-'));
+  assert.equal(councilRoute(env,agent,true,false).plan.length,0);
+  assert.ok(!councilFailure(new Error('secret-provider-url')).includes('secret-provider-url'));
+});
+
+test('council: model errors survive pause, bypass a failed Telegram receipt, and resume uses current routing without replaying turns',async()=>{
+  clearCache();const f=await fixture(),orig=globalThis.fetch,sent:any[]=[];try{
+    const c=f.enabled();c.agents=c.agents.slice(0,2);c.agents[0].models=c.agents[0].models.slice(0,1);c.agents[1].models=c.agents[1].models.slice(0,1);
+    await f.save(c);await f.secret('bot:editor','123456:secret-never-echo');
+    await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
+    globalThis.fetch=async(url,options)=>{
+      if(String(url).startsWith('https://api.telegram.org/')){sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});}
+      return new Response('private-provider-body',{status:429});
+    };
+    const created=await f.write('/jobs',{brief:'Lịch sử thế giới trong 7 ngày'}),{id}=await created.json() as any;
+    // An exhausted receipt must never suppress the subsequent pause alert.
+    await f.env.DB.prepare("UPDATE council_outbox SET sent=0,attempts=4 WHERE job_id=?").bind(id).run();
+    sent.length=0;await tickCouncil(f.env);
+    assert.ok(sent.some(x=>x.text.includes('HTTP 429')&&x.text.includes('Phiên tạm dừng')));
+    let detail=await (await f.request('/api/admin/council/jobs/'+id,{headers:{cookie:f.adminCookie}})).json() as any;
+    assert.equal(detail.job.status,'paused');assert.match(detail.attempts[0].reason,/HTTP 429/);
+    assert.ok(!JSON.stringify(detail).includes('private-provider-body'));assert.ok(!JSON.stringify(detail).includes('secret-never-echo'));
+    await f.env.DB.prepare('INSERT INTO council_turns VALUES(?,?,?,?,?,?,?)').bind(id,0,'strategy','gemini',FREE_GEMINI[0],'Đã hoàn tất trước đó.',Date.now()).run();
+    await f.env.DB.prepare('UPDATE council_jobs SET step=1 WHERE id=?').bind(id).run();
+    c.agents.forEach(a=>a.routing='global');await f.save(c);
+    f.env.AI_ORDER='ollama,gemini';f.env.OLLAMA_TEXT_MODEL='working-cloud';f.env.OLLAMA_API_KEY='private-ollama-key';f.env.OLLAMA_URL='https://ollama.com';
+    // Keep this fixture on the real route while supplying the same effective environment as the worker.
+    const resumed=await councilAdmin(new Request('https://studio.test/api/admin/council/jobs/'+id+'/resume',{method:'POST',body:'{}'}),f.env,'council/jobs/'+id+'/resume',f.user,{log(){}} as any);
+    assert.equal(resumed.status,200);
+    globalThis.fetch=async(url,options)=>{
+      if(String(url).startsWith('https://api.telegram.org/'))return Response.json({ok:true,result:{message_id:1}});
+      assert.equal(String(url),'https://ollama.com/api/chat');assert.equal(JSON.parse(options?.body as string).model,'working-cloud');
+      return Response.json({done:true,message:{content:'Bản tổng hợp.'}});
+    };
+    await tickCouncil(f.env);
+    detail=await f.env.DB.prepare('SELECT * FROM council_jobs WHERE id=?').bind(id).first<any>();assert.equal(detail.status,'pending');assert.equal(detail.step,2);
+    const turns=await f.env.DB.prepare('SELECT * FROM council_turns WHERE job_id=? ORDER BY step').bind(id).all<any>();
+    assert.equal(turns.results.length,2);assert.equal(turns.results[0].text,'Đã hoàn tất trước đó.');assert.equal(turns.results[1].provider,'ollama');
+    assert.equal((await f.write('/jobs/'+id+'/retry-delivery')).status,200);
+    assert.equal((await f.env.DB.prepare('SELECT sent FROM council_outbox WHERE id=?').bind(id+':opening:0').first<any>()).sent,1);
+  }finally{globalThis.fetch=orig;f.close();}
+});
 
 test('council: actual Worker protects reads, writes, CSRF, blocked admins and private data',async()=>{
   clearCache();const f=await fixture();try{

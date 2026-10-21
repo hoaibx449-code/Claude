@@ -123,3 +123,12 @@ Kiểm tra nhóm Telegram thật cần quản trị tự tạo bot và nhập to
 - https://ollama.com/pricing
 - https://core.telegram.org/bots/api#setwebhook
 - https://developers.cloudflare.com/workers/configuration/cron-triggers/
+
+
+### Thứ tự mô hình và xử lý khi phiên tạm dừng
+
+Mặc định các trợ lý dùng thứ tự nhà cung cấp và mô hình trong API & token. Ví dụ Ollama đứng đầu thì Ollama Cloud được thử trước, nếu có mô hình và khóa hợp lệ. Ollama chạy trên máy tính cá nhân không dùng được cho nhóm chạy trên máy chủ khi máy tắt. Trong cài đặt từng trợ lý, có thể bỏ chọn “Theo thứ tự và mô hình trong cài đặt API & token” để dùng danh sách dự phòng riêng. Danh sách Gemini mặc định từ bản cũ được chuyển sang kế thừa cài đặt chung; danh sách riêng đã tùy chỉnh được giữ.
+
+Chính sách miễn phí vẫn áp dụng: OpenAI và Gemini ngoài danh sách cho phép bị chặn khi bật chỉ dùng miễn phí. Mục “Thứ tự mô hình và các lựa chọn bị bỏ qua” giải thích lựa chọn thực tế, thiếu khóa và các mô hình bị chặn. Lỗi mới được lưu theo lượt, nhà cung cấp, mô hình và thời gian; không lưu nội dung lỗi thô hay khóa bí mật. Không thể khôi phục chi tiết lỗi cũ chưa được lưu.
+
+Khi đã sửa cấu hình hoặc hạn mức, mở phiên và bấm “Tiếp tục với cấu hình hiện tại”. Phiên giữ nguyên các lượt đã hoàn tất, cập nhật lựa chọn mô hình của từng trợ lý và tiếp tục tại lượt còn thiếu. Tin báo lỗi Telegram không còn bị chặn bởi tin cũ gửi thất bại; nếu Telegram cũng gặp lỗi, web hiển thị tin hết số lần thử và nút “Thử gửi lại tin Telegram bị lỗi”.

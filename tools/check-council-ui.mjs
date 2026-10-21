@@ -25,7 +25,7 @@ try{
         if(path.endsWith('/decision')){jobs[0].status=opts.body.action;return{ok:true};}
         if(path.endsWith('/pair'))return{command:'/link@Faciup_bot '+'b'.repeat(32)};
         if(path.endsWith('/telegram-status'))return{configured:true,username:'Faciup_bot',webhookMatches:true,secretConfigured:true,pendingUpdates:0};
-        if(path.endsWith('/jobs/'+'a'.repeat(24)))return{job:{...jobs[0],brief:'Brief',error:'',snapshot:config},progress:{summary:'Chờ quản trị duyệt · đã hoàn tất 5/5 lượt'},turns:[{agent_id:'editor',provider:'gemini',model:'free',text:'<img src=x onerror="window.pwned=true"> Đề xuất đa kênh'}],deliveries:[]};
+        if(path.endsWith('/jobs/'+'a'.repeat(24)))return{job:{...jobs[0],brief:'Brief',error:'',snapshot:config},progress:{summary:'Chờ quản trị duyệt · đã hoàn tất 5/5 lượt'},turns:[{agent_id:'editor',provider:'gemini',model:'free',text:'<img src=x onerror="window.pwned=true"> Đề xuất đa kênh'}],deliveries:[{sent:0,attempts:4}],attempts:[{step:0,provider:'gemini',model:'free',reason:'AI gemini: HTTP 429. Hết hạn mức.',created_at:Date.now()}],routing:[{agent:'strategy',routing:'global',plan:[{provider:'ollama',model:'cloud-model'},{provider:'gemini',model:'free'}],skipped:[{provider:'openai',model:'paid',reason:'Bị chặn bởi chính sách chỉ dùng miễn phí.'}]}]};
         return {config:JSON.parse(JSON.stringify(config)),secrets:{},links:[],jobs,calls:0,freeModels:['gemini-3.5-flash-lite']};
       };
       await showCouncil({h,api,body:document.getElementById('body'),toast:()=>{},fail:e=>window.errors.push(e.message)});
@@ -46,6 +46,9 @@ try{
     await page.getByRole('heading',{name:'Phân công trong phiên',exact:true}).waitFor();
     await page.getByRole('button',{name:'Xem phiên',exact:true}).click();
     await page.getByRole('button',{name:'Duyệt',exact:true}).waitFor();
+    await page.getByRole('heading',{name:'Lịch sử lỗi mô hình',exact:true}).waitFor();
+    await page.getByRole('button',{name:'Thử gửi lại tin Telegram bị lỗi',exact:true}).waitFor();
+    assert.ok((await page.locator('#body').innerText()).includes('ollama/cloud-model → gemini/free'));
     await page.getByRole('heading',{name:'Phân công trong phiên',exact:true}).waitFor();
     await page.getByText('Chờ quản trị duyệt · đã hoàn tất 5/5 lượt',{exact:true}).waitFor();
     assert.equal(await page.evaluate(()=>window.created.title),'Cà phê văn phòng — Tuần 1');
