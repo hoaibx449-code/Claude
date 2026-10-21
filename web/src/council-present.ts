@@ -32,14 +32,41 @@ export function councilButtons(id:string,status:string){
   ]};
 }
 
+/** Normalize presentation only; never interpret user/model text as HTML. */
+export function councilPlain(value:string,preserveBold=false){
+  let text=String(value).normalize('NFC').replace(/\r\n?/g,'\n')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\uE000\uE001]/g,'')
+    .replace(/[\u{1D400}-\u{1D7FF}\uFF01-\uFF5E]/gu,ch=>ch.normalize('NFKC'))
+    .replace(/^\s*```[^\n]*$/gm,'').replace(/`([^`\n]+)`/g,'$1')
+    .replace(/\*{2,}([^*\n]+)\*{2,}/g,'\uE000$1\uE001')
+    .replace(/!?(\[([^\]\n]+)\])\((https?:\/\/[^\s)]+)\)/g,'$2 ($3)')
+    .replace(/^\s{0,3}#{1,6}\s+/gm,'').replace(/^\s*>\s?/gm,'')
+    .replace(/^(\s*)[-*+]\s+/gm,'$1• ')
+    .replace(/(?<=\d)\s*\*\s*(?=\d)/g,' × ').replace(/\*/g,'')
+    .replace(/(?<![\p{L}\p{N}])_{1,2}([^_\n]+)_{1,2}(?![\p{L}\p{N}])/gu,'$1')
+    .replace(/~~([^~\n]+)~~/g,'$1');
+  const lines=text.split('\n'),result:string[]=[];
+  for(let i=0;i<lines.length;i++){
+    const cells=(line:string)=>line.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+    if(lines[i].trim().startsWith('|')&&i+1<lines.length&&cells(lines[i+1]).every(c=>/^:?-{3,}:?$/.test(c))){
+      const headers=cells(lines[i++]);
+      while(i+1<lines.length&&lines[i+1].trim().startsWith('|')){
+        const row=cells(lines[++i]);result.push('',...row.map((cell,j)=>(headers[j]?headers[j]+': ':'')+cell),'');
+      }
+    }else result.push(lines[i].replace(/[ \t]+$/,''));
+  }
+  text=result.join('\n').replace(/^\s*[-_=]{3,}\s*$/gm,'').replace(/\n{3,}/g,'\n\n').trim();
+  return preserveBold?text:text.replace(/[\uE000\uE001]/g,'');
+}
+
 /** Telegram entities provide bold without parsing HTML supplied by a user or model. */
 export function councilTelegramFormat(value:string){
   const entities:{type:'bold';offset:number;length:number}[]=[];
   let output='';
-  const lines=value.replace(/\*{3,}/g,'').split('\n');
+  const lines=councilPlain(value,true).split('\n');
   lines.forEach((original,index)=>{
     const line=original.replace(/^#{1,6}\s+/,'').replace(/^\*\s+/,'• '),start=output.length;
-    const pattern=/\*\*([^*\n]+)\*\*/g;let cursor=0,match:RegExpExecArray|null;
+    const pattern=/\uE000([^\uE001\n]+)\uE001/g;let cursor=0,match:RegExpExecArray|null;
     while((match=pattern.exec(line))){
       output+=line.slice(cursor,match.index).replace(/\*\*/g,'');
       entities.push({type:'bold',offset:output.length,length:match[1].length});output+=match[1];cursor=match.index+match[0].length;

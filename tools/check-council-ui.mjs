@@ -50,7 +50,9 @@ try{
     await page.getByRole('button',{name:'Duyệt',exact:true}).waitFor();
     await page.getByRole('heading',{name:'Lịch sử lỗi mô hình',exact:true}).waitFor();
     await page.getByRole('button',{name:'Thử gửi lại tin Telegram bị lỗi',exact:true}).waitFor();
+    await page.getByText('Chẩn đoán mô hình',{exact:true}).click();
     assert.ok((await page.locator('#body').innerText()).includes('ollama/cloud-model → gemini/free'));
+    await page.getByText('Chẩn đoán mô hình',{exact:true}).click();
     await page.getByRole('heading',{name:'Phân công trong phiên',exact:true}).waitFor();
     await page.getByText('Chờ quản trị duyệt · đã hoàn tất 5/5 lượt',{exact:true}).waitFor();
     assert.equal(await page.evaluate(()=>window.created.title),'Cà phê văn phòng — Tuần 1');
