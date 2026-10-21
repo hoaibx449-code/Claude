@@ -30,3 +30,20 @@ test('Live motion state follows durable leases, completed turns and admin review
   await DB.prepare('UPDATE council_settings SET config=?').bind(JSON.stringify({enabled:false,agents})).run();r=await liveRuntime({DB} as any,now);assert.equal(r.running,0);assert.ok(r.agents.every(a=>a.state==='disabled'));
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
+
+test('Faciup Live: turn times, KPIs, public looks and the 24/7 Zalo assistant',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'faciup-live-kpi-'));try{
+  const DB=database(join(dir,'db.sqlite')),now=Date.UTC(2026,9,22,5),config=defaultConfig({});config.zalo.enabled=true;
+  const agents=[{id:'editor',name:'Secret boss',prompt:'p',models:[]},{id:'research',name:'R',prompt:'p',models:[]},{id:'x1',name:'Private name',prompt:'p',models:[],live:{name:'Săn tin',color:'#ea580c',icon:'news'}}];
+  await DB.prepare('INSERT INTO council_settings VALUES(1,?)').bind(JSON.stringify({enabled:true,agents})).run();
+  for(const [step,agent,t] of [[0,'research',now-120000],[1,'x1',now-60000],[2,'editor',now-30000]] as const)await DB.prepare("INSERT INTO council_turns VALUES('j',?,?,'p','m','private text',?)").bind(step,agent,t).run();
+  await DB.prepare("INSERT INTO council_jobs(id,user_id,brief,snapshot,status,created_at,updated_at) VALUES('d1','u','b','{}','approved',?,?),('d2','u','b','{}','rejected',?,?)").bind(now,now,now,now).run();
+  await DB.prepare("INSERT INTO zalo_messages(id,chat_id,text,status,received_at,updated_at) VALUES('m1','c','hi','done',?,?)").bind(now-10000,now).run();
+  await DB.prepare("INSERT INTO zalo_outbox(id,chat_id,message_id,text,status,created_at,updated_at) VALUES('o1','c','m1','chào','sent',?,?)").bind(now-7000,now).run();
+  const r:any=await liveRuntime({DB} as any,now,config);
+  assert.equal(r.agents[2].name,'Săn tin');assert.equal(r.agents[2].color,'#ea580c');assert.equal(r.agents[2].icon,'news');assert.equal(r.agents[2].avg,60);
+  assert.equal(r.kpi.today,3);assert.equal(r.kpi.series[6],3);assert.equal(r.kpi.avgToday,45);assert.equal(r.kpi.approved,1);assert.equal(r.kpi.decided,2);
+  const z=r.agents.find((a:any)=>a.id==='zalo');assert.equal(z.state,'live24');assert.equal(z.avg,3);assert.equal(z.completed,1);
+  assert.doesNotMatch(JSON.stringify(r),/Secret|Private|private|prompt/);
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});

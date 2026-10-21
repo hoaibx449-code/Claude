@@ -1,4 +1,10 @@
 // Private data comes only from authenticated admin endpoints. All model text uses textContent.
+// icons and ready-made agents for Faciup Live (the page shows name, colour and icon, never the prompt)
+const LIVE_ICONS=[['','Theo vai trò'],['coordinator','Điều phối'],['target','Mục tiêu'],['search','Kính lúp'],['pen','Bút'],['check','Duyệt'],['news','Radar tin'],['design','Bảng màu'],['mega','Loa'],['chart','Biểu đồ'],['video','Máy quay'],['spark','Tia sáng'],['zalo','Tin nhắn']];
+const PRESETS=[
+ ['news','Săn tin','news','#ea580c','Săn tin và xu hướng từ dữ kiện được cung cấp: chọn tin đáng làm nội dung, nêu góc khai thác, độ nóng và điểm cần kiểm chứng. Không tự nhận đã tra cứu web, không bịa nguồn.'],
+ ['design','Thiết kế','design','#db2777','Đề xuất hình ảnh cho nội dung: bố cục, màu, phong cách, ý tưởng thumbnail và mô tả ảnh cho từng cảnh/kênh; giữ đúng nhận diện thương hiệu.'],
+];
 export async function showCouncil({h,api,body,toast,fail}) {
   const data=await api('/api/admin/council'),c=data.config;
   const section=(title,...children)=>h('section',{class:'card'},h('h2',{},title),...children);
@@ -27,6 +33,10 @@ export async function showCouncil({h,api,body,toast,fail}) {
       const token=input('',()=>{}, {type:'password',autocomplete:'new-password',placeholder:data.secrets['bot:'+agent.id]?'Đã lưu token — để trống để giữ':'Token bot riêng (không bắt buộc với chuyên gia)'});
       return section((index===0?'Điều phối · ':'Chuyên gia · ')+agent.name,
         field('Tên trợ lý',input(agent.name,v=>agent.name=v)),
+        h('div',{class:'row'},
+          field('Tên hiện trên Faciup Live',input(agent.live?.name||'',v=>{agent.live={...agent.live,name:v.trim()||undefined};},{maxlength:40,placeholder:'Để trống: tên theo vai trò'})),
+          field('Màu',input(agent.live?.color||'#7c3aed',v=>{agent.live={...agent.live,color:v};},{type:'color',style:'width:56px;min-width:56px;height:46px;padding:3px;cursor:pointer'})),
+          field('Biểu tượng',h('select',{onchange:e=>{agent.live={...agent.live,icon:e.target.value||undefined};}},...LIVE_ICONS.map(([k,t])=>h('option',{value:k,selected:(agent.live?.icon||'')===k},t))))),
         field('Hướng dẫn riêng',area(agent.prompt,v=>agent.prompt=v)),
         toggle('Theo thứ tự và mô hình trong cài đặt API & token',agent.routing!=='custom',v=>{agent.routing=v?'global':'custom';models.disabled=v;}),
         field('Danh sách riêng khi bỏ chọn tùy chọn trên — mỗi dòng provider:model',models),
@@ -53,7 +63,8 @@ export async function showCouncil({h,api,body,toast,fail}) {
     field('Kiến thức và giọng thương hiệu',area(c.brand,v=>c.brand=v,6)),
     h('p',{},`Đã gọi ${data.calls}/${c.dailyCalls} lượt hôm nay. Hết trần sẽ chờ ngày UTC kế tiếp.`),
     action('Lưu cấu hình nhóm',async()=>{await api('/api/admin/council/config',{method:'PUT',body:{config:c}});toast('Đã lưu.');await reload();}),
-    action('Thêm trợ lý',async()=>{if(c.agents.length>=8)return toast('Tối đa 8 trợ lý.');c.agents.push({id:'agent_'+crypto.randomUUID().slice(0,8),name:'Trợ lý mới',routing:'global',prompt:'Phân tích và phản biện theo chuyên môn được giao.',models:[{provider:'gemini',model:data.freeModels[0]}]});renderAgents();}),
+    ...PRESETS.map(([id,name,icon,color,prompt])=>action('Thêm '+name,async()=>{if(c.agents.length>=12)return toast('Tối đa 12 trợ lý.');if(c.agents.some(a=>a.id===id))return toast(name+' đã có trong nhóm.');c.agents.push({id,name,routing:'global',prompt,live:{icon,color},models:[{provider:'gemini',model:data.freeModels[0]}]});renderAgents();toast('Đã thêm '+name+'. Bấm Lưu cấu hình nhóm để áp dụng.');})),
+    action('Thêm trợ lý',async()=>{if(c.agents.length>=12)return toast('Tối đa 12 trợ lý.');c.agents.push({id:'agent_'+crypto.randomUUID().slice(0,8),name:'Trợ lý mới',routing:'global',prompt:'Phân tích và phản biện theo chuyên môn được giao.',models:[{provider:'gemini',model:data.freeModels[0]}]});renderAgents();}),
     h('p',{},'Khóa Gemini, OpenAI và Ollama được dùng từ mục API & token hiện có. Nội dung, tài liệu và các ý kiến trước sẽ được gửi đến nhà cung cấp được chọn; không nhập bí mật không được phép chia sẻ.'));
   const telegram=section('Kết nối Telegram',
     h('ol',{},

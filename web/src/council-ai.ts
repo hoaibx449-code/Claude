@@ -2,7 +2,9 @@ import { HttpError, type Env } from './util.ts';
 
 export type CouncilProvider = 'gemini' | 'ollama' | 'openai';
 export interface CouncilModel { provider: CouncilProvider; model: string }
-export interface CouncilAgent { id: string; name: string; prompt: string; models: CouncilModel[]; routing?: 'global' | 'custom' }
+/** How an agent appears on the public Faciup Live page (never its prompt or models). */
+export interface CouncilLook { name?: string; color?: string; icon?: string }
+export interface CouncilAgent { id: string; name: string; prompt: string; models: CouncilModel[]; routing?: 'global' | 'custom'; live?: CouncilLook }
 // Explicit free-tier catalogue checked 2026-10-21. Billing status belongs to the account,
 // not to the model ID: cloud use additionally requires the admin's free-account confirmation.
 export const FREE_GEMINI = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite'];

@@ -20,12 +20,15 @@ const ROLES = [
   ['writer','Biên kịch','Viết nội dung và kịch bản có hook, CTA, điều chỉnh theo từng kênh. Sửa theo phản biện có lý do.'],
   ['critic','Phản biện','Chỉ ra điểm yếu về chính xác, hấp dẫn, giọng thương hiệu và phù hợp kênh. Đề xuất cách sửa cụ thể.'],
 ];
+export const MAX_AGENTS=12;
+/** icons the Faciup Live page can draw for an agent */
+export const LIVE_ICONS=['target','search','pen','check','mega','chart','news','design','video','spark','zalo','coordinator'];
 export const councilDefaults = ():CouncilConfig => ({enabled:false,freeOnly:true,freeConfirmed:false,dailyCalls:20,rounds:1,brand:'',
   agents:ROLES.map(([id,name,prompt])=>({id,name,prompt,routing:'global',models:FREE_GEMINI.map(model=>({provider:'gemini' as const,model}))}))});
 const text = (x:unknown,max:number) => typeof x==='string'?x.trim().slice(0,max):'';
 export function cleanCouncil(input:any):CouncilConfig {
   const base=councilDefaults();
-  if(!input||!Array.isArray(input.agents)||input.agents.length<2||input.agents.length>8) throw new HttpError(400,'Cần từ 2 đến 8 trợ lý, trợ lý đầu là tổng biên tập.');
+  if(!input||!Array.isArray(input.agents)||input.agents.length<2||input.agents.length>MAX_AGENTS) throw new HttpError(400,`Cần từ 2 đến ${MAX_AGENTS} trợ lý, trợ lý đầu là tổng biên tập.`);
   const ids=new Set<string>();
   const agents=input.agents.map((a:any)=>{
     const id=text(a?.id,24),name=text(a?.name,80),prompt=text(a?.prompt,6000);
@@ -37,7 +40,8 @@ export function cleanCouncil(input:any):CouncilConfig {
       return {provider:m.provider,model:m.model};
     });
     if(a.routing!==undefined&&!['global','custom'].includes(a.routing))throw new HttpError(400,'Cách chọn mô hình không hợp lệ.');
-    return {id,name,prompt,models,routing:councilRouting(a)};
+    const look=a.live&&typeof a.live==='object'?{name:text(a.live.name,40)||undefined,color:/^#[0-9a-f]{6}$/i.test(a.live.color||'')?a.live.color:undefined,icon:LIVE_ICONS.includes(a.live.icon)?a.live.icon:undefined}:undefined;
+    return {id,name,prompt,models,routing:councilRouting(a),...(look&&(look.name||look.color||look.icon)?{live:look}:{})};
   });
   return {enabled:input.enabled===true,freeOnly:input.freeOnly!==false,freeConfirmed:input.freeConfirmed===true,
     dailyCalls:Math.min(100,Math.max(1,Math.floor(Number(input.dailyCalls)||base.dailyCalls))),

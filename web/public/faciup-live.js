@@ -1,125 +1,102 @@
-// Faciup Live: the AI team on a 24-hour dial. The coordinator glows in the centre, the other agents
-// are orbs on their own orbits, joined to it by light; a dot on the ring marks each hour an agent
-// worked today. Everything shown is real server state (/api/faciup-live): an agent only moves while
-// it really is working. Giving work happens in Quản trị → Nhóm AI.
-const STATES={idle:'Sẵn sàng',disabled:'Nhóm đang tắt',queued:'Chờ tới lượt',retry:'Chờ thử lại',running:'Đang xử lý',review:'Chờ duyệt',paused:'Tạm dừng',unknown:'Mất kết nối'};
-const COLORS=['#f26b1d','#e8336d','#7c4dff','#1e88e5','#0097a7','#c9a227','#43a047','#37474f'];
+// Faciup Live: FACIUP in the centre, the AI team as glossy orbs drifting on tilted orbits (the back
+// of an orbit passes behind FACIUP), a working agent speeds up and beams to the centre. Beside it,
+// how long each agent takes; below, the team KPIs. Everything comes from /api/faciup-live; agents
+// added in Quản trị → Nhóm AI appear on their own. Giving work happens in the admin pages.
+const NS='http://www.w3.org/2000/svg',IW='#fff',IS='rgba(255,255,255,.55)';
 const ICONS={
- 'Điều phối':'<path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/>',
- 'Chiến lược':'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/>',
- 'Nghiên cứu':'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',
- 'Biên kịch':'<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/>',
- 'Phản biện':'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 12l2 2 4-4"/>',
+ coordinator:`<circle cx="12" cy="12" r="9" fill="${IS}"/><circle cx="12" cy="12" r="4.5" fill="${IW}"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4" stroke="${IW}" stroke-width="2.2" stroke-linecap="round"/>`,
+ target:`<circle cx="12" cy="12" r="9" fill="${IS}"/><circle cx="12" cy="12" r="6" fill="${IW}"/><circle cx="12" cy="12" r="3" fill="${IS}"/><path d="M12 12l7-7" stroke="${IW}" stroke-width="2.2" stroke-linecap="round"/>`,
+ search:`<circle cx="10.5" cy="10.5" r="7" fill="${IW}"/><circle cx="10.5" cy="10.5" r="4.4" fill="${IS}"/><rect x="15" y="14.2" width="3.6" height="8" rx="1.8" transform="rotate(-45 16.8 18.2)" fill="${IW}"/>`,
+ pen:`<path d="M15.5 3.5l5 5L9 20H4v-5z" fill="${IW}"/><path d="M13 6l5 5" stroke="${IS}" stroke-width="2.4"/><path d="M4 15l5 5H4z" fill="${IS}"/>`,
+ check:`<rect x="4.5" y="4" width="15" height="17" rx="3" fill="${IW}"/><rect x="8.5" y="2.5" width="7" height="4" rx="1.5" fill="${IS}"/><path d="M8 13l3 3 5-6" stroke="var(--c)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+ mega:`<path d="M4 9.5h3l9-5v15l-9-5H4z" fill="${IW}"/><rect x="6" y="14" width="3.4" height="6" rx="1.5" fill="${IS}"/><path d="M18.5 9.5a3.5 3.5 0 0 1 0 5" stroke="${IW}" stroke-width="2" fill="none" stroke-linecap="round"/>`,
+ chart:`<rect x="3.5" y="13" width="4" height="7.5" rx="1.2" fill="${IS}"/><rect x="10" y="8" width="4" height="12.5" rx="1.2" fill="${IW}"/><rect x="16.5" y="4" width="4" height="16.5" rx="1.2" fill="${IW}"/>`,
+ zalo:`<path d="M4 5h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9l-5 4v-4H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" fill="${IW}"/><path d="M7.5 9h5l-5 5h5" stroke="var(--c)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16.5" cy="11.5" r="2" fill="var(--c)"/>`,
+ news:`<path d="M12 12L4.5 7.5A8.6 8.6 0 0 1 12 3.4z" fill="${IS}"/><circle cx="12" cy="12" r="8.6" fill="none" stroke="${IW}" stroke-width="2"/><circle cx="12" cy="12" r="4.8" fill="none" stroke="${IS}" stroke-width="1.6"/><circle cx="12" cy="12" r="1.8" fill="${IW}"/><circle cx="16.5" cy="7.5" r="1.6" fill="${IW}"/>`,
+ design:`<path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.8-.9 1.4-2-.4-1.2.4-2.3 1.7-2.3H17a4 4 0 0 0 4-4C21 7 17 3 12 3z" fill="${IW}"/><circle cx="7.6" cy="11" r="1.7" fill="#f472b6"/><circle cx="10" cy="7" r="1.7" fill="#60a5fa"/><circle cx="14.6" cy="7" r="1.7" fill="#facc15"/><circle cx="17" cy="11" r="1.7" fill="#34d399"/>`,
+ video:`<rect x="2.5" y="6" width="13.5" height="12" rx="3" fill="${IW}"/><path d="M16 10.5l5.5-3.5v10l-5.5-3.5z" fill="${IS}"/><circle cx="7" cy="10" r="1.6" fill="var(--c)"/>`,
+ spark:`<path d="M12 2.5l2.4 6.6 6.6 2.4-6.6 2.4L12 20.5l-2.4-6.6-6.6-2.4 6.6-2.4z" fill="${IW}"/><circle cx="19" cy="5" r="1.6" fill="${IS}"/>`,
 };
-const DEFAULT_ICON='<path d="M5 18l4-12 3 8 2-4 5 8"/>';
-const NS='http://www.w3.org/2000/svg';
+// server state → how an agent looks and moves
+const LOOK={running:'work',live24:'live24',queued:'wait',retry:'wait',review:'review',paused:'off',disabled:'off',idle:'idle',unknown:'off'};
 const pad=n=>String(n).padStart(2,'0');
-const vnParts=t=>{const d=new Date(t+7*3600000);return {h:d.getUTCHours(),m:d.getUTCMinutes(),s:d.getUTCSeconds()};};
-const hm=t=>{const p=vnParts(t);return pad(p.h)+':'+pad(p.m);};
-/** angle (radians) of a time of day on the dial: 00 at the top, 06 right, 12 bottom, 18 left */
-const dialAngle=hours=>hours/24*2*Math.PI-Math.PI/2;
-function el(tag,attrs={},...kids){const e=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);e.append(...kids);return e;}
-function icon(paths){const s=el('svg',{viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'2','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'});const d=new DOMParser().parseFromString(`<svg xmlns="${NS}">${paths}</svg>`,'image/svg+xml');for(const n of [...d.documentElement.childNodes])s.append(document.importNode(n,true));return s;}
-function until(ms){const m=Math.max(0,Math.round(ms/60000));return m<60?`${m} phút`:`${Math.floor(m/60)} giờ ${m%60} phút`;}
+const fmt=s=>{s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+':'+pad(s%60);};
+const vn=t=>{const d=new Date(t+7*3600e3);return pad(d.getUTCHours())+':'+pad(d.getUTCMinutes());};
+const svgIcon=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]||ICONS.spark}</svg>`;
 
 export function showLive({h,show,api,footer,admin=false}){
- let stopped=false,busy=false,data=null,stale=false,raf=0,selected=-1,fingerprint='',last=performance.now();
+ let stopped=false,busy=false,data=null,stale=false,raf=0,last=performance.now(),clockSkew=0;
  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
- // dial (SVG, 1000×1000): ring, hour ticks, today's activity, orbits, links
- const ring=el('g',{class:'fl-ring'}),marks=el('g',{class:'fl-marks'}),orbits=el('g',{class:'fl-orbits'}),links=el('g',{class:'fl-links'});
- const hand=el('g',{class:'fl-hand'},el('line',{x1:0,y1:0,x2:-34,y2:0}),el('circle',{r:13,class:'fl-hand-glow'}),el('circle',{r:7}));
- const dial=el('svg',{viewBox:'0 0 1000 1000',class:'fl-dial','aria-hidden':'true'},
-  el('defs',{},el('linearGradient',{id:'fl-day',x1:0,y1:0,x2:0,y2:1},el('stop',{offset:'0','stop-color':'var(--fl-night)'}),el('stop',{offset:'.5','stop-color':'var(--fl-night)'}),el('stop',{offset:'.5','stop-color':'var(--fl-day)'}),el('stop',{offset:'1','stop-color':'var(--fl-day)'}))),
-  ring,orbits,links,marks,hand);
- ring.append(el('circle',{cx:500,cy:500,r:430,class:'fl-track'}));
- for(let i=0;i<24;i++){const a=dialAngle(i),big=i%3===0,r1=big?396:410,r2=418;ring.append(el('line',{x1:500+r1*Math.cos(a),y1:500+r1*Math.sin(a),x2:500+r2*Math.cos(a),y2:500+r2*Math.sin(a),class:big?'fl-tick fl-tick-big':'fl-tick'}));
-  if(big)ring.append(el('text',{x:500+372*Math.cos(a),y:500+372*Math.sin(a)+7,class:'fl-hour'},pad(i)));}
- ring.append(el('text',{x:500,y:205,class:'fl-half'},'ĐÊM'),el('text',{x:500,y:808,class:'fl-half'},'NGÀY'));
- const hub=h('button',{type:'button',class:'fl-hub','aria-label':'Tác nhân điều phối',onclick:()=>pick(0)},h('span',{class:'fl-hub-core'},h('span',{class:'fl-hub-mark'},'✎')),h('span',{class:'fl-hub-pill'},''));
- const stage=h('div',{class:'fl-stage'},dial,hub);
- const pop=h('div',{class:'fl-pop',hidden:true,role:'dialog','aria-label':'Chi tiết tác nhân'});
- stage.append(pop);
- // the one card under the dial: time, team, what comes next
- const clock=h('time',{class:'fl-time'}),line1=h('p',{class:'fl-line1'},'Đang kết nối…'),line2=h('p',{class:'fl-line2'},'');
- const status=h('section',{class:'fl-status','aria-live':'polite'},h('div',{class:'fl-clock'},clock,h('small',{},'GIỜ VN')),h('div',{class:'fl-lines'},line1,line2),
-  admin?h('a',{class:'fl-admin',href:'/admin/nhom-ai'},'Giao việc ↗'):null);
- const shell=h('section',{class:'fl-live'},h('h1',{class:'sr'},'Faciup Live — đội AI đang vận hành'),stage,status);
- show(shell,footer());
- let agents=[];// {i,name,role,color,state,orb,label,link,orbit:{rx,ry,rot,phase,speed}}
- const team=()=>data?.runtime?.agents||[];
- function build(){
-  const list=team(),key=list.map(a=>a.id+a.name).join('|');if(key===fingerprint)return;fingerprint=key;
-  agents.forEach(a=>{a.orb.remove();a.label.remove();});orbits.replaceChildren();links.replaceChildren();
-  const others=list.slice(1),n=Math.max(1,others.length);
-  agents=others.map((a,k)=>{
-   const i=k+1,color=COLORS[i%COLORS.length];
-   // each agent its own tilted ellipse, spread evenly around the centre
-   const rot=(k%2?.32:-.32)+(k%3)*.12,rx=290+(k%2)*40,ry=200+(k%3)*30,phase=-Math.PI/2+k*2*Math.PI/n+Math.PI/n,speed=(.08+(k%3)*.025)*(k%2?-1:1);
-   const path=el('ellipse',{cx:500,cy:500,rx,ry,transform:`rotate(${rot*180/Math.PI} 500 500)`,class:'fl-orbit'});orbits.append(path);
-   const link=el('line',{x1:500,y1:500,x2:500,y2:500,class:'fl-link',stroke:color});links.append(link);
-   const orb=h('button',{type:'button',class:'fl-orb',style:`--c:${color}`,'aria-label':a.name,onclick:e=>{e.stopPropagation();pick(i);}},icon(ICONS[a.name]||DEFAULT_ICON));
-   const label=h('div',{class:'fl-label',style:`--c:${color}`},h('strong',{},a.name),h('span',{},''));
-   stage.append(orb,label);
-   return {i,name:a.name,role:a.role,color,orb,label,link,orbit:{rx,ry,rot,phase,speed}};
+ const bg=document.createElementNS(NS,'svg');bg.setAttribute('viewBox','0 0 1000 700');bg.setAttribute('preserveAspectRatio','none');bg.setAttribute('class','fl-bg');bg.setAttribute('aria-hidden','true');
+ const stage=h('section',{class:'fl-stage','aria-label':'Đội AI FACIUP đang vận hành'},bg,h('div',{class:'fl-hub'},h('div',{class:'fl-core'},h('b',{},'FACIUP'))));
+ const now=h('div',{class:'fl-now'},h('i',{}),h('span',{},'Đang kết nối…'));
+ const legend=h('div',{class:'fl-legend'},h('span',{},h('i',{style:'background:#f97316'}),'Sáng + tia về tâm: đang xử lý'),h('span',{},h('i',{style:'background:#c4b8e6'}),'Nhấp nháy: chờ tới lượt'),h('span',{},h('i',{style:'background:#22c55e'}),'Chấm xanh: trực 24/7'));
+ stage.append(now,legend);
+ const times=h('ul',{class:'fl-times'}),count=h('small',{});
+ const side=h('aside',{class:'fl-panel'},h('h2',{},'Thời gian xử lý',count),times);
+ const kpis=h('section',{class:'fl-kpis','aria-label':'Chỉ số hoạt động'});
+ const page=h('div',{class:'fl-live'},h('h1',{class:'sr'},'Faciup Live'),stage,side,kpis,admin?h('a',{class:'fl-admin',href:'/admin/nhom-ai'},'Giao việc & thêm agent trong Quản trị ↗'):null);
+ show(page,footer());
+ let agents=[],key='';
+ function build(list){
+  const k=list.map(a=>a.id+a.name+a.color+a.icon).join('|');if(k===key)return;key=k;
+  const keep=new Map(agents.map(a=>[a.id,a]));bg.replaceChildren();
+  agents=list.map((s,i)=>{
+   const old=keep.get(s.id);keep.delete(s.id);
+   const ring=i%3,o={rx:[245,325,410][ring],ry:[155,212,268][ring],tilt:([-18,12,-6][ring]+i*5)*Math.PI/180,phase:old?.o.phase??(i/list.length)*Math.PI*2,speed:(.05+.03*((i*7)%4)/3)*(i%2?-1:1),wob:old?.o.wob??i};
+   const orbit=document.createElementNS(NS,'ellipse');for(const [a,v] of Object.entries({cx:500,cy:350,rx:o.rx,ry:o.ry,transform:`rotate(${o.tilt*180/Math.PI} 500 350)`,class:'fl-orbit'}))orbit.setAttribute(a,v);bg.append(orbit);
+   const beam=document.createElementNS(NS,'line');for(const [a,v] of Object.entries({x1:500,y1:350,x2:500,y2:350,class:'fl-beam',stroke:s.color}))beam.setAttribute(a,v);bg.append(beam);
+   let el=old?.el;
+   if(!el||old.icon!==s.icon||old.color!==s.color){old?.el.remove();el=h('button',{type:'button',class:'fl-ag'+(old?'':' fl-new'),'aria-label':s.name});el.style.setProperty('--c',s.color);
+    el.innerHTML=`<i class="fl-pulse"></i><span class="fl-floor"></span><span class="fl-dot">${svgIcon(s.icon)}</span><span class="fl-tag"><b></b><small></small></span>`;el.querySelector('.fl-dot').style.setProperty('--d',((i*.7)%3.6)+'s');stage.append(el);setTimeout(()=>el.classList.remove('fl-new'),900);}
+   return {id:s.id,icon:s.icon,color:s.color,el,beam,o,s};
   });
+  for(const a of keep.values())a.el.remove();
  }
- function place(){
-  for(const a of agents){const o=a.orbit,x0=o.rx*Math.cos(o.phase),y0=o.ry*Math.sin(o.phase),x=500+x0*Math.cos(o.rot)-y0*Math.sin(o.rot),y=500+x0*Math.sin(o.rot)+y0*Math.cos(o.rot);
-   a.x=x;a.y=y;a.orb.style.left=x/10+'%';a.orb.style.top=y/10+'%';a.link.setAttribute('x2',x);a.link.setAttribute('y2',y);
-   // label outward from the centre, flipped to stay inside the dial
-   // outward from the centre, but towards it near the edge so cards stay on screen
-   const narrow=stage.clientWidth<560,right=x<300?true:x>700?false:x>=500;
-   // phones: a short name tag right under the orb; wider screens: a card beside it
-   a.label.classList.toggle('fl-under',narrow);
-   if(narrow){a.label.style.left=x/10+'%';a.label.style.top=(y/10+5.2)+'%';}
-   else{a.label.style.left=(x/10+(right?3.4:-3.4))+'%';a.label.style.top=(y/10+(y>500?3.2:-3.2))+'%';}
-   a.label.classList.toggle('fl-left',!narrow&&!right);a.label.classList.toggle('fl-up',y<=500);}
-  if(selected>0){const a=agents.find(x=>x.i===selected);if(a){pop.style.left=a.x/10+'%';pop.style.top=a.y/10+'%';pop.classList.toggle('fl-left',a.x>560);pop.classList.toggle('fl-up',a.y>560);}}
- }
- function frame(t){const dt=Math.min(.1,(t-last)/1000);last=t;
-  // only a working agent travels its orbit: real activity, not decoration
-  if(!reduce&&!stale)for(const a of agents)if(a.state==='running')a.orbit.phase+=a.orbit.speed*dt*6;
-  place();raf=requestAnimationFrame(frame);}
- function paintMarks(){
-  marks.replaceChildren();const list=team();
-  list.forEach((a,i)=>{const color=COLORS[i%COLORS.length];for(const [hour,n] of a.hours||[]){const ang=dialAngle(hour+.5),r=430;
-   marks.append(el('circle',{cx:500+r*Math.cos(ang),cy:500+r*Math.sin(ang),r:Math.min(14,7+n),fill:color,class:'fl-mark'},el('title',{},`${a.name}: ${n} lượt lúc ${pad(hour)}:00`)));
-   marks.append(el('text',{x:500+478*Math.cos(ang),y:500+478*Math.sin(ang)+7,fill:color,class:'fl-mark-time'},pad(hour)+':00'));}});
- }
- function paint(){
-  build();const r=data.runtime,list=team();
-  hub.querySelector('.fl-hub-pill').textContent='FACIUP · '+(list[0]?.name||'Điều phối').toUpperCase();
-  hub.dataset.state=stale?'unknown':list[0]?.state||'idle';hub.style.setProperty('--c',COLORS[0]);
-  for(const a of agents){const s=list[a.i];a.state=stale?'unknown':s?.state||'idle';a.orb.dataset.state=a.state;a.label.dataset.state=a.state;a.link.dataset.state=a.state;
-   a.label.querySelector('span').textContent=a.state==='running'?'Đang xử lý':a.state==='idle'&&s?.last?`Gần nhất ${hm(s.last)} · ${s.completed} lượt`:STATES[a.state]||'';}
-  paintMarks();
-  const total=list.length,busyN=r.running;
-  if(stale){line1.textContent='Mất kết nối trạng thái';line2.textContent='Chưa xác minh hoạt động hiện tại · đang thử lại';}
-  else if(!r.enabled){line1.replaceChildren(h('b',{},`${total} agent`),' · nhóm đang tắt');line2.textContent=r.completed?`Hôm nay đã xong ${r.completed} lượt`:'Chưa nhận nhiệm vụ';}
-  else{line1.replaceChildren(h('b',{},`${total} agent`),busyN?` · ${busyN} đang xử lý`:' đang trực');
-   const nx=r.next,who=nx?list[nx.agent]?.name:'';
-   line2.replaceChildren(...(nx?['Việc kế tiếp: ',h('b',{},who),nx.at>Date.now()?` · ${hm(nx.at)} (còn ${until(nx.at-Date.now())})`:' · ngay khi tới lượt']
-    :r.review?['Chờ duyệt: ',h('b',{},r.review+' kết quả')]:[r.completed?`Hôm nay xong ${r.completed} lượt · gần nhất ${hm(r.lastActivity)}`:'Chưa có việc trong hàng đợi']));}
-  if(selected>=0)detail();
- }
- function pick(i){selected=selected===i?-1:i;detail();}
- function detail(){
-  const s=team()[selected];if(selected<0||!s){pop.hidden=true;return;}
-  pop.style.setProperty('--c',COLORS[selected%COLORS.length]);
-  pop.replaceChildren(h('strong',{},s.name),h('span',{class:'fl-pop-state','data-state':stale?'unknown':s.state},STATES[stale?'unknown':s.state]),h('p',{},s.role),
-   h('dl',{},h('dt',{},'Hôm nay'),h('dd',{},`${s.completed||0} lượt`),h('dt',{},'Gần nhất'),h('dd',{},s.last?hm(s.last):'—')));
-  pop.hidden=false;
-  if(selected===0){pop.style.left='50%';pop.style.top='58%';pop.classList.remove('fl-left','fl-up');}
- }
- stage.addEventListener('click',e=>{if(!pop.contains(e.target)&&selected>=0&&!e.target.closest('.fl-orb,.fl-hub')){selected=-1;pop.hidden=true;}});
- function tick(){const p=vnParts(Date.now());clock.textContent=pad(p.h)+':'+pad(p.m);const a=dialAngle(p.h+p.m/60+p.s/3600);
-  hand.setAttribute('transform',`translate(${500+430*Math.cos(a)} ${500+430*Math.sin(a)}) rotate(${a*180/Math.PI})`);}
+ function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;const r=stage.getBoundingClientRect(),sx=r.width/1000,sy=r.height/700,narrow=r.width<560,off=stale||!data?.runtime?.enabled;
+  for(const a of agents){const look=stale?'off':LOOK[a.s.state]||'idle',moving=!off||a.s.live;
+   if(moving&&!reduce){a.o.phase+=a.o.speed*dt*(look==='work'?3.2:1);a.o.wob+=dt*.8;}
+   const rx=a.o.rx*(narrow?1.08:1),ry=a.o.ry*(narrow?1.35:1),x0=rx*Math.cos(a.o.phase),y0=ry*Math.sin(a.o.phase)+Math.sin(a.o.wob)*8;
+   const x=500+x0*Math.cos(a.o.tilt)-y0*Math.sin(a.o.tilt),y=350+x0*Math.sin(a.o.tilt)+y0*Math.cos(a.o.tilt);
+   const px=Math.min(Math.max(x*sx,16),r.width-16),py=Math.min(Math.max(y*sy,16),r.height-16);
+   // depth: the back of an orbit is smaller, softer and passes behind FACIUP; a slight tilt follows the motion
+   const depth=Math.sin(a.o.phase),sc=.8+.28*(depth+1)/2,half=narrow?14:18;
+   a.el.style.transform=`translate(${px-half}px,${py-half}px) scale(${sc.toFixed(3)})`;a.el.style.zIndex=depth<0?2:5;a.el.style.opacity=(off&&!a.s.live?.6:.72+.28*(depth+1)/2).toFixed(2);
+   a.el.querySelector('.fl-dot').style.transform=`perspective(120px) rotateY(${(-a.o.speed*Math.sin(a.o.phase)*120).toFixed(1)}deg) rotateX(${(depth*10).toFixed(1)}deg)`;
+   a.el.classList.toggle('fl-flip',narrow?x>500:x<500);
+   a.beam.setAttribute('x2',x);a.beam.setAttribute('y2',y);a.beam.classList.toggle('on',look==='work'||look==='live24');}
+  if(!stopped)raf=requestAnimationFrame(frame);}
+ // a working agent's clock counts every second between polls
+ const runFor=s=>s.since?(Date.now()+clockSkew-s.since)/1000:0;
+ function tagText(s,look){return look==='live24'?`Trực 24/7 · phản hồi ~${fmt(s.avg)}`:look==='work'?`Đang xử lý ${fmt(runFor(s))}`:look==='wait'?`Chờ${s.avg?' · ~'+fmt(s.avg):' tới lượt'}`:look==='review'?'Chờ duyệt':look==='off'?(stale?'Mất kết nối':'Nhóm đang tắt'):s.avg?`TB ${fmt(s.avg)}/lượt`:'Sẵn sàng';}
+ function paintAgents(){
+  const lead=data.runtime.agents[0],hub=stage.querySelector('.fl-hub');hub.dataset.state=stale?'off':LOOK[lead?.state]||'idle';
+  for(const a of agents){const look=stale?'off':LOOK[a.s.state]||'idle';a.el.className='fl-ag fl-'+look+(a.el.classList.contains('fl-new')?' fl-new':'')+(a.el.classList.contains('fl-flip')?' fl-flip':'')+(a.s.live?' fl-24':'');
+   a.el.querySelector('b').textContent=a.s.name;a.el.querySelector('small').textContent=tagText(a.s,look);}
+  const rows=[...(lead?[{s:{...lead,name:'FACIUP · tổng hợp',color:'#c026d3'}}]:[]),...agents];
+  if(times.children.length!==rows.length)times.replaceChildren(...rows.map(()=>h('li',{},h('i',{}),h('span',{}),h('span',{class:'t'}),h('span',{class:'bar'},h('b',{})))));
+  rows.forEach((a,i)=>{const li=times.children[i],s=a.s,look=stale?'off':LOOK[s.state]||'idle',el=runFor(s);li.style.setProperty('--c',s.color);li.className=look==='work'||look==='live24'?'fl-row-on':look==='off'?'fl-row-off':'';
+   li.children[1].textContent=s.name;
+   li.children[2].innerHTML=look==='live24'?`${fmt(s.avg)}<small>phản hồi TB · trực 24/7</small>`:look==='work'?`${fmt(el)}<small>đang xử lý${s.avg?' · TB '+fmt(s.avg):''}</small>`
+    :look==='wait'?`${s.avg?'~'+fmt(s.avg):'—'}<small>chờ tới lượt</small>`:look==='review'?`${fmt(s.avg)}<small>chờ duyệt</small>`:`${s.avg?fmt(s.avg):'—'}<small>${s.avg?'trung bình / lượt':s.completed?s.completed+' lượt hôm nay':'chưa có lượt'}</small>`;
+   li.querySelector('.bar b').style.width=(look==='work'&&s.avg?Math.min(100,el/s.avg*100):look==='live24'?100:0)+'%';});
+  count.textContent=data.runtime.agents.length+' agent';}
+ function spark(vals,c){const max=Math.max(1,...vals),pts=vals.map((v,i)=>`${i/(vals.length-1)*200},${42-v/max*36}`).join(' '),id='g'+c.slice(1);
+  return `<svg viewBox="0 0 200 44" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".35"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient></defs><polygon points="0,44 ${pts} 200,44" fill="url(#${id})"/><polyline points="${pts}" fill="none" stroke="${c}" stroke-width="2.5" stroke-linejoin="round"/></svg>`;}
+ function gauge(p){const r=28,c=2*Math.PI*r;return `<svg viewBox="0 0 70 70" aria-hidden="true"><defs><linearGradient id="flg"><stop offset="0" stop-color="#7c3aed"/><stop offset="1" stop-color="#f97316"/></linearGradient></defs><circle cx="35" cy="35" r="${r}" fill="none" stroke="#f0ebf9" stroke-width="8"/><circle cx="35" cy="35" r="${r}" fill="none" stroke="url(#flg)" stroke-width="8" stroke-linecap="round" stroke-dasharray="${c*p} ${c}" transform="rotate(-90 35 35)"/></svg>`;}
+ function paintKpis(){const r=data.runtime,k=r.kpi||{},d=k.yesterday?Math.round((k.today-k.yesterday)/k.yesterday*100):null,dt=k.avgToday&&k.avgYesterday?k.avgToday-k.avgYesterday:null,mx=Math.max(1,...(k.top||[]).map(x=>x.n));
+  kpis.innerHTML=`<div class="fl-kpi"><div class="lbl">Lượt hoàn thành hôm nay</div><div class="val">${k.today||0}<small>lượt</small></div><div class="delta ${d<0?'down':''}">${d===null?'Chưa có số hôm qua':(d>=0?'▲ ':'▼ ')+Math.abs(d)+'% so với hôm qua'}</div>${spark(k.series||[0,0,0,0,0,0,0],'#7c3aed')}</div>
+  <div class="fl-kpi"><div class="lbl">Nhiệm vụ hiện tại</div><div class="trio"><div><b class="fl-hot">${r.running}</b><span>Đang xử lý</span></div><div><b>${r.queued}</b><span>Chờ lượt</span></div><div><b>${r.review}</b><span>Chờ duyệt</span></div></div></div>
+  <div class="fl-kpi"><div class="lbl">Thời gian TB mỗi lượt</div><div class="val">${k.avgToday?fmt(k.avgToday):'—'}</div><div class="delta ${dt>0?'down':''}">${!k.avgToday?'Hôm nay chưa có lượt':dt===null?'Chưa có số hôm qua':dt<=0?`▼ ${Math.abs(dt)} giây, nhanh hơn hôm qua`:`▲ ${dt} giây so với hôm qua`}</div></div>
+  <div class="fl-kpi"><div class="lbl">Tỉ lệ được duyệt · 30 ngày</div><div class="gauge">${gauge(k.decided?k.approved/k.decided:0)}<div><div class="val">${k.decided?Math.round(k.approved/k.decided*100)+'%':'—'}</div><div class="delta">${k.decided?`${k.approved}/${k.decided} kết quả`:'Chưa có kết quả duyệt'}</div></div></div></div>
+  <div class="fl-kpi"><div class="lbl">Làm nhiều nhất hôm nay</div>${k.top?.length?`<ul class="fl-top">${k.top.map(x=>`<li data-c="${x.color}" data-w="${x.n/mx*100}"><span></span><span class="fl-b"><i></i></span><span>${x.n}</span></li>`).join('')}</ul>`:'<p class="delta">Chưa có lượt hôm nay</p>'}</div>`;
+  kpis.querySelectorAll(".fl-top li").forEach((li,i)=>{li.firstChild.textContent=k.top[i].name===r.agents[0]?.name?"FACIUP":k.top[i].name;li.style.setProperty("--c",li.dataset.c);li.querySelector("i").style.width=li.dataset.w+"%";});}
+ function paintNow(){now.lastChild.textContent=stale?'Mất kết nối · đang thử lại':`${vn(Date.now())} giờ VN · ${data?.runtime?.enabled?'trực tuyến':'nhóm AI đang tắt'}`;now.classList.toggle('fl-off',stale||!data?.runtime?.enabled);}
  async function load(){if(stopped||busy||document.hidden)return;busy=true;
-  try{data=await api('/api/faciup-live');stale=false;}catch{stale=true;}
-  finally{busy=false;}
-  if(!stopped&&data){shell.classList.toggle('fl-stale',stale);paint();}
-  else if(!stopped&&stale){line1.textContent='Mất kết nối trạng thái';line2.textContent='Đang thử lại…';}}
- tick();load();raf=requestAnimationFrame(frame);
- const t=setInterval(tick,1000),poll=setInterval(load,15000),visible=()=>{if(!document.hidden)load();};document.addEventListener('visibilitychange',visible);
- return ()=>{stopped=true;cancelAnimationFrame(raf);clearInterval(t);clearInterval(poll);document.removeEventListener('visibilitychange',visible);};
+  try{data=await api('/api/faciup-live');clockSkew=(data.runtime?.polledAt||Date.now())-Date.now();stale=false;}catch{stale=true;}finally{busy=false;}
+  if(stopped)return;page.classList.toggle('fl-stale',stale);if(data){build(data.runtime.agents.slice(1));paintAgents();paintKpis();}paintNow();}
+ load();raf=requestAnimationFrame(frame);
+ const tick=setInterval(()=>{if(data)paintAgents();paintNow();},1000),poll=setInterval(load,15000),visible=()=>{if(!document.hidden)load();};
+ document.addEventListener('visibilitychange',visible);
+ return ()=>{stopped=true;cancelAnimationFrame(raf);clearInterval(tick);clearInterval(poll);document.removeEventListener('visibilitychange',visible);};
 }
