@@ -4,6 +4,7 @@ import type {Env} from './util.ts';
 /** Public page addresses are shared by metadata and the sitemap. */
 export const PUBLIC_PAGES: Record<string, [string,string]> = {
  '/':['Trang chủ','Tạo video, tìm prompt và khám phá giải pháp AI phục vụ công việc.'],
+ '/faciup-live':['Faciup Live','Khám phá bản đồ kết nối các công cụ AI, prompt, video và giải pháp trong hệ sinh thái FACIUP.'],
  '/prompt-hunter':['Prompt Hunter','Khám phá và chia sẻ prompt AI đã được kiểm duyệt trong cộng đồng.'],
  '/cong-dong':['Cộng đồng','Khám phá các video được cộng đồng chia sẻ công khai.'],
  '/mau':['Gợi ý sáng tạo','Khám phá hướng sáng tạo để mô tả video bạn mong muốn.'],
@@ -47,6 +48,7 @@ export async function initialPageContent(path:string,config:Config,env:Env) {
 export const PRIMARY_NAVIGATION = [
  ['home','Trang chủ','/'],['mau','Gợi ý sáng tạo','/mau'],['cong-dong','Cộng đồng','/cong-dong'],
  ['kham-pha','Khám phá','/kham-pha'],['prompt-hunter','Prompt Hunter','/prompt-hunter'],
+ ['faciup-live','Faciup Live','/faciup-live'],
  ['goi','Bảng giá','/goi'],['video','Video của tôi','/video'],
 ] as const;
 export function publicNavigation(config:Config,active='') {
