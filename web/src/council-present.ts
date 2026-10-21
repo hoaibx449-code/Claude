@@ -6,8 +6,9 @@ export function councilTitle(job:any){
 export function titleText(value:string){
   return String(value).split('\n')[0].replace(/\*+|^#+\s*/g,'').replace(/\s+/g,' ').trim().slice(0,90)||'Phiên nội dung mới';
 }
-export const councilState:Record<string,string>={queued:'Đang xếp hàng',running:'Đang làm',pending:'Chờ duyệt',approved:'Đã duyệt',revision:'Chờ chỉnh sửa',rejected:'Đã từ chối',paused:'Tạm dừng',cancelled:'Đã hủy'};
+export const councilState:Record<string,string>={answered:'Trợ lý đã trả lời',delegating:'Đang phân công đội ngũ',queued:'Đang xếp hàng',running:'Đang làm',pending:'Chờ duyệt',approved:'Đã duyệt',revision:'Chờ chỉnh sửa',rejected:'Đã từ chối',paused:'Tạm dừng',cancelled:'Đã hủy'};
 export const councilMenu=()=>({inline_keyboard:[
+  [{text:'Trò chuyện với trợ lý chung',callback_data:'ui:assistant'}],
   [{text:'Giao nhiệm vụ',callback_data:'ui:new'},{text:'Tiến độ',callback_data:'ui:status'}],
   [{text:'Phiên gần đây',callback_data:'ui:history'}],
 ]});

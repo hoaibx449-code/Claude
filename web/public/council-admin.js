@@ -12,7 +12,7 @@ export async function showCouncil({h,api,body,toast,fail}) {
   }},label);
   const reload=()=>showCouncil({h,api,body,toast,fail});
   const call=(path,body={})=>api('/api/admin/council'+path,{method:'POST',body});
-  const state={queued:'Đang xếp hàng',running:'Đang làm',pending:'Chờ duyệt',approved:'Đã duyệt',revision:'Chờ chỉnh sửa',rejected:'Đã từ chối',paused:'Tạm dừng',cancelled:'Đã hủy'};
+  const state={answered:'Trợ lý đã trả lời',delegating:'Đang phân công đội ngũ',queued:'Đang xếp hàng',running:'Đang làm',pending:'Chờ duyệt',approved:'Đã duyệt',revision:'Chờ chỉnh sửa',rejected:'Đã từ chối',paused:'Tạm dừng',cancelled:'Đã hủy'};
   const plainText=value=>String(value).replace(/\*{3,}/g,'').replace(/\*\*([^*]+)\*\*/g,'$1').replace(/^#{1,6}\s+/gm,'');
   const explanation=h('p',{class:'muted'},'Nhóm chỉ thảo luận và đề xuất. Duyệt không tự đăng bài hay thực hiện. Máy chủ tiếp tục từng lượt khi bạn đóng web hoặc tắt máy. Mỗi lượt AI khoảng một phút; có thể chậm hơn khi dự phòng/hết hạn mức.');
   const agentsBox=h('div',{});
@@ -68,6 +68,9 @@ export async function showCouncil({h,api,body,toast,fail}) {
       const r=await api('/api/admin/council/telegram-status');
       connection.replaceChildren(h('p',{},!r.configured?'Chưa lưu token bot tổng biên tập.':
         `Bot: @${r.username}. ${r.webhookMatches&&r.secretConfigured?'Webhook trỏ đúng Faciup.':'Webhook chưa sẵn sàng — bấm Kết nối webhook.'} Tin đang chờ: ${r.pendingUpdates}.`),
+        r.configured?h('p',{},r.naturalMessagesReady?'Bot có quyền nhận tin nhắn thường trong nhóm.':
+          'Chưa xác nhận bot nhận được tin thường. Tạm thời dùng Trả lời (Reply) vào tin của bot. Để trò chuyện tự nhiên: mở @BotFather → /setprivacy → chọn bot → Disable; sau đó xóa bot khỏi nhóm và thêm lại theo hướng dẫn Telegram. Không cần cấp quyền quản trị nhóm.' ):null,
+        r.configured?h('p',{},r.lastReceivedAt?'Lần cuối web nhận tin của bạn: '+new Date(r.lastReceivedAt).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'}):'Chưa ghi nhận tin nhắn quản trị sau bản cập nhật. Nếu gửi mà thời gian này không đổi, Telegram chưa chuyển tin tới web.'):null,
         r.hasDeliveryError?h('p',{class:'muted'},'Telegram ghi nhận lỗi giao tin gần đây. Bấm Kết nối webhook rồi gửi lại một lệnh mới; lỗi cũ có thể vẫn còn trong lịch sử Telegram.'):null);
     }),
     action('Tạo mã ghép quản trị',async()=>{const r=await call('/pair');pair.replaceChildren(h('p',{},'Sao chép nguyên lệnh này, gửi vào nhóm riêng đã thêm bot trong 10 phút:'),h('code',{style:'display:block;overflow-wrap:anywhere;white-space:pre-wrap'},r.command),h('p',{},'Tên bot thật đã điền sẵn. Không thay bằng chữ username_bot. Mã ghép là bí mật tạm thời; chỉ dùng một lần.'));}),
@@ -83,11 +86,12 @@ export async function showCouncil({h,api,body,toast,fail}) {
       `${state[j.status]||j.status} · ${new Date(j.created_at||Date.now()).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})}`),j.error?h('p',{class:'bad'},j.error):null),action('Xem phiên',()=>detail(j.id)))));
   }
   const create=section('Giao nhiệm vụ',
-    h('p',{class:'muted'},'Viết yêu cầu bên dưới, hoặc mở menu Telegram để thao tác bằng nút. Không cần nhớ mã phiên.'),
+    h('p',{class:'muted'},'Hỏi trợ lý chung bằng lời bình thường để được trả lời, hỏi thêm hoặc phân công đội ngũ. Nếu muốn cả đội thảo luận ngay, chọn Mở phiên thảo luận.'),
     field('Tên phiên (có thể để trống để tự đặt)',input('',v=>title=v,{placeholder:'Ví dụ: Cà phê văn phòng — Tuần 1',maxlength:90})),
     field('Yêu cầu sáng tạo nội dung đa kênh',area('',v=>brief=v,4)),
     action('Mở phiên thảo luận',async()=>{const r=await call('/jobs',{brief,title});toast('Đã nhận nhiệm vụ.');await detail(r.id);status.scrollIntoView({block:'start',behavior:'smooth'});}),
-    action('Mở menu Telegram',async()=>{await call('/menu');toast('Đã gửi menu vào nhóm Telegram đã ghép.');}));
+    action('Hỏi trợ lý chung',async()=>{const r=await call('/jobs',{brief,title,mode:'assistant'});toast('Trợ lý đã nhận tin.');await detail(r.id);status.scrollIntoView({block:'start',behavior:'smooth'});}),
+    action('Mở menu Telegram',async()=>{const r=await call('/menu');toast(r.pinned?'Đã gửi và ghim menu Telegram.':'Đã gửi menu và đăng ký /menu. Bạn có thể tự ghim tin menu trong nhóm.');}));
   async function detail(id){
     selectedJob=id;clearTimeout(poll);
     const r=await api('/api/admin/council/jobs/'+id),job=r.job;
@@ -100,7 +104,7 @@ export async function showCouncil({h,api,body,toast,fail}) {
     if(job.status==='pending')for(const [label,decision] of [['Duyệt','approved'],['Yêu cầu sửa','revision'],['Từ chối','rejected']])controls.push(action(label,async()=>{await call('/jobs/'+id+'/decision',{action:decision});await detail(id);}));
     if(job.status==='paused')controls.push(action('Tiếp tục với cấu hình hiện tại',async()=>{await call('/jobs/'+id+'/resume');await detail(id);}));
     if(r.deliveries.some(x=>x.sent===0&&x.attempts>=4))controls.push(action('Thử gửi lại tin Telegram bị lỗi',async()=>{await call('/jobs/'+id+'/retry-delivery');await detail(id);}));
-    if(['paused','queued','running'].includes(job.status))controls.push(action('Hủy phiên',async()=>{await call('/jobs/'+id+'/cancel');await detail(id);}));
+    if(['paused','queued','running','delegating'].includes(job.status))controls.push(action('Hủy phiên',async()=>{await call('/jobs/'+id+'/cancel');await detail(id);}));
     let feedback='';
     if(['revision','approved'].includes(job.status))controls.push(
       job.status==='approved'?h('p',{},'Bản này đã được chốt và lưu. Bạn có thể tải nội dung hoặc làm phiên bản tiếp. Hệ thống chưa tự dựng video hay đăng bài.'):null,
@@ -110,12 +114,12 @@ export async function showCouncil({h,api,body,toast,fail}) {
       const latest=plainText(r.turns.at(-1)?.text||''),url=URL.createObjectURL(new Blob([name+'\n\n'+latest],{type:'text/plain;charset=utf-8'}));
       const a=document.createElement('a');a.href=url;a.download=name.replace(/[<>:"/\\|?*]/g,'-')+'.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     }));
-    const agents=job.snapshot?.agents||[],ordered=agents.length?[...agents.slice(1),agents[0]]:[];
+    const agents=job.snapshot?.agents||[],ordered=job.snapshot?.assistant?agents.slice(0,1).map(a=>({...a,name:'Trợ lý chung',prompt:'Hỏi đáp, tư vấn, hỏi thêm khi cần và điều phối chuyên gia.'})):agents.length?[...agents.slice(1),agents[0]]:[];
     status.replaceChildren(section(name,h('p',{},r.progress?.summary||state[job.status]||job.status),
       h('details',{},h('summary',{},'Đổi tên phiên'),rename,action('Lưu tên phiên',async()=>{await call('/jobs/'+id+'/rename',{title:rename.value});await detail(id);})),
       h('h3',{},'Nhiệm vụ'),h('p',{},job.brief),
       section('Phân công trong phiên',h('ol',{},...ordered.map(a=>h('li',{},h('strong',{},a.name+': '),a.prompt.replace(/\s+/g,' ').slice(0,190)))),
-        h('p',{},`${job.snapshot?.rounds||1} vòng thảo luận, sau đó tổng biên tập trình quản trị duyệt.`)),
+        h('p',{},job.snapshot?.assistant?'Trợ lý chung hỏi đáp, tư vấn và phân công khi cần. Chưa thực thi bên ngoài.':`${job.snapshot?.rounds||1} vòng thảo luận, sau đó tổng biên tập trình quản trị duyệt.`)),
       job.error?h('p',{class:'bad'},job.error):null,
       section('Thứ tự mô hình và các lựa chọn bị bỏ qua',
         h('p',{class:'muted'},'Mô hình được gọi theo thứ tự bên dưới. Tiếp tục sẽ cập nhật cấu hình mô hình của trợ lý, giữ nguyên các lượt đã hoàn tất.'),
@@ -134,7 +138,7 @@ export async function showCouncil({h,api,body,toast,fail}) {
       if(status.contains(document.activeElement)&&['INPUT','TEXTAREA'].includes(document.activeElement.tagName))poll=setTimeout(refresh,12000);
       else detail(id).catch(fail);
     };
-    if(['queued','running','pending'].includes(job.status))poll=setTimeout(refresh,12000);
+    if(['queued','running','pending','delegating'].includes(job.status))poll=setTimeout(refresh,12000);
   }
   renderJobs();
   const jobs=section('Lịch sử thảo luận',action('Làm mới danh sách',reload),jobsList);

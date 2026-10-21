@@ -7,7 +7,7 @@ import {database} from './support/sqlite.ts';
 import worker from '../web/src/worker.ts';
 import {startSession} from '../web/src/auth.ts';
 import {defaultConfig,clearCache,encrypt} from '../web/src/settings.ts';
-import {cleanCouncil,councilDefaults,tickCouncil,telegramParts,councilWebhook,councilAdmin} from '../web/src/council.ts';
+import {assistantAnswer,cleanCouncil,councilDefaults,tickCouncil,telegramParts,councilWebhook,councilAdmin} from '../web/src/council.ts';
 import {councilPlan,councilGenerate,councilRoute,councilRouting,councilFailure,FREE_GEMINI} from '../web/src/council-ai.ts';
 import {sha256} from '../web/src/util.ts';
 import {councilTelegramFormat,councilTitle} from '../web/src/council-present.ts';
@@ -55,6 +55,66 @@ test('council: inherited routing follows Ollama-first settings, migrates legacy 
   assert.ok(!JSON.stringify(route).includes('private-'));
   assert.equal(councilRoute(env,agent,true,false).plan.length,0);
   assert.ok(!councilFailure(new Error('secret-provider-url')).includes('secret-provider-url'));
+});
+
+test('council: general assistant validates decisions and rejects malformed or unbounded delegation',()=>{
+  assert.deepEqual(assistantAnswer('```json\n{"action":"reply","reply":"Tôi có thể hỗ trợ bạn."}\n```'),{action:'reply',reply:'Tôi có thể hỗ trợ bạn.',brief:''});
+  for(const value of ['plain text','{"action":"execute","reply":"done"}','{"action":"delegate","reply":"ok"}',JSON.stringify({action:'delegate',reply:'ok',brief:'a'.repeat(8001)})])
+    assert.throws(()=>assistantAnswer(value));
+});
+
+test('council: linked plain text reaches the general assistant, preserves context and delegates once without executing',async()=>{
+  clearCache();const f=await fixture(),orig=globalThis.fetch,sent:any[]=[];let calls=0;try{
+    const c=f.enabled();c.agents=c.agents.slice(0,2);await f.save(c);
+    await f.secret('webhook','hook-secret');await f.secret('bot:editor','123456:fake');
+    await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
+    globalThis.fetch=async(url,options)=>{
+      if(String(url).startsWith('https://api.telegram.org/')){if(String(url).endsWith('/sendMessage'))sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});}
+      calls++;const b=JSON.parse(options?.body as string);assert.match(b.systemInstruction.parts[0].text,/trợ lý chung/);
+      if(calls===2){const input=JSON.parse(b.contents[0].parts[0].text);assert.ok(input.history.some((x:any)=>x.question==='Bạn hỗ trợ tôi được những việc gì?'));}
+      return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(calls===1?
+        {action:'reply',reply:'Tôi có thể tư vấn, hỏi đáp và điều phối chuyên gia.'}:
+        {action:'delegate',reply:'Tôi sẽ phân công nhóm lên kế hoạch 3 ngày.',brief:'Lên kế hoạch nội dung chủ đề khủng hoảng hiện sinh của dân văn phòng trong 3 ngày.'})}]}}]});
+    };
+    await f.hook(f.webhookMessage(900,66,-100,'Không có quyền'));assert.equal((await f.env.DB.prepare('SELECT COUNT(*) n FROM council_jobs').first<any>()).n,0);
+    await f.hook(f.webhookMessage(901,55,-100,'Bạn hỗ trợ tôi được những việc gì?'));
+    assert.equal(calls,0,'acknowledgement is immediate and costs no model call');assert.match(sent.at(-1).text,/TRỢ LÝ CHUNG ĐÃ NHẬN TIN/);
+    await tickCouncil(f.env);assert.ok(sent.some(x=>x.text.includes('Tôi có thể tư vấn')));
+    assert.equal((await f.env.DB.prepare('SELECT status FROM council_jobs').first<any>()).status,'answered');
+    await f.hook(f.webhookMessage(902,55,-100,'Hãy lên kế hoạch chủ đề đó trong 3 ngày'));
+    await tickCouncil(f.env);assert.equal(calls,2);
+    assert.equal((await f.env.DB.prepare("SELECT COUNT(*) n FROM council_jobs WHERE status='delegating'").first<any>()).n,1);
+    await tickCouncil(f.env);assert.equal(calls,2,'delegation opens a proposal job without executing or another model call');
+    const children=await f.env.DB.prepare("SELECT * FROM council_jobs WHERE source LIKE 'assistant:%'").all<any>();
+    assert.equal(children.results.length,1);assert.equal(children.results[0].status,'queued');assert.ok(!JSON.parse(children.results[0].snapshot).assistant);
+    assert.match(children.results[0].brief,/khủng hoảng hiện sinh/);assert.ok(sent.some(x=>x.text.includes('PHÂN CÔNG')));
+    await f.hook(f.webhookMessage(902,55,-100,'Hãy lên kế hoạch chủ đề đó trong 3 ngày'));
+    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) n FROM council_jobs').first<any>()).n,3,'redelivery cannot duplicate delegation');
+    assert.ok((await f.env.DB.prepare("SELECT received_at FROM council_inbound WHERE user_id='admin'").first<any>()).received_at>0);
+    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) n FROM jobs').first<any>()).n,0);
+  }finally{globalThis.fetch=orig;f.close();}
+});
+
+test('council: privacy diagnostics distinguish normal-message access and menu registration survives missing pin rights',async()=>{
+  clearCache();const f=await fixture(),orig=globalThis.fetch,methods:string[]=[];let readAll=false,groupAdmin=false;try{
+    await f.secret('bot:editor','123456:secret-token');
+    await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
+    globalThis.fetch=async(url)=>{
+      const method=String(url).split('/').at(-1)!;methods.push(method);
+      if(method==='getMe')return Response.json({ok:true,result:{id:123456,username:'Faciup_bot',can_read_all_group_messages:readAll}});
+      if(method==='getWebhookInfo')return Response.json({ok:true,result:{url:'https://studio.test/api/council/telegram'}});
+      if(method==='getChatMember')return Response.json({ok:true,result:{status:groupAdmin?'administrator':'member'}});
+      if(method==='pinChatMessage')return new Response('{}',{status:403});
+      return Response.json({ok:true,result:{message_id:1}});
+    };
+    const check=async()=> (await f.request('/api/admin/council/telegram-status',{headers:{cookie:f.adminCookie}})).json() as Promise<any>;
+    let d=await check();assert.equal(d.naturalMessagesReady,false);assert.equal(d.groupChecked,true);assert.equal(d.lastReceivedAt,0);
+    readAll=true;d=await check();assert.equal(d.naturalMessagesReady,true);
+    readAll=false;groupAdmin=true;d=await check();assert.equal(d.naturalMessagesReady,true);
+    const menu=await f.write('/menu');assert.equal(menu.status,200);assert.equal((await menu.json() as any).pinned,false);
+    assert.ok(methods.includes('setMyCommands'));assert.ok(methods.includes('pinChatMessage'));
+    assert.ok(!JSON.stringify(d).includes('secret-token'));
+  }finally{globalThis.fetch=orig;f.close();}
 });
 
 test('council: model errors survive pause, bypass a failed Telegram receipt, and resume uses current routing without replaying turns',async()=>{
@@ -248,7 +308,7 @@ test('council: immediate task receipt, roles and progress use no AI and are rest
     assert.equal(d.progress.completed,0);assert.equal(d.progress.total,5);assert.equal(d.progress.currentAgent,'Chiến lược');
     await f.hook(f.webhookMessage(2,55,-100,'/tientrinh@Faciup_bot'));assert.match(sent.at(-1).text,/TIẾN ĐỘ/);assert.match(sent.at(-1).text,/PHÂN CÔNG/);
     const before=sent.length;await f.hook(f.webhookMessage(3,66,-100,'/tientrinh '+job.id));await f.hook(f.webhookMessage(4,55,-200,'/tientrinh '+job.id));assert.equal(sent.length,before);
-    await f.hook(f.webhookMessage(5,55,-100,'Làm bài về cà phê'));assert.match(sent.at(-1).text,/chưa mở phiên/);
+    await f.hook(f.webhookMessage(5,55,-100,'Làm bài về cà phê'));assert.match(sent.at(-1).text,/TRỢ LÝ CHUNG ĐÃ NHẬN TIN/);
   }finally{globalThis.fetch=orig;f.close();}
 });
 
@@ -341,7 +401,7 @@ test('council: named sessions, button-only delegation, rename and approved follo
     };
     const callback=(id:number,data:string,user=55,chat=-100)=>({update_id:id,callback_query:{id:'cb',from:{id:user},message:{chat:{id:chat,type:'supergroup'}},data}});
     assert.equal((await f.write('/menu')).status,200);
-    assert.equal(sent.at(-1).reply_markup.inline_keyboard[0][0].callback_data,'ui:new');
+    assert.ok(sent.at(-1).reply_markup.inline_keyboard.flat().some((b:any)=>b.callback_data==='ui:new'));
     await f.hook(callback(1,'ui:new'));assert.equal(sent.at(-1).reply_markup.force_reply,true);
     await f.hook(f.webhookMessage(2,66,-100,'Không được tạo phiên'));
     assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_jobs').first<any>()).n,0);

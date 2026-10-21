@@ -24,7 +24,7 @@ try{
         if(path.endsWith('/rename')){jobs[0].title=opts.body.title;return{title:jobs[0].title};}
         if(path.endsWith('/decision')){jobs[0].status=opts.body.action;return{ok:true};}
         if(path.endsWith('/pair'))return{command:'/link@Faciup_bot '+'b'.repeat(32)};
-        if(path.endsWith('/telegram-status'))return{configured:true,username:'Faciup_bot',webhookMatches:true,secretConfigured:true,pendingUpdates:0};
+        if(path.endsWith('/telegram-status'))return{configured:true,username:'Faciup_bot',webhookMatches:true,secretConfigured:true,pendingUpdates:0,naturalMessagesReady:false,lastReceivedAt:0};
         if(path.endsWith('/jobs/'+'a'.repeat(24)))return{job:{...jobs[0],brief:'Brief',error:'',snapshot:config},progress:{summary:'Chờ quản trị duyệt · đã hoàn tất 5/5 lượt'},turns:[{agent_id:'editor',provider:'gemini',model:'free',text:'<img src=x onerror="window.pwned=true"> Đề xuất đa kênh'}],deliveries:[{sent:0,attempts:4}],attempts:[{step:0,provider:'gemini',model:'free',reason:'AI gemini: HTTP 429. Hết hạn mức.',created_at:Date.now()}],routing:[{agent:'strategy',routing:'global',plan:[{provider:'ollama',model:'cloud-model'},{provider:'gemini',model:'free'}],skipped:[{provider:'openai',model:'paid',reason:'Bị chặn bởi chính sách chỉ dùng miễn phí.'}]}]};
         return {config:JSON.parse(JSON.stringify(config)),secrets:{},links:[],jobs,calls:0,freeModels:['gemini-3.5-flash-lite']};
       };
@@ -42,6 +42,8 @@ try{
     await page.getByText('Bot: @Faciup_bot.',{exact:false}).waitFor();
     await page.getByLabel('Yêu cầu sáng tạo nội dung đa kênh',{exact:true}).fill('Kế hoạch cà phê đa kênh');
     await page.getByLabel('Tên phiên (có thể để trống để tự đặt)',{exact:true}).fill('Cà phê văn phòng — Tuần 1');
+    await page.getByRole('button',{name:'Hỏi trợ lý chung',exact:true}).click();
+    assert.equal(await page.evaluate(()=>window.created.mode),'assistant');
     await page.getByRole('button',{name:'Mở phiên thảo luận',exact:true}).click();
     await page.getByRole('heading',{name:'Phân công trong phiên',exact:true}).waitFor();
     await page.getByRole('button',{name:'Xem phiên',exact:true}).click();
