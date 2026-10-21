@@ -448,6 +448,7 @@ test('council: plain presentation removes Markdown and decorative fonts, convert
   assert.match(plain,/Ngày: 1\nÝ tưởng: Cà phê/);assert.match(plain,/Ngày: 2/);
   assert.ok(!/[\*`|]/.test(plain));assert.ok(plain.includes('2 × 3'));assert.ok(plain.includes('<img'));
   assert.equal(councilPlain(plain),plain,'normalization is idempotent');
+  assert.equal(councilPlain('Caption: \\"Cà phê\\".'),'Caption: "Cà phê".');
   const formatted=councilTelegramFormat(input);assert.ok(!/[\uE000\uE001]/.test(formatted.text));
   assert.ok(formatted.entities.every(e=>e.offset+e.length<=formatted.text.length));
 });
