@@ -17,10 +17,16 @@ Mở `/admin/nhom-ai` sau khi đăng nhập quản trị. Bản mới tắt sẵ
    Nếu chỉ có một bot, tin nhắn vẫn ghi tên vai trò và mô hình thực tế.
 4. Tạo **nhóm riêng chỉ gồm quản trị tin cậy**, thêm các bot. Thành viên trong nhóm
    đọc được tin nhắn dù chưa được ghép; không thêm khách hàng hoặc người dùng thường.
-5. Bấm Kết nối webhook, Tạo mã ghép. Gửi `/link@username_bot mã` trong nhóm trong
-   10 phút. Mã ngẫu nhiên, dùng một lần; server chỉ giữ hash. Mỗi quản trị ghép
+5. Bấm Kết nối webhook, Tạo mã ghép. Trang tự lấy username thật của bot và tạo
+   lệnh đầy đủ (ví dụ `/link@Faciup_bot mã`). Sao chép nguyên lệnh gửi trong nhóm
+   trong 10 phút. Bot báo thành công, thiếu mã, mã sai/hết hạn hoặc gửi nhầm tin
+   riêng; không tự suy luận im lặng là đã ghép. Mã ngẫu nhiên, dùng một lần;
+   server chỉ giữ hash. Mỗi quản trị ghép
    tài khoản Telegram riêng từ phiên đăng nhập Faciup của mình. Không dựa vào username
    hoặc quyền admin Telegram để cấp quyền Faciup.
+   Nếu bot vẫn im lặng, bấm Kiểm tra kết nối Telegram: kiểm tra username bot,
+   webhook trỏ đúng Faciup và tin đang chờ. Lệnh `/link@username_bot` trong tài liệu
+   cũ chỉ là ví dụ, không được gửi nguyên chữ `username_bot`.
 6. Xác nhận đã kiểm tra tài khoản miễn phí, giữ bật Chỉ dùng lựa chọn miễn phí,
    bật nhóm và Lưu cấu hình. Mặc định tối đa 20 lượt AI/ngày UTC, 1 vòng thảo luận.
 

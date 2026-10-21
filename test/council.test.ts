@@ -38,7 +38,7 @@ async function fixture(){
 
 test('council: actual Worker protects reads, writes, CSRF, blocked admins and private data',async()=>{
   clearCache();const f=await fixture();try{
-    for(const path of ['/api/admin/council','/api/admin/council/jobs/'+'a'.repeat(24)]){
+    for(const path of ['/api/admin/council','/api/admin/council/telegram-status','/api/admin/council/jobs/'+'a'.repeat(24)]){
       for(const [cookie,status] of [['',401],[f.memberCookie,403],['sid='+'0'.repeat(64),401]]){
         const r=await f.request(path,{headers:{cookie}});assert.equal(r.status,status);assert.equal(r.headers.get('cache-control'),'no-store');
       }
@@ -178,5 +178,32 @@ test('council: cancelling during AI network wait cannot commit a turn or deliver
     await tickCouncil(f.env);
     assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_turns').first<any>()).n,0);
     assert.equal((await f.env.DB.prepare('SELECT status FROM council_jobs').first<any>()).status,'cancelled');
+  }finally{globalThis.fetch=orig;f.close();}
+});
+
+test('council: pairing generates the real bot username and replies to success, malformed, expired and private-chat commands',async()=>{
+  clearCache();const f=await fixture(),orig=globalThis.fetch,sent:any[]=[];try{
+    await f.secret('bot:editor','123456:secret-never-echo');await f.secret('webhook','hook-secret');
+    globalThis.fetch=async(url,options)=>{
+      if(String(url).endsWith('/getMe'))return Response.json({ok:true,result:{id:123456,username:'Faciup_bot'}});
+      if(String(url).endsWith('/getWebhookInfo'))return Response.json({ok:true,result:{url:'https://studio.test/api/council/telegram',pending_update_count:0}});
+      if(String(url).endsWith('/sendMessage'))sent.push(JSON.parse(options?.body as string));
+      return Response.json({ok:true,result:true});
+    };
+    const status=await f.request('/api/admin/council/telegram-status',{headers:{cookie:f.adminCookie}}),statusText=await status.text();
+    assert.ok(!statusText.includes('secret-never-echo'));assert.equal(JSON.parse(statusText).username,'Faciup_bot');assert.equal(JSON.parse(statusText).webhookMatches,true);
+    const pairing=await f.write('/pair'),p=await pairing.json() as any;
+    assert.match(p.command,/^\/link@Faciup_bot [a-f0-9]{32}$/);
+    await f.hook(f.webhookMessage(1,55,-100,p.command));
+    await f.hook(f.webhookMessage(1,55,-100,p.command));
+    assert.equal(sent.length,1,'duplicate delivery does not repeat success');assert.match(sent[0].text,/thành công/);assert.match(sent[0].text,/đang tắt/);
+    assert.ok(!sent[0].text.includes(p.command.split(' ')[1]),'never echo pairing code');
+    await f.hook(f.webhookMessage(2,55,-100,p.command));assert.match(sent.at(-1).text,/đã dùng/);
+    await f.hook(f.webhookMessage(3,55,-100,'/link@Faciup_bot'));assert.match(sent.at(-1).text,/thiếu mã/);
+    await f.hook(f.webhookMessage(4,55,-100,'/link@Faciup_bot '+'c'.repeat(32)));assert.match(sent.at(-1).text,/không hợp lệ/);
+    const privateMessage=f.webhookMessage(5,55,55,p.command);privateMessage.message.chat.type='private';await f.hook(privateMessage);assert.match(sent.at(-1).text,/nhóm Telegram riêng/);
+    await f.hook(f.webhookMessage(6,55,-100,'/brief@Faciup_bot Nội dung'));assert.match(sent.at(-1).text,/nhóm AI đang tắt/);
+    const before=sent.length;await f.hook(f.webhookMessage(7,66,-100,'/brief Nội dung'));assert.equal(sent.length,before,'strangers still cannot use the group');
+    await f.hook(f.webhookMessage(8,66,66,'/help'));assert.match(sent.at(-1).text,/quản trị Faciup/);
   }finally{globalThis.fetch=orig;f.close();}
 });
