@@ -341,7 +341,7 @@ test('council: immediate task receipt, roles and progress use no AI and are rest
     assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_jobs').first<any>()).n,1);
     const detail=await f.request('/api/admin/council/jobs/'+job.id,{headers:{cookie:f.adminCookie}}),d=await detail.json() as any;
     assert.equal(d.progress.completed,0);assert.equal(d.progress.total,5);assert.equal(d.progress.currentAgent,'Chiến lược');
-    const beforeStatus=sent.length;await f.hook(f.webhookMessage(2,55,-100,'/tientrinh@Faciup_bot'));assert.equal(sent.length,beforeStatus,'unchanged progress reuses existing card without another message');
+    const beforeStatus=sent.length;await f.hook(f.webhookMessage(2,55,-100,'/tientrinh@Faciup_bot'));assert.equal(sent.length,beforeStatus+1,'explicit progress request returns a pointer to the existing card');assert.equal(sent.at(-1).reply_parameters.message_id,1);assert.match(sent.at(-1).text,/Đã cập nhật quy trình/);
     const before=sent.length;await f.hook(f.webhookMessage(3,66,-100,'/tientrinh '+job.id));await f.hook(f.webhookMessage(4,55,-200,'/tientrinh '+job.id));assert.equal(sent.length,before);
     await f.hook(f.webhookMessage(5,55,-100,'Làm bài về cà phê'));assert.match(sent.at(-1).text,/TRỢ LÝ CHUNG ĐÃ NHẬN TIN/);
   }finally{globalThis.fetch=orig;f.close();}

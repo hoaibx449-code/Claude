@@ -419,6 +419,11 @@ export async function councilWebhook(req:Request,env:XEnv){
     const job=await findJob(id);
     if(!job){await reply('Chưa có phiên trong nhóm này. Bấm Giao nhiệm vụ để bắt đầu.',councilMenu());return;}
     if(!await syncWorkflowCard(env,await config(env),job.id,true,true))await reply('Chưa cập nhật được thẻ quy trình. Kiểm tra kết nối Telegram trên FACIUP.',councilButtons(job.id,job.status));
+    else{
+      const card=await env.DB.prepare('SELECT message_id FROM council_cards WHERE job_id=?').bind(job.id).first<any>();
+      if(token&&card?.message_id)await telegramCall(token,'sendMessage',{chat_id:chat,text:'Đã cập nhật quy trình: '+councilTitle(job),
+        reply_parameters:{message_id:card.message_id,allow_sending_without_reply:true},reply_markup:councilButtons(job.id,job.status)}).catch(()=>{});
+    }
   };
   const ask=async(mode:string,job?:any)=>{
     if(['brief','revise','assistant'].includes(mode)&&!c.enabled)throw new HttpError(409,'Nhóm AI đang tắt. Bật nhóm và lưu cấu hình trên Faciup trước.');
