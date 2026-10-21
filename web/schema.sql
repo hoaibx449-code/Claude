@@ -264,5 +264,23 @@ CREATE TRIGGER IF NOT EXISTS solution_search_insert AFTER INSERT ON solutions BE
 CREATE TRIGGER IF NOT EXISTS solution_search_update AFTER UPDATE ON solutions BEGIN DELETE FROM solution_search WHERE id=old.id; INSERT INTO solution_search(id,title,summary,content,platform,category) VALUES(new.id,new.title,new.summary,new.content||' '||new.instructions||' '||new.requirements,new.platform,new.category); END;
 CREATE TRIGGER IF NOT EXISTS solution_search_delete AFTER DELETE ON solutions BEGIN DELETE FROM solution_search WHERE id=old.id; END;
 CREATE TABLE IF NOT EXISTS solution_file_gc(id TEXT PRIMARY KEY,created_at INTEGER NOT NULL);
+
+-- Private admin AI council. Keys encrypted with the existing settings AES-GCM key.
+CREATE TABLE IF NOT EXISTS council_settings(id INTEGER PRIMARY KEY CHECK(id=1),config TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS council_secrets(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS council_pairings(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL,expires INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS council_links(user_id TEXT PRIMARY KEY,tg_user TEXT NOT NULL,chat_id TEXT NOT NULL,UNIQUE(tg_user,chat_id));
+CREATE TABLE IF NOT EXISTS council_updates(id INTEGER PRIMARY KEY,created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS council_usage(day TEXT PRIMARY KEY,n INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS council_lock(id INTEGER PRIMARY KEY CHECK(id=1),token TEXT NOT NULL,expires INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS council_jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,brief TEXT NOT NULL,snapshot TEXT NOT NULL,status TEXT NOT NULL,
+  chat_id TEXT NOT NULL DEFAULT '',source TEXT UNIQUE,parent TEXT,step INTEGER NOT NULL DEFAULT 0,attempt INTEGER NOT NULL DEFAULT 0,
+  lease TEXT NOT NULL DEFAULT '',lease_until INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '',
+  decided_by TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS council_jobs_queue ON council_jobs(status,next_at,created_at);
+CREATE TABLE IF NOT EXISTS council_turns(job_id TEXT NOT NULL,step INTEGER NOT NULL,agent_id TEXT NOT NULL,provider TEXT NOT NULL,
+  model TEXT NOT NULL,text TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(job_id,step));
+CREATE TABLE IF NOT EXISTS council_outbox(id TEXT PRIMARY KEY,job_id TEXT NOT NULL,chat_id TEXT NOT NULL,agent_id TEXT NOT NULL,text TEXT NOT NULL,
+  review INTEGER NOT NULL DEFAULT 0,sent INTEGER NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0);
 CREATE TRIGGER IF NOT EXISTS solution_file_check_insert BEFORE INSERT ON solutions WHEN EXISTS(SELECT 1 FROM json_each(new.resources) r WHERE COALESCE(json_extract(r.value,'$.fileId'),'')!='' AND NOT EXISTS(SELECT 1 FROM solution_files f WHERE f.id=json_extract(r.value,'$.fileId'))) BEGIN SELECT RAISE(ABORT,'solution_file_missing'); END;
 CREATE TRIGGER IF NOT EXISTS solution_file_check_update BEFORE UPDATE OF resources ON solutions WHEN EXISTS(SELECT 1 FROM json_each(new.resources) r WHERE COALESCE(json_extract(r.value,'$.fileId'),'')!='' AND NOT EXISTS(SELECT 1 FROM solution_files f WHERE f.id=json_extract(r.value,'$.fileId'))) BEGIN SELECT RAISE(ABORT,'solution_file_missing'); END;

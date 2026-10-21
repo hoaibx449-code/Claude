@@ -1,4 +1,5 @@
 import {hunterAdmin} from './hunter.ts';
+import {councilAdmin} from './council.ts';
 import {solutionAdmin} from './solutions.ts';
 import {feedAdmin} from './image-feed.ts';
 import {googleFeedAdmin} from './feed-google.ts';
@@ -43,6 +44,7 @@ function eventFilter(url: URL) {
 
 export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: string, method: string, rc: Rc, admin: User): Promise<Response> {
   const url = new URL(req.url);
+  const council=await councilAdmin(req,env,sub,admin,rc);if(council)return council;
   const solution=await solutionAdmin(req,env,rc,sub);if(solution)return solution;
   const owners=await ownerAdmin(req,env,sub);if(owners)return owners;
   const feedTest=await feedTestAdmin(req,env,admin,sub);if(feedTest)return feedTest;

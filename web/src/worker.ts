@@ -1,4 +1,5 @@
 import {publicNavigation,initialPageContent,PUBLIC_PAGES,isAppPage,pageMetadata,pageSitemap} from './page-routes.ts';
+import {councilWebhook,tickCouncil} from './council.ts';
 import {hunterPublic} from './hunter.ts';
 import {solutionPage,solutionSitemap,solutionDownload,solutionList,cleanupSolutionFiles} from './solutions.ts';
 import {secureResponse} from './security.ts';
@@ -76,6 +77,7 @@ export default {
   // Safety net: if videos wait in the queue (e.g. a start request was lost), start the render machine.
   async scheduled(e: ScheduledController, env: Env, ctx: ExecutionContext) {
     const xenvZ = await effectiveEnv(env);
+    ctx.waitUntil(tickCouncil(xenvZ).catch(()=>console.error('council: background processing failed')));
     if(new Date(e.scheduledTime).getUTCMinutes()===0)ctx.waitUntil(cleanupSolutionFiles(xenvZ).catch(err=>console.error('solutionFileCleanup',err)));
     ctx.waitUntil(tickFeed(xenvZ).catch(err=>console.error('imageFeed',err)));
     // Zalo without a webhook: every minute, ask for new messages (see pollZalo)
@@ -170,6 +172,7 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
   if (path.startsWith('/api/runner/')) return runner(req, env, path.slice('/api/runner/'.length), rc);
 
   // called by other services (verified inside), and the no-login share link for finished videos
+  if (path === '/api/council/telegram' && method === 'POST') return councilWebhook(req, env);
   if (path === '/api/zalo/webhook' && method === 'POST') return zaloWebhook(req, env, rc);
   if (path === '/api/sepay/webhook' && method === 'POST') return sepayWebhook(req, env, rc);
   // home page pictures and sample videos (public, content-addressed so cached for a year)
