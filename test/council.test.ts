@@ -156,15 +156,75 @@ test('council: persisted Telegram outbox delivers role messages and review butto
     const c=f.enabled();c.agents=c.agents.slice(0,2);await f.save(c);
     await f.secret('bot:editor','123456:fake-server-secret');
     await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
-    const result=await f.write('/jobs',{brief:'Nội dung cho các kênh'}),{id}=await result.json() as any;
     globalThis.fetch=async(url,options)=>{
       if(String(url).startsWith('https://api.telegram.org/')){sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});}
       return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:'Nội dung đề xuất.'}]}}]});
     };
+    const result=await f.write('/jobs',{brief:'Nội dung cho các kênh'}),{id}=await result.json() as any;
     await tickCouncil(f.env);await tickCouncil(f.env);await tickCouncil(f.env);await tickCouncil(f.env);
-    assert.equal(sent.length,2);assert.match(sent[0].text,/Chiến lược/);
-    assert.equal(sent[1].reply_markup.inline_keyboard[0][0].callback_data,'approved:'+id);
-    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_outbox WHERE sent=1').first<any>()).n,2);
+    assert.equal(sent.length,5);assert.match(sent[0].text,/ĐÃ NHẬN NHIỆM VỤ/);assert.match(sent[0].text,/PHÂN CÔNG/);
+    assert.match(sent[1].text,/Chiến lược/);assert.match(sent[1].text,/đang làm/);
+    assert.equal(sent.find(x=>x.reply_markup).reply_markup.inline_keyboard[0][0].callback_data,'approved:'+id);
+    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_outbox WHERE sent=1').first<any>()).n,5);
+  }finally{globalThis.fetch=orig;f.close();}
+});
+
+test('council: immediate task receipt, roles and progress use no AI and are restricted to the linked group',async()=>{
+  clearCache();const f=await fixture(),orig=globalThis.fetch,sent:any[]=[];try{
+    await f.save(f.enabled());await f.secret('bot:editor','123456:fake-server-secret');await f.secret('webhook','hook-secret');
+    await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
+    globalThis.fetch=async(url,options)=>{
+      assert.ok(String(url).startsWith('https://api.telegram.org/'),'receipts and status must not consume model quota');
+      sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});
+    };
+    await f.hook(f.webhookMessage(1));await f.hook(f.webhookMessage(1));
+    assert.equal(sent.length,1);assert.match(sent[0].text,/ĐÃ NHẬN NHIỆM VỤ/);
+    for(const agent of f.enabled().agents)assert.ok(sent[0].text.includes(agent.name));
+    const job=await f.env.DB.prepare('SELECT * FROM council_jobs').first<any>();
+    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_jobs').first<any>()).n,1);
+    const detail=await f.request('/api/admin/council/jobs/'+job.id,{headers:{cookie:f.adminCookie}}),d=await detail.json() as any;
+    assert.equal(d.progress.completed,0);assert.equal(d.progress.total,5);assert.equal(d.progress.currentAgent,'Chiến lược');
+    await f.hook(f.webhookMessage(2,55,-100,'/tientrinh@Faciup_bot'));assert.match(sent.at(-1).text,/TIẾN ĐỘ/);assert.match(sent.at(-1).text,/PHÂN CÔNG/);
+    const before=sent.length;await f.hook(f.webhookMessage(3,66,-100,'/tientrinh '+job.id));await f.hook(f.webhookMessage(4,55,-200,'/tientrinh '+job.id));assert.equal(sent.length,before);
+    await f.hook(f.webhookMessage(5,55,-100,'Làm bài về cà phê'));assert.match(sent.at(-1).text,/chưa mở phiên/);
+  }finally{globalThis.fetch=orig;f.close();}
+});
+
+test('council: receipt delivery failure preserves accepted job and retries without another opening message',async()=>{
+  clearCache();const f=await fixture(),orig=globalThis.fetch,sent:any[]=[];let fail=true;try{
+    const c=f.enabled();c.agents=c.agents.slice(0,2);await f.save(c);await f.secret('bot:editor','123456:fake-server-secret');
+    await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
+    globalThis.fetch=async(url,options)=>{
+      if(String(url).startsWith('https://api.telegram.org/')){
+        if(fail)return new Response('{}',{status:503});
+        sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});
+      }
+      return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:'Đề xuất.'}]}}]});
+    };
+    const result=await f.write('/jobs',{brief:'Nội dung đã nhận'});assert.equal(result.status,201);
+    const item=await f.env.DB.prepare('SELECT * FROM council_outbox').first<any>();assert.equal(item.sent,0);assert.equal(item.attempts,1);
+    fail=false;await f.env.DB.prepare('UPDATE council_outbox SET next_at=0').run();
+    await tickCouncil(f.env);await tickCouncil(f.env);
+    assert.equal(sent.filter(x=>x.text.startsWith('ĐÃ NHẬN NHIỆM VỤ')).length,1);
+    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_jobs').first<any>()).n,1);
+  }finally{globalThis.fetch=orig;f.close();}
+});
+
+test('council: exhausted models and daily quota produce visible progress alerts without extra AI calls',async()=>{
+  clearCache();const f=await fixture(),orig=globalThis.fetch,sent:any[]=[];let models=0;try{
+    const c=f.enabled();c.agents=c.agents.slice(0,2);c.agents[1].models=c.agents[1].models.slice(0,1);c.dailyCalls=1;
+    await f.save(c);await f.secret('bot:editor','123456:fake-server-secret');
+    await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
+    globalThis.fetch=async(url,options)=>{
+      if(String(url).startsWith('https://api.telegram.org/')){sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});}
+      models++;return new Response('{}',{status:429});
+    };
+    const first=await f.write('/jobs',{brief:'Phiên có mô hình lỗi'}),{id}=await first.json() as any;
+    await tickCouncil(f.env);
+    assert.equal((await f.env.DB.prepare('SELECT status FROM council_jobs WHERE id=?').bind(id).first<any>()).status,'paused');
+    assert.ok(sent.some(x=>x.text.includes('Phiên tạm dừng')));assert.equal(models,1);
+    await f.write('/jobs',{brief:'Phiên chờ quota ngày sau'});await tickCouncil(f.env);
+    assert.ok(sent.some(x=>x.text.includes('Đã đạt trần lượt AI hôm nay')));assert.equal(models,1);
   }finally{globalThis.fetch=orig;f.close();}
 });
 

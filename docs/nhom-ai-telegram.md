@@ -39,6 +39,20 @@ Mỗi phút máy chủ xử lý tối đa một lời trả lời AI. AI sau nh�
 ý kiến trước đó. Sau số vòng đã chọn, tổng biên tập đưa bản trình duyệt, giữ cả
 bất đồng và dữ kiện cần xác minh. Nhóm không có trình duyệt web hay công cụ đăng bài.
 
+Ngay khi nhận brief hợp lệ, bot điều phối gửi mã phiên, xác nhận nhận việc,
+phân công từng chuyên gia và thứ tự thảo luận. Xác nhận này không gọi mô hình AI.
+Trước từng lượt, bot báo trợ lý nào đang làm; khi lỗi, đổi mô hình hoặc đạt trần ngày,
+bot báo trạng thái để bạn biết vì sao phải chờ. Tin được lưu để thử gửi lại khi mạng lỗi.
+
+Gửi `/tientrinh@Faciup_bot` để xem phiên gần nhất trong nhóm, hoặc thêm ID phiên để
+xem một phiên cụ thể; thay username nếu bạn dùng bot khác. Chỉ quản trị đã ghép
+đúng nhóm mới đọc được tiến độ. Tin thông thường chưa phải lệnh giao việc sẽ được
+hướng dẫn dùng `/brief`, tránh hiểu lầm rằng hệ thống đã nhận nhiệm vụ.
+
+Giao nhiệm vụ trên web mở ngay phần phân công và tiến độ phiên. Phần này tự cập nhật
+khoảng 12 giây/lần khi còn đang chạy hoặc chờ duyệt. Có thể đóng web: công việc vẫn
+tiếp tục trên máy chủ. Bot không tự chọn lại vai trò ngoài cấu hình đã lưu cho phiên.
+
 Chọn **Duyệt**, **Yêu cầu sửa**, **Từ chối** trên Faciup hoặc Telegram. Duyệt chỉ
 ghi nhận quyết định; không tạo video hay đăng bài. Sau Yêu cầu sửa, dùng
 `/sua@username_bot ID nội dung sửa`, hoặc mở phiên trên web và nhập phản hồi.

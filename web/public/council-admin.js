@@ -68,21 +68,31 @@ export async function showCouncil({h,api,body,toast,fail}) {
     h('p',{},data.links.length?`${data.links.length} tài khoản quản trị đã ghép Telegram.`:'Chưa có tài khoản ghép Telegram.'),
     h('p',{class:'muted'},'Chỉ tài khoản Telegram đã ghép với quản trị còn quyền mới được dùng lệnh hoặc nút duyệt. Đổi token điều phối sẽ xóa các liên kết; cần kết nối và ghép lại.'));
   let brief='';
+  let selectedJob='',poll=null;
   const create=section('Giao nhiệm vụ',field('Yêu cầu sáng tạo nội dung đa kênh',area('',v=>brief=v,4)),
-    action('Mở phiên thảo luận',async()=>{const r=await call('/jobs',{brief});toast('Đã xếp phiên #'+r.id);await reload();}));
+    action('Mở phiên thảo luận',async()=>{const r=await call('/jobs',{brief});toast('Đã nhận nhiệm vụ · Phiên #'+r.id);await detail(r.id);status.scrollIntoView({block:'start',behavior:'smooth'});}));
   async function detail(id){
+    selectedJob=id;clearTimeout(poll);
     const r=await api('/api/admin/council/jobs/'+id),job=r.job;
+    if(selectedJob!==id||!body.isConnected)return;
     const controls=[];
     if(job.status==='pending')for(const [label,decision] of [['Duyệt','approved'],['Yêu cầu sửa','revision'],['Từ chối','rejected']])controls.push(action(label,async()=>{await call('/jobs/'+id+'/decision',{action:decision});await detail(id);}));
     if(job.status==='paused')controls.push(action('Tiếp tục sau khi kiểm tra cấu hình',async()=>{await call('/jobs/'+id+'/resume');await detail(id);}));
     if(['paused','queued','running'].includes(job.status))controls.push(action('Hủy phiên',async()=>{await call('/jobs/'+id+'/cancel');await detail(id);}));
     let feedback='';
     if(job.status==='revision')controls.push(field('Yêu cầu chỉnh sửa',area('',v=>feedback=v)),action('Mở phiên sửa',async()=>{const next=await call('/jobs/'+id+'/revise',{feedback});await detail(next.id);}));
-    status.replaceChildren(section('Phiên #'+id,h('p',{},'Trạng thái: '+job.status),h('p',{},job.brief),job.error?h('p',{class:'bad'},job.error):null,
+    const agents=job.snapshot?.agents||[],ordered=agents.length?[...agents.slice(1),agents[0]]:[];
+    status.replaceChildren(section('Phiên #'+id,h('p',{},r.progress?.summary||'Trạng thái: '+job.status),h('p',{},job.brief),
+      section('Phân công trong phiên',h('ol',{},...ordered.map(a=>h('li',{},h('strong',{},a.name+': '),a.prompt.replace(/\s+/g,' ').slice(0,190)))),
+        h('p',{},`${job.snapshot?.rounds||1} vòng thảo luận, sau đó tổng biên tập trình quản trị duyệt.`)),
+      job.error?h('p',{class:'bad'},job.error):null,
       ...r.turns.map(t=>h('article',{},h('h3',{},`${t.agent_id} · ${t.provider}/${t.model}`),h('pre',{style:'white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit'},t.text))),
       h('p',{},'Tin Telegram đã gửi: '+r.deliveries.filter(x=>x.sent===1).length+'/'+r.deliveries.length+
         (r.deliveries.some(x=>x.sent===-1)?' · Có tin đã hủy do ngắt ghép/thu hồi quyền.':'')),
       ...controls,action('Cập nhật phiên',()=>detail(id))));
+    if(['queued','running','pending'].includes(job.status))poll=setTimeout(()=>{
+      if(body.isConnected&&selectedJob===id)detail(id).catch(fail);
+    },12000);
   }
   const jobs=section('Lịch sử thảo luận',action('Làm mới danh sách',reload),
     ...data.jobs.map(j=>h('div',{class:'row'},h('span',{},`${j.brief.slice(0,95)} · ${j.status}`),action('Xem phiên',()=>detail(j.id)))));
