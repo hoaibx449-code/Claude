@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';
-import {database} from './support/sqlite.ts';import {defaultConfig} from '../web/src/settings.ts';import {liveOverview} from '../web/src/live.ts';import {pageSitemap,pageMetadata,publicNavigation} from '../web/src/page-routes.ts';
+import {database} from './support/sqlite.ts';import {defaultConfig} from '../web/src/settings.ts';import {liveOverview,liveRuntime} from '../web/src/live.ts';import {pageSitemap,pageMetadata,publicNavigation} from '../web/src/page-routes.ts';
 test('Faciup Live reports only published counts and public feature flags',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'faciup-live-'));try{
   const DB=database(join(dir,'db.sqlite')),config=defaultConfig({});config.site.helpBot.enabled=true;config.zalo.enabled=true;config.visibility['feature:zalo']='hidden';
@@ -9,8 +9,24 @@ test('Faciup Live reports only published counts and public feature flags',async(
   await DB.prepare("INSERT INTO solutions(id,slug,title,summary,content,category,status,pricing,instructions,created_at,updated_at) VALUES('solution','public','public','','public','','published','paid','secret-instructions',1,1),('draft-solution','draft','draft','','private-content','','draft','free','private-file',1,1)").run();
   const result=await liveOverview({DB,OPENAI_API_KEY:'secret-key'} as any,config);
   assert.equal(result.counts.prompts,1);assert.equal(result.counts.solutions,1);assert.equal(result.features.zalo,false);assert.equal(result.features.assistant,true);
-  assert.deepEqual(Object.keys(result).sort(),['counts','features','timezone','updatedAt']);assert.doesNotMatch(JSON.stringify(result),/secret|private|token|chat|user/);
+  assert.deepEqual(Object.keys(result).sort(),['counts','features','runtime','timezone','updatedAt']);assert.doesNotMatch(JSON.stringify(result),/secret|private|token|chat|user/);
   assert.ok(pageSitemap('https://test').includes('/faciup-live'));assert.equal(pageMetadata('/faciup-live','FACIUP','https://test').noindex,false);
   config.labels.navigation['faciup-live']='Vận hành AI';assert.match(publicNavigation(config),/Vận hành AI/);
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('Live motion state follows durable leases, completed turns and admin review without private content',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'live-runtime-'));try{
+  const DB=database(join(dir,'db.sqlite')),now=Date.UTC(2026,9,22,5),agents=[{id:'editor',name:'Private coordinator',prompt:'secret instructions',models:[{provider:'ollama',model:'private-model'}]},{id:'writer',name:'Private writer',prompt:'private prompt',models:[]}];
+  const snapshot=JSON.stringify({agents,rounds:1});
+  await DB.prepare('INSERT INTO council_settings VALUES(1,?)').bind(JSON.stringify({enabled:true,agents})).run();
+  await DB.prepare("INSERT INTO council_jobs(id,user_id,brief,snapshot,status,lease_until,created_at,updated_at) VALUES('job','secret-user','secret-brief',?,'running',?,?,?)").bind(snapshot,now+30000,now,now).run();
+  let r=await liveRuntime({DB} as any,now);assert.equal(r.running,1);assert.equal(r.agents[1].state,'running');assert.equal(r.agents[0].state,'idle');assert.doesNotMatch(JSON.stringify(r),/secret|Private|private-model|instructions/);
+  r=await liveRuntime({DB} as any,now+31000);assert.equal(r.running,0);assert.equal(r.agents[1].state,'queued');
+  await DB.prepare("UPDATE council_jobs SET next_at=? WHERE id='job'").bind(now+120000).run();r=await liveRuntime({DB} as any,now);assert.equal(r.agents[1].state,'retry');assert.equal(r.running,0);
+  await DB.prepare("UPDATE council_jobs SET status='pending',step=2 WHERE id='job'").run();
+  await DB.prepare("INSERT INTO council_turns VALUES('job',0,'writer','ollama','private-model','private result',?)").bind(now).run();
+  r=await liveRuntime({DB} as any,now);assert.equal(r.review,1);assert.equal(r.agents[0].state,'review');assert.equal(r.completed,1);assert.equal(r.agents[1].completed,1);assert.doesNotMatch(JSON.stringify(r),/private|secret/);
+  await DB.prepare('UPDATE council_settings SET config=?').bind(JSON.stringify({enabled:false,agents})).run();r=await liveRuntime({DB} as any,now);assert.equal(r.running,0);assert.ok(r.agents.every(a=>a.state==='disabled'));
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
