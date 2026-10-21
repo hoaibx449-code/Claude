@@ -20,7 +20,8 @@ try{
       window.saved=null;window.errors=[];
       const api=async(path,opts={})=>{
         if(path.endsWith('/config')){window.saved=opts.body;return{ok:true};}
-        if(path.endsWith('/pair'))return{command:'/link '+'b'.repeat(32)};
+        if(path.endsWith('/pair'))return{command:'/link@Faciup_bot '+'b'.repeat(32)};
+        if(path.endsWith('/telegram-status'))return{configured:true,username:'Faciup_bot',webhookMatches:true,secretConfigured:true,pendingUpdates:0};
         if(path.endsWith('/jobs/'+'a'.repeat(24)))return{job:{...jobs[0],brief:'Brief',error:''},turns:[{agent_id:'editor',provider:'gemini',model:'free',text:'<img src=x onerror="window.pwned=true"> Đề xuất đa kênh'}],deliveries:[]};
         return {config:JSON.parse(JSON.stringify(config)),secrets:{},links:[],jobs,calls:0,freeModels:['gemini-3.5-flash-lite']};
       };
@@ -33,7 +34,9 @@ try{
     await page.getByRole('button',{name:'Lưu cấu hình nhóm',exact:true}).click();
     assert.equal(await page.evaluate(()=>window.saved.config.agents.length),6);
     await page.getByRole('button',{name:'Tạo mã ghép quản trị',exact:true}).click();
-    assert.match(await page.locator('code').innerText(),/^\/link /);
+    assert.match(await page.locator('code').innerText(),/^\/link@Faciup_bot /);
+    await page.getByRole('button',{name:'Kiểm tra kết nối Telegram',exact:true}).click();
+    await page.getByText('Bot: @Faciup_bot.',{exact:false}).waitFor();
     await page.getByRole('button',{name:'Xem phiên',exact:true}).click();
     await page.getByRole('button',{name:'Duyệt',exact:true}).waitFor();
     assert.equal(await page.locator('#body img').count(),0,'AI text never becomes executable markup');

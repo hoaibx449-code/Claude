@@ -142,10 +142,22 @@ export async function councilAdmin(req:Request,env:XEnv,sub:string,admin:User,rc
   }
   if(route==='/pair'&&method==='POST'){
     if(!await secret(env,'webhook'))throw new HttpError(409,'Kết nối webhook Telegram trước.');
+    const c=await config(env),token=await secret(env,'bot:'+c.agents[0].id);
+    if(!token)throw new HttpError(409,'Nhập token bot tổng biên tập trước.');
+    const bot=await telegramCall(token,'getMe',{}),username=text(bot?.username,32);
+    if(!/^[a-zA-Z0-9_]{5,32}$/.test(username))throw new HttpError(502,'Telegram chưa trả về username của bot.');
     const code=randomId(16),hash=await sha256(code);
     await env.DB.prepare('DELETE FROM council_pairings WHERE user_id=? OR expires<?').bind(admin.id,Date.now()).run();
     await env.DB.prepare('INSERT INTO council_pairings(hash,user_id,expires) VALUES(?,?,?)').bind(hash,admin.id,Date.now()+600000).run();
-    rc.log('admin.council.pair');return json({command:'/link '+code,expiresIn:600});
+    rc.log('admin.council.pair');return json({command:`/link@${username} ${code}`,expiresIn:600});
+  }
+  if(route==='/telegram-status'&&method==='GET'){
+    const c=await config(env),token=await secret(env,'bot:'+c.agents[0].id);
+    if(!token)return json({configured:false});
+    const bot=await telegramCall(token,'getMe',{}),info=await telegramCall(token,'getWebhookInfo',{});
+    return json({configured:true,username:text(bot?.username,32),webhookMatches:info.url===new URL(req.url).origin+'/api/council/telegram',
+      secretConfigured:!!await secret(env,'webhook'),pendingUpdates:Number(info.pending_update_count)||0,
+      lastErrorAt:Number(info.last_error_date)||0,hasDeliveryError:!!info.last_error_message});
   }
   if(route==='/unlink'&&method==='POST'){
     await env.DB.prepare('DELETE FROM council_links WHERE user_id=?').bind(admin.id).run();
@@ -193,8 +205,26 @@ export async function councilWebhook(req:Request,env:XEnv){
   if(!Number.isSafeInteger(u.update_id)||!m||!from||from.is_bot||m.sender_chat||!Number.isSafeInteger(from.id)||!Number.isSafeInteger(m.chat?.id))return json({ok:true});
   // Usernames, forwarded messages and anonymous group admins are never identities.
   const tg=String(from.id),chat=String(m.chat.id),c=await config(env),content=typeof m.text==='string'?m.text:'';
-  const [raw,...args]=content.split(' '),command=raw.split('@')[0],argument=args.join(' ').trim();
-  if(!cb&&command==='/link'&&/^[a-f0-9]{32}$/.test(argument)&&['group','supergroup'].includes(m.chat.type)){
+  const [raw,...args]=content.trim().split(/\s+/),command=raw.split('@')[0],argument=args.join(' ').trim();
+  const reply=async(message:string)=>{
+    const token=await secret(env,'bot:'+c.agents[0].id);
+    if(token)await telegramCall(token,'sendMessage',{chat_id:chat,text:message}).catch(()=>{});
+  };
+  if(!cb&&['/link','/start','/help'].includes(command)){
+    const seen=await env.DB.prepare('INSERT OR IGNORE INTO council_updates(id,created_at) VALUES(?,?)').bind(u.update_id,Date.now()).run();
+    if(!seen.meta.changes)return json({ok:true});
+    if(command!=='/link'){
+      await reply('Đây là nhóm trợ lý riêng của quản trị Faciup. Để ghép Telegram, đăng nhập Faciup → Quản trị → Nhóm AI nội dung → Tạo mã ghép quản trị. Sao chép nguyên lệnh có @username bot thật và mã, gửi trong nhóm riêng đã thêm bot. Không gửi token bot trong Telegram.');
+      return json({ok:true});
+    }
+    if(!['group','supergroup'].includes(m.chat.type)){
+      await reply('Hãy gửi lệnh ghép trong nhóm Telegram riêng đã thêm bot, không gửi trong tin nhắn riêng.');
+      return json({ok:true});
+    }
+    if(!/^[a-f0-9]{32}$/.test(argument)){
+      await reply('Lệnh ghép thiếu mã hoặc sai định dạng. Trên Faciup bấm Tạo mã ghép quản trị rồi sao chép nguyên lệnh, gồm /link@username_bot_thật và mã. Mã có hiệu lực 10 phút.');
+      return json({ok:true});
+    }
     const hash=await sha256(argument),pair=await env.DB.prepare('SELECT user_id FROM council_pairings WHERE hash=? AND expires>?').bind(hash,Date.now()).first<any>();
     if(pair&&await adminExists(env,pair.user_id)){
       const used=await env.DB.prepare('DELETE FROM council_pairings WHERE hash=? AND expires>? RETURNING user_id').bind(hash,Date.now()).first<any>();
@@ -203,14 +233,21 @@ export async function councilWebhook(req:Request,env:XEnv){
         // Best effort remove the one-use pairing message; do not require delete permission.
         const token=await secret(env,'bot:'+c.agents[0].id);
         if(token)await telegramCall(token,'deleteMessage',{chat_id:chat,message_id:m.message_id}).catch(()=>{});
+        await reply('Đã ghép Telegram với quản trị Faciup thành công. '+(c.enabled?'Bạn có thể gửi /brief kèm yêu cầu sáng tạo nội dung.':'Nhóm AI đang tắt; bật nhóm và lưu cấu hình trên Faciup trước khi giao nhiệm vụ.'));
+        return json({ok:true});
       }
     }
+    await reply('Mã ghép không hợp lệ, đã hết hạn, đã dùng hoặc tài khoản không còn quyền quản trị. Hãy tạo mã mới trên Faciup rồi gửi lại nguyên lệnh trong nhóm riêng.');
     return json({ok:true});
   }
   const link=await env.DB.prepare('SELECT user_id FROM council_links WHERE tg_user=? AND chat_id=?').bind(tg,chat).first<any>();
-  if(!link||!c.enabled||!await adminExists(env,link.user_id))return json({ok:true});
+  if(!link||!await adminExists(env,link.user_id))return json({ok:true});
   const seen=await env.DB.prepare('INSERT OR IGNORE INTO council_updates(id,created_at) VALUES(?,?)').bind(u.update_id,Date.now()).run();
   if(!seen.meta.changes)return json({ok:true});
+  if(!c.enabled){
+    if(!cb&&command==='/brief')await reply('Telegram đã ghép, nhưng nhóm AI đang tắt. Mở Faciup → Quản trị → Nhóm AI nội dung, bật nhóm và lưu cấu hình.');
+    return json({ok:true});
+  }
   try{
     if(cb){
       const token=await secret(env,'bot:'+c.agents[0].id);

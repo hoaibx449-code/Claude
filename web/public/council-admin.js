@@ -33,7 +33,7 @@ export async function showCouncil({h,api,body,toast,fail}) {
     }));
   }
   renderAgents();
-  const status=h('div',{}),pair=h('div',{});
+  const status=h('div',{}),pair=h('div',{}),connection=h('div',{});
   const settings=section('Cài đặt nhóm riêng',explanation,
     toggle('Bật nhóm AI',c.enabled,v=>c.enabled=v),
     toggle('Chỉ dùng lựa chọn miễn phí — chặn OpenAI và mô hình Gemini ngoài danh sách',c.freeOnly,v=>c.freeOnly=v),
@@ -52,13 +52,19 @@ export async function showCouncil({h,api,body,toast,fail}) {
       h('li',{},'Mở Telegram, tìm @BotFather có dấu xác minh, gửi /newbot và làm theo hướng dẫn. Đặt tên và username kết thúc bằng bot.'),
       h('li',{},'Dán token vào ô của Tổng biên tập bên dưới rồi Lưu token. Không gửi token trong nhóm hoặc chat này.'),
       h('li',{},'Tạo nhóm riêng chỉ có quản trị tin cậy và thêm bot. Ai ở trong nhóm cũng có thể đọc nội dung, dù không được giao nhiệm vụ.'),
-      h('li',{},'Bấm Kết nối webhook, rồi Tạo mã ghép. Gửi lệnh /link@username_bot mã vào nhóm trong 10 phút. Mã chỉ dùng một lần.'),
+      h('li',{},'Bấm Kết nối webhook, rồi Tạo mã ghép quản trị. Sao chép nguyên lệnh được tạo sẵn đúng tên bot và gửi vào nhóm trong 10 phút. Mã chỉ dùng một lần; bot sẽ báo kết quả.'),
       h('li',{},'Tùy chọn: tạo thêm bot cho từng chuyên gia, nhập token tương ứng và thêm vào nhóm. Nếu chưa có, bot điều phối hiển thị tên vai trò.'),
       h('li',{},'Bật nhóm, xác nhận tài khoản miễn phí và lưu cấu hình. Gửi /brief@username_bot yêu cầu sáng tạo.')),
     action('Kết nối webhook',async()=>{await call('/connect');toast('Đã kết nối webhook.');}),
-    action('Tạo mã ghép quản trị',async()=>{const r=await call('/pair');pair.replaceChildren(h('p',{},'Lệnh có hiệu lực 10 phút, chỉ chia sẻ trong nhóm riêng:'),h('code',{},r.command),h('p',{},'Có thể thêm @username_bot ngay sau /link. Mã ghép là bí mật tạm thời.'));}),
+    action('Kiểm tra kết nối Telegram',async()=>{
+      const r=await api('/api/admin/council/telegram-status');
+      connection.replaceChildren(h('p',{},!r.configured?'Chưa lưu token bot tổng biên tập.':
+        `Bot: @${r.username}. ${r.webhookMatches&&r.secretConfigured?'Webhook trỏ đúng Faciup.':'Webhook chưa sẵn sàng — bấm Kết nối webhook.'} Tin đang chờ: ${r.pendingUpdates}.`),
+        r.hasDeliveryError?h('p',{class:'muted'},'Telegram ghi nhận lỗi giao tin gần đây. Bấm Kết nối webhook rồi gửi lại một lệnh mới; lỗi cũ có thể vẫn còn trong lịch sử Telegram.'):null);
+    }),
+    action('Tạo mã ghép quản trị',async()=>{const r=await call('/pair');pair.replaceChildren(h('p',{},'Sao chép nguyên lệnh này, gửi vào nhóm riêng đã thêm bot trong 10 phút:'),h('code',{style:'display:block;overflow-wrap:anywhere;white-space:pre-wrap'},r.command),h('p',{},'Tên bot thật đã điền sẵn. Không thay bằng chữ username_bot. Mã ghép là bí mật tạm thời; chỉ dùng một lần.'));}),
     action('Ngắt ghép tài khoản của tôi',async()=>{await call('/unlink');await reload();}),
-    pair,
+    connection,pair,
     h('p',{},data.links.length?`${data.links.length} tài khoản quản trị đã ghép Telegram.`:'Chưa có tài khoản ghép Telegram.'),
     h('p',{class:'muted'},'Chỉ tài khoản Telegram đã ghép với quản trị còn quyền mới được dùng lệnh hoặc nút duyệt. Đổi token điều phối sẽ xóa các liên kết; cần kết nối và ghép lại.'));
   let brief='';
