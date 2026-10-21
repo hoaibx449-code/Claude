@@ -21,13 +21,13 @@ test('Live motion state follows durable leases, completed turns and admin review
   const snapshot=JSON.stringify({agents,rounds:1});
   await DB.prepare('INSERT INTO council_settings VALUES(1,?)').bind(JSON.stringify({enabled:true,agents})).run();
   await DB.prepare("INSERT INTO council_jobs(id,user_id,brief,snapshot,status,lease_until,created_at,updated_at) VALUES('job','secret-user','secret-brief',?,'running',?,?,?)").bind(snapshot,now+30000,now,now).run();
-  let r=await liveRuntime({DB} as any,now);assert.equal(r.running,1);assert.equal(r.agents[1].state,'running');assert.equal(r.agents[0].state,'idle');assert.doesNotMatch(JSON.stringify(r),/secret|Private|private-model|instructions/);
+  let r=await liveRuntime({DB} as any,now);assert.deepEqual(r.sessions,[{n:1,members:[1],current:1,state:'running',step:0,since:now}]);assert.deepEqual(r.handovers,[]);assert.equal(r.running,1);assert.equal(r.agents[1].state,'running');assert.equal(r.agents[0].state,'idle');assert.doesNotMatch(JSON.stringify(r),/secret|Private|private-model|instructions/);
   r=await liveRuntime({DB} as any,now+31000);assert.equal(r.running,0);assert.equal(r.agents[1].state,'queued');
   await DB.prepare("UPDATE council_jobs SET next_at=? WHERE id='job'").bind(now+120000).run();r=await liveRuntime({DB} as any,now);assert.equal(r.agents[1].state,'retry');assert.equal(r.running,0);assert.deepEqual(r.next,{agent:1,at:now+120000});
   await DB.prepare("UPDATE council_jobs SET status='pending',step=2 WHERE id='job'").run();
   await DB.prepare("INSERT INTO council_turns VALUES('job',0,'writer','ollama','private-model','private result',?)").bind(now).run();
-  r=await liveRuntime({DB} as any,now);assert.equal(r.review,1);assert.equal(r.agents[0].state,'review');assert.equal(r.completed,1);assert.equal(r.agents[1].completed,1);assert.deepEqual(r.agents[1].hours,[[12,1]]);assert.equal(r.agents[1].last,now);assert.doesNotMatch(JSON.stringify(r),/private|secret/);
-  await DB.prepare('UPDATE council_settings SET config=?').bind(JSON.stringify({enabled:false,agents})).run();r=await liveRuntime({DB} as any,now);assert.equal(r.running,0);assert.ok(r.agents.every(a=>a.state==='disabled'));
+  r=await liveRuntime({DB} as any,now);assert.deepEqual(r.handovers,[{agent:1,at:now}]);assert.equal(r.sessions[0].current,0);assert.equal(r.sessions[0].state,'review');assert.equal(r.review,1);assert.equal(r.agents[0].state,'review');assert.equal(r.completed,1);assert.equal(r.agents[1].completed,1);assert.deepEqual(r.agents[1].hours,[[12,1]]);assert.equal(r.agents[1].last,now);assert.doesNotMatch(JSON.stringify(r),/private|secret/);
+  await DB.prepare('UPDATE council_settings SET config=?').bind(JSON.stringify({enabled:false,agents})).run();r=await liveRuntime({DB} as any,now);assert.deepEqual(r.sessions,[]);assert.equal(r.running,0);assert.ok(r.agents.every(a=>a.state==='disabled'));
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
 

@@ -32,7 +32,7 @@ export async function liveRuntime(env:Env,now=Date.now(),config?:Config){
  const agents=c.agents.slice(0,12).map((a:any,i:number)=>{const role=publicRoles[a.id];return {id:'agent-'+i,name:a.live?.name||role?.[0]||(i===0?'Điều phối':'Chuyên gia '+i),icon:a.live?.icon||role?.[1]||'spark',
   color:a.live?.color||COLORS[i%COLORS.length],state:enabled?'idle':'disabled',completed:0,last:0,hours:[] as number[][],avg:0,since:0,live:false};});
  const today=dayOf(now),start=today*DAY-VN;
- const [jobs,turns,hourly,decided]=await Promise.all([
+ const [jobs,turns,hourly,decided,recentTurns]=await Promise.all([
   env.DB.prepare("SELECT status,step,snapshot,lease_until,next_at,created_at,(SELECT MAX(created_at) FROM council_turns t WHERE t.job_id=council_jobs.id) AS last_turn FROM council_jobs WHERE status IN ('running','queued','delegating','pending','paused') ORDER BY updated_at DESC LIMIT 100").all<any>(),
   // turns per agent per Vietnam day for 8 days, with how long each turn took (time since the turn before it)
   env.DB.prepare(`WITH t AS (SELECT agent_id,created_at,created_at-COALESCE(LAG(created_at) OVER (PARTITION BY job_id ORDER BY step),(SELECT j.created_at FROM council_jobs j WHERE j.id=council_turns.job_id)) AS dur FROM council_turns WHERE created_at>=?)
@@ -40,9 +40,13 @@ export async function liveRuntime(env:Env,now=Date.now(),config?:Config){
   // when each agent worked today (Vietnam hour → turns), for the activity marks; times only, never content
   env.DB.prepare(`SELECT agent_id,CAST(((created_at+${VN})%${DAY})/3600000 AS INTEGER) AS hour,COUNT(*) AS n FROM council_turns WHERE created_at>=? GROUP BY agent_id,hour`).bind(start).all<any>(),
   env.DB.prepare("SELECT status,COUNT(*) AS n FROM council_jobs WHERE status IN ('approved','rejected','revision') AND updated_at>=? GROUP BY status").bind(now-30*DAY).all<any>(),
+  // the latest handovers: which role finished a turn and when
+  env.DB.prepare('SELECT agent_id,created_at FROM council_turns WHERE created_at>=? ORDER BY created_at DESC LIMIT 6').bind(now-DAY).all<any>(),
  ]);
  const rank:Record<string,number>={disabled:0,idle:1,review:2,paused:3,queued:4,retry:5,running:6};
  let running=0,queued=0,review=0,paused=0,nextAt=0,nextAgent:number|null=null;
+ // meetings: who sits at the table, whose turn it is (positions in the public list, never content)
+ const sessions:{n:number;members:number[];current:number;state:string;step:number;since:number}[]=[];
  for(const j of jobs.results){
   let snap:any;try{snap=JSON.parse(j.snapshot);}catch{continue;}
   const list=Array.isArray(snap.agents)?snap.agents:[];if(!list.length)continue;
@@ -54,7 +58,12 @@ export async function liveRuntime(env:Env,now=Date.now(),config?:Config){
   if(enabled&&rank[state]>rank[agents[i].state]){agents[i].state=state;if(state==='running')agents[i].since=Math.max(Number(j.last_turn)||0,Number(j.created_at)||0);}
   if((state==='queued'||state==='retry')&&Number(j.next_at)>now)nextAt=nextAt?Math.min(nextAt,Number(j.next_at)):Number(j.next_at);
   if(state==='queued'||state==='retry')nextAgent=nextAgent??i;
+  if(!snap.assistant){const members=experts.map((a:any)=>c.agents.findIndex((x:any)=>x.id===a?.id)).filter((k:number)=>k>0&&k<agents.length);
+   if(members.length)sessions.push({n:0,members,current:i,state,step:Number(j.step)||0,since:Math.max(Number(j.last_turn)||0,Number(j.created_at)||0),created:Number(j.created_at)||0} as any);}
  }
+ // oldest first, numbered for the page; working sessions lead
+ sessions.sort((a:any,b:any)=>a.created-b.created).forEach((x:any,k)=>{x.n=k+1;delete x.created;});
+ sessions.sort((a,b)=>rank[b.state]-rank[a.state]);
  // per agent and per day: turns, latest turn, average turn time
  let completed=0,lastActivity=0;const series=Array(7).fill(0),dayAvg:Record<number,[number,number]>={},agentAvg:Record<number,[number,number]>={};
  for(const t of turns.results){
@@ -79,6 +88,7 @@ export async function liveRuntime(env:Env,now=Date.now(),config?:Config){
    hours:zh.results.map((r:any)=>[Number(r.hour),Number(r.n)]),avg:Math.round((Number(z?.avg)||0)/1000),since:Number(busy?.since)||0,live:true});
  }catch{/* Zalo tables not set up yet */}
  const top=agents.filter((a:any)=>a.completed).map((a:any)=>({name:a.name,color:a.color,n:a.completed})).sort((a:any,b:any)=>b.n-a.n).slice(0,4);
- return {enabled,agents,running:enabled?running:0,queued,review,paused,completed,lastActivity,polledAt:now,next:enabled&&nextAgent!==null?{agent:nextAgent,at:nextAt||0}:null,
+ const handovers=recentTurns.results.map((t:any)=>({agent:c.agents.findIndex((a:any)=>a.id===t.agent_id),at:Number(t.created_at)})).filter((x:any)=>x.agent>=0&&x.agent<12);
+ return {enabled,sessions:enabled?sessions.slice(0,6):[],handovers,agents,running:enabled?running:0,queued,review,paused,completed,lastActivity,polledAt:now,next:enabled&&nextAgent!==null?{agent:nextAgent,at:nextAt||0}:null,
   kpi:{series,today:completed,yesterday:series[5],avgToday:avgOf(today),avgYesterday:avgOf(today-1),approved:dec.approved||0,decided:(dec.approved||0)+(dec.rejected||0)+(dec.revision||0),top}};
 }

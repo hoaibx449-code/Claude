@@ -734,7 +734,7 @@ function contentTab(c) {
     h('label', {}, 'Kịch bản (mỗi đoạn cách nhau một dòng trống = một cảnh)', area(t.text, (v) => { t.text = v; }, 6)))));
   drawTpls();
   c.site.social ||= {}; c.site.helpBot ||= { enabled: true, name: 'Trợ lý', welcome: '', knowledge: '', perDay: 30 };
-  const THEMES = [['aurora', 'Cực quang (mặc định)', 'linear-gradient(120deg,#4f46e5,#7c3aed,#db2777)'], ['ocean', 'Đại dương', 'linear-gradient(120deg,#0891b2,#0e7490,#1d4ed8)'],
+  const THEMES = [['aurora', 'Tím cam năng lượng (mặc định)', 'linear-gradient(120deg,#6d28d9,#a21caf,#f43f5e,#f97316)'], ['ocean', 'Đại dương', 'linear-gradient(120deg,#0891b2,#0e7490,#1d4ed8)'],
     ['sunset', 'Hoàng hôn', 'linear-gradient(120deg,#f97316,#e11d48,#9333ea)'], ['forest', 'Rừng xanh', 'linear-gradient(120deg,#059669,#047857,#d97706)'], ['classic', 'Cổ điển (nền trắng)', 'linear-gradient(120deg,#2f6bff,#1748d6)']];
   const themeRow = h('div', { class: 'theme-pick' });
   const paintThemes = () => themeRow.replaceChildren(...THEMES.map(([k, name, g]) => h('button', { type: 'button', class: (c.site.theme || 'aurora') === k ? 'on' : '', 'aria-pressed': String((c.site.theme || 'aurora') === k),

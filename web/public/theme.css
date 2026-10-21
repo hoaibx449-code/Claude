@@ -1,14 +1,14 @@
 /* Colour themes, chosen in Quản trị → Trang chủ & nội dung → Giao diện (html[data-theme]).
-   "aurora" is the default; "classic" keeps the earlier plain white look. */
+   "aurora" (vibrant purple–orange) is the default; "classic" keeps the earlier plain white look. */
 
 :root, html[data-theme="aurora"] {
-  --blue: #4f46e5; --blue-2: #4338ca; --blue-soft: #eef0ff; --accent: #4f46e5; --accent-2: #f43f5e; --sun: #f59e0b;
-  --grad: linear-gradient(120deg, #4f46e5 0%, #7c3aed 60%, #db2777 120%);
-  --grad-soft: linear-gradient(135deg, #eef0ff 0%, #fdf2f8 100%);
-  --paper: #f6f5ff; --ink: #1e1b4b; --muted: #5f5b85; --line: #e5e3f6;
-  --page-bg: radial-gradient(900px 520px at 100% -10%, #fce7f3 0%, transparent 60%), radial-gradient(900px 600px at -10% 0%, #e0e7ff 0%, transparent 55%);
-  --side-bg: linear-gradient(180deg, #1e1b4b 0%, #312e81 100%); --side-ink: #eef0ff; --side-muted: #b9b6e6; --side-on: rgba(255, 255, 255, .14); --side-line: rgba(255, 255, 255, .12);
-  --glow: rgba(79, 70, 229, .35);
+  --blue: #7c3aed; --blue-2: #6d28d9; --blue-soft: #f3ecff; --accent: #7c3aed; --accent-2: #f97316; --sun: #fb923c;
+  --grad: linear-gradient(120deg, #6d28d9 0%, #a21caf 45%, #f43f5e 75%, #f97316 100%);
+  --grad-soft: linear-gradient(135deg, #f5edff 0%, #fff1e6 100%);
+  --paper: #fbf8ff; --ink: #1e1238; --muted: #6b5f8f; --line: #efe6ff;
+  --page-bg: radial-gradient(900px 520px at 100% -10%, #ffe2cc 0%, transparent 58%), radial-gradient(900px 600px at -10% 0%, #ead9ff 0%, transparent 58%);
+  --side-bg: linear-gradient(180deg, #2a0f4d 0%, #4c1470 60%, #6b1a4f 100%); --side-ink: #f7efff; --side-muted: #d1b9ee; --side-on: rgba(255, 255, 255, .14); --side-line: rgba(255, 255, 255, .12);
+  --glow: rgba(244, 63, 94, .35);
 }
 html[data-theme="ocean"] {
   --blue: #0e7490; --blue-2: #155e75; --blue-soft: #e6f7fb; --accent: #0e7490; --accent-2: #f97316; --sun: #fbbf24;
