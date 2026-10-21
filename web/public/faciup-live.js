@@ -1,50 +1,125 @@
-const states={idle:'Chờ nhiệm vụ',disabled:'Nhóm đang tắt',queued:'Chờ tới lượt',retry:'Chờ thử lại',running:'Đang xử lý',review:'Chờ quản trị duyệt',paused:'Tạm dừng'};
-const ns='http://www.w3.org/2000/svg';
-const replace=(el,...nodes)=>el.replaceChildren(...nodes.flat().filter(n=>n!=null&&n!==false));
-function svg(tag,attrs){const e=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e;}
+// Faciup Live: the AI team on a 24-hour dial. The coordinator glows in the centre, the other agents
+// are orbs on their own orbits, joined to it by light; a dot on the ring marks each hour an agent
+// worked today. Everything shown is real server state (/api/faciup-live): an agent only moves while
+// it really is working. Giving work happens in Quản trị → Nhóm AI.
+const STATES={idle:'Sẵn sàng',disabled:'Nhóm đang tắt',queued:'Chờ tới lượt',retry:'Chờ thử lại',running:'Đang xử lý',review:'Chờ duyệt',paused:'Tạm dừng',unknown:'Mất kết nối'};
+const COLORS=['#f26b1d','#e8336d','#7c4dff','#1e88e5','#0097a7','#c9a227','#43a047','#37474f'];
+const ICONS={
+ 'Điều phối':'<path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/>',
+ 'Chiến lược':'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/>',
+ 'Nghiên cứu':'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',
+ 'Biên kịch':'<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/>',
+ 'Phản biện':'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 12l2 2 4-4"/>',
+};
+const DEFAULT_ICON='<path d="M5 18l4-12 3 8 2-4 5 8"/>';
+const NS='http://www.w3.org/2000/svg';
+const pad=n=>String(n).padStart(2,'0');
+const vnParts=t=>{const d=new Date(t+7*3600000);return {h:d.getUTCHours(),m:d.getUTCMinutes(),s:d.getUTCSeconds()};};
+const hm=t=>{const p=vnParts(t);return pad(p.h)+':'+pad(p.m);};
+/** angle (radians) of a time of day on the dial: 00 at the top, 06 right, 12 bottom, 18 left */
+const dialAngle=hours=>hours/24*2*Math.PI-Math.PI/2;
+function el(tag,attrs={},...kids){const e=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);e.append(...kids);return e;}
+function icon(paths){const s=el('svg',{viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'2','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'});const d=new DOMParser().parseFromString(`<svg xmlns="${NS}">${paths}</svg>`,'image/svg+xml');for(const n of [...d.documentElement.childNodes])s.append(document.importNode(n,true));return s;}
+function until(ms){const m=Math.max(0,Math.round(ms/60000));return m<60?`${m} phút`:`${Math.floor(m/60)} giờ ${m%60} phút`;}
+
 export function showLive({h,show,api,footer,admin=false}){
- let stopped=false,busy=false,data=null,privateData=null,selected=0,jobId='',jobVersion='',nodes=[],paths=[],motes=[],fingerprint='';
- const clock=h('time',{}),headline=h('p',{class:'fl-runtime-status'},'Đang kết nối bộ điều phối…'),updated=h('span',{},'Đang đọc trạng thái máy chủ…');
- const board=h('div',{class:'fl-board','aria-label':'Các tác nhân AI và luồng giao việc'}),detail=h('section',{class:'fl-detail','aria-label':'Chi tiết tác nhân'});
- const wires=svg('svg',{viewBox:'0 0 640 640',preserveAspectRatio:'none','aria-hidden':'true',class:'fl-wires'});
- const hub=h('div',{class:'fl-hub'},h('span',{class:'fl-hub-mark','aria-hidden':'true'},'✧'),h('strong',{},'FACIUP'),h('small',{},'Điều phối AI'));
- const hand=h('div',{class:'fl-clock-hand','aria-hidden':'true'});
- board.append(wires,h('div',{class:'fl-orbit','aria-hidden':'true'}),h('div',{class:'fl-orbit fl-orbit-inner','aria-hidden':'true'}),hand,...[['00',50,5],['06',95,50],['12',50,95],['18',5,50]].map(([t,x,y])=>h('span',{class:'fl-hour',style:`left:${x}%;top:${y}%`,'aria-hidden':'true'},t)),hub);
- const metrics=h('div',{class:'fl-metrics','aria-label':'Trạng thái nhóm AI'}),workflow=h('section',{class:'fl-private-workflow','aria-label':'Công việc quản trị'});
- const refresh=h('button',{type:'button',class:'fl-refresh',onclick:()=>load()},'Làm mới');
- const mode=h('span',{class:'fl-mode'},'DỮ LIỆU THẬT · MÁY CHỦ');
- const shell=h('section',{class:'fl-page fl-operations'},h('header',{class:'fl-heading'},h('div',{},h('p',{class:'fl-eyebrow'},'ĐỘI NGŨ AI · VẬN HÀNH'),h('h1',{},'Faciup ',h('span',{},'Live')),headline),h('div',{class:'fl-clock'},clock,h('span',{},'GIỜ VIỆT NAM · UTC+7'))),h('div',{class:'fl-workspace'},h('section',{class:'fl-map'},h('div',{class:'fl-map-top'},mode,h('span',{},'Chọn tác nhân để xem công việc')),board,h('p',{class:'fl-map-note'},'Trôi nhẹ: đang hiện diện · Luồng sáng: đang xử lý · Dừng: nhóm tắt/tạm dừng')),detail),metrics,h('div',{class:'fl-data-bar'},updated,refresh),admin?workflow:h('p',{class:'fl-privacy'},'Đang xem trạng thái tổng hợp. Nhiệm vụ, model, nội dung thảo luận và kết quả riêng chỉ hiển thị cho quản trị.'),h('section',{class:'fl-how'},h('h2',{},'Từ giao việc đến kết quả'),h('ol',{},...['Bạn giao mục tiêu','Các chuyên gia lần lượt xử lý','Điều phối tổng hợp','Bạn kiểm tra và duyệt'].map(t=>h('li',{},t))),h('p',{},'Bộ chạy trên máy chủ tiếp tục các lượt AI khi bạn đóng trang. Giao diện này theo dõi trạng thái, không tự tạo việc để giữ hoạt cảnh. Nhóm hiện xử lý thảo luận và soạn nội dung; việc duyệt chưa tự đăng bài hoặc dựng video.')));
- const privateTitle=h('h2',{},'Bàn giao việc của quản trị'),privateStatus=h('p',{class:'fl-private-note'},'Đang kiểm tra quyền quản trị…');
- const jobs=h('select',{'aria-label':'Chọn phiên công việc',onchange:()=>{jobId=jobs.value;jobVersion='';loadDetail();}}),jobContent=h('div',{});
- const title=h('input',{placeholder:'Tên công việc (không bắt buộc)',maxlength:90,'aria-label':'Tên công việc'}),brief=h('textarea',{placeholder:'Giao việc cụ thể: mục tiêu, đối tượng, đầu ra và yêu cầu kiểm chứng…',rows:4,maxlength:8000,required:true,'aria-label':'Nhiệm vụ giao cho nhóm AI'}),submit=h('button',{type:'submit',class:'btn'},'Giao việc cho nhóm AI'),formMessage=h('p',{role:'status'});
- const form=h('form',{class:'fl-task-form',onsubmit:async e=>{e.preventDefault();if(!brief.value.trim()||submit.disabled)return;submit.disabled=true;formMessage.textContent='Đang lưu nhiệm vụ…';try{const r=await api('/api/admin/council/jobs',{method:'POST',body:{title:title.value.trim(),brief:brief.value.trim()}});jobId=r.id;jobVersion='';formMessage.textContent='Đã lưu nhiệm vụ. Máy chủ sẽ tự xử lý các lượt AI.';brief.value='';title.value='';await load();}catch(err){formMessage.textContent=err.message||'Chưa giao được nhiệm vụ.';}finally{submit.disabled=!privateData?.config.enabled;}}},title,brief,submit,formMessage);
- if(admin)workflow.append(privateTitle,privateStatus,form,h('label',{},'Theo dõi phiên',jobs),jobContent,h('a',{href:'/admin/nhom-ai'},'Cấu hình tác nhân, model, Telegram và duyệt kết quả ↗'));
+ let stopped=false,busy=false,data=null,stale=false,raf=0,selected=-1,fingerprint='',last=performance.now();
+ const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+ // dial (SVG, 1000×1000): ring, hour ticks, today's activity, orbits, links
+ const ring=el('g',{class:'fl-ring'}),marks=el('g',{class:'fl-marks'}),orbits=el('g',{class:'fl-orbits'}),links=el('g',{class:'fl-links'});
+ const hand=el('g',{class:'fl-hand'},el('line',{x1:0,y1:0,x2:-34,y2:0}),el('circle',{r:13,class:'fl-hand-glow'}),el('circle',{r:7}));
+ const dial=el('svg',{viewBox:'0 0 1000 1000',class:'fl-dial','aria-hidden':'true'},
+  el('defs',{},el('linearGradient',{id:'fl-day',x1:0,y1:0,x2:0,y2:1},el('stop',{offset:'0','stop-color':'var(--fl-night)'}),el('stop',{offset:'.5','stop-color':'var(--fl-night)'}),el('stop',{offset:'.5','stop-color':'var(--fl-day)'}),el('stop',{offset:'1','stop-color':'var(--fl-day)'}))),
+  ring,orbits,links,marks,hand);
+ ring.append(el('circle',{cx:500,cy:500,r:430,class:'fl-track'}));
+ for(let i=0;i<24;i++){const a=dialAngle(i),big=i%3===0,r1=big?396:410,r2=418;ring.append(el('line',{x1:500+r1*Math.cos(a),y1:500+r1*Math.sin(a),x2:500+r2*Math.cos(a),y2:500+r2*Math.sin(a),class:big?'fl-tick fl-tick-big':'fl-tick'}));
+  if(big)ring.append(el('text',{x:500+372*Math.cos(a),y:500+372*Math.sin(a)+7,class:'fl-hour'},pad(i)));}
+ ring.append(el('text',{x:500,y:205,class:'fl-half'},'ĐÊM'),el('text',{x:500,y:808,class:'fl-half'},'NGÀY'));
+ const hub=h('button',{type:'button',class:'fl-hub','aria-label':'Tác nhân điều phối',onclick:()=>pick(0)},h('span',{class:'fl-hub-core'},h('span',{class:'fl-hub-mark'},'✎')),h('span',{class:'fl-hub-pill'},''));
+ const stage=h('div',{class:'fl-stage'},dial,hub);
+ const pop=h('div',{class:'fl-pop',hidden:true,role:'dialog','aria-label':'Chi tiết tác nhân'});
+ stage.append(pop);
+ // the one card under the dial: time, team, what comes next
+ const clock=h('time',{class:'fl-time'}),line1=h('p',{class:'fl-line1'},'Đang kết nối…'),line2=h('p',{class:'fl-line2'},'');
+ const status=h('section',{class:'fl-status','aria-live':'polite'},h('div',{class:'fl-clock'},clock,h('small',{},'GIỜ VN')),h('div',{class:'fl-lines'},line1,line2),
+  admin?h('a',{class:'fl-admin',href:'/admin/nhom-ai'},'Giao việc ↗'):null);
+ const shell=h('section',{class:'fl-live'},h('h1',{class:'sr'},'Faciup Live — đội AI đang vận hành'),stage,status);
  show(shell,footer());
- function team(){return data?.runtime?.agents||[];}
- function agentName(i){return privateData?.config?.agents?.[i]?.name||team()[i]?.name||'Tác nhân AI';}
- function paintDetail(){if(shell.classList.contains('fl-stale')){replace(detail,h('h2',{},'Chưa xác minh hoạt động'),h('p',{class:'fl-description'},'Mất kết nối trạng thái. Hãy làm mới để xác nhận hoạt động hiện tại.'));return;}const a=team()[selected];if(!a)return;const p=privateData?.config?.agents?.[selected],route=privateData?.routing?.find(x=>x.agent===p?.id);
-  replace(detail,h('span',{class:'fl-eyebrow'},'TÁC NHÂN '+String(selected+1).padStart(2,'0')),h('h2',{},agentName(selected)),h('p',{class:'fl-agent-state','data-state':a.state},states[a.state]),h('p',{class:'fl-description'},p?.prompt||a.role),h('dl',{class:'fl-facts'},h('div',{},h('dt',{},'Lượt hoàn tất hôm nay'),h('dd',{},a.completed)),h('div',{},h('dt',{},'Nguồn trạng thái'),h('dd',{},'Hàng đợi và lượt AI trên máy chủ'))),route?h('div',{class:'fl-model-plan'},h('h3',{},'Thứ tự model đã cấu hình'),h('p',{},route.plan?.map(m=>m.provider+' / '+m.model).join(' → ')||'Chưa có model sẵn sàng')):null,h('p',{class:'fl-description'},a.state==='running'?'Máy chủ đã nhận lượt xử lý và còn thời hạn thực thi. Luồng sáng thể hiện tác nhân đang làm việc.':a.state==='retry'?'Hệ thống đang chờ thời điểm thử lại theo hàng đợi.':a.state==='disabled'?'Bật nhóm AI trong quản trị để bắt đầu nhận nhiệm vụ.':'Không có lượt đang xử lý tại tác nhân này. Hệ thống không gọi AI khi chưa có việc.'),admin?h('a',{href:'/admin/nhom-ai',class:'btn fl-action'},'Quản lý nhóm AI ↗'):null);
- }
- function build(){const list=team();const key=list.map(a=>a.id).join('|');if(key===fingerprint)return;fingerprint=key;board.dataset.size=String(list.length);nodes.forEach(n=>n.remove());wires.replaceChildren();nodes=[];paths=[];motes=[];
-  list.forEach((a,i)=>{const angle=-Math.PI/2+i*2*Math.PI/list.length,radius=list.length>=6?38:34,x=50+radius*Math.cos(angle),y=50+radius*Math.sin(angle),d=`M320 320 Q${x*6.4} 320 ${x*6.4} ${y*6.4}`;const path=svg('path',{d});const dot=svg('circle',{r:'4',class:'fl-transfer-dot'}),motion=svg('animateMotion',{dur:'2.8s',repeatCount:'indefinite',path:d});dot.append(motion);wires.append(path,dot);paths.push(path);motes.push(dot);
-   const b=h('button',{type:'button',class:'fl-node fl-agent',style:`--nx:${x}%;--ny:${y}%;--delay:${-i*1.3}s`,'aria-pressed':String(selected===i),onclick:()=>{selected=i;nodes.forEach((n,j)=>n.setAttribute('aria-pressed',String(j===i)));paintDetail();}},h('span',{class:'fl-agent-avatar','aria-hidden':'true'},h('i',{}),h('i',{})),h('strong',{}),h('small',{}));nodes.push(b);board.append(b);
+ let agents=[];// {i,name,role,color,state,orb,label,link,orbit:{rx,ry,rot,phase,speed}}
+ const team=()=>data?.runtime?.agents||[];
+ function build(){
+  const list=team(),key=list.map(a=>a.id+a.name).join('|');if(key===fingerprint)return;fingerprint=key;
+  agents.forEach(a=>{a.orb.remove();a.label.remove();});orbits.replaceChildren();links.replaceChildren();
+  const others=list.slice(1),n=Math.max(1,others.length);
+  agents=others.map((a,k)=>{
+   const i=k+1,color=COLORS[i%COLORS.length];
+   // each agent its own tilted ellipse, spread evenly around the centre
+   const rot=(k%2?.32:-.32)+(k%3)*.12,rx=290+(k%2)*40,ry=200+(k%3)*30,phase=-Math.PI/2+k*2*Math.PI/n+Math.PI/n,speed=(.08+(k%3)*.025)*(k%2?-1:1);
+   const path=el('ellipse',{cx:500,cy:500,rx,ry,transform:`rotate(${rot*180/Math.PI} 500 500)`,class:'fl-orbit'});orbits.append(path);
+   const link=el('line',{x1:500,y1:500,x2:500,y2:500,class:'fl-link',stroke:color});links.append(link);
+   const orb=h('button',{type:'button',class:'fl-orb',style:`--c:${color}`,'aria-label':a.name,onclick:e=>{e.stopPropagation();pick(i);}},icon(ICONS[a.name]||DEFAULT_ICON));
+   const label=h('div',{class:'fl-label',style:`--c:${color}`},h('strong',{},a.name),h('span',{},''));
+   stage.append(orb,label);
+   return {i,name:a.name,role:a.role,color,orb,label,link,orbit:{rx,ry,rot,phase,speed}};
   });
  }
- function paint(){build();const r=data.runtime;selected=Math.min(selected,team().length-1);team().forEach((a,i)=>{const b=nodes[i];b.dataset.state=a.state;b.querySelector('strong').textContent=agentName(i);b.querySelector('small').textContent=states[a.state];b.setAttribute('aria-label',agentName(i));b.setAttribute('aria-pressed',String(i===selected));paths[i].classList.toggle('fl-flow',a.state==='running');motes[i].classList.toggle('on',a.state==='running');});
-  hub.dataset.working=String(r.running>0);headline.textContent=!r.enabled?'Nhóm AI đang tắt · quản trị có thể bật để nhận việc':r.running||r.queued||r.review||r.paused?`${r.running} đang xử lý · ${r.queued} chờ lượt · ${r.review} chờ duyệt · ${r.paused} tạm dừng`:'Đội ngũ đang chờ nhiệm vụ · bộ điều phối theo lịch máy chủ';
-  metrics.replaceChildren(...[[r.running,'Đang xử lý'],[r.queued,'Chờ tới lượt'],[r.review,'Chờ duyệt'],[r.paused,'Tạm dừng'],[r.completed,'Lượt xong hôm nay']].map(([n,t])=>h('div',{},h('strong',{},n),h('span',{},t))));paintDetail();
+ function place(){
+  for(const a of agents){const o=a.orbit,x0=o.rx*Math.cos(o.phase),y0=o.ry*Math.sin(o.phase),x=500+x0*Math.cos(o.rot)-y0*Math.sin(o.rot),y=500+x0*Math.sin(o.rot)+y0*Math.cos(o.rot);
+   a.x=x;a.y=y;a.orb.style.left=x/10+'%';a.orb.style.top=y/10+'%';a.link.setAttribute('x2',x);a.link.setAttribute('y2',y);
+   // label outward from the centre, flipped to stay inside the dial
+   // outward from the centre, but towards it near the edge so cards stay on screen
+   const narrow=stage.clientWidth<560,right=x<300?true:x>700?false:x>=500;
+   // phones: a short name tag right under the orb; wider screens: a card beside it
+   a.label.classList.toggle('fl-under',narrow);
+   if(narrow){a.label.style.left=x/10+'%';a.label.style.top=(y/10+5.2)+'%';}
+   else{a.label.style.left=(x/10+(right?3.4:-3.4))+'%';a.label.style.top=(y/10+(y>500?3.2:-3.2))+'%';}
+   a.label.classList.toggle('fl-left',!narrow&&!right);a.label.classList.toggle('fl-up',y<=500);}
+  if(selected>0){const a=agents.find(x=>x.i===selected);if(a){pop.style.left=a.x/10+'%';pop.style.top=a.y/10+'%';pop.classList.toggle('fl-left',a.x>560);pop.classList.toggle('fl-up',a.y>560);}}
  }
- async function loadDetail(){if(!admin||!jobId||stopped)return;const id=jobId;try{const d=await api('/api/admin/council/jobs/'+id);if(stopped||id!==jobId)return;const wf=d.workflow;replace(jobContent,h('h3',{},d.job.title),h('p',{class:'fl-job-brief'},d.job.brief),h('p',{class:'fl-agent-state'},wf.phase),h('progress',{max:Math.max(1,wf.total),value:wf.completed,'aria-label':'Tiến độ lượt AI'}),h('ol',{class:'fl-workflow-steps'},...wf.steps.map(s=>h('li',{'data-state':s.state},h('span',{},s.label),h('small',{},({done:'Hoàn tất',working:'Đang xử lý',waiting:'Chờ',blocked:'Tạm dừng',rejected:'Cần chỉnh sửa'})[s.state])))),wf.blocker?h('p',{class:'fl-error'},wf.blocker):null,h('p',{},wf.action),...d.turns.map(t=>h('details',{},h('summary',{},(d.job.snapshot.agents.find(a=>a.id===t.agent_id)?.name||'Tác nhân')+' · '+t.provider+' / '+t.model),h('pre',{class:'fl-output'},t.displayText||t.text))));jobVersion=String(d.job.updated_at);
-   }catch{if(!stopped)replace(jobContent,h('p',{class:'fl-error'},'Chưa tải được chi tiết phiên. Hãy làm mới.'));}}
- async function load(){if(stopped||busy||document.hidden)return;busy=true;refresh.disabled=true;
-  try{data=await api('/api/faciup-live');if(stopped)return;shell.classList.remove('fl-stale');paint();
-   if(admin)try{const d=await api('/api/admin/council');if(stopped)return;privateData=d;privateStatus.textContent=d.config.enabled?'Nhóm đang bật. Nhiệm vụ và kết quả bên dưới chỉ quản trị được xem.':'Nhóm đang tắt. Mở Quản lý nhóm AI để bật và kiểm tra model trước khi giao việc.';submit.disabled=!d.config.enabled;const signature=d.jobs.map(j=>j.id+':'+j.status).join('|');if(jobs.dataset.signature!==signature){jobs.replaceChildren(...d.jobs.map(j=>h('option',{value:j.id},j.title+' · '+(j.progress?.phase||j.status))));jobs.dataset.signature=signature;if(!jobId&&d.jobs.length)jobId=d.jobs[0].id;jobs.value=jobId;}
-    const current=d.jobs.find(j=>j.id===jobId);if(current&&String(current.updated_at)!==jobVersion)await loadDetail();
-   }catch{privateData=null;replace(jobContent,);jobs.replaceChildren();privateStatus.textContent='Chưa tải được khu vực riêng. Kiểm tra lại quyền quản trị hoặc làm mới.';submit.disabled=true;}
-   if(stopped)return;paint();updated.textContent='Đồng bộ '+new Intl.DateTimeFormat('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(data.updatedAt))+' · cập nhật mỗi 15 giây';
-  }catch{if(stopped)return;shell.classList.add('fl-stale');headline.textContent='Mất kết nối trạng thái · chưa xác minh hoạt động hiện tại';nodes.forEach(n=>{n.dataset.state='unknown';n.querySelector('small').textContent='Mất kết nối';});paths.forEach(p=>p.classList.remove('fl-flow'));motes.forEach(m=>m.classList.remove('on'));hub.dataset.working='false';replace(detail,h('h2',{},'Chưa xác minh hoạt động'),h('p',{class:'fl-description'},'Kết nối trạng thái bị gián đoạn. Hệ thống chưa thể xác nhận tác nhân nào đang làm việc; hãy làm mới.'));updated.textContent='Không có dữ liệu mới. Các chỉ số trước đó có thể đã cũ; bấm Làm mới.';}
-  finally{busy=false;if(!stopped)refresh.disabled=false;}}
- function tick(){const now=new Date();clock.textContent=new Intl.DateTimeFormat('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(now);clock.dateTime=now.toISOString();const local=new Date(now.getTime()+7*3600000);hand.style.setProperty('--clock-angle',`${(local.getUTCHours()+local.getUTCMinutes()/60)*15}deg`);}
- tick();load();const t=setInterval(tick,1000),poll=setInterval(load,15000),visible=()=>{if(!document.hidden)load();};document.addEventListener('visibilitychange',visible);
- return ()=>{stopped=true;clearInterval(t);clearInterval(poll);document.removeEventListener('visibilitychange',visible);};
+ function frame(t){const dt=Math.min(.1,(t-last)/1000);last=t;
+  // only a working agent travels its orbit: real activity, not decoration
+  if(!reduce&&!stale)for(const a of agents)if(a.state==='running')a.orbit.phase+=a.orbit.speed*dt*6;
+  place();raf=requestAnimationFrame(frame);}
+ function paintMarks(){
+  marks.replaceChildren();const list=team();
+  list.forEach((a,i)=>{const color=COLORS[i%COLORS.length];for(const [hour,n] of a.hours||[]){const ang=dialAngle(hour+.5),r=430;
+   marks.append(el('circle',{cx:500+r*Math.cos(ang),cy:500+r*Math.sin(ang),r:Math.min(14,7+n),fill:color,class:'fl-mark'},el('title',{},`${a.name}: ${n} lượt lúc ${pad(hour)}:00`)));
+   marks.append(el('text',{x:500+478*Math.cos(ang),y:500+478*Math.sin(ang)+7,fill:color,class:'fl-mark-time'},pad(hour)+':00'));}});
+ }
+ function paint(){
+  build();const r=data.runtime,list=team();
+  hub.querySelector('.fl-hub-pill').textContent='FACIUP · '+(list[0]?.name||'Điều phối').toUpperCase();
+  hub.dataset.state=stale?'unknown':list[0]?.state||'idle';hub.style.setProperty('--c',COLORS[0]);
+  for(const a of agents){const s=list[a.i];a.state=stale?'unknown':s?.state||'idle';a.orb.dataset.state=a.state;a.label.dataset.state=a.state;a.link.dataset.state=a.state;
+   a.label.querySelector('span').textContent=a.state==='running'?'Đang xử lý':a.state==='idle'&&s?.last?`Gần nhất ${hm(s.last)} · ${s.completed} lượt`:STATES[a.state]||'';}
+  paintMarks();
+  const total=list.length,busyN=r.running;
+  if(stale){line1.textContent='Mất kết nối trạng thái';line2.textContent='Chưa xác minh hoạt động hiện tại · đang thử lại';}
+  else if(!r.enabled){line1.replaceChildren(h('b',{},`${total} agent`),' · nhóm đang tắt');line2.textContent=r.completed?`Hôm nay đã xong ${r.completed} lượt`:'Chưa nhận nhiệm vụ';}
+  else{line1.replaceChildren(h('b',{},`${total} agent`),busyN?` · ${busyN} đang xử lý`:' đang trực');
+   const nx=r.next,who=nx?list[nx.agent]?.name:'';
+   line2.replaceChildren(...(nx?['Việc kế tiếp: ',h('b',{},who),nx.at>Date.now()?` · ${hm(nx.at)} (còn ${until(nx.at-Date.now())})`:' · ngay khi tới lượt']
+    :r.review?['Chờ duyệt: ',h('b',{},r.review+' kết quả')]:[r.completed?`Hôm nay xong ${r.completed} lượt · gần nhất ${hm(r.lastActivity)}`:'Chưa có việc trong hàng đợi']));}
+  if(selected>=0)detail();
+ }
+ function pick(i){selected=selected===i?-1:i;detail();}
+ function detail(){
+  const s=team()[selected];if(selected<0||!s){pop.hidden=true;return;}
+  pop.style.setProperty('--c',COLORS[selected%COLORS.length]);
+  pop.replaceChildren(h('strong',{},s.name),h('span',{class:'fl-pop-state','data-state':stale?'unknown':s.state},STATES[stale?'unknown':s.state]),h('p',{},s.role),
+   h('dl',{},h('dt',{},'Hôm nay'),h('dd',{},`${s.completed||0} lượt`),h('dt',{},'Gần nhất'),h('dd',{},s.last?hm(s.last):'—')));
+  pop.hidden=false;
+  if(selected===0){pop.style.left='50%';pop.style.top='58%';pop.classList.remove('fl-left','fl-up');}
+ }
+ stage.addEventListener('click',e=>{if(!pop.contains(e.target)&&selected>=0&&!e.target.closest('.fl-orb,.fl-hub')){selected=-1;pop.hidden=true;}});
+ function tick(){const p=vnParts(Date.now());clock.textContent=pad(p.h)+':'+pad(p.m);const a=dialAngle(p.h+p.m/60+p.s/3600);
+  hand.setAttribute('transform',`translate(${500+430*Math.cos(a)} ${500+430*Math.sin(a)}) rotate(${a*180/Math.PI})`);}
+ async function load(){if(stopped||busy||document.hidden)return;busy=true;
+  try{data=await api('/api/faciup-live');stale=false;}catch{stale=true;}
+  finally{busy=false;}
+  if(!stopped&&data){shell.classList.toggle('fl-stale',stale);paint();}
+  else if(!stopped&&stale){line1.textContent='Mất kết nối trạng thái';line2.textContent='Đang thử lại…';}}
+ tick();load();raf=requestAnimationFrame(frame);
+ const t=setInterval(tick,1000),poll=setInterval(load,15000),visible=()=>{if(!document.hidden)load();};document.addEventListener('visibilitychange',visible);
+ return ()=>{stopped=true;cancelAnimationFrame(raf);clearInterval(t);clearInterval(poll);document.removeEventListener('visibilitychange',visible);};
 }

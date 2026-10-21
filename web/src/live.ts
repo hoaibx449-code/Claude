@@ -20,14 +20,16 @@ export async function liveRuntime(env:Env,now=Date.now()){
  let c:any={enabled:false,agents:defaults.map(id=>({id}))};
  if(row)try{const parsed=JSON.parse(row.config);if(Array.isArray(parsed.agents)&&parsed.agents.length>=2)c=parsed;}catch{}
  const enabled=c.enabled===true;
- const agents=c.agents.slice(0,8).map((a:any,i:number)=>({id:'agent-'+i,name:(publicRoles[a.id]||[i===0?'Điều phối':'Chuyên gia '+i])[0],role:(publicRoles[a.id]||['','Thực hiện nhiệm vụ do quản trị phân công.'])[1],state:enabled?'idle':'disabled',completed:0}));
+ const agents=c.agents.slice(0,8).map((a:any,i:number)=>({id:'agent-'+i,name:(publicRoles[a.id]||[i===0?'Điều phối':'Chuyên gia '+i])[0],role:(publicRoles[a.id]||['','Thực hiện nhiệm vụ do quản trị phân công.'])[1],state:enabled?'idle':'disabled',completed:0,last:0,hours:[] as number[][]}));
  const start=Math.floor((now+7*3600000)/86400000)*86400000-7*3600000;
- const [jobs,turns]=await Promise.all([
+ const [jobs,turns,hourly]=await Promise.all([
   env.DB.prepare("SELECT status,step,snapshot,lease_until,next_at FROM council_jobs WHERE status IN ('running','queued','delegating','pending','paused') ORDER BY updated_at DESC LIMIT 100").all<any>(),
   env.DB.prepare('SELECT agent_id,COUNT(*) AS n,MAX(created_at) AS latest FROM council_turns WHERE created_at>=? GROUP BY agent_id').bind(start).all<any>(),
+  // when each agent worked today (Vietnam hour → turns), for the 24-hour dial; times only, never content
+  env.DB.prepare('SELECT agent_id,CAST(((created_at+25200000)%86400000)/3600000 AS INTEGER) AS hour,COUNT(*) AS n FROM council_turns WHERE created_at>=? GROUP BY agent_id,hour').bind(start).all<any>(),
  ]);
  const rank:Record<string,number>={disabled:0,idle:1,review:2,paused:3,queued:4,retry:5,running:6};
- let running=0,queued=0,review=0,paused=0;
+ let running=0,queued=0,review=0,paused=0,nextAt=0,nextAgent:number|null=null;
  for(const j of jobs.results){
   let snap:any;try{snap=JSON.parse(j.snapshot);}catch{continue;}
   const list=Array.isArray(snap.agents)?snap.agents:[];if(!list.length)continue;
@@ -37,8 +39,11 @@ export async function liveRuntime(env:Env,now=Date.now()){
   const state=j.status==='pending'?'review':j.status==='paused'?'paused':j.next_at>now?'retry':j.status==='running'&&j.lease_until>now?'running':'queued';
   if(state==='running')running++;else if(state==='review')review++;else if(state==='paused')paused++;else queued++;
   if(enabled&&rank[state]>rank[agents[i].state])agents[i].state=state;
+  if((state==='queued'||state==='retry')&&Number(j.next_at)>now)nextAt=nextAt?Math.min(nextAt,Number(j.next_at)):Number(j.next_at);
+  if(state==='queued'||state==='retry')nextAgent=nextAgent??i;
  }
  let completed=0,lastActivity=0;
- for(const t of turns.results){completed+=Number(t.n);lastActivity=Math.max(lastActivity,Number(t.latest)||0);const i=c.agents.findIndex((a:any)=>a.id===t.agent_id);if(i>=0)agents[i].completed=Number(t.n);}
- return {enabled,agents,running:enabled?running:0,queued,review,paused,completed,lastActivity,polledAt:now};
+ for(const t of turns.results){completed+=Number(t.n);lastActivity=Math.max(lastActivity,Number(t.latest)||0);const i=c.agents.findIndex((a:any)=>a.id===t.agent_id);if(i>=0){agents[i].completed=Number(t.n);agents[i].last=Number(t.latest)||0;}}
+ for(const t of hourly.results){const i=c.agents.findIndex((a:any)=>a.id===t.agent_id);if(i>=0&&agents[i])agents[i].hours.push([Number(t.hour),Number(t.n)]);}
+ return {enabled,agents,running:enabled?running:0,queued,review,paused,completed,lastActivity,polledAt:now,next:enabled&&nextAgent!==null?{agent:nextAgent,at:nextAt||0}:null};
 }
