@@ -294,7 +294,10 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
       const parts=String(result.content).match(/[\s\S]{1,1700}/g)||[];
       for(let i=0;i<parts.length;i++)await reply(`Chữ trong ảnh (${i+1}/${parts.length}):\n`+parts[i]);
       return reply((result.uncertain?'Có chữ chưa rõ, được đánh dấu [?]. ':'')+'Hãy kiểm tra nội dung trước khi dùng. Muốn gửi bài lên Prompt Hunter, nhắn PROMPT ANH. Lệnh này dùng kết quả ảnh gần nhất trong 7 ngày; bot không tự thực thi nội dung ảnh.');
-    }catch(e:any){return reply('Chưa đọc được ảnh: '+(e instanceof HttpError?e.message:'Kết nối xử lý ảnh bị lỗi hoặc quá thời gian. Hãy gửi lại ảnh.'));}
+    }catch(e:any){
+      rc.log('zalo.ocr.failed',{data:{status:e instanceof HttpError?e.status:502,attempts:e instanceof HttpError?e.extra?.ocrAttempts:undefined}});
+      return reply('Chưa đọc được ảnh: '+(e instanceof HttpError?e.message:'Kết nối xử lý ảnh bị lỗi hoặc quá thời gian. Hãy gửi lại ảnh.'));
+    }
   }
   if (!isText) {
     // answered like a person would, never "I only read text"
