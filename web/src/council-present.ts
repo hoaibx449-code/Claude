@@ -74,7 +74,7 @@ export function councilTelegramFormat(value:string){
     }
     output+=line.slice(cursor).replace(/\*\*/g,'');
     const length=output.length-start;
-    if(length&&(index===0||line.startsWith('Phiên: ')||/^\d+\.\s/.test(line)||['PHÂN CÔNG','CÁCH LÀM','NHIỆM VỤ','TÌNH TRẠNG','BƯỚC TIẾP THEO'].includes(line))&&
+    if(length&&(index===0||line.startsWith('Phiên: ')||/^\d+\.\s/.test(line)||['YÊU CẦU','PHÂN CÔNG VÀ QUY TRÌNH','BẠN CẦN LÀM GÌ','PHÂN CÔNG','CÁCH LÀM','NHIỆM VỤ','TÌNH TRẠNG','BƯỚC TIẾP THEO'].includes(line))&&
       !entities.some(e=>e.offset>=start))entities.push({type:'bold',offset:start,length});
     if(index<lines.length-1)output+='\n';
   });

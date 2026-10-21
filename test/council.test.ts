@@ -38,6 +38,40 @@ async function fixture(){
   return {env,user,adminCookie,memberCookie,request,write,save,secret,hook,webhookMessage,enabled,close};
 }
 
+test('council: workflow card edits one message, backs off, recovers deleted cards and respects revoked links',async()=>{
+  clearCache();const f=await fixture(),orig=globalThis.fetch,requests:any[]=[];let mode='ok',sequence=100;
+  try{
+    await f.save(f.enabled());await f.secret('bot:editor','123456:fake');
+    await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
+    globalThis.fetch=async(url,options)=>{
+      assert.ok(String(url).startsWith('https://api.telegram.org/'),'workflow updates do not call an AI');
+      const method=String(url).split('/').at(-1);requests.push({method,...JSON.parse(options?.body as string)});
+      if(mode==='deleted'&&method==='editMessageText')return Response.json({ok:false,error_code:400,description:'Bad Request: message to edit not found'},{status:400});
+      if(mode==='rate')return Response.json({ok:false,error_code:429,parameters:{retry_after:200}},{status:429});
+      if(mode==='unchanged')return Response.json({ok:false,error_code:400,description:'Bad Request: message is not modified'},{status:400});
+      return Response.json({ok:true,result:{message_id:++sequence}});
+    };
+    const {id}=await (await f.write('/jobs',{brief:'Lên kế hoạch nội dung'})).json() as any;
+    const refresh=()=>f.write('/jobs/'+id+'/progress');
+    assert.equal(requests.length,1);assert.equal(requests[0].method,'sendMessage');
+    assert.equal((await refresh()).status,200);assert.equal(requests.length,1);
+    await f.env.DB.prepare("UPDATE council_jobs SET status='pending',step=5 WHERE id=?").bind(id).run();
+    assert.equal((await refresh()).status,200);assert.equal(requests.at(-1).method,'editMessageText');assert.equal(requests.at(-1).message_id,101);
+    assert.match(requests.at(-1).text,/Chờ bạn duyệt/);assert.ok(requests.at(-1).entities.length);assert.equal(requests.at(-1).parse_mode,undefined);
+    mode='unchanged';await f.env.DB.prepare("UPDATE council_jobs SET status='approved' WHERE id=?").bind(id).run();
+    assert.equal((await refresh()).status,200);
+    mode='deleted';await f.env.DB.prepare("UPDATE council_jobs SET status='rejected' WHERE id=?").bind(id).run();
+    assert.equal((await refresh()).status,409);
+    let card=await f.env.DB.prepare('SELECT * FROM council_cards WHERE job_id=?').bind(id).first<any>();assert.equal(card.message_id,0);
+    mode='ok';assert.equal((await refresh()).status,200);assert.equal(requests.filter(r=>r.method==='sendMessage').length,2);
+    mode='rate';await f.env.DB.prepare("UPDATE council_jobs SET status='revision' WHERE id=?").bind(id).run();
+    const before=Date.now();assert.equal((await refresh()).status,409);
+    card=await f.env.DB.prepare('SELECT * FROM council_cards WHERE job_id=?').bind(id).first<any>();assert.ok(card.next_at>=before+200000);
+    mode='ok';await f.env.DB.prepare('DELETE FROM council_links').run();const n=requests.length;
+    assert.equal((await refresh()).status,409);assert.equal(requests.length,n,'unlink blocks sending and editing');
+  }finally{globalThis.fetch=orig;f.close();}
+});
+
 test('council: inherited routing follows Ollama-first settings, migrates legacy defaults and explains skipped choices',()=>{
   const agent=councilDefaults().agents[1];
   const env:any={AI_ORDER:'ollama,openai,gemini',OLLAMA_TEXT_MODEL:'cloud-model',OLLAMA_TEXT_FALLBACK:'backup-cloud',
@@ -124,7 +158,7 @@ test('council: model errors survive pause, bypass a failed Telegram receipt, and
     await f.save(c);await f.secret('bot:editor','123456:secret-never-echo');
     await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
     globalThis.fetch=async(url,options)=>{
-      if(String(url).startsWith('https://api.telegram.org/')){sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});}
+      if(String(url).startsWith('https://api.telegram.org/')){if(String(url).endsWith('/sendMessage'))sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});}
       return new Response('private-provider-body',{status:429});
     };
     const created=await f.write('/jobs',{brief:'Lịch sử thế giới trong 7 ngày'}),{id}=await created.json() as any;
@@ -280,15 +314,15 @@ test('council: persisted Telegram outbox delivers role messages and review butto
     await f.secret('bot:editor','123456:fake-server-secret');
     await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
     globalThis.fetch=async(url,options)=>{
-      if(String(url).startsWith('https://api.telegram.org/')){sent.push(JSON.parse(options?.body as string));return Response.json({ok:true,result:{message_id:1}});}
+      if(String(url).startsWith('https://api.telegram.org/')){sent.push({...JSON.parse(options?.body as string),method:String(url).split('/').at(-1)});return Response.json({ok:true,result:{message_id:1}});}
       return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:'Nội dung đề xuất.'}]}}]});
     };
     const result=await f.write('/jobs',{brief:'Nội dung cho các kênh'}),{id}=await result.json() as any;
     await tickCouncil(f.env);await tickCouncil(f.env);await tickCouncil(f.env);await tickCouncil(f.env);
-    assert.equal(sent.length,5);assert.match(sent[0].text,/ĐÃ NHẬN NHIỆM VỤ/);assert.match(sent[0].text,/PHÂN CÔNG/);
-    assert.match(sent[1].text,/Chiến lược/);assert.match(sent[1].text,/đang làm/);
+    assert.equal(sent.filter(x=>x.method==='sendMessage').length,3);assert.ok(sent.filter(x=>x.method==='editMessageText').length>=4);assert.ok(sent.filter(x=>x.method==='editMessageText').every(x=>x.message_id===1));assert.match(sent[0].text,/ĐÃ NHẬN NHIỆM VỤ/);assert.match(sent[0].text,/PHÂN CÔNG/);
+    assert.match(sent[1].text,/Chiến lược/);assert.match(sent[1].text,/Đang làm/);
     assert.ok(sent.some(x=>x.reply_markup?.inline_keyboard?.flat().some((b:any)=>b.callback_data==='approved:'+id)));
-    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_outbox WHERE sent=1').first<any>()).n,5);
+    assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_outbox WHERE sent=1').first<any>()).n,3);
   }finally{globalThis.fetch=orig;f.close();}
 });
 
@@ -307,7 +341,7 @@ test('council: immediate task receipt, roles and progress use no AI and are rest
     assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_jobs').first<any>()).n,1);
     const detail=await f.request('/api/admin/council/jobs/'+job.id,{headers:{cookie:f.adminCookie}}),d=await detail.json() as any;
     assert.equal(d.progress.completed,0);assert.equal(d.progress.total,5);assert.equal(d.progress.currentAgent,'Chiến lược');
-    await f.hook(f.webhookMessage(2,55,-100,'/tientrinh@Faciup_bot'));assert.match(sent.at(-1).text,/TIẾN ĐỘ/);assert.match(sent.at(-1).text,/PHÂN CÔNG/);
+    const beforeStatus=sent.length;await f.hook(f.webhookMessage(2,55,-100,'/tientrinh@Faciup_bot'));assert.equal(sent.length,beforeStatus,'unchanged progress reuses existing card without another message');
     const before=sent.length;await f.hook(f.webhookMessage(3,66,-100,'/tientrinh '+job.id));await f.hook(f.webhookMessage(4,55,-200,'/tientrinh '+job.id));assert.equal(sent.length,before);
     await f.hook(f.webhookMessage(5,55,-100,'Làm bài về cà phê'));assert.match(sent.at(-1).text,/TRỢ LÝ CHUNG ĐÃ NHẬN TIN/);
   }finally{globalThis.fetch=orig;f.close();}
@@ -326,7 +360,7 @@ test('council: receipt delivery failure preserves accepted job and retries witho
     };
     const result=await f.write('/jobs',{brief:'Nội dung đã nhận'});assert.equal(result.status,201);
     const item=await f.env.DB.prepare('SELECT * FROM council_outbox').first<any>();assert.equal(item.sent,0);assert.equal(item.attempts,1);
-    fail=false;await f.env.DB.prepare('UPDATE council_outbox SET next_at=0').run();
+    fail=false;await f.env.DB.prepare('UPDATE council_outbox SET next_at=0').run();await f.env.DB.prepare('UPDATE council_cards SET next_at=0').run();
     await tickCouncil(f.env);await tickCouncil(f.env);
     assert.equal(sent.filter(x=>x.text.startsWith('ĐÃ NHẬN NHIỆM VỤ')).length,1);
     assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM council_jobs').first<any>()).n,1);
@@ -502,7 +536,7 @@ test('council: multipart delivery remains contiguous and failed parts cannot sil
   clearCache();const f=await fixture(),orig=globalThis.fetch,sent:string[]=[];try{
     await f.save(f.enabled());await f.secret('bot:editor','123456:fake');
     await f.env.DB.prepare("INSERT INTO council_links VALUES('admin','55','-100')").run();
-    globalThis.fetch=async(_url,options)=>{sent.push(JSON.parse(options?.body as string).text);return Response.json({ok:true,result:{message_id:1}});};
+    globalThis.fetch=async(_url,options)=>{if(String(_url).endsWith('/sendMessage'))sent.push(JSON.parse(options?.body as string).text);return Response.json({ok:true,result:{message_id:1}});};
     const {id}=await (await f.write('/jobs',{brief:'Kiểm tra gửi nhiều phần'})).json() as any;
     await f.env.DB.prepare("UPDATE council_jobs SET status='pending' WHERE id=?").bind(id).run();sent.length=0;
     for(const [key,message] of [['0:0','Phần một'],['status:start:0','Tiến độ khác'],['0:1','Phần hai'],['0:2','Phần ba']])

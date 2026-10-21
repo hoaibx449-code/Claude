@@ -148,3 +148,13 @@ Menu bị trôi: bấm Mở menu Telegram trên web để đăng ký danh sách 
 Bản cập nhật chuẩn hóa dấu Markdown khi hiển thị, giữ font văn bản thường, chuyển bảng thành từng mục và chia tin theo đoạn/câu. Tin dài có số phần cùng tên phiên, vai trò; các phần đang gửi được ưu tiên liền nhau. Nếu một phần hết số lần thử, phần tiếp theo chờ thử gửi lại thay vì âm thầm bỏ qua phần mất. Nội dung gốc của lịch sử được giữ; cách hiển thị được chuẩn hóa và đánh dấu các lỗi cơ học phát hiện được. Nhật ký gửi Telegram trong chi tiết phiên cho biết từng tin, nội dung và số lần thử.
 
 Đầu ra mới lẫn hệ chữ bất thường so với yêu cầu tiếng Việt, bản cuối thiếu ngày được yêu cầu hoặc còn chỗ trống chưa điền sẽ bị từ chối trước khi lưu thành kết quả; hệ thống thử mô hình dự phòng trong hạn mức hiện có. Đây chỉ là kiểm tra cấu trúc, không bảo đảm đúng nghĩa, đúng dữ kiện hoặc văn phong tự nhiên. Đồng thuận của các vai trò dùng cùng mô hình không phải kiểm chứng độc lập. Khi làm nội dung chuyên ngành hoặc nội dung dùng thật, cần biên tập và xác minh nguồn. Không tự tăng trần lượt AI và không tự viết lại các phiên đã duyệt.
+# Thẻ quy trình cho từng phiên
+
+Mỗi nhiệm vụ mới có một thẻ Telegram: tên phiên, yêu cầu, thứ tự các vai trò theo số vòng đã cấu hình, bước hiện tại, bước kế tiếp và việc quản trị cần làm. Máy chủ sửa chính tin này khi chuyển bước; việc sửa tin không tạo thông báo đẩy mới. Lỗi mô hình và hết hạn mức vẫn có tin cảnh báo riêng. Các tin nội dung ghi tên phiên, vai trò và số bước.
+
+Trên web, mở **Xem phiên → Quy trình vận hành** để xem các bước có màu, biểu tượng và nhãn trạng thái. Telegram dùng biểu tượng trạng thái và chữ đậm gốc, không có màu chữ tùy chọn và không hiển thị dấu sao định dạng. Tiến độ đếm số lượt AI hoàn tất, không ước lượng phần trăm chất lượng nội dung.
+
+Phiên cũ có thể tạo thẻ bằng nút **Cập nhật thẻ Telegram** trên web hoặc **Tiến độ** trong bot. Bấm lại chỉ cập nhật thẻ hiện có. Nếu thẻ bị xóa hoặc Telegram không cho sửa, hệ thống chờ rồi tạo lại; sau bốn lần gửi lỗi, quản trị kiểm tra kết nối và bấm cập nhật để thử lại. Việc đọc/cập nhật thẻ không gọi mô hình AI. Thu hồi quyền quản trị hoặc hủy ghép nhóm chặn cả gửi mới lẫn sửa thẻ. Đổi bot điều phối sẽ tạo thẻ mới bằng bot mới.
+
+Thẻ phản ánh trạng thái đã lưu trên máy chủ, cập nhật khi xử lý nhiệm vụ và theo lịch kiểm tra từng thẻ. Khi chờ hạn mức, nó nêu thời điểm có thể tự thử lại; tạm dừng vì hết mô hình cần sửa cấu hình rồi bấm Tiếp tục. Duyệt chỉ chốt và lưu bản đề xuất, chưa tự đăng nội dung.
+
