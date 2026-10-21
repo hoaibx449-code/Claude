@@ -3,6 +3,7 @@ import { decrypt, encrypt, isAdmin } from './settings.ts';
 import type { XEnv, Rc } from './worker.ts';
 import type { User } from './auth.ts';
 import { councilWorkflow, councilWorkflowText } from './council-workflow.ts';
+import { councilInvocation } from './council-invocation.ts';
 import { councilQuality } from './council-quality.ts';
 import { councilGenerate, councilRoute, councilRouting, councilFailure, FREE_GEMINI, type CouncilAgent, type CouncilModel } from './council-ai.ts';
 import { councilPlain, councilTitle, titleText, councilState, councilMenu, councilButtons, councilTelegramFormat } from './council-present.ts';
@@ -307,7 +308,7 @@ export async function councilAdmin(req:Request,env:XEnv,sub:string,admin:User,rc
     if(!link)throw new HttpError(409,'Ghép tài khoản quản trị với nhóm Telegram trước.');
     const token=await secret(env,'bot:'+c.agents[0].id);if(!token)throw new HttpError(409,'Chưa có token bot điều phối.');
     await registerCouncilMenu(token);
-    const sent=await telegramCall(token,'sendMessage',{chat_id:link.chat_id,text:'BẢNG ĐIỀU KHIỂN NHÓM AI\n\nBạn có thể hỏi đáp, nhờ tư vấn và giao việc bằng lời bình thường. Trợ lý chung sẽ trả lời hoặc phân công đội ngũ.\n\nNếu bot chưa nhận tin thường: dùng Trả lời vào tin của bot. Menu bị trôi: chọn /menu trong danh sách lệnh Telegram. Có thể ghim tin này để mở lại.',reply_markup:councilMenu()});
+    const sent=await telegramCall(token,'sendMessage',{chat_id:link.chat_id,text:'BẢNG ĐIỀU KHIỂN NHÓM AI\n\nGọi “trợ lý ơi” hoặc “mở menu trợ lý” để hiện các nút. Hỏi trực tiếp bằng “trợ lý, …” hoặc Trả lời (Reply) tin bot. Tin khác trong nhóm được bỏ qua.\n\nNếu bot chưa nhận tin thường: dùng Trả lời vào tin của bot. Menu bị trôi: chọn /menu trong danh sách lệnh Telegram. Có thể ghim tin này để mở lại.',reply_markup:councilMenu()});
     let pinned=false;if(Number.isSafeInteger(sent?.message_id))try{await telegramCall(token,'pinChatMessage',{chat_id:link.chat_id,message_id:sent.message_id,disable_notification:true});pinned=true;}catch{}
     rc.log('admin.council.menu');return json({ok:true,pinned});
   }
@@ -375,12 +376,20 @@ export async function councilWebhook(req:Request,env:XEnv){
     const token=await secret(env,'bot:'+c.agents[0].id);
     if(token)await telegramCall(token,'sendMessage',{chat_id:chat,text:message,...(markup?{reply_markup:markup}:{})}).catch(()=>{});
   };
+  const commandTarget=raw.match(/^\/[a-zA-Z0-9_]+@([a-zA-Z0-9_]+)$/)?.[1];
+  if(!cb&&commandTarget){
+    try{
+      const token=await secret(env,'bot:'+c.agents[0].id);
+      const bot=token?await telegramCall(token,'getMe',{}):null;
+      if(bot?.username?.toLowerCase()!==commandTarget.toLowerCase())return json({ok:true});
+    }catch{return json({ok:true});}
+  }
   if(!cb&&['/link','/start','/help'].includes(command)){
     const seen=await env.DB.prepare('INSERT OR IGNORE INTO council_updates(id,created_at) VALUES(?,?)').bind(u.update_id,Date.now()).run();
     if(!seen.meta.changes)return json({ok:true});
     if(command!=='/link'){
       const ownLink=await env.DB.prepare('SELECT user_id FROM council_links WHERE tg_user=? AND chat_id=?').bind(tg,chat).first<any>();
-      if(ownLink&&await adminExists(env,ownLink.user_id))await reply('NHÓM AI FACIUP\n\nBạn có thể hỏi đáp hoặc giao việc bằng lời bình thường. Trợ lý chung sẽ trả lời, hỏi thêm hoặc phân công đội ngũ. Nếu bot chưa đọc được tin thường, dùng Trả lời (Reply) vào tin của bot.\n\nDùng các nút bên dưới để xem tiến độ hoặc nội dung đã duyệt.',councilMenu());
+      if(ownLink&&await adminExists(env,ownLink.user_id))await reply('NHÓM AI FACIUP\n\nGọi “trợ lý ơi” để mở nút thao tác. Bạn có thể hỏi trực tiếp bằng “trợ lý, …” hoặc Trả lời (Reply) tin bot. Trợ lý chung sẽ trả lời, hỏi thêm hoặc phân công đội ngũ. Nếu bot chưa đọc được tin thường, dùng Trả lời (Reply) vào tin của bot.\n\nDùng các nút bên dưới để xem tiến độ hoặc nội dung đã duyệt.',councilMenu());
       else await reply('Đây là nhóm trợ lý riêng của quản trị Faciup. Ghép Telegram tại Faciup → Quản trị → Nhóm AI nội dung → Tạo mã ghép quản trị. Sau khi ghép, bạn thao tác bằng các nút Giao nhiệm vụ, Tiến độ, Phiên gần đây. Không gửi token bot trong Telegram.');
       return json({ok:true});
     }
@@ -413,6 +422,11 @@ export async function councilWebhook(req:Request,env:XEnv){
   if(!seen.meta.changes)return json({ok:true});
   if(!cb)await env.DB.prepare('INSERT INTO council_inbound(user_id,chat_id,received_at) VALUES(?,?,?) ON CONFLICT(user_id,chat_id) DO UPDATE SET received_at=excluded.received_at')
     .bind(link.user_id,chat,Date.now()).run();
+  const invocation=councilInvocation(content);
+  // A reply to another integration must not consume this assistant's pending dialog.
+  const replyFrom=m.reply_to_message?.from;
+  const ownReply=!cb&&replyFrom?.is_bot===true&&Number.isSafeInteger(replyFrom.id)&&
+    (await Promise.all(c.agents.map(a=>secret(env,'bot:'+a.id)))).some(token=>token&&token.split(':')[0]===String(replyFrom.id));
   const findJob=async(id='')=>id?env.DB.prepare('SELECT * FROM council_jobs WHERE id=? AND chat_id=?').bind(id,chat).first<any>():
     env.DB.prepare('SELECT * FROM council_jobs WHERE chat_id=? ORDER BY created_at DESC LIMIT 1').bind(chat).first<any>();
   const showStatus=async(id='')=>{
@@ -474,10 +488,10 @@ export async function councilWebhook(req:Request,env:XEnv){
         const job=await env.DB.prepare('SELECT id FROM council_jobs WHERE id=? AND chat_id=?').bind(decision[2],chat).first<any>();
         if(job)await decide(env,job.id,decision[1],link.user_id);
       }
-    }else if(content.trim().toLowerCase()==='menu'||command==='/menu'){
+    }else if(invocation.kind==='menu'||command==='/menu'){
       const token=await secret(env,'bot:'+c.agents[0].id);if(token)await registerCouncilMenu(token).catch(()=>{});
       await env.DB.prepare('DELETE FROM council_dialogs WHERE user_id=? AND chat_id=?').bind(link.user_id,chat).run();
-      await reply('NHÓM AI FACIUP\n\nChọn một việc bên dưới. Bạn không cần nhớ cú pháp.',councilMenu());
+      await reply('NHÓM AI FACIUP\n\nChọn một việc bên dưới. Gọi lại bằng “trợ lý ơi” hoặc “mở menu trợ lý”.\n\nSau khi chọn, dùng Trả lời (Reply) vào tin bot để gửi yêu cầu. Tin báo cáo và trò chuyện khác trong nhóm sẽ được bỏ qua.',councilMenu());
     }else if(command==='/troly'){
       if(argument)await createJob(env,link.user_id,argument,chat,'telegram:'+u.update_id,null,'',true);
       else await ask('assistant');
@@ -492,15 +506,17 @@ export async function councilWebhook(req:Request,env:XEnv){
       if(job&&feedback){
         await reviseJob(env,link.user_id,job,feedback,'telegram:'+u.update_id);
       }else await reply('Bấm Gửi yêu cầu sửa hoặc Làm phiên bản tiếp trên phiên bạn muốn chỉnh sửa, rồi viết yêu cầu.',councilMenu());
-    }else if(content.trim()){
-      const dialog=await env.DB.prepare('DELETE FROM council_dialogs WHERE user_id=? AND chat_id=? AND expires>? RETURNING *').bind(link.user_id,chat,Date.now()).first<any>();
-      if(dialog?.mode==='brief')await createJob(env,link.user_id,content.trim(),chat,'telegram:'+u.update_id);
+    }else if(content.trim()&&!content.trim().startsWith('/')&&(ownReply||invocation.kind==='ask')){
+      const dialog=ownReply?await env.DB.prepare('DELETE FROM council_dialogs WHERE user_id=? AND chat_id=? AND expires>? RETURNING *').bind(link.user_id,chat,Date.now()).first<any>():null;
+      const requestText=invocation.kind==='ask'?invocation.text:content.trim();
+      /* dialog read above intentionally occurs only for a reply to our own bot. */
+      if(dialog?.mode==='brief')await createJob(env,link.user_id,requestText,chat,'telegram:'+u.update_id);
       else if(dialog&&dialog.mode!=='assistant'){
         const job=await findJob(dialog.job_id);if(!job)throw new HttpError(404,'Không tìm thấy phiên trong nhóm này.');
-        if(dialog.mode==='rename')await reply('ĐÃ ĐỔI TÊN PHIÊN\n'+await renameJob(env,job,content.trim()),councilButtons(job.id,job.status));
-        else if(dialog.mode==='revise')await reviseJob(env,link.user_id,job,content.trim(),'telegram:'+u.update_id);
-      }else await createJob(env,link.user_id,content.trim(),chat,'telegram:'+u.update_id,null,'',true);
-    }else if(!cb)await reply('Tôi đã nhận tin nhưng hiện chỉ đọc được nội dung chữ. Hãy gửi câu hỏi bằng văn bản hoặc mô tả tệp bạn cần hỗ trợ.',councilMenu());
+        if(dialog.mode==='rename')await reply('ĐÃ ĐỔI TÊN PHIÊN\n'+await renameJob(env,job,requestText),councilButtons(job.id,job.status));
+        else if(dialog.mode==='revise')await reviseJob(env,link.user_id,job,requestText,'telegram:'+u.update_id);
+      }else await createJob(env,link.user_id,requestText,chat,'telegram:'+u.update_id,null,'',true);
+    }else if(!cb&&ownReply&&!content.trim())await reply('Tôi đã nhận tin nhưng hiện chỉ đọc được nội dung chữ. Hãy gửi câu hỏi bằng văn bản hoặc mô tả tệp bạn cần hỗ trợ.',councilMenu());
   }catch(e){
     // An authenticated admin gets a bounded, safe error. Never store tokens or raw provider bodies.
     await reply(e instanceof HttpError?e.message:'Chưa tiếp nhận được nhiệm vụ. Thử lại sau.',councilMenu());
