@@ -4,7 +4,7 @@ import type {Env} from './util.ts';
 /** Public page addresses are shared by metadata and the sitemap. */
 export const PUBLIC_PAGES: Record<string, [string,string]> = {
  '/':['Trang chủ','Tạo video, tìm prompt và khám phá giải pháp AI phục vụ công việc.'],
- '/faciup-live':['Faciup Live','Khám phá bản đồ kết nối các công cụ AI, prompt, video và giải pháp trong hệ sinh thái FACIUP.'],
+ '/faciup-live':['Faciup Live','Theo dõi đội tác nhân AI xử lý nhiệm vụ, chuyển lượt và chờ duyệt trong hệ thống FACIUP.'],
  '/prompt-hunter':['Prompt Hunter','Khám phá và chia sẻ prompt AI đã được kiểm duyệt trong cộng đồng.'],
  '/cong-dong':['Cộng đồng','Khám phá các video được cộng đồng chia sẻ công khai.'],
  '/mau':['Gợi ý sáng tạo','Khám phá hướng sáng tạo để mô tả video bạn mong muốn.'],

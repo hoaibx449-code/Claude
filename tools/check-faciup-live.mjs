@@ -1,44 +1,29 @@
-import {chromium} from 'playwright';
-import {readFileSync,existsSync,mkdirSync} from 'node:fs';
-import {resolve,extname} from 'node:path';
-import assert from 'node:assert/strict';
-import {defaultConfig,publicConfig} from '../web/src/settings.ts';
-import {PUBLIC_PAGES} from '../web/src/page-routes.ts';
-const cfg=defaultConfig({});const root=resolve('web/public');
-const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});
-try{
- let failLive=false;
- const context=await browser.newContext({serviceWorkers:'block'});
- await context.route('**/*',async route=>{
-  const u=new URL(route.request().url());if(u.origin!=='https://fixture.test')return route.abort();
+import {chromium} from 'playwright';import {readFileSync,existsSync,mkdirSync} from 'node:fs';import {resolve,extname} from 'node:path';import assert from 'node:assert/strict';
+import {defaultConfig,publicConfig} from '../web/src/settings.ts';import {PUBLIC_PAGES} from '../web/src/page-routes.ts';import {councilDefaults} from '../web/src/council.ts';import {councilWorkflow} from '../web/src/council-workflow.ts';
+const root=resolve('web/public'),cfg=defaultConfig({}),c=councilDefaults();c.enabled=true;const labels=c.agents.map(a=>a.name),jid='a'.repeat(24);
+const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});mkdirSync('outputs/faciup-live-runtime',{recursive:true});
+try{for(const admin of [false,true])for(const width of admin?[390,1440]:[360,390,800,1440]){
+ const context=await browser.newContext({viewport:{width,height:1000},serviceWorkers:'block'});let failed=false,idle=false,created=null,privateReads=0;
+ await context.route('**/*',async route=>{const u=new URL(route.request().url());if(u.origin!=='https://fixture.test')return route.abort();
   if(u.pathname==='/api/auth/config')return route.fulfill({json:{ui:publicConfig(cfg)}});
-  if(u.pathname==='/api/me')return route.fulfill({status:401,json:{error:'login'}});
-  if(u.pathname==='/api/faciup-live'&&failLive)return route.fulfill({status:503,json:{error:'test failure'}});
-  if(u.pathname==='/api/faciup-live')return route.fulfill({json:{updatedAt:Date.now(),counts:{prompts:57,solutions:3},features:{assistant:true,zalo:false,community:true}}});
-  if(u.pathname==='/api/legal')return route.fulfill({json:{terms:'Điều khoản thử',privacy:'Bảo mật thử',refund:'Hoàn tiền thử'}});
-  if(u.pathname.startsWith('/api/'))return route.fulfill({json:{items:[],results:[],total:0,categories:[],videos:[]}});
-  const p=resolve(root,'.'+u.pathname);const file=existsSync(p)&&extname(p)?p:resolve(root,'index.html');
-  let body=readFileSync(file);const type={'.js':'application/javascript','.css':'text/css','.svg':'image/svg+xml','.html':'text/html'}[extname(file)]||'application/octet-stream';
-  if(extname(file)==='.html')body=Buffer.from(body.toString().replace('</head>','<script type="application/json" id="route-metadata">'+JSON.stringify({pages:PUBLIC_PAGES,brand:'Nét Vẽ Studio'})+'</script></head>'));
-  return route.fulfill({contentType:type,body});
+  if(u.pathname==='/api/me')return admin?route.fulfill({json:{user:{id:'admin',email:'fixture@example.com',name:'Admin'},admin:true,ui:publicConfig(cfg),limits:{},used:{}}}):route.fulfill({status:401,json:{error:'login'}});
+  if(u.pathname==='/api/faciup-live')return failed?route.fulfill({status:503,json:{error:'fixture'}}):route.fulfill({json:{updatedAt:Date.now(),counts:{prompts:57,solutions:0},features:{},runtime:{enabled:true,running:idle?0:1,queued:1,review:0,paused:0,completed:3,agents:c.agents.map((a,i)=>({id:'agent-'+i,name:a.name,role:a.prompt,state:!idle&&i===3?'running':'idle',completed:i===3?3:0}))}}});
+  if(u.pathname==='/api/admin/council'){privateReads++;return route.fulfill({json:{config:c,routing:c.agents.map(a=>({agent:a.id,plan:[{provider:'ollama',model:'fixture-model'}]})),jobs:created?[{id:jid,title:'Nhiệm vụ thử',updated_at:1,status:'queued',progress:{phase:'Đang xếp hàng'}}]:[]}});}
+  if(u.pathname==='/api/admin/council/jobs'&&route.request().method()==='POST'){created=route.request().postDataJSON();return route.fulfill({json:{id:jid}});}
+  if(u.pathname==='/api/admin/council/jobs/'+jid){const job={id:jid,title:'Nhiệm vụ thử',brief:created?.brief||'Brief',snapshot:c,status:'running',step:1,lease_until:Date.now()+60000,updated_at:1};return route.fulfill({json:{job,workflow:councilWorkflow(job),turns:[{agent_id:'writer',provider:'ollama',model:'fixture-model',displayText:'<img src=x onerror=alert(1)> Kết quả an toàn'}]}});}
+  if(u.pathname.startsWith('/api/'))return route.fulfill({json:{items:[],videos:[]}});
+  const p=resolve(root,'.'+u.pathname),file=existsSync(p)&&extname(p)?p:resolve(root,'index.html');let body=readFileSync(file);const type={'.js':'application/javascript','.css':'text/css','.svg':'image/svg+xml','.html':'text/html'}[extname(file)]||'application/octet-stream';
+  if(extname(file)==='.html')body=Buffer.from(body.toString().replace('</head>','<script type="application/json" id="route-metadata">'+JSON.stringify({pages:PUBLIC_PAGES,brand:'FACIUP'})+'</script></head>'));return route.fulfill({contentType:type,body});
  });
-
- mkdirSync('outputs/faciup-live',{recursive:true});
- for(const width of [360,390,800,1440]){
-  const page=await context.newPage();await page.setViewportSize({width,height:1000});const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto('https://fixture.test/faciup-live');await page.locator('.fl-node').first().waitFor();await page.getByText('57 prompt',{exact:true}).waitFor();const consent=page.getByRole('button',{name:'Đồng ý',exact:true});if(await consent.isVisible())await consent.click();
-  assert.equal(await page.locator('.fl-node').count(),6);
-  await page.getByRole('button',{name:'Prompt Hunter',exact:true}).click();assert.equal(await page.locator('.fl-detail h2').textContent(),'Prompt Hunter');
-  await page.getByRole('button',{name:'Kết nối Zalo',exact:true}).click();assert.equal(await page.locator('.fl-detail .fl-action').count(),0);assert.ok((await page.locator('.fl-detail').textContent()).includes('chưa được bật'));
-  await page.getByRole('button',{name:'Trợ lý AI',exact:true}).click();
-  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'no horizontal overflow '+width);
-  const bounds=await page.locator('.fl-node').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};}));
-  for(let i=0;i<bounds.length;i++)for(let j=i+1;j<bounds.length;j++){const a=bounds[i],b=bounds[j];assert.ok(a.x+a.w<=b.x||b.x+b.w<=a.x||a.y+a.h<=b.y||b.y+b.h<=a.y,'nodes must not overlap '+width);}
-  await page.mouse.move(0,0);await page.waitForTimeout(650);
-  await page.screenshot({path:'outputs/faciup-live/'+width+'.png',fullPage:true});
-  failLive=true;await page.getByRole('button',{name:'Làm mới',exact:true}).click();await page.locator('.fl-stale').waitFor();failLive=false;await page.getByRole('button',{name:'Làm mới',exact:true}).click();await page.locator('.fl-stale').waitFor({state:'detached'});
-  await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.fl-scanner').evaluate(n=>getComputedStyle(n).animationName),'none');
-  await page.evaluate(()=>navigate('/bao-mat'));await page.locator('.fl-page').waitFor({state:'detached'});await page.goBack();await page.locator('.fl-page').waitFor();
-  assert.deepEqual(errors,[]);console.log('PASS Faciup Live '+width+'px: nodes, data, disabled feature, routes, reduced motion, overflow');await page.close();
- }
-}finally{await browser.close();}
+ const page=await context.newPage(),errors=[];page.setDefaultTimeout(8000);page.on('pageerror',e=>{errors.push(e.message);console.log('PAGE ERROR',e.message);});await page.goto('https://fixture.test/faciup-live');await page.locator('.fl-agent').first().waitFor();
+ const consent=page.getByRole('button',{name:'Đồng ý',exact:true});if(await consent.isVisible())await consent.click();
+ assert.equal(await page.locator('.fl-agent').count(),5);assert.equal(await page.locator('.fl-flow').count(),1);await page.getByRole('button',{name:labels[3],exact:true}).click({force:true});await page.locator('.fl-detail').getByText('Đang xử lý',{exact:true}).waitFor();
+ assert.notEqual(await page.locator('.fl-agent[data-state=idle]').first().evaluate(n=>getComputedStyle(n).animationName),'none');
+ if(admin){await page.getByLabel('Nhiệm vụ giao cho nhóm AI').fill('Nhiệm vụ mới <script> dữ liệu');await page.getByRole('button',{name:'Giao việc cho nhóm AI',exact:true}).click();await page.locator('.fl-workflow-steps').waitFor();assert.equal(created.brief,'Nhiệm vụ mới <script> dữ liệu');assert.equal(await page.locator('.fl-private-workflow img').count(),0);await page.getByRole('button',{name:labels[3],exact:true}).click({force:true});await page.locator('.fl-model-plan').getByText('ollama / fixture-model',{exact:true}).waitFor();}else{assert.equal(privateReads,0);assert.equal(await page.locator('.fl-task-form').count(),0);}
+ assert.doesNotMatch(await page.locator('.fl-detail').innerText(),/\bnull\b/);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.mouse.move(0,0);await page.screenshot({path:`outputs/faciup-live-runtime/${admin?'admin':'public'}-${width}.png`,fullPage:true});
+ idle=true;await page.getByRole('button',{name:'Làm mới',exact:true}).click();await page.locator('.fl-agent[data-state=running]').waitFor({state:'detached'});assert.equal(await page.locator('.fl-flow').count(),0);
+ failed=true;await page.getByRole('button',{name:'Làm mới',exact:true}).click();await page.locator('.fl-stale').waitFor();assert.equal(await page.locator('.fl-transfer-dot.on').count(),0);failed=false;await page.getByRole('button',{name:'Làm mới',exact:true}).click();await page.locator('.fl-stale').waitFor({state:'detached'});
+ await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.fl-agent').first().evaluate(n=>getComputedStyle(n).animationName),'none');
+ await page.evaluate(()=>navigate('/bao-mat'));await page.locator('.fl-page').waitFor({state:'detached'});assert.deepEqual(errors,[]);console.log('PASS '+(admin?'admin':'public')+' '+width+'px: runtime motion, queue, privacy, assignment, errors, routes');await context.close();
+}}finally{await browser.close();}
