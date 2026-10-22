@@ -79,12 +79,12 @@ export async function liveRuntime(env:Env,now=Date.now(),config?:Config){
  // the Zalo assistant answers around the clock: shown with its real reply count and reply time
  if(config?.zalo?.enabled&&config.visibility?.['feature:zalo']!=='hidden')try{
   const [z,busy,zh]=await Promise.all([
-   env.DB.prepare(`SELECT (SELECT COUNT(*) FROM zalo_outbox WHERE status='sent' AND created_at>=?) AS n,(SELECT MAX(created_at) FROM zalo_outbox WHERE status='sent') AS last,
-    (SELECT AVG(d) FROM (SELECT MIN(o.created_at)-m.received_at AS d FROM zalo_outbox o JOIN zalo_messages m ON m.id=o.message_id WHERE m.received_at>=? GROUP BY m.id) WHERE d>=0 AND d<600000) AS avg`).bind(start,now-DAY).first<any>(),
+   env.DB.prepare(`SELECT (SELECT COUNT(*) FROM zalo_messages WHERE received_at>=?) AS received,(SELECT COUNT(*) FROM zalo_outbox WHERE status='sent' AND message_id IS NOT NULL AND created_at>=?) AS replies,(SELECT COUNT(*) FROM zalo_outbox WHERE status='sent' AND created_at>=?) AS n,(SELECT MAX(created_at) FROM zalo_outbox WHERE status='sent') AS last,
+    (SELECT AVG(d) FROM (SELECT MIN(o.created_at)-m.received_at AS d FROM zalo_outbox o JOIN zalo_messages m ON m.id=o.message_id WHERE m.received_at>=? GROUP BY m.id) WHERE d>=0 AND d<600000) AS avg`).bind(start,start,start,now-DAY).first<any>(),
    env.DB.prepare("SELECT MIN(received_at) AS since FROM zalo_messages WHERE status IN ('received','processing') AND received_at>?").bind(now-120000).first<any>(),
    env.DB.prepare(`SELECT CAST(((received_at+${VN})%${DAY})/3600000 AS INTEGER) AS hour,COUNT(*) AS n FROM zalo_messages WHERE received_at>=? GROUP BY hour`).bind(start).all<any>(),
   ]);
-  agents.push({id:'zalo',name:'Zalo Bot',icon:'zalo',color:'#0068ff',state:busy?.since?'running':'live24',completed:Number(z?.n)||0,last:Number(z?.last)||0,
+  agents.push({id:'zalo',name:'Zalo Bot',icon:'zalo',color:'#0068ff',state:busy?.since?'running':'live24',completed:Number(z?.n)||0,last:Number(z?.last)||0,received:Number(z?.received)||0,replies:Number(z?.replies)||0,
    hours:zh.results.map((r:any)=>[Number(r.hour),Number(r.n)]),avg:Math.round((Number(z?.avg)||0)/1000),since:Number(busy?.since)||0,live:true});
  }catch{/* Zalo tables not set up yet */}
  const top=agents.filter((a:any)=>a.completed).map((a:any)=>({name:a.name,color:a.color,n:a.completed})).sort((a:any,b:any)=>b.n-a.n).slice(0,4);

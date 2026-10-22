@@ -2160,7 +2160,7 @@ document.addEventListener('DOMContentLoaded', () => boot().catch(fatal));
 async function showPromptHunter(){viewed('prompt-hunter');const {showHunter}=await import('/prompt-hunter.js');return showHunter({h,api,show,me,toast,fail,detailDialog,openLogin,footer});}
 
 async function showFaciupLive(){
- const routeAtStart=currentRoute(),ticket=solutionNavigation;const {showLive}=await import('/faciup-live.js?v=80');
+ const routeAtStart=currentRoute(),ticket=solutionNavigation;const {showLive}=await import('/faciup-live.js?v=81');
  if(currentRoute()!==routeAtStart||ticket!==solutionNavigation)return;
- stopLive=showLive({h,show,api,footer,admin:!!me?.admin});
+ stopLive=showLive({h,show,api,footer,openLogin});
 }
