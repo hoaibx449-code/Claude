@@ -20,7 +20,7 @@ const BADGE={
  coordinator:'<circle r="2.2" fill="#fff"/><circle r="4.6" fill="none" stroke="#fff" stroke-width="1.4"/>',
 };
 // server state → how a robot looks
-const LOOK={running:'work',live24:'live24',queued:'wait',retry:'wait',review:'review',paused:'off',disabled:'off',idle:'idle',unknown:'off'};
+const LOOK={running:'work',live24:'live24',queued:'wait',retry:'wait',review:'review',paused:'paused',disabled:'off',idle:'idle',unknown:'off'};
 // chairs round the table, in table half-widths/heights
 const SEATS=[[0,-1.5],[1.3,-.8],[1.3,.85],[0,1.6],[-1.3,.85],[-1.3,-.8]];
 const pad=n=>String(n).padStart(2,'0');
@@ -117,8 +117,8 @@ export function showLive({h,show,api,footer}){
   const L=path.getTotalLength();let k=0;const go=()=>{if(stopped)return;k+=1/85;const q=path.getPointAtLength(Math.min(1,k)*L);doc.style.transform=`translate(${q.x-15}px,${q.y-12}px)`;if(k<1)requestAnimationFrame(go);else{doc.remove();setTimeout(()=>path.remove(),300);}};go();}
  const runFor=s=>s.since?(Date.now()+clockSkew-s.since)/1000:0;
  const nameOf=i=>i===0?'FACIUP':data.runtime.agents[i]?.name||'Agent';
- function tagText(s,look){return look==='live24'?`Trực 24/7 · ~${fmt(s.avg)}`:look==='work'?`Đang xử lý ${fmt(runFor(s))}`:look==='wait'?`Chờ lượt${s.avg?' · ~'+fmt(s.avg):''}`:look==='review'?'Chờ duyệt':look==='off'?(stale?'Mất kết nối':'Nhóm đang tắt'):s.avg?`TB ${fmt(s.avg)}/lượt`:'Sẵn sàng';}
- function pillText(s,look){return look==='live24'?'24/7':look==='work'?fmt(runFor(s)):look==='review'?'chờ duyệt':look==='off'?'':look==='wait'?'chờ lượt':'';}
+ function tagText(s,look){return look==='paused'?'Tạm dừng':look==='live24'?`Trực 24/7 · ~${fmt(s.avg)}`:look==='work'?`Đang xử lý ${fmt(runFor(s))}`:look==='wait'?`Chờ lượt${s.avg?' · ~'+fmt(s.avg):''}`:look==='review'?'Chờ duyệt':look==='off'?(stale?'Mất kết nối':'Nhóm đang tắt'):s.avg?`TB ${fmt(s.avg)}/lượt`:'Sẵn sàng';}
+ function pillText(s,look){return look==='paused'?'Ⅱ':look==='live24'?'24/7':look==='work'?fmt(runFor(s)):look==='review'?'chờ duyệt':look==='off'?'':look==='wait'?'chờ lượt':'';}
  function paint(){const r=data.runtime,lead=r.agents[0],meeting=r.sessions[0]||null;
   // FACIUP runs the whole team all the time: always lit, busier glow while it is putting a result together
   const hl=meeting?.current===0&&meeting.state==='running'||LOOK[lead?.state]==='work'?'work':'on';hub.dataset.state=hl;
