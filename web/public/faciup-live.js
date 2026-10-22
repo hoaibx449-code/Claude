@@ -40,9 +40,9 @@ function robot(c,badge,id){const lt=tint(c,.45);return `<svg viewBox="0 0 58 70"
 const DOC='<svg viewBox="0 0 30 24" aria-hidden="true"><path d="M1 3h10l3 3h15v17H1z" fill="#f59e0b"/><rect x="1" y="8" width="28" height="15" rx="2.5" fill="#fcd34d"/><path d="M7 15h16" stroke="#b45309" stroke-width="2"/></svg>';
 const ZALO='<svg viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="10" fill="#0878ff"/><path d="M7 8h18v14H14l-6 4 1-5H7z" fill="#fff"/><text x="16" y="18" text-anchor="middle" fill="#0878ff" font-size="7.5" font-weight="800" font-family="Arial,sans-serif">Zalo</text></svg>';
 // Seated, three-quarter pose. Desk foreground is composited above the torso.
-function seatedRobot(c,id){return `<svg viewBox="0 0 74 86" aria-hidden="true"><defs><linearGradient id="seat${id}" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#d9d4ed"/></linearGradient><linearGradient id="coat${id}"><stop stop-color="${tint(c,.5)}"/><stop offset="1" stop-color="${c}"/></linearGradient></defs><ellipse cx="35" cy="79" rx="19" ry="5" fill="#35254c" opacity=".12"/><path d="M25 66l-2 13h9l5-12M42 66l1 13h9l-2-14" fill="${c}"/><rect x="20" y="42" width="36" height="29" rx="13" fill="url(#coat${id})"/><g class="fl-seated-head"><path d="M33 10V4" stroke="${c}" stroke-width="2.8"/><circle cx="33" cy="4" r="3" fill="${c}"/><path d="M14 21q0-12 14-13l20 3q13 2 13 16v11q-1 12-15 12l-20-3Q13 45 13 33z" fill="url(#seat${id})" stroke="#c6badd"/><ellipse cx="16" cy="29" rx="6" ry="9" fill="${c}"/><ellipse cx="17" cy="28" rx="3" ry="5" fill="#f3efff"/><path d="M30 18l17 1q10 1 10 12 0 11-10 12l-16-2q-9-1-9-12 0-11 8-11" fill="#211d43"/><ellipse class="fl-eye" cx="36" cy="29" rx="3" ry="4" fill="#7ee9ff"/><ellipse class="fl-eye" cx="48" cy="30" rx="2.7" ry="3.8" fill="#7ee9ff"/><path d="M37 36q5 3 9 0" fill="none" stroke="#7ee9ff" stroke-width="1.5"/></g><path d="M28 50q-8 4-5 12l15 6 4-7-10-5M49 51q7 1 10 8l7 3-3 7-15-6" fill="url(#coat${id})"/><g class="fl-typing"><ellipse cx="40" cy="65" rx="8" ry="4" fill="#faf8ff" stroke="#d8d0e7"/><path d="M37 64l3 4m1-5 3 4" stroke="#a79aba"/><ellipse cx="64" cy="65" rx="7" ry="4" fill="#faf8ff" stroke="#d8d0e7"/></g></svg>`;}
 
-export function showLive({h,show,api,footer,openLogin}){
+
+export function showLive({h,show,api,footer,openLogin,zaloLink}){
  let stopped=false,busy=false,data=null,stale=false,raf=0,last=performance.now(),clockSkew=0;
  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
  let view='office';try{if(localStorage.getItem('faciup-live-view')==='clock')view='clock';}catch{}
@@ -69,46 +69,45 @@ export function showLive({h,show,api,footer,openLogin}){
  const deskLayers=desks.map((points,i)=>{const img=h('img',{class:'fl-desk-front',src:room.src,alt:'','aria-hidden':'true'});img.style.zIndex=[11,9,12,14,14,16][i];img.style.clipPath='polygon('+points.map(([x,y])=>`${x/1672*100}% ${y/941*100}%`).join(',')+')';return img;});
  const officeLinks=svg('svg',{class:'fl-office-links',viewBox:'0 0 1000 562.5',preserveAspectRatio:'none','aria-hidden':'true'});
  const leadBot=h('div',{class:'fl-office-lead',role:'img','aria-label':'FACIUP · Điều phối'});
- leadBot.innerHTML='<div class="fl-name"><b>FACIUP</b></div><div class="fl-body">'+robot('#f97316','coordinator','lead')+'</div><div class="fl-seated">'+seatedRobot('#f97316','lead')+'</div>';
- const leadHands=h('div',{class:'fl-seat-hands fl-lead-hands'});leadHands.innerHTML=seatedRobot('#f97316','leadHands');
- leadBot.style.setProperty('--c','#f97316');stage.prepend(room,officeLinks);stage.append(leadBot,...deskLayers,leadHands);
+ leadBot.innerHTML='<div class="fl-name"><b>FACIUP</b></div><div class="fl-body">'+robot('#f97316','coordinator','lead')+'</div><div class="fl-seated">'+''+'</div>';
+ const leadHands=h('div',{class:'fl-seat-hands fl-lead-hands'});leadHands.hidden=true;
+ leadBot.style.setProperty('--c','#f97316');leadBot.style.setProperty('--sprite-x','100%');leadBot.style.setProperty('--sprite-y','100%');stage.prepend(room,officeLinks);stage.append(leadBot,...deskLayers,leadHands);
  const trail=svg('svg',{class:'fl-trail','aria-hidden':'true'});stage.append(trail);
  const log=h('ul',{class:'fl-log'});
  const side=h('aside',{class:'fl-side'},h('div',{class:'fl-panel'},h('h2',{},'Bàn giao gần đây'),log));
- const screen=h('button',{class:'fl-screen',type:'button','aria-label':'Phóng to hội thoại trên màn hình',onclick:()=>openChat()});stage.append(screen);
+ const screen=h('button',{class:'fl-screen',type:'button','aria-label':'Phóng to bảng vận hành',onclick:()=>openDashboard()});stage.append(screen);
  const dialog=h('dialog',{class:'fl-dialog'}),dialogBody=h('div',{});dialog.append(h('button',{type:'button',class:'fl-close',onclick:()=>dialog.close(),'aria-label':'Đóng'},'×'),dialogBody);dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});
  const chatTitle=h('h2',{},'Trò chuyện'),chatNote=h('small',{},'Đang kết nối…'),chatStats=h('small',{class:'fl-chat-stats'}),chatMessages=h('div',{class:'fl-messages',role:'log','aria-live':'polite'}),chatStatus=h('p',{class:'fl-chat-status'});
- const webTab=h('button',{type:'button',onclick:()=>{chatMode='web';renderChat();}},'Chat trên web'),zaloTab=h('button',{type:'button',onclick:()=>{chatMode='zalo';renderChat();}},'Zalo của tôi');
- const input=h('input',{placeholder:'Bạn cần hỗ trợ gì?',maxlength:1000,'aria-label':'Tin nhắn của bạn'}),send=h('button',{type:'submit','aria-label':'Gửi tin nhắn'},'Gửi');
- const form=h('form',{class:'fl-chat-form',onsubmit:e=>{e.preventDefault();sendChat();}},input,send);
- const chat=h('section',{class:'fl-chat'},chatTitle,chatStats,chatNote,h('div',{class:'fl-chat-tabs'},webTab,zaloTab),chatMessages,chatStatus,form);
+ const chat=h('section',{class:'fl-chat'},chatTitle,chatStats,chatNote,chatMessages,chatStatus);
  const chatHost=h('div',{class:'fl-chat-host',hidden:true},chat);
- let personal=null,chatMode='web',history=[],sending=false,mineBusy=false,identity=0,demoStep=0;
+ const zaloBubble=h('button',{class:'fl-zalo-bubble',type:'button','aria-label':'Mở hội thoại Zalo',onclick:()=>openChat()});stage.append(zaloBubble);
+ if(zaloLink&&/^https:\/\//.test(zaloLink))chat.append(h('a',{class:'fl-zalo-open',href:zaloLink,target:'_blank',rel:'noopener'},'Nhắn qua Zalo ↗'));
+ let personal=null,mineBusy=false,demoStep=0;
  const intro=['Bạn cần hỗ trợ gì? Nhắn mình nhé.','Bạn có thể quan sát hoạt động của đội AI trên màn hình.','Đăng nhập để bắt đầu hội thoại riêng của bạn.'];
  function renderChat(){
-  chatNote.textContent=personal?(chatMode==='web'?'Chat riêng · Phiên hiện tại':'Zalo riêng · 30 tin gần nhất'):'Hội thoại minh họa · Chưa đăng nhập';
-  chat.querySelector('.fl-chat-tabs').hidden=!personal;form.hidden=!personal||chatMode!=='web';zaloTab.setAttribute('aria-pressed',String(chatMode==='zalo'));webTab.setAttribute('aria-pressed',String(chatMode==='web'));
-  const items=!personal?intro.slice(0,demoStep+1).map(text=>({role:'bot',text})):chatMode==='web'?history:personal.messages;
+  chatNote.textContent=personal?'Zalo riêng · 30 tin gần nhất':'Hội thoại minh họa · Chưa đăng nhập';
+  const items=!personal?intro.slice(0,demoStep+1).map(text=>({role:'bot',text})):personal.messages;
   const oldScroll=chatMessages.scrollTop,scroll=chatMessages.scrollHeight-oldScroll-chatMessages.clientHeight<40;
   chatMessages.replaceChildren(...items.map(m=>{const e=h('div',{class:'fl-message '+(m.role==='user'?'me':'bot')},h('span',{},m.text));if(m.role!=='user'){const icon=h('i',{class:'fl-zalo-avatar'});icon.innerHTML=ZALO;e.prepend(icon);}return e;}));
-  if(!items.length)chatMessages.append(h('p',{class:'fl-empty'},chatMode==='zalo'?(personal.linked?'Chưa có tin nhắn sau khi liên kết.':'Liên kết Zalo đã xác minh để xem hội thoại của bạn.'):'Bạn cần hỗ trợ gì? Nhắn mình nhé.'));
-  if(personal&&chatMode==='zalo'&&!personal.linked)chatMessages.append(h('a',{href:'/zalo'},'Liên kết Zalo'));
+  if(!items.length)chatMessages.append(h('p',{class:'fl-empty'},personal.linked?'Chưa có tin nhắn sau khi liên kết.':'Liên kết Zalo đã xác minh để xem hội thoại của bạn.'));
+  if(personal&&!personal.linked)chatMessages.append(h('a',{href:'/zalo'},'Liên kết Zalo'));
   if(!personal)chatMessages.append(h('button',{type:'button',class:'fl-login',onclick:()=>openLogin?.('route',{hash:'/faciup-live'})},'Đăng nhập để trò chuyện'));
-  chatStatus.textContent=sending&&chatMode==='web'?'Đang phản hồi…':personal?.processing&&chatMode==='zalo'?'Đang xử lý tin nhắn Zalo…':personal?'Hội thoại riêng · Sẵn sàng hỗ trợ':'Lời giới thiệu tự động · Không phải tin nhắn khách hàng';
-  input.disabled=sending;send.disabled=sending;chatMessages.scrollTop=scroll?chatMessages.scrollHeight:oldScroll;
+  chatStatus.textContent=personal?.processing?'Đang xử lý tin nhắn Zalo…':personal?'Hội thoại riêng · Sẵn sàng hỗ trợ':'Lời giới thiệu tự động · Không phải tin nhắn khách hàng';
+  chatMessages.scrollTop=scroll?chatMessages.scrollHeight:oldScroll;
   paintScreen();
-  bots.find(b=>b.id==='zalo')?.el.classList.toggle('fl-chatting',sending||!!personal?.processing);
+  bots.find(b=>b.id==='zalo')?.el.classList.toggle('fl-chatting',!!personal?.processing);
  }
- async function loadMine(){if(stopped||mineBusy||document.hidden)return;mineBusy=true;try{const p=await api('/api/faciup-live/mine');if(stopped)return;if(personal?.userId!==p.userId){identity++;history=[];input.value='';chatMode='web';}personal=p;}catch{if(personal){identity++;history=[];input.value='';chatMode='web';}personal=null;}finally{mineBusy=false;if(!stopped)renderChat();}}
- async function sendChat(){const text=input.value.trim();if(!text||!personal||sending)return;const who=personal.userId,epoch=identity;sending=true;history.push({role:'user',text});input.value='';renderChat();try{const result=await api('/api/faciup-live/chat',{method:'POST',body:{text,history:history.slice(0,-1).slice(-8)}});await loadMine();if(stopped||identity!==epoch||personal?.userId!==who||result.userId!==who)return;history.push({role:'bot',text:result.reply||'Chưa có phản hồi.'});history=history.slice(-30);}catch(e){if(!stopped&&identity===epoch&&personal?.userId===who)history.push({role:'bot',text:e.message||'Chưa gửi được. Vui lòng thử lại.'});}finally{sending=false;if(!stopped)renderChat();}}
+ async function loadMine(){if(stopped||mineBusy||document.hidden)return;mineBusy=true;try{const p=await api('/api/faciup-live/mine');if(stopped)return;personal=p;}catch{personal=null;}finally{mineBusy=false;if(!stopped)renderChat();}}
  function openPanel(title,kids){dialogBody.replaceChildren(h('h2',{},title),...kids);dialog.showModal();}
- function openChat(){openPanel(personal?'Hội thoại của bạn':'Hướng dẫn và hỗ trợ',[chat]);renderChat();}
- function paintScreen(){if(!data)return;const r=data.runtime;
+ function openChat(){openPanel('Hội thoại Zalo của bạn',[chat]);renderChat();}
+ function openDashboard(){if(!data)return;const r=data.runtime,k=r.kpi||{};openPanel('Bảng vận hành',[h('p',{},`${r.running} đang xử lý · ${r.queued} chờ lượt · ${r.review} chờ duyệt`),h('p',{},`${k.today||0} lượt hoàn thành hôm nay · TB ${k.avgToday?fmt(k.avgToday):'—'}/lượt`),h('p',{},r.sessions[0]?`Phiên #${r.sessions[0].n} · ${nameOf(r.sessions[0].current)} · ${r.sessions[0].state==='paused'?'Tạm dừng':'Lượt '+(r.sessions[0].step+1)}`:'Sẵn sàng nhận nhiệm vụ')]);}
+ function paintScreen(){if(!data)return;const r=data.runtime,k=r.kpi||{};
   const values=h('div',{class:'fl-screen-counts'},...[[r.running,'Xử lý'],[r.queued,'Chờ lượt'],[r.review,'Chờ duyệt']].map(([n,label])=>h('div',{},h('b',{},n),h('span',{},label))));
-  const items=!personal?intro.slice(0,demoStep+1).map(text=>({role:'bot',text})):chatMode==='zalo'?personal.messages:history;
-  const preview=h('div',{class:'fl-screen-conversation'});
-  for(const m of (items.length?items:[{role:'bot',text:chatMode==='zalo'?'Mở hội thoại Zalo của bạn':'Bạn cần hỗ trợ gì?'}]).slice(-2)){const bubble=h('div',{class:'fl-screen-message '+(m.role==='user'?'me':'bot')});if(m.role!=='user'){const icon=h('i',{class:'fl-zalo-avatar'});icon.innerHTML=ZALO;bubble.append(icon);}bubble.append(h('span',{},m.text.slice(0,110)));preview.append(bubble);}
-  screen.replaceChildren(values,preview,h('small',{class:'fl-screen-state'},stale?'Mất kết nối':sending||personal?.processing?'••• Đang phản hồi…':personal?'Hội thoại riêng':'Hội thoại minh họa'),h('small',{class:'fl-screen-expand'},'Bấm để phóng to ↗'));
+  const chart=h('div',{class:'fl-screen-chart'});chart.innerHTML=spark(k.series||[0,0,0,0,0,0,0],'#67e8f9');screen.replaceChildren(h('strong',{},'BẢNG VẬN HÀNH'),values,chart,h('small',{},`${k.today||0} lượt hôm nay · Bấm để phóng to ↗`));
+  const items=personal?personal.messages:intro.slice(0,demoStep+1).map(text=>({role:'bot',text}));
+  const preview=h('div',{class:'fl-bubble-messages'});
+  for(const m of (items.length?items:[{role:'bot',text:personal?.linked?'Sẵn sàng hỗ trợ bạn qua Zalo':'Liên kết Zalo để xem hội thoại của bạn'}]).slice(-1)){preview.append(h('div',{class:'fl-bubble-message '+(m.role==='user'?'me':'bot')},h('small',{},m.role==='user'?'Bạn':'Zalo'),h('span',{},m.text.slice(0,150))));}
+  const icon=h('i',{class:'fl-zalo-avatar'});icon.innerHTML=ZALO;zaloBubble.replaceChildren(h('div',{class:'fl-bubble-heading'},icon,h('b',{},'Hội thoại Zalo'),h('small',{},personal?'Riêng tư':'Minh họa')),preview,h('small',{class:'fl-bubble-status'},personal?.processing?'••• Đang phản hồi…':'Bấm để xem hội thoại'));
  }
  function openAgent(b){const s=b.s,look=stale?'off':LOOK[s.state]||'idle';openPanel(s.name,[h('p',{},tagText(s,look)),h('p',{},`Hoàn thành hôm nay: ${s.completed||0} lượt`),h('p',{},s.last?`Lần hoàn thành gần nhất: ${vn(s.last)}`:'Chưa có lượt hoàn thành được ghi nhận')]);}
  const kpis=h('section',{class:'fl-kpis','aria-label':'Chỉ số hoạt động'});
@@ -116,7 +115,8 @@ export function showLive({h,show,api,footer,openLogin}){
  const officeButton=h('button',{type:'button',onclick:()=>setView('office')},'Văn phòng');
  const toolbar=h('header',{class:'fl-toolbar'},h('div',{},h('h1',{},'Faciup Live'),h('p',{},'Không gian vận hành của đội AI')),h('div',{class:'fl-view','aria-label':'Chế độ hiển thị'},clockButton,officeButton));
  const mobileTabs=h('div',{class:'fl-mobile-tabs','aria-label':'Thông tin văn phòng'},...['Hoạt động','Zalo','Chỉ số'].map((text,i)=>h('button',{type:'button','aria-pressed':String(i===0),onclick:e=>{if(i===1){openChat();return;}page.dataset.panel=String(i);mobileTabs.querySelectorAll('button').forEach((b,j)=>b.setAttribute('aria-pressed',String(i===j)));}},text)));
- const page=h('div',{class:'fl-live','data-panel':'0'},toolbar,stage,mobileTabs,side,kpis,dialog,chatHost);
+ const zaloDock=h('div',{class:'fl-zalo-dock'});
+ const page=h('div',{class:'fl-live','data-panel':'0'},toolbar,stage,zaloDock,mobileTabs,side,kpis,dialog,chatHost);
  function setView(next){view=next;page.dataset.view=view;clockButton.setAttribute('aria-pressed',String(view==='clock'));officeButton.setAttribute('aria-pressed',String(view==='office'));stage.setAttribute('aria-label',view==='office'?'Văn phòng AI FACIUP':'Đội AI FACIUP trên mặt đồng hồ 24 giờ');(view==='office'?officeLinks:dial).append(beams);trail.replaceChildren();stage.querySelectorAll('.fl-doc').forEach(e=>e.remove());try{localStorage.setItem('faciup-live-view',view);}catch{}}
  setView(view);
  show(page,footer());
@@ -130,9 +130,9 @@ export function showLive({h,show,api,footer,openLogin}){
    const ring=j%rings,o=old?.o||{r:[190,265,335][ring],ph:j/list.length*Math.PI*2,sp:(.16-.03*ring)*(ring%2?-1:1),wob:j};
    let el=old?.el,hands=old?.hands;
    if(!el||old.icon!==s.icon||old.color!==s.color){old?.el.remove();el=h('div',{class:'fl-bot fl-new',role:'img','aria-label':s.name});el.style.setProperty('--c',s.color);
-    el.innerHTML=`<div class="fl-name"><b></b><span></span></div><i class="fl-pulse"></i><div class="fl-shadow"></div><div class="fl-body">${robot(s.color,s.icon,j+'_'+s.id.replace(/\W/g,''))}</div><div class="fl-seated">${seatedRobot(s.color,j+'_'+s.id.replace(/\W/g,''))}</div>`;
-    hands?.remove();hands=h('div',{class:'fl-seat-hands'});hands.innerHTML=seatedRobot(s.color,'hands'+j);stage.append(el,hands);setTimeout(()=>el.classList.remove('fl-new'),900);}
-   const bot={id:s.id,i,icon:s.icon,color:s.color,el,hands,o,s,pos:[0,0],v:[500,500],left:false};el.tabIndex=0;el.setAttribute('role','button');el.onclick=()=>openAgent(bot);el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openAgent(bot);}};return bot;});
+    el.innerHTML=`<div class="fl-name"><b></b><span></span></div><i class="fl-pulse"></i><div class="fl-shadow"></div><div class="fl-body">${robot(s.color,s.icon,j+'_'+s.id.replace(/\W/g,''))}</div><div class="fl-seated"></div>`;
+    hands?.remove();hands=h('div',{class:'fl-seat-hands'});stage.append(el,hands);setTimeout(()=>el.classList.remove('fl-new'),900);}
+   const sprite=s.id==='zalo'?4:Math.min(j,4);el.style.setProperty('--sprite-x',String(sprite%3*50)+'%');el.style.setProperty('--sprite-y',String(Math.floor(sprite/3)*100)+'%');const bot={id:s.id,i,icon:s.icon,color:s.color,el,hands,o,s,pos:[0,0],v:[500,500],left:false};el.tabIndex=0;el.setAttribute('role','button');el.onclick=()=>openAgent(bot);el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openAgent(bot);}};return bot;});
   for(const b of keep.values()){b.el.remove();b.hands?.remove();}
   // links: every robot to FACIUP, and each robot to the next one, so the team reads as one network
   bots.forEach((b,j)=>{link(null,b,b.color);if(bots.length>2||j===0&&bots.length===2)link(b,bots[(j+1)%bots.length],b.color);});}
@@ -162,6 +162,8 @@ export function showLive({h,show,api,footer,openLogin}){
    b.hands.style.transform=b.el.style.transform;b.el.classList.toggle('fl-face-left',j===3);b.hands.classList.toggle('fl-face-left',j===3);
    b.el.classList.toggle('fl-left',view==='clock'&&b.left);
    b.v=[x,y-18];}
+  const phone=innerWidth<=560;if(phone&&zaloBubble.parentElement!==zaloDock)zaloDock.append(zaloBubble);else if(!phone&&zaloBubble.parentElement!==stage)stage.append(zaloBubble);
+  const z=bots.find(b=>b.id==='zalo')||bots[bots.length-1];if(z&&!phone){const board=screen.getBoundingClientRect();zaloBubble.style.left=Math.min(r.width-zaloBubble.offsetWidth-10,Math.max(10,z.pos[0]+z.el.offsetWidth*1.25))+'px';zaloBubble.style.top=Math.max(board.bottom-r.top+8,z.pos[1]-z.el.offsetHeight*.62-zaloBubble.offsetHeight-24)+'px';}
   drawLinks(dt,off);
   const p=ang(((Date.now()+clockSkew+7*3600e3)%864e5)/36e5);hand.setAttribute('transform',`translate(${500+462*Math.cos(p)} ${500+462*Math.sin(p)})`);
   if(!stopped)raf=requestAnimationFrame(frame);}
@@ -183,7 +185,7 @@ export function showLive({h,show,api,footer,openLogin}){
   paintScreen();
   hub.querySelector('small').textContent=hl==='work'?'Đang tổng hợp':meeting?.state==='running'?`Phiên #${meeting.n} · lượt ${meeting.step+1}`:'Vận hành 24/7';
   for(const b of bots){const look=stale?'off':LOOK[b.s.state]||'idle';
-   b.el.className='fl-bot fl-'+look+(b.el.classList.contains('fl-new')?' fl-new':'')+(view==='clock'&&b.left?' fl-left':'')+(b.s.live?' fl-24':'')+(b.id==='zalo'&&(sending||personal?.processing)?' fl-chatting':'');
+   b.el.className='fl-bot fl-'+look+(b.el.classList.contains('fl-new')?' fl-new':'')+(view==='clock'&&b.left?' fl-left':'')+(b.s.live?' fl-24':'')+(b.id==='zalo'&&personal?.processing?' fl-chatting':'');
    b.el.querySelector('.fl-name b').textContent=b.s.name;b.el.querySelector('.fl-name span').textContent=pillText(b.s,look);b.el.title=b.s.name+' · '+tagText(b.s,look);b.hands.classList.toggle('fl-off',look==='off');}
   now.lastChild.textContent=stale?'Mất kết nối · đang thử lại':`${vn(Date.now()+clockSkew)} giờ VN · trực tuyến`;now.classList.toggle('fl-off',stale);
   }
@@ -211,5 +213,5 @@ export function showLive({h,show,api,footer,openLogin}){
  const demo=setInterval(()=>{if(!personal&&!reduce&&!document.hidden){demoStep=(demoStep+1)%intro.length;renderChat();}},6000);
  const tick=setInterval(()=>{if(data)paint();},1000),poll=setInterval(()=>{load();loadMine();},10000),visible=()=>{if(!document.hidden){load();loadMine();}};
  document.addEventListener('visibilitychange',visible);
- return ()=>{stopped=true;identity++;personal=null;history=[];dialog.close();cancelAnimationFrame(raf);clearInterval(tick);clearInterval(poll);clearInterval(demo);document.removeEventListener('visibilitychange',visible);};
+ return ()=>{stopped=true;personal=null;dialog.close();cancelAnimationFrame(raf);clearInterval(tick);clearInterval(poll);clearInterval(demo);document.removeEventListener('visibilitychange',visible);};
 }
