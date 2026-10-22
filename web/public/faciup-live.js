@@ -19,7 +19,7 @@ const BADGE={
 // server state → how a robot looks
 const LOOK={running:'work',live24:'live24',queued:'wait',retry:'wait',review:'review',paused:'paused',disabled:'off',idle:'idle',unknown:'off'};
 // chairs round the table, in table half-widths/heights
-const SEATS=[[212,260],[411,156],[698,286],[339,383],[660,414]];
+const SEATS=[[206,245],[405,141],[692,271],[345,368],[654,399]];
 const pad=n=>String(n).padStart(2,'0');
 const fmt=s=>{s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+':'+pad(s%60);};
 const vn=t=>{const d=new Date(t+7*3600e3);return pad(d.getUTCHours())+':'+pad(d.getUTCMinutes());};
