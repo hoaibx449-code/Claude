@@ -66,7 +66,7 @@ export function showLive({h,show,api,footer,openLogin}){
  const room=h('img',{class:'fl-office-bg',src:'/assets/live-office-seated.webp',alt:'',width:1672,height:941,decoding:'async'});
  // Reuse the room image as clipped foreground layers: desks obscure seated lower bodies.
  const desks=[[[329,428],[499,379],[549,426],[539,480],[399,526],[331,481]],[[655,263],[812,222],[862,256],[854,308],[735,353],[654,313]],[[1144,476],[1310,424],[1395,469],[1382,527],[1244,581],[1145,530]],[[391,622],[507,597],[598,653],[575,709],[496,735],[391,683]],[[1093,706],[1259,654],[1339,700],[1328,755],[1178,812],[1094,761]],[[690,467],[745,431],[928,431],[980,479],[972,544],[883,578],[755,570],[692,522]]];
- const deskLayers=desks.map(points=>{const img=h('img',{class:'fl-desk-front',src:room.src,alt:'','aria-hidden':'true'});img.style.clipPath='polygon('+points.map(([x,y])=>`${x/1672*100}% ${y/941*100}%`).join(',')+')';return img;});
+ const deskLayers=desks.map((points,i)=>{const img=h('img',{class:'fl-desk-front',src:room.src,alt:'','aria-hidden':'true'});img.style.zIndex=[11,9,12,14,14,16][i];img.style.clipPath='polygon('+points.map(([x,y])=>`${x/1672*100}% ${y/941*100}%`).join(',')+')';return img;});
  const officeLinks=svg('svg',{class:'fl-office-links',viewBox:'0 0 1000 562.5',preserveAspectRatio:'none','aria-hidden':'true'});
  const leadBot=h('div',{class:'fl-office-lead',role:'img','aria-label':'FACIUP · Điều phối'});
  leadBot.innerHTML='<div class="fl-name"><b>FACIUP</b></div><div class="fl-body">'+robot('#f97316','coordinator','lead')+'</div><div class="fl-seated">'+seatedRobot('#f97316','lead')+'</div>';
