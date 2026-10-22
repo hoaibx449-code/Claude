@@ -319,10 +319,34 @@ function paintHeader() {
   acc.hidden = !me;
   if (me) acc.textContent = (me.user.name || me.user.email || '?').trim().charAt(0).toUpperCase();
   document.getElementById('bellBtn').hidden = !me;
+  if (me) loadNotes();
   document.getElementById('sideAdmin').hidden = !me?.admin;
   closeMenu();
 }
 // everything about the account lives in one menu behind the avatar
+// the bell: recent things that happened to this person; a dot while something new is unread
+let notes = [], notesAt = 0;
+const NOTE_ICON = { video: '🎬', failed: '⚠️', paid: '💳', community: '🌟', hidden: '🙈', review: '🧠' };
+const notesSeen = () => Number(store.get('nv_notes_seen') || 0);
+async function loadNotes(force) {
+  if (!me || (!force && Date.now() - notesAt < 60000)) return notes;
+  try { notes = (await api('/api/notifications')).notes || []; notesAt = Date.now(); } catch {}
+  const dot = document.getElementById('bellDot'); if (dot) dot.hidden = !notes.some((n) => n.at > notesSeen());
+  return notes;
+}
+function renderNotes() {
+  const m = document.getElementById('noteMenu'); if (!m) return; const seen = notesSeen();
+  const ago = (t) => { const s = Math.max(1, Math.round((Date.now() - t) / 1000)); return s < 3600 ? Math.max(1, Math.round(s / 60)) + ' phút trước' : s < 86400 ? Math.round(s / 3600) + ' giờ trước' : Math.round(s / 86400) + ' ngày trước'; };
+  m.replaceChildren(h('div', { class: 'nhead' }, h('b', {}, 'Thông báo'), notes.length ? h('button', { type: 'button', class: 'nread', onclick: () => { store.set('nv_notes_seen', String(Date.now())); document.getElementById('bellDot').hidden = true; renderNotes(); } }, 'Đánh dấu đã đọc') : null),
+    notes.length ? h('ul', { class: 'nlist' }, notes.map((n) => h('li', { class: n.at > seen ? 'new' : '' }, h('a', { href: n.href, onclick: (e) => { e.preventDefault(); hideNotes(); navigate('#' + n.href); } },
+      h('span', { class: 'nic k-' + n.kind, 'aria-hidden': 'true' }, NOTE_ICON[n.kind] || '•'), h('span', { class: 'ntext' }, h('b', {}, n.title), h('span', {}, n.text), h('small', {}, ago(n.at))))))) : h('p', { class: 'nempty' }, 'Chưa có thông báo nào. Khi video dựng xong hay thanh toán thành công, bạn sẽ thấy ở đây.'));
+}
+function hideNotes() { const m = document.getElementById('noteMenu'); if (m) m.hidden = true; document.getElementById('bellBtn')?.setAttribute('aria-expanded', 'false'); }
+async function toggleNotes() {
+  const m = document.getElementById('noteMenu'); if (!m) return; if (!m.hidden) return hideNotes();
+  hideMenu(); renderNotes(); m.hidden = false; document.getElementById('bellBtn').setAttribute('aria-expanded', 'true');
+  await loadNotes(true); if (!m.hidden) renderNotes();
+}
 let menuWanted = false, menuCredits = '';
 function closeMenu() { const m = document.getElementById('userMenu'); if (m) m.hidden = true; document.getElementById('account')?.setAttribute('aria-expanded', 'false'); }
 function hideMenu() { menuWanted = false; closeMenu(); }
@@ -345,7 +369,7 @@ function renderMenu() {
 }
 function openMenu() {
   if (!me) return; const m = document.getElementById('userMenu'), acc = document.getElementById('account');
-  menuWanted = true; renderMenu(); m.hidden = false; acc.setAttribute('aria-expanded', 'true'); m.querySelector('.mitem')?.focus({ preventScroll: true });
+  hideNotes(); menuWanted = true; renderMenu(); m.hidden = false; acc.setAttribute('aria-expanded', 'true'); m.querySelector('.mitem')?.focus({ preventScroll: true });
   const reopen = () => { if (!menuWanted) return; renderMenu(); m.hidden = false; acc.setAttribute('aria-expanded', 'true'); };
   refreshMemberState().then(reopen, () => {});
   api('/api/credits').then((c) => { menuCredits = (c.monthlyLeft ? c.monthlyLeft + ' video trong gói tháng này · ' : '') + c.balance + ' credit'; reopen(); }, () => {});
@@ -354,10 +378,12 @@ function openMenu() {
 document.addEventListener('click', (e) => {
   if(e.target.closest('a[href="/tai-khoan"]') && me){e.preventDefault();hideMenu();showAccount();return;}
   const acc = document.getElementById('account'), m = document.getElementById('userMenu');
+  if (e.target.closest('#bellBtn')) { toggleNotes(); return; }
+  const nm = document.getElementById('noteMenu'); if (nm && !nm.hidden && !e.target.closest('#noteMenu')) hideNotes();
   if (acc && e.target.closest('#account')) { m.hidden ? openMenu() : hideMenu(); return; }
   if (m && !m.hidden && !e.target.closest('#userMenu')) hideMenu();
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideMenu(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { hideMenu(); hideNotes(); } });
 // one search box for the whole site: community videos, formats, or the user's own videos
 document.addEventListener('submit', (e) => {
   if (e.target.id !== 'topSearch') return;
@@ -423,6 +449,7 @@ document.addEventListener('submit',e=>{const form=e.target.closest?.('form.catal
 document.addEventListener('click',async e=>{const b=e.target.closest?.('[data-copy-resource]');if(!b)return;const code=b.closest('.resource-code')?.querySelector('code');if(!code)return;try{await navigator.clipboard.writeText(code.textContent);b.textContent='Đã sao chép';}catch{toast('Hãy chọn nội dung để sao chép.');}});
 function route() {
   if (view.firstElementChild) routing(true);
+  if (me) loadNotes();
   stopLive?.();stopLive=null;
   stopHomeGallery?.(); stopHomeGallery = null;stopVideoLibrary?.();stopVideoLibrary=null;
   stopPreview(); stopDemos();
@@ -2188,7 +2215,7 @@ document.addEventListener('DOMContentLoaded', () => boot().catch(fatal));
 async function showPromptHunter(){viewed('prompt-hunter');const {showHunter}=await import('/prompt-hunter.js');return showHunter({h,api,show,me,toast,fail,detailDialog,openLogin,footer});}
 
 async function showFaciupLive(){
- const routeAtStart=currentRoute(),ticket=solutionNavigation;const {showLive}=await import('/faciup-live.js?v=89');
+ const routeAtStart=currentRoute(),ticket=solutionNavigation;const {showLive}=await import('/faciup-live.js?v=90');
  if(currentRoute()!==routeAtStart||ticket!==solutionNavigation)return;
  stopLive=showLive({h,show,api,footer,openLogin,zaloLink:ui.zalo?.botLink});
 }

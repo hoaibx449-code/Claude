@@ -25,6 +25,7 @@ import { chargeDoc, closeDocProject, creditRoutes, giveBackDocImage, openDocProj
 import { detectIntent, FORMATS, FORMAT_NAMES, FORMAT_STYLE, NICHES, NICHE_NAMES, NICHE_STYLE } from './intent.ts';
 import { fillLegal } from './legal.ts';
 import { aiCost, clientIp, imageCost, logEvent, routeName, summarize, voiceCost, type LogEntry } from './log.ts';
+import { notifications } from './notifications.ts';
 import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, vis } from './settings.ts';
 import { adminRoutes } from './admin.ts';
 import { helpChat } from './help.ts';
@@ -445,6 +446,7 @@ async function userRoutes(req: Request, env: XEnv, ctx: ExecutionContext, user: 
   if(solutionView&&method==='GET'){const target=new URL('/giai-phap/'+solutionView[1],req.url);const page=await solutionPage(new Request(target,req),env,true);if(page)return page;}
   const solutionFile=path.match(/^\/api\/solution-files\/([a-f0-9]{24})$/);
   if(solutionFile&&(method==='GET'||method==='HEAD'))return solutionDownload(req,env,solutionFile[1]);
+  if (path === '/api/notifications' && method === 'GET') return json({ notes: await notifications(env, user.id, await isAdmin(env, env.config, user)) });
   if (path === '/api/me' && method === 'GET') {
     const used = await env.DB.prepare('SELECT kind, n FROM usage WHERE user_id = ? AND day = ?').bind(user.id, today()).all<any>();
     const { plan, expires } = await planOf(env, user.id);

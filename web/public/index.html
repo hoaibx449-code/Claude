@@ -19,10 +19,10 @@
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="/app.css?v=60">
+<link rel="stylesheet" href="/app.css?v=61">
 <link rel="stylesheet" href="/compact-ui.css">
 <link rel="stylesheet" href="/polish.css">
-<link rel="stylesheet" href="/theme.css?v=78">
+<link rel="stylesheet" href="/theme.css?v=79">
 <link rel="stylesheet" href="/studio-background.css?v=59">
 <link rel="stylesheet" href="/hunter.css?v=37">
 <link rel="stylesheet" href="/video-library.css?v=38">
@@ -38,11 +38,11 @@
 <script src="/whiteboard-addon.js" defer></script>
 <script src="/engine.js" defer></script>
 <script src="/navigation.js?v=54" defer></script>
-<script src="/app.js?v=86" defer></script>
+<script src="/app.js?v=87" defer></script>
 <script src="/render-desk.js" defer></script>
 <script src="/banks.js" defer></script>
 <script src="/admin.js?v=70" defer></script>
-<script src="/helpchat.js?v=51" defer></script>
+<script src="/helpchat.js?v=52" defer></script>
 </head>
 <body>
 <aside class="appside" id="appside" aria-label="Thanh bên">
@@ -79,7 +79,7 @@
   </nav>
   <form class="topsearch" id="topSearch" role="search"><label class="sr" for="topSearchInput">Tìm kiếm</label><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input id="topSearchInput" type="search" placeholder="Tìm video hoặc ý tưởng…" autocomplete="off" enterkeyhint="search"></form>
   <div class="who">
-    <a class="iconbtn" id="bellBtn" href="/video" aria-label="Thông báo: video của tôi" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><i class="dot" id="bellDot" hidden></i></a>
+    <span class="bellwrap"><button class="iconbtn" id="bellBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="noteMenu" aria-label="Thông báo" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><i class="dot" id="bellDot" hidden></i></button><div id="noteMenu" class="notemenu" hidden></div></span>
     <button class="ghost small" id="loginBtn" type="button" hidden>Đăng nhập</button>
     <a class="btn small" id="createBtn" href="/tao" data-ev="header-create">Tạo video</a>
     <div class="usermenu">

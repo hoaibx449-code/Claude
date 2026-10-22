@@ -150,18 +150,22 @@ export function showLive({h,show,api,footer,openLogin,zaloLink}){
   paintClock();
   const items=personal?personal.messages:intro.slice(0,demoStep+1).map(text=>({role:'bot',text}));
   const lastMsg=items.at(-1),sig=lastMsg?lastMsg.role+':'+lastMsg.text:'';
-  if(personal?.processing){if(zaloSig!=='typing'){zaloSig='typing';zaloShow('bot','Zalo đang trả lời',h('span',{class:'fl-pop-dots'},h('i',{}),h('i',{}),h('i',{})),true);}}
-  else if(sig&&sig!==zaloSig){zaloSig=sig;zaloShow(lastMsg.role==='user'?'me':'bot',lastMsg.role==='user'?'Bạn':personal?'Zalo':'Zalo · minh họa',h('span',{},lastMsg.text.slice(0,140)));}
-  zaloBtn.classList.toggle('busy',!!personal?.processing);
+  // the Zalo Bot robot already shows it is answering, so the popup only carries new messages
+  if(sig&&sig!==zaloSig){zaloSig=sig;zaloShow(lastMsg.role==='user'?'me':'bot',lastMsg.role==='user'?'Bạn':personal?'Zalo':'Zalo · minh họa',h('span',{},lastMsg.text.slice(0,140)));}
  }
  function openAgent(b){const s=b.s,look=stale?'off':LOOK[s.state]||'idle';openPanel(s.name,[h('p',{},tagText(s,look)),h('p',{},`Hoàn thành hôm nay: ${s.completed||0} lượt`),h('p',{},s.last?`Lần hoàn thành gần nhất: ${vn(s.last)}`:'Chưa có lượt hoàn thành được ghi nhận')]);}
  // a soft chime when a file is handed on (browsers allow sound only after the viewer touches the page)
  let soundOn=true,audio=null;try{soundOn=localStorage.getItem('faciup-live-sound')!=='off';}catch{}
  const unlock=()=>{if(!audio&&window.AudioContext)audio=new AudioContext();audio?.resume?.();};
  document.addEventListener('pointerdown',unlock,{once:true});document.addEventListener('keydown',unlock,{once:true});
+ // a bright bell over a short swoosh, run through a compressor so it is loud without crackling
+ let bus=null;
  function chime(toLead){if(!soundOn||!audio||audio.state!=='running'||document.hidden)return;const t=audio.currentTime;
-  (toLead?[659,880,1175]:[880,1320]).forEach((f,n)=>{const o=audio.createOscillator(),g=audio.createGain(),at=t+n*.09;o.type='sine';o.frequency.value=f;o.connect(g);g.connect(audio.destination);
-   g.gain.setValueAtTime(0,at);g.gain.linearRampToValueAtTime(.07,at+.015);g.gain.exponentialRampToValueAtTime(.0001,at+.45);o.start(at);o.stop(at+.5);});}
+  if(!bus){const comp=audio.createDynamicsCompressor();comp.threshold.value=-10;comp.ratio.value=4;bus=audio.createGain();bus.gain.value=.9;bus.connect(comp);comp.connect(audio.destination);}
+  const noise=audio.createBuffer(1,audio.sampleRate*.25,audio.sampleRate),d=noise.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*(1-i/d.length);
+  const sw=audio.createBufferSource(),bp=audio.createBiquadFilter(),sg=audio.createGain();sw.buffer=noise;bp.type='bandpass';bp.frequency.setValueAtTime(600,t);bp.frequency.exponentialRampToValueAtTime(3200,t+.22);sg.gain.value=.35;sw.connect(bp);bp.connect(sg);sg.connect(bus);sw.start(t);
+  (toLead?[784,988,1319]:[1047,1568]).forEach((f,n)=>{const at=t+.12+n*.11;for(const [mul,vol,type] of [[1,.55,'sine'],[2,.18,'triangle'],[3,.08,'sine']]){const o=audio.createOscillator(),g=audio.createGain();o.type=type;o.frequency.value=f*mul;o.connect(g);g.connect(bus);
+   g.gain.setValueAtTime(0,at);g.gain.linearRampToValueAtTime(vol,at+.01);g.gain.exponentialRampToValueAtTime(.0001,at+.9);o.start(at);o.stop(at+.95);}});}
  const soundBtn=h('button',{type:'button',class:'fl-sound',onclick:()=>{soundOn=!soundOn;unlock();try{localStorage.setItem('faciup-live-sound',soundOn?'on':'off');}catch{}paintSound();if(soundOn)setTimeout(()=>chime(false),60);}});
  function paintSound(){soundBtn.setAttribute('aria-pressed',String(soundOn));soundBtn.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/>${soundOn?'<path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>':'<path d="M17 9l5 6M22 9l-5 6"/>'}</svg><span>${soundOn?'Âm thanh bàn giao: bật':'Âm thanh: tắt'}</span>`;}
  paintSound();

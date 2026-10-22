@@ -4,13 +4,13 @@
    "aurora" (vibrant purple–orange) is the default; "classic" keeps the earlier plain white look. */
 
 :root, html[data-theme="aurora"] {
-  --blue: #8b5cf6; --blue-2: #7c3aed; --blue-soft: #f5efff; --accent: #8b5cf6; --accent-2: #fb923c; --sun: #fbbf24;
-  --grad: linear-gradient(120deg, #8b5cf6 0%, #d946ef 42%, #fb7185 70%, #fb923c 100%);
-  --grad-soft: linear-gradient(135deg, #faf5ff 0%, #fff7ed 100%);
-  --paper: #fffaff; --ink: #2a2148; --muted: #7b7199; --line: #f0e9fb;
-  --page-bg: radial-gradient(1000px 600px at 105% -10%, #fed7aa 0%, transparent 60%), radial-gradient(1000px 650px at -10% -5%, #e9d5ff 0%, transparent 60%), radial-gradient(900px 600px at 50% 115%, #fbcfe8 0%, transparent 62%);
-  --side-bg: linear-gradient(180deg, #ffffff 0%, #fdf8ff 100%); --side-ink: #2a2148; --side-muted: #7b7199; --side-on: rgba(139, 92, 246, .12); --side-line: #f0e9fb;
-  --glow: rgba(217, 70, 239, .32);
+  --blue: #7c3aed; --blue-2: #6d28d9; --blue-soft: #f4ecff; --accent: #7c3aed; --accent-2: #ff7a00; --sun: #ffb020;
+  --grad: linear-gradient(115deg, #7c3aed 0%, #c026d3 36%, #ff2d75 66%, #ff7a00 100%);
+  --grad-soft: linear-gradient(135deg, #f7f0ff 0%, #ffeef6 50%, #fff3e6 100%);
+  --paper: #fff9ff; --ink: #24183f; --muted: #75699a; --line: #efe4fb;
+  --page-bg: radial-gradient(1000px 620px at 105% -12%, #ffd0a6 0%, transparent 60%), radial-gradient(1000px 650px at -12% -6%, #e2cbff 0%, transparent 60%), radial-gradient(900px 600px at 50% 118%, #ffc4e1 0%, transparent 62%);
+  --side-bg: linear-gradient(180deg, #ffffff 0%, #fdf7ff 100%); --side-ink: #24183f; --side-muted: #75699a; --side-on: rgba(124, 58, 237, .12); --side-line: #efe4fb;
+  --glow: rgba(255, 45, 117, .42);
 }
 html[data-theme="ocean"] {
   --blue: #0e7490; --blue-2: #155e75; --blue-soft: #e6f7fb; --accent: #0e7490; --accent-2: #f97316; --sun: #fbbf24;
@@ -136,7 +136,7 @@ footer.site .social a { width: 30px; height: 30px; }
 .ai-order .ai-name { flex: 1; }
 .ai-order button { min-height: 32px; width: 36px; padding: 0; }
 .home-stage { background: var(--side-bg); }
-html[data-theme="aurora"] .home-stage, :root:not([data-theme]) .home-stage { background: linear-gradient(135deg, #8b5cf6 0%, #e879f9 52%, #fb923c 100%); box-shadow: 0 30px 60px -30px rgba(217, 70, 239, .55); }
+html[data-theme="aurora"] .home-stage, :root:not([data-theme]) .home-stage { background: linear-gradient(135deg, #7c3aed 0%, #d946ef 45%, #ff3d7f 72%, #ff8a1f 100%); box-shadow: 0 30px 60px -30px rgba(217, 70, 239, .55); }
 html[data-theme="classic"] .home-stage { background: #18293a; }
 /* admins have the save bar in that corner */
 body[data-page="admin"] .helpchat-btn, body[data-page="admin"] .helpchat { display: none; }
@@ -223,3 +223,48 @@ html[data-theme="aurora"] .appside { border-right: 1px solid var(--side-line) !i
 .route-bar::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 40%; background: var(--grad); border-radius: 0 3px 3px 0; animation: route-run 1s ease-in-out infinite; }
 body.routing .route-bar { opacity: 1; transition-delay: .15s; }
 @keyframes route-run { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+
+/* buttons with depth: a light rim on top, a darker lip below, layered coloured shadow */
+:where(button, .btn):not(.ghost):not(.danger):not(.chip):not(.mitem):not(.avatar):not(.iconbtn):not(.fl-zalo-btn):not(.fl-sound):not([class*="fl-"]) {
+  border: 1px solid rgba(255, 255, 255, .22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45), inset 0 -2px 0 rgba(60, 10, 90, .18), 0 10px 22px -10px var(--glow), 0 2px 5px -2px rgba(124, 58, 237, .45);
+  text-shadow: 0 1px 1px rgba(60, 10, 90, .25);
+}
+/* quiet buttons: white with a thin gradient rim */
+:where(button.ghost, .btn.ghost) { border: 1.5px solid transparent !important; background: linear-gradient(var(--card, #fff), var(--card, #fff)) padding-box, linear-gradient(115deg, #c4a6ff, #ff9cc6, #ffc28a) border-box !important; box-shadow: 0 4px 12px -8px rgba(124, 58, 237, .45); }
+@media (hover: hover) and (pointer: fine) {
+  :where(button.ghost, .btn.ghost):not(:disabled):hover { background: linear-gradient(#fff8ff, #fff8ff) padding-box, var(--grad) border-box !important; color: var(--accent); }
+}
+/* chat mascot */
+.helpchat-btn { box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 14px 30px -10px var(--glow), 0 0 0 4px rgba(255,255,255,.65) !important; }
+.helpchat-btn .hc-mascot { width: 36px; height: 32px; }
+.helpchat > header .av { background: rgba(255, 255, 255, .25); }
+.helpchat > header .av .hc-mascot { width: 26px; height: 23px; }
+.hc-eye { transform-box: fill-box; transform-origin: center; animation: hc-blink 4.6s infinite; }
+@keyframes hc-blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
+@media (max-width: 1023px) { .helpchat-btn .hc-mascot { width: 32px; height: 28px; } }
+
+/* the bell's list of notifications */
+.bellwrap { position: relative; display: inline-flex; }
+.notemenu { position: absolute; right: -8px; top: calc(100% + 10px); z-index: 61; width: min(360px, calc(100vw - 24px)); max-height: min(70vh, 520px); overflow: auto; background: var(--card, #fff); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 24px 60px -18px rgba(76, 29, 149, .35); transform-origin: top right; animation: menu-in .18s cubic-bezier(.2, .9, .3, 1.2); }
+.notemenu .nhead { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: center; padding: 14px 16px 10px; background: var(--card, #fff); border-bottom: 1px solid var(--line); }
+.notemenu .nhead b { font-size: 1rem; }
+.notemenu .nread { min-height: 0; padding: 4px 8px; background: none !important; border: 0 !important; box-shadow: none !important; color: var(--accent); font-size: .8125rem; font-weight: 600; text-shadow: none; }
+.notemenu .nlist { list-style: none; margin: 0; padding: 6px; }
+.notemenu .nlist a { display: flex; gap: 12px; align-items: flex-start; padding: 10px; border-radius: 12px; color: var(--ink); text-decoration: none; }
+.notemenu .nlist a:hover { background: var(--blue-soft); }
+.notemenu li.new a { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.notemenu li.new .ntext b::after { content: ''; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: #ff2d75; vertical-align: middle; }
+.notemenu .nic { flex: none; width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; font-size: 17px; background: var(--grad-soft); }
+.notemenu .nic.k-failed, .notemenu .nic.k-hidden { background: #fff1f2; }
+.notemenu .ntext { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.notemenu .ntext b { font-size: .875rem; font-weight: 600; }
+.notemenu .ntext span { font-size: .8125rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notemenu .ntext small { font-size: .75rem; color: var(--muted); opacity: .85; }
+.notemenu .nempty { margin: 0; padding: 22px 18px; color: var(--muted); font-size: .875rem; text-align: center; }
+#bellBtn .dot { animation: bell-dot 1.8s ease-in-out infinite; }
+@keyframes bell-dot { 50% { box-shadow: 0 0 0 2px var(--card, #fff), 0 0 0 6px rgba(239, 68, 68, .2); } }
+@media (max-width: 1023px) { .notemenu { position: fixed; top: 64px; right: 12px; } }
+button.iconbtn { background: transparent !important; border: 0 !important; box-shadow: none !important; color: var(--muted); padding: 0; text-shadow: none; filter: none; }
+button.iconbtn:hover, button.iconbtn[aria-expanded="true"] { background: var(--blue-soft) !important; color: var(--accent); transform: none; }
+.helpchat-btn .hc-mascot { width: 40px; height: 35px; }

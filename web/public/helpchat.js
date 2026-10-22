@@ -10,8 +10,14 @@
     for (const n of [...doc.documentElement.childNodes]) s.append(document.importNode(n, true));
     return s;
   };
-  const BUBBLE = '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>';
-  const BOT = '<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01M9.5 16h5"/>';
+  // the brand mascot: the same friendly robot as in Faciup Live
+  const MASCOT = '<line x1="32" y1="6" x2="32" y2="14" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="32" cy="6" r="4.2" fill="#ffc53d"/>'
+    + '<rect x="7" y="25" width="8" height="15" rx="4" fill="#ffe1f0"/><rect x="49" y="25" width="8" height="15" rx="4" fill="#ffe1f0"/>'
+    + '<rect x="11" y="13" width="42" height="36" rx="16" fill="#fff"/><rect x="16" y="20" width="32" height="21" rx="10.5" fill="#22114a"/>'
+    + '<ellipse class="hc-eye" cx="25.5" cy="30" rx="3.4" ry="4.3" fill="#5ff3ff"/><ellipse class="hc-eye" cx="38.5" cy="30" rx="3.4" ry="4.3" fill="#5ff3ff"/>'
+    + '<path d="M28 36.5q4 3 8 0" stroke="#5ff3ff" stroke-width="2" fill="none" stroke-linecap="round"/><ellipse cx="18.5" cy="43" rx="3" ry="1.6" fill="#ff9ccb"/><ellipse cx="45.5" cy="43" rx="3" ry="1.6" fill="#ff9ccb"/>';
+  const mascot = () => { const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 64 56'); s.setAttribute('aria-hidden', 'true'); s.setAttribute('class', 'hc-mascot');
+    const doc = new DOMParser().parseFromString(`<svg xmlns="${NS}">${MASCOT}</svg>`, 'image/svg+xml'); for (const n of [...doc.documentElement.childNodes]) s.append(document.importNode(n, true)); return s; };
   const SEND = '<path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>';
   const QUICK = ['Tìm prompt tạo video', 'Tìm bot Zalo tự động hóa', 'Cách tạo video', 'Đổi giọng đọc thế nào?', 'Tải video ở đâu?'];
   let mounted = null;
@@ -54,7 +60,7 @@
     form.addEventListener('submit', (e) => { e.preventDefault(); ask(input.value); });
 
     const head = document.createElement('header');
-    const av = document.createElement('span'); av.className = 'av'; av.append(svg(BOT));
+    const av = document.createElement('span'); av.className = 'av'; av.append(mascot());
     const who = document.createElement('div'); const title = document.createElement('strong'); title.textContent = cfg.name;
     const sub = document.createElement('small'); sub.textContent = 'Trợ lý AI · prompt, giải pháp & hỗ trợ'; who.append(title, document.createElement('br'), sub);
     const close = document.createElement('button'); close.type = 'button'; close.textContent = '✕'; close.setAttribute('aria-label', 'Đóng trợ lý');
@@ -64,7 +70,7 @@
     panel.append(head, msgs, quick, form, note);
 
     const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'helpchat-btn'; btn.setAttribute('aria-label', 'Mở trợ lý hỗ trợ'); btn.setAttribute('aria-expanded', 'false');
-    btn.append(svg(BUBBLE));
+    btn.append(mascot());
     const toggle = (open) => {
       panel.hidden = !open; btn.setAttribute('aria-expanded', String(open));
       if (open) {
