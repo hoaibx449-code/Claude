@@ -171,3 +171,24 @@
 /* Align intact seated silhouettes above the desk edge, with no detached body layers. */
 .fl-live[data-view=office] .fl-seated{left:-30%}
 .fl-live[data-view=office] .fl-office-lead{left:48.9%;top:43.56%}
+
+/* Approved integrated office: complete robots and desks remain in a single image. */
+.fl-live[data-view=office] .fl-seated,.fl-live[data-view=office] .fl-seat-hands,.fl-live[data-view=office] .fl-desk-front{display:none!important}
+.fl-live[data-view=office] .fl-stage{aspect-ratio:2054/766;height:auto;max-height:none;align-self:start}
+.fl-live[data-view=office] .fl-office-bg{object-fit:contain}
+.fl-live[data-view=office] .fl-bot,.fl-live[data-view=office] .fl-office-lead{width:7%;height:20%;aspect-ratio:auto;background:transparent;border:0;box-shadow:none}
+.fl-live[data-view=office] .fl-office-lead{left:49.1%;top:32%;transform:translateX(-50%)}
+.fl-live[data-view=office] .fl-name{font-size:clamp(7px,.8vw,11px);padding:4px 8px;bottom:calc(100% + 4px)}
+.fl-live[data-view=office] .fl-bot.fl-work::after,.fl-live[data-view=office] .fl-bot.fl-chatting::after{content:'';position:absolute;left:38%;top:5%;width:9px;height:9px;border:2px solid var(--c);border-radius:50%;animation:fl-status-ring 1.6s ease-out infinite;pointer-events:none}
+@keyframes fl-status-ring{to{transform:scale(2.3);opacity:0}}
+.fl-live[data-view=office] .fl-screen{left:64.3%;top:4.8%;width:29.2%;height:27.2%;padding:1%;background:linear-gradient(120deg,#101134,#151937);gap:5%;z-index:4}
+.fl-screen-heading{display:flex;align-items:center;justify-content:space-between;gap:4%;width:100%}.fl-live[data-view=office] .fl-screen-heading strong{font-size:4.5cqw}.fl-screen-clock{font-size:2.7cqw;white-space:nowrap;color:#67e8f9}
+.fl-live[data-view=office] .fl-screen-counts b{font-size:6cqw}.fl-live[data-view=office] .fl-screen-counts span{font-size:3.6cqw}.fl-live[data-view=office] .fl-screen small{font-size:3.5cqw}
+.fl-live[data-view=office] .fl-now{display:none}
+.fl-live[data-view=office] .fl-zalo-bubble{width:21.5%;max-width:none;padding:9px;gap:6px;border-radius:13px;backdrop-filter:none;background:#fff}
+.fl-live[data-view=office] .fl-zalo-bubble::after{display:none}
+.fl-live[data-view=office] .fl-bubble-heading b{font-size:10px}.fl-live[data-view=office] .fl-bubble-heading>small{font-size:8px}.fl-live[data-view=office] .fl-bubble-message span{font-size:10px}
+@media(min-width:900px){.fl-live[data-view=office]{grid-template-rows:auto auto auto}.fl-live[data-view=office] .fl-side{height:0;min-height:100%;align-self:stretch}.fl-live[data-view=office] .fl-panel{height:100%;max-height:100%}}
+@media(max-width:899px){.fl-live[data-view=office] .fl-zalo-bubble{padding:5px;gap:3px}.fl-live[data-view=office] .fl-bubble-heading b{font-size:8px}.fl-live[data-view=office] .fl-bubble-message span{font-size:8px}}
+@media(max-width:560px){.fl-live[data-view=office] .fl-name,.fl-live[data-view=office] .fl-office-lead .fl-name{font-size:7px;padding:2px 4px;bottom:calc(100% + 2px)}.fl-live[data-view=office] .fl-name::after{border-width:3px}.fl-live[data-view=office] .fl-zalo-dock .fl-zalo-bubble{width:100%;padding:10px;gap:6px}.fl-live[data-view=office] .fl-zalo-dock .fl-bubble-heading b{font-size:12px}.fl-live[data-view=office] .fl-zalo-dock .fl-bubble-message span{font-size:12px}}
+@media(prefers-reduced-motion:reduce){.fl-live[data-view=office] .fl-bot::after{animation:none!important}}
