@@ -89,3 +89,15 @@
 .fl-link.on{opacity:.9;stroke-width:3.5;stroke-dasharray:10 8;animation-duration:.6s}
 @keyframes fl-flow{to{stroke-dashoffset:-20}}
 .fl-spark{filter:drop-shadow(0 0 6px currentColor);stroke:#fff;stroke-width:2;opacity:.95}
+/* Keep the complete operating overview visible on laptop screens. */
+@media(min-width:900px){
+ body[data-page="faciup-live"] main.wrap{padding-top:18px}
+ .fl-live{--fl-dial-size:clamp(300px,calc(100dvh - 300px),610px);max-width:1200px;padding:0 0 12px;grid-template-columns:minmax(0,1fr) 290px;grid-template-rows:var(--fl-dial-size) auto;gap:12px;align-items:start}
+ .fl-stage{width:min(100%,var(--fl-dial-size));max-width:var(--fl-dial-size);aspect-ratio:1;align-self:center}
+ .fl-side{height:100%;min-height:0;overflow:hidden}.fl-panel{height:100%;min-height:0;display:flex;flex-direction:column;padding:14px;border-radius:18px}.fl-panel h2{flex-shrink:0;font-size:13px;margin-bottom:12px}.fl-log{min-height:0;overflow:auto;scrollbar-width:thin;overscroll-behavior:contain;gap:10px;line-height:1.65;padding-right:4px}
+ .fl-kpis{grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;align-items:stretch}.fl-kpis .fl-kpi:first-child{grid-column:auto}.fl-kpi{padding:12px;border-radius:16px;min-height:124px}.fl-kpi .val{font-size:26px}.fl-kpi svg{height:30px;margin-top:5px}.fl-kpi .gauge{gap:8px}.fl-kpi .gauge svg{width:52px;height:52px;margin:4px 0 0}.fl-kpi .trio{gap:4px}.fl-kpi .trio div{padding:7px 1px}.fl-kpi .trio b{font-size:20px}.fl-kpi .fl-top{gap:4px}.fl-kpi .fl-top li{grid-template-columns:minmax(48px,70px) minmax(20px,1fr) 20px;gap:5px;font-size:11px}
+ .fl-core{padding:6px;text-align:center}.fl-core b{font-size:clamp(12px,1.3vw,18px)}.fl-core small{font-size:9.5px;line-height:1.4;max-width:95%}
+}
+@media(min-width:900px) and (max-height:740px){.fl-live{--fl-dial-size:clamp(300px,calc(100dvh - 280px),440px)}.fl-kpi{min-height:112px;padding:10px 11px}.fl-kpi .val{font-size:24px}.fl-kpi .lbl{font-size:11.5px}.fl-kpi .delta{font-size:10.5px}.fl-kpi svg{height:26px}.fl-kpi .gauge svg{width:46px;height:46px}.fl-now{font-size:11px}}
+@media(max-width:899px){.fl-live{max-width:720px;padding-top:0;gap:12px;grid-template-columns:minmax(0,1fr)}.fl-stage{max-width:460px}.fl-side{max-height:240px;overflow:hidden}.fl-panel{min-height:0;display:flex;flex-direction:column;max-height:240px}.fl-log{overflow:auto;min-height:0;scrollbar-width:thin}.fl-kpis{gap:10px}.fl-kpi{padding:12px}.fl-kpi .gauge{gap:8px}}
+@media(max-width:560px){.fl-stage{max-width:400px}.fl-side{max-height:210px}.fl-panel{max-height:210px;border-radius:16px}.fl-kpi{border-radius:16px}.fl-kpi .gauge svg{width:54px;height:54px}.fl-kpi .fl-top li{grid-template-columns:65px minmax(15px,1fr) 20px;gap:5px}}
