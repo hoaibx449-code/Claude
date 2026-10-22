@@ -1,9 +1,6 @@
-// Faciup Live: the AI team on a 24-hour dial. FACIUP glows in the centre, the agents are robots that
-// keep circling it and the orange hand marks the time in Vietnam. When a turn passes, the file
-// flies from one robot to the next (or back to
-// FACIUP). Beside it, the latest handovers; below, the team KPIs.
-// Everything comes from /api/faciup-live (times and public names only); agents added in Quản trị →
-// Nhóm AI appear on their own. Work is given in the admin pages, never here.
+// Faciup Live: a fixed-camera office and an alternate 24-hour dial.
+// Robots, handovers and KPIs use public runtime data from /api/faciup-live.
+// No task briefs, model settings or credentials are exposed here.
 const NS='http://www.w3.org/2000/svg';
 const BADGE={
  target:'<circle r="4.5" fill="none" stroke="#fff" stroke-width="1.8"/><circle r="1.6" fill="#fff"/>',
@@ -22,7 +19,7 @@ const BADGE={
 // server state → how a robot looks
 const LOOK={running:'work',live24:'live24',queued:'wait',retry:'wait',review:'review',paused:'paused',disabled:'off',idle:'idle',unknown:'off'};
 // chairs round the table, in table half-widths/heights
-const SEATS=[[0,-1.5],[1.3,-.8],[1.3,.85],[0,1.6],[-1.3,.85],[-1.3,-.8]];
+const SEATS=[[220,230],[474,162],[742,240],[332,412],[678,424]];
 const pad=n=>String(n).padStart(2,'0');
 const fmt=s=>{s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+':'+pad(s%60);};
 const vn=t=>{const d=new Date(t+7*3600e3);return pad(d.getUTCHours())+':'+pad(d.getUTCMinutes());};
@@ -45,6 +42,7 @@ const DOC='<svg viewBox="0 0 30 24" aria-hidden="true"><path d="M1 3h10l3 3h15v1
 export function showLive({h,show,api,footer}){
  let stopped=false,busy=false,data=null,stale=false,raf=0,last=performance.now(),clockSkew=0;
  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+ let view='office';try{if(localStorage.getItem('faciup-live-view')==='clock')view='clock';}catch{}
  const svg=(tag,attrs={})=>{const e=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e;};
  const ang=hr=>hr/24*2*Math.PI-Math.PI/2;
  // the dial (viewBox 1000×1000): night/day halves, hour ticks, orbits, links, the hand
@@ -62,15 +60,25 @@ export function showLive({h,show,api,footer}){
  const hub=h('div',{class:'fl-hub'},h('div',{class:'fl-core'},h('b',{},'FACIUP'),h('small',{},'')));
  const now=h('div',{class:'fl-now'},h('i',{}),h('span',{},'Đang kết nối…'));
  const stage=h('section',{class:'fl-stage','aria-label':'Đội AI FACIUP trên mặt đồng hồ 24 giờ'},dial,hub,now);
+ const room=h('img',{class:'fl-office-bg',src:'/assets/live-office.webp',alt:'',width:1536,height:1024,decoding:'async'});
+ const officeLinks=svg('svg',{class:'fl-office-links',viewBox:'0 0 1000 667','aria-hidden':'true'});
+ const leadBot=h('div',{class:'fl-office-lead',role:'img','aria-label':'FACIUP · Điều phối'});
+ leadBot.innerHTML='<div class="fl-name"><b>FACIUP</b></div><div class="fl-body">'+robot('#f97316','coordinator','lead')+'</div>';
+ leadBot.style.setProperty('--c','#f97316');stage.prepend(room,officeLinks);stage.append(leadBot);
  const trail=svg('svg',{class:'fl-trail','aria-hidden':'true'});stage.append(trail);
  const log=h('ul',{class:'fl-log'});
  const side=h('aside',{class:'fl-side'},h('div',{class:'fl-panel'},h('h2',{},'Bàn giao gần đây'),log));
  const kpis=h('section',{class:'fl-kpis','aria-label':'Chỉ số hoạt động'});
- const page=h('div',{class:'fl-live'},h('h1',{class:'sr'},'Faciup Live'),stage,side,kpis);
+ const clockButton=h('button',{type:'button',onclick:()=>setView('clock')},'Đồng hồ');
+ const officeButton=h('button',{type:'button',onclick:()=>setView('office')},'Văn phòng');
+ const toolbar=h('header',{class:'fl-toolbar'},h('div',{},h('h1',{},'Faciup Live'),h('p',{},'Không gian vận hành của đội AI')),h('div',{class:'fl-view','aria-label':'Chế độ hiển thị'},clockButton,officeButton));
+ const page=h('div',{class:'fl-live'},toolbar,stage,side,kpis);
+ function setView(next){view=next;page.dataset.view=view;clockButton.setAttribute('aria-pressed',String(view==='clock'));officeButton.setAttribute('aria-pressed',String(view==='office'));stage.setAttribute('aria-label',view==='office'?'Văn phòng AI FACIUP':'Đội AI FACIUP trên mặt đồng hồ 24 giờ');(view==='office'?officeLinks:dial).append(beams);trail.replaceChildren();stage.querySelectorAll('.fl-doc').forEach(e=>e.remove());try{localStorage.setItem('faciup-live-view',view);}catch{}}
+ setView(view);
  show(page,footer());
  let bots=[],key='';const lastTurn=new Map();
  function build(list){
-  const k=list.map(a=>a.id+a.name+a.color+a.icon).join('|');if(k===key)return;key=k;
+  const k=list.map(a=>a.id+a.name+a.color+a.icon).join('|');if(k===key){bots.forEach((b,j)=>{b.s=list[j];});return;}key=k;
   const keep=new Map(bots.map(b=>[b.id,b]));orbits.replaceChildren();beams.replaceChildren();links=[];
   const rings=Math.min(3,Math.max(1,Math.ceil(list.length/3)));
   for(let r=0;r<rings;r++)orbits.append(svg('circle',{cx:500,cy:500,r:[190,265,335][r],class:'fl-orbit'}));
@@ -87,10 +95,11 @@ export function showLive({h,show,api,footer}){
  let links=[];
  function link(a,b,color){const path=svg('path',{class:'fl-link',stroke:color}),dot=svg('circle',{r:a?5:6,class:'fl-spark',fill:color});beams.append(path,dot);links.push({a,b,path,dot,t:Math.random(),sp:a?.18:.28});}
  const bez=(p,c,q,t)=>[(1-t)*(1-t)*p[0]+2*(1-t)*t*c[0]+t*t*q[0],(1-t)*(1-t)*p[1]+2*(1-t)*t*c[1]+t*t*q[1]];
+ const centre=()=>view==='office'?[500,312]:[500,500];
  function drawLinks(dt,off){const turn=data?.runtime?.sessions?.[0];
-  for(const l of links){const q=l.b.v,p=l.a?l.a.v:(()=>{const d=Math.hypot(q[0]-500,q[1]-500)||1;return [500+(q[0]-500)/d*112,500+(q[1]-500)/d*112];})();
+  const [cx,cy]=centre();for(const l of links){const q=l.b.v,p=l.a?l.a.v:(()=>{const d=Math.hypot(q[0]-cx,q[1]-cy)||1,k=view==='office'?26:112;return [cx+(q[0]-cx)/d*k,cy+(q[1]-cy)/d*k];})();
    // bend towards the centre so the web curves round FACIUP
-   const m=[(p[0]+q[0])/2,(p[1]+q[1])/2],c=l.a?[m[0]+(500-m[0])*.35,m[1]+(500-m[1])*.35]:[m[0]+(q[1]-p[1])*.18,m[1]-(q[0]-p[0])*.18];
+   const m=[(p[0]+q[0])/2,(p[1]+q[1])/2],c=l.a?[m[0]+(cx-m[0])*.35,m[1]+(cy-m[1])*.35]:[m[0]+(q[1]-p[1])*.18,m[1]-(q[0]-p[0])*.18];
    l.path.setAttribute('d',`M${p[0].toFixed(1)} ${p[1].toFixed(1)}Q${c[0].toFixed(1)} ${c[1].toFixed(1)} ${q[0].toFixed(1)} ${q[1].toFixed(1)}`);
    const work=LOOK[l.b.s.state]==='work'||(l.a&&LOOK[l.a.s.state]==='work'),hand=l.a&&turn&&turn.current===l.a.i&&turn.state==='running';
    l.path.classList.toggle('on',!stale&&(work||hand));
@@ -99,18 +108,19 @@ export function showLive({h,show,api,footer}){
    const [x,y]=bez(p,c,q,l.a?l.t:1-l.t);l.dot.setAttribute('cx',x.toFixed(1));l.dot.setAttribute('cy',y.toFixed(1));}}
  // robots keep circling: faster while working, slower when the team is off
  function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;const r=stage.getBoundingClientRect(),sc=r.width/1000,off=stale||!data?.runtime?.enabled;
-  for(const b of bots){const look=stale?'off':LOOK[b.s.state]||'idle',k=look==='work'?2.6:off&&!b.s.live?.35:1;
+  for(const [j,b] of bots.entries()){const look=stale?'off':LOOK[b.s.state]||'idle',k=look==='work'?2.6:off&&!b.s.live?.35:1;
    if(!reduce){b.o.ph+=b.o.sp*dt*k;b.o.wob+=dt*1.4;}
    b.left=b.o.sp>0?Math.sin(b.o.ph)>0:Math.sin(b.o.ph)<0;
-   const x=500+b.o.r*Math.cos(b.o.ph),y=500+b.o.r*Math.sin(b.o.ph)+Math.sin(b.o.wob)*6;b.pos=[x*sc,y*sc];
+   const seat=SEATS[j]||[180+((j-5)%5)*160,535+Math.floor((j-5)/5)*40];
+   const x=view==='office'?seat[0]:500+b.o.r*Math.cos(b.o.ph),y=view==='office'?seat[1]:500+b.o.r*Math.sin(b.o.ph)+Math.sin(b.o.wob)*6;b.pos=[x*sc,y*sc];
    b.el.style.transform=`translate(${(x*sc-b.el.offsetWidth/2).toFixed(1)}px,${(y*sc-b.el.offsetHeight*.62).toFixed(1)}px)`;b.el.style.zIndex=5+Math.round(y/50);
-   b.el.classList.toggle('fl-left',b.left);
+   b.el.classList.toggle('fl-left',view==='clock'&&b.left);
    b.v=[x,y-18];}
   drawLinks(dt,off);
   const p=ang(((Date.now()+clockSkew+7*3600e3)%864e5)/36e5);hand.setAttribute('transform',`translate(${500+462*Math.cos(p)} ${500+462*Math.sin(p)})`);
   if(!stopped)raf=requestAnimationFrame(frame);}
  // the file flies along a curve from one robot to the next (index 0 = FACIUP)
- function fly(from,to,color){if(reduce)return;const r=stage.getBoundingClientRect(),at=i=>{const b=bots.find(x=>x.i===i);return i===0||!b?[r.width/2,r.height/2]:[b.pos[0],b.pos[1]-b.el.offsetHeight*.3];};
+ function fly(from,to,color){if(reduce)return;const r=stage.getBoundingClientRect(),at=i=>{const b=bots.find(x=>x.i===i),c=centre();return i===0||!b?[c[0]*r.width/1000,c[1]*r.width/1000]:[b.pos[0],b.pos[1]-b.el.offsetHeight*.3];};
   const p0=at(from),p1=at(to);trail.setAttribute('viewBox',`0 0 ${r.width} ${r.height}`);
   const mid=[(p0[0]+p1[0])/2+(r.width/2-(p0[0]+p1[0])/2)*.5,(p0[1]+p1[1])/2+(r.height/2-(p0[1]+p1[1])/2)*.5-60],path=svg('path',{d:`M${p0[0]} ${p0[1]} Q${mid[0]} ${mid[1]} ${p1[0]} ${p1[1]}`,stroke:color,class:'fl-path'});trail.append(path);
   const doc=h('div',{class:'fl-doc'});doc.innerHTML=DOC;stage.append(doc);
@@ -118,10 +128,11 @@ export function showLive({h,show,api,footer}){
  const runFor=s=>s.since?(Date.now()+clockSkew-s.since)/1000:0;
  const nameOf=i=>i===0?'FACIUP':data.runtime.agents[i]?.name||'Agent';
  function tagText(s,look){return look==='paused'?'Tạm dừng':look==='live24'?`Trực 24/7 · ~${fmt(s.avg)}`:look==='work'?`Đang xử lý ${fmt(runFor(s))}`:look==='wait'?`Chờ lượt${s.avg?' · ~'+fmt(s.avg):''}`:look==='review'?'Chờ duyệt':look==='off'?(stale?'Mất kết nối':'Nhóm đang tắt'):s.avg?`TB ${fmt(s.avg)}/lượt`:'Sẵn sàng';}
- function pillText(s,look){return look==='paused'?'Ⅱ':look==='live24'?'24/7':look==='work'?fmt(runFor(s)):look==='review'?'chờ duyệt':look==='off'?'':look==='wait'?'chờ lượt':'';}
+ function pillText(s,look){return look==='paused'?'':look==='live24'?'24/7':look==='work'?fmt(runFor(s)):look==='review'?'chờ duyệt':look==='off'?'':look==='wait'?'chờ lượt':'';}
  function paint(){const r=data.runtime,lead=r.agents[0],meeting=r.sessions[0]||null;
   // FACIUP runs the whole team all the time: always lit, busier glow while it is putting a result together
   const hl=meeting?.current===0&&meeting.state==='running'||LOOK[lead?.state]==='work'?'work':'on';hub.dataset.state=hl;
+  leadBot.className='fl-office-lead fl-'+(stale?'off':hl==='work'?'work':'idle');leadBot.title='FACIUP · '+(stale?'Mất kết nối':hl==='work'?'Đang tổng hợp':'Điều phối đội AI');
   hub.querySelector('small').textContent=hl==='work'?'Đang tổng hợp':meeting?.state==='running'?`Phiên #${meeting.n} · lượt ${meeting.step+1}`:'Vận hành 24/7';
   for(const b of bots){const look=stale?'off':LOOK[b.s.state]||'idle';
    b.el.className='fl-bot fl-'+look+(b.el.classList.contains('fl-new')?' fl-new':'')+(b.left?' fl-left':'')+(b.s.live?' fl-24':'');
