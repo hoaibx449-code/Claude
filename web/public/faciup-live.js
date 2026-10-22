@@ -45,7 +45,7 @@ const ZALO='<svg viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width=
 export function showLive({h,show,api,footer,openLogin,zaloLink}){
  let stopped=false,busy=false,data=null,stale=false,raf=0,last=performance.now(),clockSkew=0;
  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
- let view='office';try{if(localStorage.getItem('faciup-live-view')==='clock')view='clock';}catch{}
+ const view='office';
  const svg=(tag,attrs={})=>{const e=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e;};
  const ang=hr=>hr/24*2*Math.PI-Math.PI/2;
  // the dial (viewBox 1000×1000): night/day halves, hour ticks, orbits, links, the hand
@@ -65,12 +65,31 @@ export function showLive({h,show,api,footer,openLogin,zaloLink}){
  const stage=h('section',{class:'fl-stage','aria-label':'Đội AI FACIUP trên mặt đồng hồ 24 giờ'},dial,hub,now);
  const room=h('img',{class:'fl-office-bg',src:'/assets/live-office-integrated.webp',alt:'',width:2054,height:766,decoding:'async'});
  // Robots, chairs and desks share one intact perspective; no sliced foreground compositing.
+ // Each seated robot in the picture: its two eyes [x,y,w,h] and two hands [x,y,w,h], in picture pixels.
+ const RIG={lead:[[[1007,303,7,13],[1026,297,6,12]],[[1008,351,23,13],[1041,337,16,17]]],
+  0:[[[446,300,7,13],[465,294,6,12]],[[440,332,17,11],[477,317,20,15]]],1:[[[853,166,6,13],[871,161,5,12]],[[847,200,20,13],[882,188,12,14]]],
+  2:[[[1454,348,6,13],[1472,342,5,13]],[[1459,380,19,12],[1492,371,16,10]]],3:[[[649,465,8,15],[669,471,7,14]],[[618,498,16,10],[639,508,20,9]]],
+  4:[[[1373,510,8,14],[1391,502,5,14]],[[1379,545,19,11],[1414,535,15,11]]]};
+ // living eyes, typing hands and the writing window are under review: shown with ?demo=1 until approved
+ const DEMO=new URLSearchParams(location.search).get('demo')==='1';
+ const rig=h('div',{class:'fl-rig','aria-hidden':'true',hidden:!DEMO}),rigs={};
+ const pct=(v,t)=>(v/t*100).toFixed(3)+'%';
+ for(const [key,[eyes,hands]] of Object.entries(RIG)){const g=h('div',{class:'fl-rig-bot'});
+  // the eyes: the painted ones are covered by a visor patch and redrawn so they can blink and glance
+  eyes.forEach(([x,y,w,hgt],n)=>{const e=h('i',{class:'fl-eye-live'});Object.assign(e.style,{left:pct(x-w*.9,2054),top:pct(y-hgt*.75,766),width:pct(w*1.8,2054),height:pct(hgt*1.5,766)});e.style.setProperty('--d',(n*.04+Math.random()*3).toFixed(2)+'s');g.append(e);});
+  // the hands: a cut of the picture itself, lifted and dropped as if typing
+  hands.forEach(([x,y,w,hgt],n)=>{const pad=3,X=x-pad,Y=y-pad,W=w+pad*2,H=hgt+pad*2,e=h('i',{class:'fl-hand-live'+(n?' alt':'')});
+   Object.assign(e.style,{left:pct(X,2054),top:pct(Y,766),width:pct(W,2054),height:pct(H,766),backgroundSize:`${(2054/W*100).toFixed(2)}% ${(766/H*100).toFixed(2)}%`,backgroundPosition:`${pct(X,2054-W)} ${pct(Y,766-H)}`});g.append(e);});
+  rigs[key]=g;rig.append(g);}
+ const roles={coordinator:'Tổng hợp kết quả',target:'Lập dàn ý',search:'Tra cứu nguồn',pen:'Soạn lời đọc',check:'Rà soát kịch bản',news:'Lọc tin nóng',design:'Phác thumbnail',mega:'Lên kế hoạch đăng',chart:'Đọc số liệu',video:'Dựng phân cảnh'};
+ // while an agent works, a small writing window floats over its desk: lines appear as if typed (never the real content)
+ function composer(){const el=h('div',{class:'fl-compose','aria-hidden':'true'},h('div',{class:'fl-compose-top'},h('i',{}),h('i',{}),h('i',{}),h('b',{})),h('div',{class:'fl-compose-lines'},...[0,1,2,3].map(()=>h('span',{}))),h('div',{class:'fl-compose-bar'},h('i',{})));stage.append(el);return el;}
  const deskLayers=[];
  const officeLinks=svg('svg',{class:'fl-office-links',viewBox:'0 0 1000 562.5',preserveAspectRatio:'none','aria-hidden':'true'});
  const leadBot=h('div',{class:'fl-office-lead',role:'img','aria-label':'FACIUP · Điều phối'});
  leadBot.innerHTML='<div class="fl-name"><b>FACIUP</b></div><div class="fl-body">'+robot('#f97316','coordinator','lead')+'</div><div class="fl-seated">'+''+'</div>';
  const leadHands=h('div',{class:'fl-seat-hands fl-lead-hands'});leadHands.hidden=true;
- leadBot.style.setProperty('--c','#f97316');leadBot.style.setProperty('--sprite-x','100%');leadBot.style.setProperty('--sprite-y','100%');stage.prepend(room,officeLinks);stage.append(leadBot,...deskLayers,leadHands);
+ leadBot.style.setProperty('--c','#f97316');leadBot.style.setProperty('--sprite-x','100%');leadBot.style.setProperty('--sprite-y','100%');stage.prepend(room,rig,officeLinks);room.addEventListener('load',()=>{fitW=0;});stage.append(leadBot,...deskLayers,leadHands);
  const trail=svg('svg',{class:'fl-trail','aria-hidden':'true'});stage.append(trail);
  const log=h('ul',{class:'fl-log'});
  const side=h('aside',{class:'fl-side'},h('div',{class:'fl-panel'},h('h2',{},'Bàn giao gần đây'),log));
@@ -102,50 +121,46 @@ export function showLive({h,show,api,footer,openLogin,zaloLink}){
  function openDashboard(){if(!data)return;const r=data.runtime,k=r.kpi||{};openPanel('Bảng vận hành',[h('p',{},`${r.running} đang xử lý · ${r.queued} chờ lượt · ${r.review} chờ duyệt`),h('p',{},`${k.today||0} lượt hoàn thành hôm nay · TB ${k.avgToday?fmt(k.avgToday):'—'}/lượt`),h('p',{},r.sessions[0]?`Phiên #${r.sessions[0].n} · ${nameOf(r.sessions[0].current)} · ${r.sessions[0].state==='paused'?'Tạm dừng':'Lượt '+(r.sessions[0].step+1)}`:'Sẵn sàng nhận nhiệm vụ')]);}
  // the operations board sits exactly on the wall screen of the office picture: its four corners are
  // mapped onto the screen's four corners (in picture pixels), so the edges line up at any size
- // new board under review: shown with ?bang=moi until it is approved
- const NEW_BOARD=new URLSearchParams(location.search).get('bang')==='moi';
  const SCREEN=[[1321,28],[1921,140],[1921,349],[1321,208]],BW=600,BH=250;
- function fitScreen(){const fit=getComputedStyle(room).objectFit,sr=stage.getBoundingClientRect(),ir=room.getBoundingClientRect();if(!ir.width)return;
+ function picture(){const fit=getComputedStyle(room).objectFit,sr=stage.getBoundingClientRect(),ir=room.getBoundingClientRect();if(!ir.width)return null;
+  let sx=ir.width/2054,sy=ir.height/766,ox=ir.left-sr.left,oy=ir.top-sr.top;
+  if(fit==='contain'||fit==='cover'){const k=(fit==='contain'?Math.min:Math.max)(ir.width/2054,ir.height/766);ox+=(ir.width-2054*k)/2;oy+=(ir.height-766*k)/2;sx=sy=k;}
+  return {sx,sy,ox,oy};}
+ // the robots' eyes and hands live on a layer laid exactly over the picture
+ function fitRig(){const p=picture();if(!p)return;Object.assign(rig.style,{left:p.ox+'px',top:p.oy+'px',width:2054*p.sx+'px',height:766*p.sy+'px'});}
+ function fitScreen(){const fit=getComputedStyle(room).objectFit,sr=stage.getBoundingClientRect(),ir=room.getBoundingClientRect();if(!ir.width){fitW=0;return;}
   let sx=ir.width/2054,sy=ir.height/766,ox=ir.left-sr.left,oy=ir.top-sr.top;
   if(fit==='contain'||fit==='cover'){const k=(fit==='contain'?Math.min:Math.max)(ir.width/2054,ir.height/766);ox+=(ir.width-2054*k)/2;oy+=(ir.height-766*k)/2;sx=sy=k;}
   const [p0,p1,p2,p3]=SCREEN.map(([x,y])=>[ox+x*sx,oy+y*sy]);
   const dx1=p1[0]-p2[0],dx2=p3[0]-p2[0],dx3=p0[0]-p1[0]+p2[0]-p3[0],dy1=p1[1]-p2[1],dy2=p3[1]-p2[1],dy3=p0[1]-p1[1]+p2[1]-p3[1],det=dx1*dy2-dx2*dy1;
   const g=(dx3*dy2-dx2*dy3)/det,k2=(dx1*dy3-dx3*dy1)/det,a=p1[0]-p0[0]+g*p1[0],b=p3[0]-p0[0]+k2*p3[0],d=p1[1]-p0[1]+g*p1[1],e=p3[1]-p0[1]+k2*p3[1];
   screen.style.transform=`matrix3d(${[a/BW,d/BW,0,g/BW,b/BH,e/BH,0,k2/BH,0,0,1,0,p0[0],p0[1],0,1].map(v=>+v.toFixed(6)).join(',')})`;}
+ let fitW=0,fitH=0;
  const WEEK=['Chủ nhật','Thứ hai','Thứ ba','Thứ tư','Thứ năm','Thứ sáu','Thứ bảy'];
  const clockEl=h('b',{class:'fl-bd-time'}),dateEl=h('span',{class:'fl-bd-date'});
  function paintClock(){const d=new Date(Date.now()+clockSkew+7*3600e3);clockEl.replaceChildren(pad(d.getUTCHours())+':'+pad(d.getUTCMinutes()),h('small',{},':'+pad(d.getUTCSeconds())));dateEl.textContent=`${WEEK[d.getUTCDay()]} · ${pad(d.getUTCDate())}/${pad(d.getUTCMonth()+1)}/${d.getUTCFullYear()}`;}
  function paintScreen(){if(!data)return;const r=data.runtime,k=r.kpi||{};
-  if(!NEW_BOARD){
-  const values=h('div',{class:'fl-screen-counts'},...[[r.running,'Xử lý'],[r.queued,'Chờ lượt'],[r.review,'Chờ duyệt']].map(([n,label])=>h('div',{},h('b',{},n),h('span',{},label))));
-  const chart=h('div',{class:'fl-screen-chart'});chart.innerHTML=spark(k.series||[0,0,0,0,0,0,0],'#67e8f9');screen.replaceChildren(h('div',{class:'fl-screen-heading'},h('strong',{},'BẢNG VẬN HÀNH'),h('span',{class:'fl-screen-clock'},vn(Date.now()+clockSkew)+' giờ VN · '+(stale?'Mất kết nối':'Trực tuyến'))),values,chart,h('small',{},`${k.today||0} lượt hôm nay · Bấm để phóng to ↗`));
-  }else{screen.classList.add('fl-board');
+  screen.classList.add('fl-board');
+  // few, large figures: the board is small on the wall, so only what reads at a glance
   const tile=(n,label,tone)=>h('div',{class:'fl-bd-kpi '+tone},h('b',{},String(n)),h('span',{},label));
-  // the team's day: turns per hour, now lit in orange
-  const hours=Array(24).fill(0);for(const a of r.agents)for(const [hr,n] of a.hours||[])hours[hr]+=n;const top=Math.max(1,...hours),nowH=new Date(Date.now()+clockSkew+7*3600e3).getUTCHours();
-  const bars=h('div',{class:'fl-bd-bars'},...hours.map((n,i)=>{const bar=h('i',{class:i===nowH?'now':i>nowH?'later':''});bar.style.setProperty('--h',Math.max(6,n/top*100)+'%');return bar;}));
-  const last=r.handovers?.[0],who=last?nameOf(last.agent):'';
   screen.replaceChildren(
-   h('div',{class:'fl-bd-head'},h('div',{},h('span',{class:'fl-bd-live'+(stale?' off':'')},h('i',{}),stale?'MẤT KẾT NỐI':'TRỰC TUYẾN'),h('strong',{},'BẢNG VẬN HÀNH')),h('div',{class:'fl-bd-clock'},clockEl,dateEl)),
-   h('div',{class:'fl-bd-kpis'},tile(r.running,'Đang xử lý','hot'),tile(r.queued,'Chờ lượt','cool'),tile(r.review,'Chờ duyệt','warm'),tile(k.today||0,'Lượt hôm nay','good')),
-   h('div',{class:'fl-bd-foot'},h('div',{class:'fl-bd-day'},bars,h('div',{class:'fl-bd-axis'},...['00','06','12','18','24'].map(t=>h('span',{},t)))),
-    h('div',{class:'fl-bd-ticker'},h('small',{},'Bàn giao gần nhất'),h('b',{},last?`${who} · ${vn(last.at)}`:'Chưa có trong 24 giờ'),h('small',{},`TB ${k.avgToday?fmt(k.avgToday):'—'} / lượt`))));
-  paintClock();}
+   h('div',{class:'fl-bd-left'},h('span',{class:'fl-bd-live'+(stale?' off':'')},h('i',{}),stale?'MẤT KẾT NỐI':'TRỰC TUYẾN'),h('div',{class:'fl-bd-clock'},clockEl,dateEl)),
+   h('div',{class:'fl-bd-kpis'},tile(r.running,'Đang xử lý','hot'),tile(r.queued,'Chờ lượt','cool'),tile(r.review,'Chờ duyệt','warm'),tile(k.today||0,'Lượt hôm nay','good')));
+  paintClock();
   const items=personal?personal.messages:intro.slice(0,demoStep+1).map(text=>({role:'bot',text}));
   const preview=h('div',{class:'fl-bubble-messages'});
-  for(const m of (items.length?items:[{role:'bot',text:personal?.linked?'Sẵn sàng hỗ trợ bạn qua Zalo':'Liên kết Zalo để xem hội thoại của bạn'}]).slice(-1)){preview.append(h('div',{class:'fl-bubble-message '+(m.role==='user'?'me':'bot')},h('small',{},m.role==='user'?'Bạn':'Zalo'),h('span',{},m.text.slice(0,150))));}
+  // the last few messages, the customer on the right and the assistant on the left, like Zalo
+  for(const m of (items.length?items:[{role:'bot',text:personal?.linked?'Sẵn sàng hỗ trợ bạn qua Zalo':'Liên kết Zalo để xem hội thoại của bạn'}]).slice(-3)){preview.append(h('div',{class:'fl-bubble-message '+(m.role==='user'?'me':'bot')},h('span',{},m.text.slice(0,160))));}
+  if(personal?.processing)preview.append(h('div',{class:'fl-bubble-message bot fl-typing','aria-label':'Đang soạn'},h('span',{},h('i',{}),h('i',{}),h('i',{}))));
   const icon=h('i',{class:'fl-zalo-avatar'});icon.innerHTML=ZALO;zaloBubble.replaceChildren(h('div',{class:'fl-bubble-heading'},icon,h('b',{},'Hội thoại Zalo'),h('small',{},personal?'Riêng tư':'Minh họa')),preview,h('small',{class:'fl-bubble-status'},personal?.processing?'••• Đang phản hồi…':'Bấm để xem hội thoại'));
  }
  function openAgent(b){const s=b.s,look=stale?'off':LOOK[s.state]||'idle';openPanel(s.name,[h('p',{},tagText(s,look)),h('p',{},`Hoàn thành hôm nay: ${s.completed||0} lượt`),h('p',{},s.last?`Lần hoàn thành gần nhất: ${vn(s.last)}`:'Chưa có lượt hoàn thành được ghi nhận')]);}
  const kpis=h('section',{class:'fl-kpis','aria-label':'Chỉ số hoạt động'});
- const clockButton=h('button',{type:'button',onclick:()=>setView('clock')},'Đồng hồ');
- const officeButton=h('button',{type:'button',onclick:()=>setView('office')},'Văn phòng');
- const toolbar=h('header',{class:'fl-toolbar'},h('div',{},h('h1',{},'Faciup Live'),h('p',{},'Không gian vận hành của đội AI')),h('div',{class:'fl-view','aria-label':'Chế độ hiển thị'},clockButton,officeButton));
+ const toolbar=h('header',{class:'fl-toolbar'},h('div',{},h('h1',{},'Faciup Live'),h('p',{},'Không gian vận hành của đội AI')));
  const mobileTabs=h('div',{class:'fl-mobile-tabs','aria-label':'Thông tin văn phòng'},...['Hoạt động','Zalo','Chỉ số'].map((text,i)=>h('button',{type:'button','aria-pressed':String(i===0),onclick:e=>{if(i===1){openChat();return;}page.dataset.panel=String(i);mobileTabs.querySelectorAll('button').forEach((b,j)=>b.setAttribute('aria-pressed',String(i===j)));}},text)));
  const zaloDock=h('div',{class:'fl-zalo-dock'});
  const page=h('div',{class:'fl-live','data-panel':'0'},toolbar,stage,zaloDock,mobileTabs,side,kpis,dialog,chatHost);
- function setView(next){view=next;page.dataset.view=view;clockButton.setAttribute('aria-pressed',String(view==='clock'));officeButton.setAttribute('aria-pressed',String(view==='office'));stage.setAttribute('aria-label',view==='office'?'Văn phòng AI FACIUP':'Đội AI FACIUP trên mặt đồng hồ 24 giờ');(view==='office'?officeLinks:dial).append(beams);trail.replaceChildren();stage.querySelectorAll('.fl-doc').forEach(e=>e.remove());try{localStorage.setItem('faciup-live-view',view);}catch{}}
- setView(view);
+ page.dataset.view=view;stage.setAttribute('aria-label','Văn phòng AI FACIUP');officeLinks.append(beams);
  show(page,footer());
  let bots=[],key='';const lastTurn=new Map();
  function build(list){
@@ -179,7 +194,7 @@ export function showLive({h,show,api,footer,openLogin,zaloLink}){
    const [x,y]=bez(p,c,q,l.a?l.t:1-l.t);l.dot.setAttribute('cx',x.toFixed(1));l.dot.setAttribute('cy',y.toFixed(1));}}
  // robots keep circling: faster while working, slower when the team is off
  function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;const r=stage.getBoundingClientRect(),sc=r.width/1000,sy=view==='office'?r.height/562.5:sc,off=stale||!data?.runtime?.enabled;
-  if(view==='office'&&r.width){if(NEW_BOARD)fitScreen();else stage.style.setProperty('--fl-wall-angle',Math.atan((110/766*r.height)/(600/2054*r.width))*180/Math.PI+'deg');}
+  if(r.width&&(r.width!==fitW||r.height!==fitH)){fitW=r.width;fitH=r.height;fitScreen();fitRig();}
   for(const [j,b] of bots.entries()){const look=stale?'off':LOOK[b.s.state]||'idle',k=look==='work'?2.6:off&&!b.s.live?.35:1;
    if(!reduce){b.o.ph+=b.o.sp*dt*k;b.o.wob+=dt*1.4;}
    b.left=b.o.sp>0?Math.sin(b.o.ph)>0:Math.sin(b.o.ph)<0;
@@ -188,7 +203,9 @@ export function showLive({h,show,api,footer,openLogin,zaloLink}){
    b.el.style.transform=`translate(${(x*sc-b.el.offsetWidth/2).toFixed(1)}px,${(y*sy-(view==='office'?0:b.el.offsetHeight*.62)).toFixed(1)}px)`;b.el.style.zIndex=5+Math.round(y/50);
    b.hands.style.transform=b.el.style.transform;b.el.classList.toggle('fl-face-left',j===3);b.hands.classList.toggle('fl-face-left',j===3);
    b.el.classList.toggle('fl-left',view==='clock'&&b.left);
-   b.v=[x,view==='office'?y+35:y-18];}
+   b.v=[x,view==='office'?y+35:y-18];
+   // the writing window sits beside the robot's name, flipped to the left near the right edge
+   if(b.compose){const w=b.compose.offsetWidth,right=x>=500?x*sc+70+w<r.width:x*sc-70-w<0;b.compose.style.transform=`translate(${(right?x*sc+70:x*sc-70-w).toFixed(1)}px,${Math.max(8,y*sy-20).toFixed(1)}px)`;}}
   const phone=innerWidth<=560;if(phone&&zaloBubble.parentElement!==zaloDock)zaloDock.append(zaloBubble);else if(!phone&&zaloBubble.parentElement!==stage)stage.append(zaloBubble);
   if(!phone){zaloBubble.style.left='77.5%';zaloBubble.style.top='62%';}
 
@@ -214,7 +231,11 @@ export function showLive({h,show,api,footer,openLogin,zaloLink}){
   hub.querySelector('small').textContent=hl==='work'?'Đang tổng hợp':meeting?.state==='running'?`Phiên #${meeting.n} · lượt ${meeting.step+1}`:'Vận hành 24/7';
   for(const b of bots){const look=stale?'off':LOOK[b.s.state]||'idle';
    b.el.className='fl-bot fl-'+look+(b.el.classList.contains('fl-new')?' fl-new':'')+(view==='clock'&&b.left?' fl-left':'')+(b.s.live?' fl-24':'')+(b.id==='zalo'&&personal?.processing?' fl-chatting':'');
-   b.el.querySelector('.fl-name b').textContent=b.s.name;b.el.querySelector('.fl-name span').textContent=pillText(b.s,look);b.el.title=b.s.name+' · '+tagText(b.s,look);b.hands.classList.toggle('fl-off',look==='off');}
+   b.el.querySelector('.fl-name b').textContent=b.s.name;b.el.querySelector('.fl-name span').textContent=pillText(b.s,look);b.el.title=b.s.name+' · '+tagText(b.s,look);b.hands.classList.toggle('fl-off',look==='off');
+   const j=bots.indexOf(b),work=look==='work';rigs[j]?.classList.toggle('on',work);rigs[j]?.classList.toggle('off',look==='off'||look==='paused');
+   if(DEMO&&work&&j<5){b.compose||=composer();b.compose.style.setProperty('--c',b.color);b.compose.querySelector('b').textContent=`${b.s.name} · ${roles[b.icon]||'Đang xử lý'}…`;b.compose.querySelector('.fl-compose-bar i').style.width=Math.min(96,b.s.avg?runFor(b.s)/b.s.avg*100:40)+'%';b.compose.classList.add('show');}
+   else b.compose?.classList.remove('show');}
+  rigs.lead.classList.toggle('on',hl==='work');
   now.lastChild.textContent=stale?'Mất kết nối · đang thử lại':`${vn(Date.now()+clockSkew)} giờ VN · trực tuyến`;now.classList.toggle('fl-off',stale);
   }
  function paintLog(){const list=data.runtime.handovers||[],seen=new Set([...log.children].map(li=>li.dataset.k));

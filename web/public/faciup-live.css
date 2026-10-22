@@ -192,32 +192,64 @@
 @media(max-width:899px){.fl-live[data-view=office] .fl-zalo-bubble{padding:5px;gap:3px}.fl-live[data-view=office] .fl-bubble-heading b{font-size:8px}.fl-live[data-view=office] .fl-bubble-message span{font-size:8px}}
 @media(max-width:560px){.fl-live[data-view=office] .fl-name,.fl-live[data-view=office] .fl-office-lead .fl-name{font-size:7px;padding:2px 4px;bottom:calc(100% + 2px)}.fl-live[data-view=office] .fl-name::after{border-width:3px}.fl-live[data-view=office] .fl-zalo-dock .fl-zalo-bubble{width:100%;padding:10px;gap:6px}.fl-live[data-view=office] .fl-zalo-dock .fl-bubble-heading b{font-size:12px}.fl-live[data-view=office] .fl-zalo-dock .fl-bubble-message span{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.fl-live[data-view=office] .fl-bot::after{animation:none!important}}
-/* operations board on the wall screen: mapped onto the screen's corners by faciup-live.js */
-.fl-live[data-view=office] .fl-screen.fl-board{left:0;top:0;width:600px;height:250px;min-height:0;transform-origin:0 0;padding:16px 18px 14px;gap:10px;border-radius:8px;color:#eef2ff;font-family:inherit;
- background:radial-gradient(120% 140% at 0% 0%,#2a1b6b 0%,#14123d 45%,#0b0b26 100%);box-shadow:inset 0 0 0 1.5px #7c5cff55,inset 0 0 40px #8b5cf62e;container-type:normal;justify-content:space-between;will-change:transform}
-.fl-live[data-view=office] .fl-board::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:repeating-linear-gradient(0deg,#ffffff06 0 1px,transparent 1px 3px),linear-gradient(115deg,#ffffff14 0%,transparent 30%)}
-.fl-live[data-view=office] .fl-board .fl-bd-head{display:flex;justify-content:space-between;align-items:flex-start;width:100%}
-.fl-live[data-view=office] .fl-board .fl-bd-head strong{display:block;font-size:19px;letter-spacing:.14em;font-weight:800;margin-top:6px;background:linear-gradient(90deg,#fff,#c4b5fd);-webkit-background-clip:text;background-clip:text;color:transparent}
-.fl-live[data-view=office] .fl-board .fl-bd-live{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.12em;color:#4ade80}
-.fl-live[data-view=office] .fl-board .fl-bd-live i{width:8px;height:8px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 0 #4ade8099;animation:fl-bd-pulse 1.6s infinite}
+/* operations board on the wall screen: mapped onto the screen's corners by faciup-live.js.
+   Few, large figures so it reads even when the office is small. */
+.fl-live[data-view=office] .fl-screen.fl-board{left:0;top:0;width:600px;height:250px;min-height:0;transform-origin:0 0;padding:18px 20px;gap:18px;border-radius:8px;color:#fff;font-family:inherit;display:grid;grid-template-columns:1.05fr 1fr;align-items:center;
+ background:radial-gradient(120% 140% at 0% 0%,#3b1f8f 0%,#1a1550 45%,#0d0c2e 100%);box-shadow:inset 0 0 0 2px #8b6cff66,inset 0 0 50px #8b5cf640;container-type:normal;text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased;backface-visibility:hidden}
+.fl-live[data-view=office] .fl-board::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(115deg,#ffffff1a 0%,transparent 32%)}
+.fl-live[data-view=office] .fl-board .fl-bd-left{display:flex;flex-direction:column;gap:6px;min-width:0}
+.fl-live[data-view=office] .fl-board .fl-bd-live{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;letter-spacing:.08em;color:#86efac}
+.fl-live[data-view=office] .fl-board .fl-bd-live i{width:12px;height:12px;border-radius:50%;background:#4ade80;animation:fl-bd-pulse 1.6s infinite}
 .fl-live[data-view=office] .fl-board .fl-bd-live.off{color:#fca5a5}.fl-live[data-view=office] .fl-board .fl-bd-live.off i{background:#f87171;animation:none}
-@keyframes fl-bd-pulse{70%{box-shadow:0 0 0 7px #4ade8000}}
-.fl-live[data-view=office] .fl-board .fl-bd-clock{text-align:right;line-height:1}
-.fl-live[data-view=office] .fl-board .fl-bd-time{display:block;font-size:44px;font-weight:800;letter-spacing:.02em;font-variant-numeric:tabular-nums;background:linear-gradient(180deg,#ffd29a,#fb923c 60%,#f97316);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 10px #f9731666)}
-.fl-live[data-view=office] .fl-board .fl-bd-time small{font-size:22px;opacity:.9;color:#fdba74;-webkit-text-fill-color:#fdba74}
-.fl-live[data-view=office] .fl-board .fl-bd-date{display:block;margin-top:4px;font-size:11.5px;color:#a5b4fc;letter-spacing:.04em}
-.fl-live[data-view=office] .fl-board .fl-bd-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%}
-.fl-live[data-view=office] .fl-board .fl-bd-kpi{border-radius:10px;padding:7px 10px;background:#ffffff0d;box-shadow:inset 0 0 0 1px #ffffff14;display:flex;flex-direction:column;gap:2px}
-.fl-live[data-view=office] .fl-board .fl-bd-kpi b{font-size:26px;line-height:1;font-weight:800;font-variant-numeric:tabular-nums}
-.fl-live[data-view=office] .fl-board .fl-bd-kpi span{font-size:11px;color:#c7d2fe}
-.fl-live[data-view=office] .fl-board .fl-bd-kpi.hot b{color:#fb923c;text-shadow:0 0 12px #fb923c88}.fl-live[data-view=office] .fl-board .fl-bd-kpi.cool b{color:#67e8f9;text-shadow:0 0 12px #67e8f988}.fl-live[data-view=office] .fl-board .fl-bd-kpi.warm b{color:#f9a8d4;text-shadow:0 0 12px #f472b688}.fl-live[data-view=office] .fl-board .fl-bd-kpi.good b{color:#86efac;text-shadow:0 0 12px #4ade8088}
-.fl-live[data-view=office] .fl-board .fl-bd-foot{display:grid;grid-template-columns:1.5fr 1fr;gap:14px;width:100%;align-items:end}
-.fl-live[data-view=office] .fl-board .fl-bd-bars{display:flex;align-items:flex-end;gap:2px;height:46px}
-.fl-live[data-view=office] .fl-board .fl-bd-bars i{flex:1;height:var(--h);border-radius:2px 2px 0 0;background:linear-gradient(180deg,#a78bfa,#6d28d9);opacity:.85}
-.fl-live[data-view=office] .fl-board .fl-bd-bars i.later{opacity:.3}
-.fl-live[data-view=office] .fl-board .fl-bd-bars i.now{background:linear-gradient(180deg,#fdba74,#f97316);box-shadow:0 0 10px #f97316;opacity:1;animation:fl-bd-now 1.6s ease-in-out infinite}
-@keyframes fl-bd-now{50%{filter:brightness(1.35)}}
-.fl-live[data-view=office] .fl-board .fl-bd-axis{display:flex;justify-content:space-between;font-size:9px;color:#818cf8;margin-top:3px}
-.fl-live[data-view=office] .fl-board .fl-bd-ticker{display:flex;flex-direction:column;gap:2px;padding:6px 10px;border-radius:10px;background:linear-gradient(90deg,#f9731622,#8b5cf61f);box-shadow:inset 0 0 0 1px #fb923c40;min-width:0}
-.fl-live[data-view=office] .fl-board .fl-bd-ticker small{font-size:10px;color:#c7d2fe}.fl-live[data-view=office] .fl-board .fl-bd-ticker b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@media(prefers-reduced-motion:reduce){.fl-board .fl-bd-live i,.fl-board .fl-bd-bars i.now{animation:none}}
+@keyframes fl-bd-pulse{0%{box-shadow:0 0 0 0 #4ade80aa}70%{box-shadow:0 0 0 9px #4ade8000}}
+.fl-live[data-view=office] .fl-board .fl-bd-clock{line-height:1}
+.fl-live[data-view=office] .fl-board .fl-bd-time{display:block;font-size:70px;font-weight:800;letter-spacing:-.01em;font-variant-numeric:tabular-nums;color:#ffb35c;text-shadow:0 0 18px #f9731699}
+.fl-live[data-view=office] .fl-board .fl-bd-time small{font-size:30px;color:#fde68a}
+.fl-live[data-view=office] .fl-board .fl-bd-date{display:block;margin-top:6px;font-size:18px;font-weight:600;color:#ddd6fe}
+.fl-live[data-view=office] .fl-board .fl-bd-kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fl-live[data-view=office] .fl-board .fl-bd-kpi{border-radius:12px;padding:10px 12px;background:#ffffff14;box-shadow:inset 0 0 0 1.5px #ffffff22;display:flex;flex-direction:column;gap:4px}
+.fl-live[data-view=office] .fl-board .fl-bd-kpi b{font-size:42px;line-height:1;font-weight:800;font-variant-numeric:tabular-nums}
+.fl-live[data-view=office] .fl-board .fl-bd-kpi span{font-size:15px;font-weight:600;color:#e0e7ff;white-space:nowrap}
+.fl-live[data-view=office] .fl-board .fl-bd-kpi.hot b{color:#ffb35c}.fl-live[data-view=office] .fl-board .fl-bd-kpi.cool b{color:#7ff0ff}.fl-live[data-view=office] .fl-board .fl-bd-kpi.warm b{color:#ffb3dd}.fl-live[data-view=office] .fl-board .fl-bd-kpi.good b{color:#9cf7bb}
+/* robots' eyes and hands, laid over the picture */
+.fl-rig{position:absolute;z-index:2;pointer-events:none}
+.fl-rig-bot{position:absolute;inset:0}
+.fl-eye-live{position:absolute;border-radius:50%;background:radial-gradient(closest-side,#07102e 72%,#07102e00)}
+.fl-eye-live::after{content:'';position:absolute;left:25%;top:17%;width:50%;height:66%;border-radius:50%;background:radial-gradient(circle at 40% 35%,#e6fdff 0 14%,#5ff3ff 28%,#14d4f4 75%);box-shadow:0 0 4px #22e1ff;animation:fl-blink 5.2s var(--d,0s) infinite,fl-glance 9s var(--d,0s) infinite ease-in-out}
+.fl-rig-bot.on .fl-eye-live::after{box-shadow:0 0 7px #67f5ff,0 0 2px #fff;animation:fl-blink 3.6s var(--d,0s) infinite,fl-read 1.6s infinite ease-in-out}
+.fl-rig-bot.off .fl-eye-live::after{filter:grayscale(.7) brightness(.7);animation:fl-blink 8s var(--d,0s) infinite}
+@keyframes fl-blink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.08)}}
+@keyframes fl-glance{0%,40%,100%{translate:0 0}48%,60%{translate:-22% 4%}70%,80%{translate:20% -2%}}
+@keyframes fl-read{0%,100%{translate:-14% 6%}50%{translate:16% 10%}}
+.fl-hand-live{position:absolute;background-image:url('/assets/live-office-integrated.webp');background-repeat:no-repeat;border-radius:40%;opacity:0;transition:opacity .3s}
+.fl-rig-bot.on .fl-hand-live{opacity:1;animation:fl-type .32s ease-in-out infinite alternate}
+.fl-rig-bot.on .fl-hand-live.alt{animation-delay:.16s}
+@keyframes fl-type{from{transform:translateY(0)}to{transform:translateY(-14%) rotate(-3deg)}}
+/* the writing window over a working agent's desk */
+.fl-compose{position:absolute;left:0;top:0;z-index:30;width:clamp(96px,11vw,150px);padding:7px 9px 8px;border-radius:12px;background:rgba(255,255,255,.88);backdrop-filter:blur(8px);border:1px solid color-mix(in srgb,var(--c) 35%,#fff);box-shadow:0 14px 30px -14px color-mix(in srgb,var(--c) 70%,transparent);opacity:0;scale:.85;transition:opacity .3s,scale .3s;pointer-events:none}
+.fl-compose.show{opacity:1;scale:1}
+.fl-compose-top{display:flex;align-items:flex-start;gap:4px;margin-bottom:6px}
+.fl-compose-top i{width:6px;height:6px;border-radius:50%;background:#e5def5}.fl-compose-top i:first-child{background:#fb7185}.fl-compose-top i:nth-child(2){background:#fbbf24}.fl-compose-top i:nth-child(3){background:#4ade80}
+.fl-compose-top b{margin-left:4px;font-size:clamp(8px,.75vw,10.5px);line-height:1.25;font-weight:700;color:var(--c);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.fl-compose-lines{display:flex;flex-direction:column;gap:5px}
+.fl-compose-lines span{height:5px;border-radius:3px;background:color-mix(in srgb,var(--c) 26%,#ece7f8);width:0;animation:fl-typeline 4.8s steps(14) infinite}
+.fl-compose-lines span:nth-child(2){animation-delay:1.2s;--w:82%}.fl-compose-lines span:nth-child(3){animation-delay:2.4s;--w:94%}.fl-compose-lines span:nth-child(4){animation-delay:3.6s;--w:58%}
+.fl-compose-lines span:last-child::after{content:'';display:block;margin-left:100%;width:2px;height:9px;translate:2px -2px;background:var(--c);animation:fl-caret .8s steps(1) infinite}
+@keyframes fl-typeline{0%{width:0}22%,90%{width:var(--w,100%)}100%{width:var(--w,100%);opacity:0}}
+@keyframes fl-caret{50%{opacity:0}}
+.fl-compose-bar{margin-top:7px;height:4px;border-radius:3px;background:#efe9fb;overflow:hidden}.fl-compose-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--c),#fb923c);transition:width 1s linear}
+/* Zalo bubble: both sides of the conversation */
+.fl-zalo-bubble .fl-bubble-messages{display:flex;flex-direction:column;gap:5px;min-height:0;overflow:hidden}
+.fl-zalo-bubble .fl-bubble-message{display:flex;max-width:88%;padding:0;background:none;border:0}
+.fl-zalo-bubble .fl-bubble-message span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12px;line-height:1.4;padding:5px 9px;border-radius:12px 12px 12px 4px;background:#fff;color:#1f2547;border:1px solid #d9e3ff;box-shadow:0 2px 6px -4px #1e40af55;text-align:left}
+.fl-zalo-bubble .fl-bubble-message.me{align-self:flex-end}
+.fl-zalo-bubble .fl-bubble-message.me span{background:linear-gradient(135deg,#8b5cf6,#d946ef);color:#fff;border-color:transparent;border-radius:12px 12px 4px 12px}
+.fl-zalo-bubble .fl-bubble-message small{display:none}
+.fl-zalo-bubble .fl-typing span{display:flex;gap:3px;align-items:center;padding:7px 10px}
+.fl-zalo-bubble .fl-typing i{width:5px;height:5px;border-radius:50%;background:#8b9bd6;animation:fl-dots 1s infinite}
+.fl-zalo-bubble .fl-typing i:nth-child(2){animation-delay:.15s}.fl-zalo-bubble .fl-typing i:nth-child(3){animation-delay:.3s}
+@keyframes fl-dots{0%,60%,100%{transform:none;opacity:.5}30%{transform:translateY(-3px);opacity:1}}
+/* office only: no view switch */
+.fl-view{display:none!important}
+@media(prefers-reduced-motion:reduce){.fl-eye-live::after,.fl-hand-live,.fl-compose-lines span,.fl-board .fl-bd-live i{animation:none!important}.fl-compose-lines span{width:var(--w,100%)}}
+@media(max-width:560px){.fl-compose{display:none}}
