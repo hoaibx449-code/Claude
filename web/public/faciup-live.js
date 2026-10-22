@@ -19,7 +19,7 @@ const BADGE={
 // server state → how a robot looks
 const LOOK={running:'work',live24:'live24',queued:'wait',retry:'wait',review:'review',paused:'paused',disabled:'off',idle:'idle',unknown:'off'};
 // chairs round the table, in table half-widths/heights
-const SEATS=[[230,224],[430,142],[710,245],[332,346],[682,394]];
+const SEATS=[[212,260],[411,156],[698,286],[339,383],[660,414]];
 const pad=n=>String(n).padStart(2,'0');
 const fmt=s=>{s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+':'+pad(s%60);};
 const vn=t=>{const d=new Date(t+7*3600e3);return pad(d.getUTCHours())+':'+pad(d.getUTCMinutes());};
@@ -38,6 +38,9 @@ function robot(c,badge,id){const lt=tint(c,.45);return `<svg viewBox="0 0 58 70"
  <g transform="translate(29 53.5)">${BADGE[badge]||BADGE.spark}</g>
  <rect x="9" y="46" width="6" height="11" rx="3" fill="url(#flb${id})"/><rect x="43" y="46" width="6" height="11" rx="3" fill="url(#flb${id})"/></svg>`;}
 const DOC='<svg viewBox="0 0 30 24" aria-hidden="true"><path d="M1 3h10l3 3h15v17H1z" fill="#f59e0b"/><rect x="1" y="8" width="28" height="15" rx="2.5" fill="#fcd34d"/><path d="M7 15h16" stroke="#b45309" stroke-width="2"/></svg>';
+const ZALO='<svg viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="10" fill="#0878ff"/><path d="M7 8h18v14H14l-6 4 1-5H7z" fill="#fff"/><text x="16" y="18" text-anchor="middle" fill="#0878ff" font-size="7.5" font-weight="800" font-family="Arial,sans-serif">Zalo</text></svg>';
+// Seated, three-quarter pose. Desk foreground is composited above the torso.
+function seatedRobot(c,id){return `<svg viewBox="0 0 74 86" aria-hidden="true"><defs><linearGradient id="seat${id}" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#d9d4ed"/></linearGradient><linearGradient id="coat${id}"><stop stop-color="${tint(c,.5)}"/><stop offset="1" stop-color="${c}"/></linearGradient></defs><ellipse cx="35" cy="79" rx="19" ry="5" fill="#35254c" opacity=".12"/><path d="M25 66l-2 13h9l5-12M42 66l1 13h9l-2-14" fill="${c}"/><rect x="20" y="42" width="36" height="29" rx="13" fill="url(#coat${id})"/><g class="fl-seated-head"><path d="M33 10V4" stroke="${c}" stroke-width="2.8"/><circle cx="33" cy="4" r="3" fill="${c}"/><path d="M14 21q0-12 14-13l20 3q13 2 13 16v11q-1 12-15 12l-20-3Q13 45 13 33z" fill="url(#seat${id})" stroke="#c6badd"/><ellipse cx="16" cy="29" rx="6" ry="9" fill="${c}"/><ellipse cx="17" cy="28" rx="3" ry="5" fill="#f3efff"/><path d="M30 18l17 1q10 1 10 12 0 11-10 12l-16-2q-9-1-9-12 0-11 8-11" fill="#211d43"/><ellipse class="fl-eye" cx="36" cy="29" rx="3" ry="4" fill="#7ee9ff"/><ellipse class="fl-eye" cx="48" cy="30" rx="2.7" ry="3.8" fill="#7ee9ff"/><path d="M37 36q5 3 9 0" fill="none" stroke="#7ee9ff" stroke-width="1.5"/></g><path d="M28 50q-8 4-5 12l15 6 4-7-10-5M49 51q7 1 10 8l7 3-3 7-15-6" fill="url(#coat${id})"/><g class="fl-typing"><ellipse cx="40" cy="65" rx="8" ry="4" fill="#faf8ff" stroke="#d8d0e7"/><path d="M37 64l3 4m1-5 3 4" stroke="#a79aba"/><ellipse cx="64" cy="65" rx="7" ry="4" fill="#faf8ff" stroke="#d8d0e7"/></g></svg>`;}
 
 export function showLive({h,show,api,footer,openLogin}){
  let stopped=false,busy=false,data=null,stale=false,raf=0,last=performance.now(),clockSkew=0;
@@ -60,48 +63,60 @@ export function showLive({h,show,api,footer,openLogin}){
  const hub=h('div',{class:'fl-hub'},h('div',{class:'fl-core'},h('b',{},'FACIUP'),h('small',{},'')));
  const now=h('div',{class:'fl-now'},h('i',{}),h('span',{},'Đang kết nối…'));
  const stage=h('section',{class:'fl-stage','aria-label':'Đội AI FACIUP trên mặt đồng hồ 24 giờ'},dial,hub,now);
- const room=h('img',{class:'fl-office-bg',src:'/assets/live-office-wide.webp',alt:'',width:1672,height:941,decoding:'async'});
+ const room=h('img',{class:'fl-office-bg',src:'/assets/live-office-seated.webp',alt:'',width:1672,height:941,decoding:'async'});
+ // Reuse the room image as clipped foreground layers: desks obscure seated lower bodies.
+ const desks=[[[329,428],[499,379],[549,426],[539,480],[399,526],[331,481]],[[655,263],[812,222],[862,256],[854,308],[735,353],[654,313]],[[1144,476],[1310,424],[1395,469],[1382,527],[1244,581],[1145,530]],[[391,622],[507,597],[598,653],[575,709],[496,735],[391,683]],[[1093,706],[1259,654],[1339,700],[1328,755],[1178,812],[1094,761]],[[690,467],[745,431],[928,431],[980,479],[972,544],[883,578],[755,570],[692,522]]];
+ const deskLayers=desks.map(points=>{const img=h('img',{class:'fl-desk-front',src:room.src,alt:'','aria-hidden':'true'});img.style.clipPath='polygon('+points.map(([x,y])=>`${x/1672*100}% ${y/941*100}%`).join(',')+')';return img;});
  const officeLinks=svg('svg',{class:'fl-office-links',viewBox:'0 0 1000 562.5',preserveAspectRatio:'none','aria-hidden':'true'});
  const leadBot=h('div',{class:'fl-office-lead',role:'img','aria-label':'FACIUP · Điều phối'});
- leadBot.innerHTML='<div class="fl-name"><b>FACIUP</b></div><div class="fl-body">'+robot('#f97316','coordinator','lead')+'</div>';
- leadBot.style.setProperty('--c','#f97316');stage.prepend(room,officeLinks);stage.append(leadBot);
+ leadBot.innerHTML='<div class="fl-name"><b>FACIUP</b></div><div class="fl-body">'+robot('#f97316','coordinator','lead')+'</div><div class="fl-seated">'+seatedRobot('#f97316','lead')+'</div>';
+ const leadHands=h('div',{class:'fl-seat-hands fl-lead-hands'});leadHands.innerHTML=seatedRobot('#f97316','leadHands');
+ leadBot.style.setProperty('--c','#f97316');stage.prepend(room,officeLinks);stage.append(leadBot,...deskLayers,leadHands);
  const trail=svg('svg',{class:'fl-trail','aria-hidden':'true'});stage.append(trail);
  const log=h('ul',{class:'fl-log'});
  const side=h('aside',{class:'fl-side'},h('div',{class:'fl-panel'},h('h2',{},'Bàn giao gần đây'),log));
- const screen=h('button',{class:'fl-screen',type:'button','aria-label':'Phóng to màn hình điều hành',onclick:()=>openDashboard()});stage.append(screen);
+ const screen=h('button',{class:'fl-screen',type:'button','aria-label':'Phóng to hội thoại trên màn hình',onclick:()=>openChat()});stage.append(screen);
  const dialog=h('dialog',{class:'fl-dialog'}),dialogBody=h('div',{});dialog.append(h('button',{type:'button',class:'fl-close',onclick:()=>dialog.close(),'aria-label':'Đóng'},'×'),dialogBody);dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});
- const chatTitle=h('h2',{},'Zalo Bot · Hỗ trợ'),chatNote=h('small',{},'Đang kết nối…'),chatStats=h('small',{class:'fl-chat-stats'}),chatMessages=h('div',{class:'fl-messages',role:'log','aria-live':'polite'}),chatStatus=h('p',{class:'fl-chat-status'});
+ const chatTitle=h('h2',{},'Trò chuyện'),chatNote=h('small',{},'Đang kết nối…'),chatStats=h('small',{class:'fl-chat-stats'}),chatMessages=h('div',{class:'fl-messages',role:'log','aria-live':'polite'}),chatStatus=h('p',{class:'fl-chat-status'});
  const webTab=h('button',{type:'button',onclick:()=>{chatMode='web';renderChat();}},'Chat trên web'),zaloTab=h('button',{type:'button',onclick:()=>{chatMode='zalo';renderChat();}},'Zalo của tôi');
  const input=h('input',{placeholder:'Bạn cần hỗ trợ gì?',maxlength:1000,'aria-label':'Tin nhắn của bạn'}),send=h('button',{type:'submit','aria-label':'Gửi tin nhắn'},'Gửi');
  const form=h('form',{class:'fl-chat-form',onsubmit:e=>{e.preventDefault();sendChat();}},input,send);
  const chat=h('section',{class:'fl-chat'},chatTitle,chatStats,chatNote,h('div',{class:'fl-chat-tabs'},webTab,zaloTab),chatMessages,chatStatus,form);
- side.append(chat);
+ const chatHost=h('div',{class:'fl-chat-host',hidden:true},chat);
  let personal=null,chatMode='web',history=[],sending=false,mineBusy=false,identity=0,demoStep=0;
  const intro=['Bạn cần hỗ trợ gì? Nhắn mình nhé.','Bạn có thể quan sát hoạt động của đội AI trên màn hình.','Đăng nhập để bắt đầu hội thoại riêng của bạn.'];
  function renderChat(){
   chatNote.textContent=personal?(chatMode==='web'?'Chat riêng · Phiên hiện tại':'Zalo riêng · 30 tin gần nhất'):'Hội thoại minh họa · Chưa đăng nhập';
   chat.querySelector('.fl-chat-tabs').hidden=!personal;form.hidden=!personal||chatMode!=='web';zaloTab.setAttribute('aria-pressed',String(chatMode==='zalo'));webTab.setAttribute('aria-pressed',String(chatMode==='web'));
   const items=!personal?intro.slice(0,demoStep+1).map(text=>({role:'bot',text})):chatMode==='web'?history:personal.messages;
-  const scroll=chatMessages.scrollHeight-chatMessages.scrollTop-chatMessages.clientHeight<40;
-  chatMessages.replaceChildren(...items.map(m=>h('div',{class:'fl-message '+(m.role==='user'?'me':'bot')},m.text)));
+  const oldScroll=chatMessages.scrollTop,scroll=chatMessages.scrollHeight-oldScroll-chatMessages.clientHeight<40;
+  chatMessages.replaceChildren(...items.map(m=>{const e=h('div',{class:'fl-message '+(m.role==='user'?'me':'bot')},h('span',{},m.text));if(m.role!=='user'){const icon=h('i',{class:'fl-zalo-avatar'});icon.innerHTML=ZALO;e.prepend(icon);}return e;}));
   if(!items.length)chatMessages.append(h('p',{class:'fl-empty'},chatMode==='zalo'?(personal.linked?'Chưa có tin nhắn sau khi liên kết.':'Liên kết Zalo đã xác minh để xem hội thoại của bạn.'):'Bạn cần hỗ trợ gì? Nhắn mình nhé.'));
   if(personal&&chatMode==='zalo'&&!personal.linked)chatMessages.append(h('a',{href:'/zalo'},'Liên kết Zalo'));
   if(!personal)chatMessages.append(h('button',{type:'button',class:'fl-login',onclick:()=>openLogin?.('route',{hash:'/faciup-live'})},'Đăng nhập để trò chuyện'));
   chatStatus.textContent=sending&&chatMode==='web'?'Đang phản hồi…':personal?.processing&&chatMode==='zalo'?'Đang xử lý tin nhắn Zalo…':personal?'Hội thoại riêng · Sẵn sàng hỗ trợ':'Lời giới thiệu tự động · Không phải tin nhắn khách hàng';
-  input.disabled=sending;send.disabled=sending;if(scroll)chatMessages.scrollTop=chatMessages.scrollHeight;
+  input.disabled=sending;send.disabled=sending;chatMessages.scrollTop=scroll?chatMessages.scrollHeight:oldScroll;
+  paintScreen();
   bots.find(b=>b.id==='zalo')?.el.classList.toggle('fl-chatting',sending||!!personal?.processing);
  }
  async function loadMine(){if(stopped||mineBusy||document.hidden)return;mineBusy=true;try{const p=await api('/api/faciup-live/mine');if(stopped)return;if(personal?.userId!==p.userId){identity++;history=[];input.value='';chatMode='web';}personal=p;}catch{if(personal){identity++;history=[];input.value='';chatMode='web';}personal=null;}finally{mineBusy=false;if(!stopped)renderChat();}}
  async function sendChat(){const text=input.value.trim();if(!text||!personal||sending)return;const who=personal.userId,epoch=identity;sending=true;history.push({role:'user',text});input.value='';renderChat();try{const result=await api('/api/faciup-live/chat',{method:'POST',body:{text,history:history.slice(0,-1).slice(-8)}});await loadMine();if(stopped||identity!==epoch||personal?.userId!==who||result.userId!==who)return;history.push({role:'bot',text:result.reply||'Chưa có phản hồi.'});history=history.slice(-30);}catch(e){if(!stopped&&identity===epoch&&personal?.userId===who)history.push({role:'bot',text:e.message||'Chưa gửi được. Vui lòng thử lại.'});}finally{sending=false;if(!stopped)renderChat();}}
  function openPanel(title,kids){dialogBody.replaceChildren(h('h2',{},title),...kids);dialog.showModal();}
- function openDashboard(){if(!data)return;const r=data.runtime,k=r.kpi||{};openPanel('Trung tâm điều hành',[h('p',{},`${r.running} đang xử lý · ${r.queued} chờ lượt · ${r.review} chờ duyệt`),h('p',{},`${k.today||0} lượt hoàn thành hôm nay · TB ${k.avgToday?fmt(k.avgToday):'—'}/lượt`),h('p',{},r.sessions[0]?`Phiên #${r.sessions[0].n} · ${nameOf(r.sessions[0].current)} · ${r.sessions[0].state==='paused'?'Tạm dừng':r.sessions[0].state==='review'?'Chờ duyệt':'Lượt '+(r.sessions[0].step+1)}`:'Chưa có phiên đang xử lý'),h('p',{},`Cập nhật ${vn(r.polledAt||Date.now())} giờ Việt Nam`)]);}
+ function openChat(){openPanel(personal?'Hội thoại của bạn':'Hướng dẫn và hỗ trợ',[chat]);renderChat();}
+ function paintScreen(){if(!data)return;const r=data.runtime;
+  const values=h('div',{class:'fl-screen-counts'},...[[r.running,'Xử lý'],[r.queued,'Chờ lượt'],[r.review,'Chờ duyệt']].map(([n,label])=>h('div',{},h('b',{},n),h('span',{},label))));
+  const items=!personal?intro.slice(0,demoStep+1).map(text=>({role:'bot',text})):chatMode==='zalo'?personal.messages:history;
+  const preview=h('div',{class:'fl-screen-conversation'});
+  for(const m of (items.length?items:[{role:'bot',text:chatMode==='zalo'?'Mở hội thoại Zalo của bạn':'Bạn cần hỗ trợ gì?'}]).slice(-2)){const bubble=h('div',{class:'fl-screen-message '+(m.role==='user'?'me':'bot')});if(m.role!=='user'){const icon=h('i',{class:'fl-zalo-avatar'});icon.innerHTML=ZALO;bubble.append(icon);}bubble.append(h('span',{},m.text.slice(0,110)));preview.append(bubble);}
+  screen.replaceChildren(values,preview,h('small',{class:'fl-screen-state'},stale?'Mất kết nối':sending||personal?.processing?'••• Đang phản hồi…':personal?'Hội thoại riêng':'Hội thoại minh họa'),h('small',{class:'fl-screen-expand'},'Bấm để phóng to ↗'));
+ }
  function openAgent(b){const s=b.s,look=stale?'off':LOOK[s.state]||'idle';openPanel(s.name,[h('p',{},tagText(s,look)),h('p',{},`Hoàn thành hôm nay: ${s.completed||0} lượt`),h('p',{},s.last?`Lần hoàn thành gần nhất: ${vn(s.last)}`:'Chưa có lượt hoàn thành được ghi nhận')]);}
  const kpis=h('section',{class:'fl-kpis','aria-label':'Chỉ số hoạt động'});
  const clockButton=h('button',{type:'button',onclick:()=>setView('clock')},'Đồng hồ');
  const officeButton=h('button',{type:'button',onclick:()=>setView('office')},'Văn phòng');
  const toolbar=h('header',{class:'fl-toolbar'},h('div',{},h('h1',{},'Faciup Live'),h('p',{},'Không gian vận hành của đội AI')),h('div',{class:'fl-view','aria-label':'Chế độ hiển thị'},clockButton,officeButton));
- const mobileTabs=h('div',{class:'fl-mobile-tabs','aria-label':'Thông tin văn phòng'},...['Hoạt động','Zalo','Chỉ số'].map((text,i)=>h('button',{type:'button','aria-pressed':String(i===0),onclick:e=>{page.dataset.panel=String(i);mobileTabs.querySelectorAll('button').forEach((b,j)=>b.setAttribute('aria-pressed',String(i===j)));}},text)));
- const page=h('div',{class:'fl-live','data-panel':'0'},toolbar,stage,mobileTabs,side,kpis,dialog);
+ const mobileTabs=h('div',{class:'fl-mobile-tabs','aria-label':'Thông tin văn phòng'},...['Hoạt động','Zalo','Chỉ số'].map((text,i)=>h('button',{type:'button','aria-pressed':String(i===0),onclick:e=>{if(i===1){openChat();return;}page.dataset.panel=String(i);mobileTabs.querySelectorAll('button').forEach((b,j)=>b.setAttribute('aria-pressed',String(i===j)));}},text)));
+ const page=h('div',{class:'fl-live','data-panel':'0'},toolbar,stage,mobileTabs,side,kpis,dialog,chatHost);
  function setView(next){view=next;page.dataset.view=view;clockButton.setAttribute('aria-pressed',String(view==='clock'));officeButton.setAttribute('aria-pressed',String(view==='office'));stage.setAttribute('aria-label',view==='office'?'Văn phòng AI FACIUP':'Đội AI FACIUP trên mặt đồng hồ 24 giờ');(view==='office'?officeLinks:dial).append(beams);trail.replaceChildren();stage.querySelectorAll('.fl-doc').forEach(e=>e.remove());try{localStorage.setItem('faciup-live-view',view);}catch{}}
  setView(view);
  show(page,footer());
@@ -113,18 +128,18 @@ export function showLive({h,show,api,footer,openLogin}){
   for(let r=0;r<rings;r++)orbits.append(svg('circle',{cx:500,cy:500,r:[190,265,335][r],class:'fl-orbit'}));
   bots=list.map((s,j)=>{const i=j+1,old=keep.get(s.id);keep.delete(s.id);
    const ring=j%rings,o=old?.o||{r:[190,265,335][ring],ph:j/list.length*Math.PI*2,sp:(.16-.03*ring)*(ring%2?-1:1),wob:j};
-   let el=old?.el;
+   let el=old?.el,hands=old?.hands;
    if(!el||old.icon!==s.icon||old.color!==s.color){old?.el.remove();el=h('div',{class:'fl-bot fl-new',role:'img','aria-label':s.name});el.style.setProperty('--c',s.color);
-    el.innerHTML=`<div class="fl-name"><b></b><span></span></div><i class="fl-pulse"></i><div class="fl-shadow"></div><div class="fl-body">${robot(s.color,s.icon,j+'_'+s.id.replace(/\W/g,''))}</div>`;
-    stage.append(el);setTimeout(()=>el.classList.remove('fl-new'),900);}
-   const bot={id:s.id,i,icon:s.icon,color:s.color,el,o,s,pos:[0,0],v:[500,500],left:false};el.tabIndex=0;el.setAttribute('role','button');el.onclick=()=>openAgent(bot);el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openAgent(bot);}};return bot;});
-  for(const b of keep.values())b.el.remove();
+    el.innerHTML=`<div class="fl-name"><b></b><span></span></div><i class="fl-pulse"></i><div class="fl-shadow"></div><div class="fl-body">${robot(s.color,s.icon,j+'_'+s.id.replace(/\W/g,''))}</div><div class="fl-seated">${seatedRobot(s.color,j+'_'+s.id.replace(/\W/g,''))}</div>`;
+    hands?.remove();hands=h('div',{class:'fl-seat-hands'});hands.innerHTML=seatedRobot(s.color,'hands'+j);stage.append(el,hands);setTimeout(()=>el.classList.remove('fl-new'),900);}
+   const bot={id:s.id,i,icon:s.icon,color:s.color,el,hands,o,s,pos:[0,0],v:[500,500],left:false};el.tabIndex=0;el.setAttribute('role','button');el.onclick=()=>openAgent(bot);el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openAgent(bot);}};return bot;});
+  for(const b of keep.values()){b.el.remove();b.hands?.remove();}
   // links: every robot to FACIUP, and each robot to the next one, so the team reads as one network
   bots.forEach((b,j)=>{link(null,b,b.color);if(bots.length>2||j===0&&bots.length===2)link(b,bots[(j+1)%bots.length],b.color);});}
  let links=[];
  function link(a,b,color){const path=svg('path',{class:'fl-link',stroke:color}),dot=svg('circle',{r:a?5:6,class:'fl-spark',fill:color});beams.append(path,dot);links.push({a,b,path,dot,t:Math.random(),sp:a?.18:.28});}
  const bez=(p,c,q,t)=>[(1-t)*(1-t)*p[0]+2*(1-t)*t*c[0]+t*t*q[0],(1-t)*(1-t)*p[1]+2*(1-t)*t*c[1]+t*t*q[1]];
- const centre=()=>view==='office'?[510,280]:[500,500];
+ const centre=()=>view==='office'?[495,260]:[500,500];
  function drawLinks(dt,off){const turn=data?.runtime?.sessions?.[0];
   const [cx,cy]=centre();for(const l of links){const q=l.b.v,p=l.a?l.a.v:(()=>{const d=Math.hypot(q[0]-cx,q[1]-cy)||1,k=view==='office'?26:112;return [cx+(q[0]-cx)/d*k,cy+(q[1]-cy)/d*k];})();
    // bend towards the centre so the web curves round FACIUP
@@ -137,12 +152,14 @@ export function showLive({h,show,api,footer,openLogin}){
    const [x,y]=bez(p,c,q,l.a?l.t:1-l.t);l.dot.setAttribute('cx',x.toFixed(1));l.dot.setAttribute('cy',y.toFixed(1));}}
  // robots keep circling: faster while working, slower when the team is off
  function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;const r=stage.getBoundingClientRect(),sc=r.width/1000,sy=view==='office'?r.height/562.5:sc,off=stale||!data?.runtime?.enabled;
+  if(view==='office'&&r.width)stage.style.setProperty('--fl-wall-angle',Math.atan((128/941*r.height)/(478/1672*r.width))*180/Math.PI+'deg');
   for(const [j,b] of bots.entries()){const look=stale?'off':LOOK[b.s.state]||'idle',k=look==='work'?2.6:off&&!b.s.live?.35:1;
    if(!reduce){b.o.ph+=b.o.sp*dt*k;b.o.wob+=dt*1.4;}
    b.left=b.o.sp>0?Math.sin(b.o.ph)>0:Math.sin(b.o.ph)<0;
    const seat=SEATS[j]||[180+((j-5)%5)*160,535+Math.floor((j-5)/5)*40];
    const x=view==='office'?seat[0]:500+b.o.r*Math.cos(b.o.ph),y=view==='office'?seat[1]:500+b.o.r*Math.sin(b.o.ph)+Math.sin(b.o.wob)*6;b.pos=[x*sc,y*sy];
    b.el.style.transform=`translate(${(x*sc-b.el.offsetWidth/2).toFixed(1)}px,${(y*sy-b.el.offsetHeight*.62).toFixed(1)}px)`;b.el.style.zIndex=5+Math.round(y/50);
+   b.hands.style.transform=b.el.style.transform;b.el.classList.toggle('fl-face-left',j===3);b.hands.classList.toggle('fl-face-left',j===3);
    b.el.classList.toggle('fl-left',view==='clock'&&b.left);
    b.v=[x,y-18];}
   drawLinks(dt,off);
@@ -163,13 +180,11 @@ export function showLive({h,show,api,footer,openLogin}){
   const hl=meeting?.current===0&&meeting.state==='running'||LOOK[lead?.state]==='work'?'work':'on';hub.dataset.state=hl;
   const za=r.agents.find(a=>a.id==='zalo');chatStats.textContent=za?`Hôm nay: nhận ${za.received??'—'} · phản hồi ${za.replies??'—'}`:'Zalo chưa bật';
   leadBot.className='fl-office-lead fl-'+(stale?'off':hl==='work'?'work':'idle');leadBot.title='FACIUP · '+(stale?'Mất kết nối':hl==='work'?'Đang tổng hợp':'Điều phối đội AI');
-  const values=h('div',{class:'fl-screen-counts'},...[[r.running,'Xử lý'],[r.queued,'Chờ lượt'],[r.review,'Chờ duyệt']].map(([n,label])=>h('div',{},h('b',{},n),h('span',{},label))));
-  const chart=h('div',{class:'fl-screen-chart'});chart.innerHTML=spark(r.kpi?.series||[0,0,0,0,0,0,0],'#67e8f9');
-  screen.replaceChildren(h('strong',{},stale?'MẤT KẾT NỐI':'TRUNG TÂM ĐIỀU HÀNH'),values,h('small',{},meeting?`#${meeting.n} · ${nameOf(meeting.current)}`:'Đội AI · Sẵn sàng'),chart);
+  paintScreen();
   hub.querySelector('small').textContent=hl==='work'?'Đang tổng hợp':meeting?.state==='running'?`Phiên #${meeting.n} · lượt ${meeting.step+1}`:'Vận hành 24/7';
   for(const b of bots){const look=stale?'off':LOOK[b.s.state]||'idle';
    b.el.className='fl-bot fl-'+look+(b.el.classList.contains('fl-new')?' fl-new':'')+(view==='clock'&&b.left?' fl-left':'')+(b.s.live?' fl-24':'')+(b.id==='zalo'&&(sending||personal?.processing)?' fl-chatting':'');
-   b.el.querySelector('.fl-name b').textContent=b.s.name;b.el.querySelector('.fl-name span').textContent=pillText(b.s,look);b.el.title=b.s.name+' · '+tagText(b.s,look);}
+   b.el.querySelector('.fl-name b').textContent=b.s.name;b.el.querySelector('.fl-name span').textContent=pillText(b.s,look);b.el.title=b.s.name+' · '+tagText(b.s,look);b.hands.classList.toggle('fl-off',look==='off');}
   now.lastChild.textContent=stale?'Mất kết nối · đang thử lại':`${vn(Date.now()+clockSkew)} giờ VN · trực tuyến`;now.classList.toggle('fl-off',stale);
   }
  function paintLog(){const list=data.runtime.handovers||[],seen=new Set([...log.children].map(li=>li.dataset.k));
