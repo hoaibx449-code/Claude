@@ -272,7 +272,7 @@ export function showLive({h,show,api,footer,openLogin,zaloLink}){
   paint();paintLog();paintKpis();}
  load();loadMine();raf=requestAnimationFrame(frame);
  const demo=setInterval(()=>{if(!personal&&!reduce&&!document.hidden){demoStep=(demoStep+1)%intro.length;renderChat();}},6000);
- const tick=setInterval(()=>{paintClock();if(data)paint();},1000),poll=setInterval(()=>{load();loadMine();},10000),visible=()=>{if(!document.hidden){load();loadMine();}};
+ const tick=setInterval(()=>{paintClock();if(data)paint();},1000),poll=setInterval(load,20000),pollMine=setInterval(loadMine,30000),visible=()=>{if(!document.hidden){load();loadMine();}};
  document.addEventListener('visibilitychange',visible);
- return ()=>{stopped=true;personal=null;dialog.close();cancelAnimationFrame(raf);clearInterval(tick);clearInterval(poll);clearInterval(demo);document.removeEventListener('visibilitychange',visible);};
+ return ()=>{stopped=true;personal=null;dialog.close();cancelAnimationFrame(raf);clearInterval(tick);clearInterval(poll);clearInterval(pollMine);clearInterval(demo);document.removeEventListener('visibilitychange',visible);};
 }

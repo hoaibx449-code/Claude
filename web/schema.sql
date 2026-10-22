@@ -293,3 +293,15 @@ CREATE TABLE IF NOT EXISTS council_outbox(id TEXT PRIMARY KEY,job_id TEXT NOT NU
   review INTEGER NOT NULL DEFAULT 0,sent INTEGER NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0);
 CREATE TRIGGER IF NOT EXISTS solution_file_check_insert BEFORE INSERT ON solutions WHEN EXISTS(SELECT 1 FROM json_each(new.resources) r WHERE COALESCE(json_extract(r.value,'$.fileId'),'')!='' AND NOT EXISTS(SELECT 1 FROM solution_files f WHERE f.id=json_extract(r.value,'$.fileId'))) BEGIN SELECT RAISE(ABORT,'solution_file_missing'); END;
 CREATE TRIGGER IF NOT EXISTS solution_file_check_update BEFORE UPDATE OF resources ON solutions WHEN EXISTS(SELECT 1 FROM json_each(new.resources) r WHERE COALESCE(json_extract(r.value,'$.fileId'),'')!='' AND NOT EXISTS(SELECT 1 FROM solution_files f WHERE f.id=json_extract(r.value,'$.fileId'))) BEGIN SELECT RAISE(ABORT,'solution_file_missing'); END;
+
+-- read-cost indexes: Faciup Live, the bell and the Zalo views look these up by time or chat,
+-- which without an index scans the whole table on every poll (D1 counts every row read)
+CREATE INDEX IF NOT EXISTS council_turns_time ON council_turns(created_at);
+CREATE INDEX IF NOT EXISTS council_jobs_updated ON council_jobs(status, updated_at);
+CREATE INDEX IF NOT EXISTS zalo_messages_time ON zalo_messages(received_at);
+CREATE INDEX IF NOT EXISTS zalo_messages_chat ON zalo_messages(chat_id, received_at);
+CREATE INDEX IF NOT EXISTS zalo_outbox_time ON zalo_outbox(created_at);
+CREATE INDEX IF NOT EXISTS zalo_outbox_chat ON zalo_outbox(chat_id, created_at);
+CREATE INDEX IF NOT EXISTS zalo_outbox_message ON zalo_outbox(message_id);
+CREATE INDEX IF NOT EXISTS jobs_user_done ON jobs(user_id, finished_at);
+CREATE INDEX IF NOT EXISTS community_user ON community(user_id, created_at);

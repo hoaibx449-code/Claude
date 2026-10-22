@@ -126,6 +126,7 @@ export default {
 };
 
 export type XEnv = Env & { config: Config };
+let liveMemo: { at: number; body: unknown } | null = null;
 
 async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): Promise<Response> {
   const url = new URL(req.url), path = url.pathname, method = req.method;
@@ -167,7 +168,10 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
   const env = await effectiveEnv(rawEnv);
   if(path==='/api/faciup-live'&&method==='GET'){
     rc.quiet=true;
-    return json(await liveOverview(env,env.config),200,{'cache-control':'public, max-age=10'});
+    // everyone sees the same public picture: build it at most once every 20 s per worker, so open
+    // tabs polling the page do not each read the database (workers.dev has no edge cache)
+    if(!liveMemo||Date.now()-liveMemo.at>20000)liveMemo={at:Date.now(),body:await liveOverview(env,env.config)};
+    return json(liveMemo.body,200,{'cache-control':'public, max-age=15'});
   }
   if(path==='/api/solutions'&&method==='GET')return json(await solutionList(env,url));
   if(path.startsWith('/api/image-feed/bridge/'))return bridgeReceive(req,env,path.slice('/api/image-feed/bridge/'.length));

@@ -65,7 +65,10 @@ if (!sub) {
 if (!sub) throw new Error('Chưa có tên miền workers.dev. Mở Cloudflare → Workers & Pages để tạo một tên miền, rồi chạy lại.');
 
 // 5. schema (idempotent), build, deploy
-wrangler(['d1', 'execute', NAME, '--remote', '--file', 'schema.sql', '-c', cfgFile, '-y']);
+// a failed schema step (e.g. the daily D1 read limit is used up) must not block shipping the code;
+// every statement is idempotent, so the next deploy applies what was missed
+try { wrangler(['d1', 'execute', NAME, '--remote', '--file', 'schema.sql', '-c', cfgFile, '-y']); }
+catch (e) { console.log('Cảnh báo: chưa áp dụng được schema D1 lần này (sẽ áp dụng ở lần triển khai sau): ' + String(e.message || e).slice(0, 300)); }
 execFileSync('node', [join(web, 'build.mjs')], { stdio: 'inherit' });
 console.log(await retry('deploy', () => wrangler(['deploy', '-c', cfgFile])));
 
