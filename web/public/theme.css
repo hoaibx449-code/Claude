@@ -1,3 +1,5 @@
+/* The site is always light and bright (no dark mode). */
+:root { color-scheme: light; }
 /* Colour themes, chosen in Quản trị → Trang chủ & nội dung → Giao diện (html[data-theme]).
    "aurora" (vibrant purple–orange) is the default; "classic" keeps the earlier plain white look. */
 
@@ -5,8 +7,8 @@
   --blue: #8b5cf6; --blue-2: #7c3aed; --blue-soft: #f5efff; --accent: #8b5cf6; --accent-2: #fb923c; --sun: #fbbf24;
   --grad: linear-gradient(120deg, #8b5cf6 0%, #d946ef 42%, #fb7185 70%, #fb923c 100%);
   --grad-soft: linear-gradient(135deg, #faf5ff 0%, #fff7ed 100%);
-  --paper: #fffcff; --ink: #2a2148; --muted: #7b7199; --line: #f0e9fb;
-  --page-bg: radial-gradient(900px 520px at 100% -10%, #ffedd5 0%, transparent 58%), radial-gradient(900px 600px at -10% 0%, #f3e8ff 0%, transparent 58%);
+  --paper: #fffaff; --ink: #2a2148; --muted: #7b7199; --line: #f0e9fb;
+  --page-bg: radial-gradient(1000px 600px at 105% -10%, #fed7aa 0%, transparent 60%), radial-gradient(1000px 650px at -10% -5%, #e9d5ff 0%, transparent 60%), radial-gradient(900px 600px at 50% 115%, #fbcfe8 0%, transparent 62%);
   --side-bg: linear-gradient(180deg, #ffffff 0%, #fdf8ff 100%); --side-ink: #2a2148; --side-muted: #7b7199; --side-on: rgba(139, 92, 246, .12); --side-line: #f0e9fb;
   --glow: rgba(217, 70, 239, .32);
 }
@@ -44,12 +46,6 @@ html[data-theme="classic"] {
   --paper: #f5f7fb; --ink: #0f1b3d; --muted: #5b6785; --line: #e6eaf2;
   --page-bg: none; --side-bg: #ffffff; --side-ink: #0f1b3d; --side-muted: #5b6785; --side-on: #eaf1ff; --side-line: #e6eaf2;
   --glow: rgba(31, 94, 255, .3);
-}
-@media (prefers-color-scheme: dark) {
-  :root, html[data-theme] { --paper: #0b1020; --card: #121a30; --ink: #eef2ff; --muted: #9aa6c7; --line: #22304f; --blue-soft: #1b2347;
-    --grad-soft: linear-gradient(135deg, #131d3a 0%, #0f1730 100%); --page-bg: none; --side-bg: #0f1529; --side-on: rgba(255, 255, 255, .08); }
-  :root, html[data-theme="aurora"] { --paper: #120a22; --card: #1c1233; --ink: #f7f0ff; --muted: #b9a6dc; --line: #33224f; --blue-soft: #2a1a47; --accent: #a78bfa;
-    --grad-soft: linear-gradient(135deg, #24133f 0%, #2a1424 100%); --side-bg: linear-gradient(180deg, #1a0b33 0%, #2b0f3d 100%); }
 }
 
 /* vibrant purple–orange: brand name, active menu and headlines carry the gradient */

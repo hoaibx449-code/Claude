@@ -1,7 +1,7 @@
 // Faciup Live: the AI team on a 24-hour dial. FACIUP glows in the centre, the agents are robots that
-// keep circling it, the orange hand marks the time in Vietnam and a dot on the ring marks each hour
-// an agent worked today. When a turn passes, the file flies from one robot to the next (or back to
-// FACIUP). Beside it, how long each agent takes and the latest handovers; below, the team KPIs.
+// keep circling it and the orange hand marks the time in Vietnam. When a turn passes, the file
+// flies from one robot to the next (or back to
+// FACIUP). Beside it, the latest handovers; below, the team KPIs.
 // Everything comes from /api/faciup-live (times and public names only); agents added in Quản trị →
 // Nhóm AI appear on their own. Work is given in the admin pages, never here.
 const NS='http://www.w3.org/2000/svg';
@@ -47,8 +47,8 @@ export function showLive({h,show,api,footer}){
  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
  const svg=(tag,attrs={})=>{const e=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e;};
  const ang=hr=>hr/24*2*Math.PI-Math.PI/2;
- // the dial (viewBox 1000×1000): night/day halves, hour ticks, today's activity dots, orbits, links, the hand
- const marks=svg('g'),orbits=svg('g'),beams=svg('g'),hand=svg('g',{class:'fl-hand'});
+ // the dial (viewBox 1000×1000): night/day halves, hour ticks, orbits, links, the hand
+ const orbits=svg('g'),beams=svg('g'),hand=svg('g',{class:'fl-hand'});
  hand.append(svg('circle',{r:16,class:'fl-hand-glow'}),svg('circle',{r:9}));
  const dial=svg('svg',{viewBox:'0 0 1000 1000',class:'fl-dial','aria-hidden':'true'});
  const defs=svg('defs'),halves=svg('linearGradient',{id:'fl-dn',x1:0,y1:0,x2:0,y2:1});
@@ -58,13 +58,13 @@ export function showLive({h,show,api,footer}){
  for(let i=0;i<24;i++){const a=ang(i),big=i%3===0,r1=big?412:424;dial.append(svg('line',{x1:500+r1*Math.cos(a),y1:500+r1*Math.sin(a),x2:500+438*Math.cos(a),y2:500+438*Math.sin(a),class:big?'fl-tick fl-tick-big':'fl-tick'}));
   if(big){const t=svg('text',{x:500+384*Math.cos(a),y:500+384*Math.sin(a)+8,class:'fl-hour'});t.textContent=pad(i);dial.append(t);}}
  for(const [y,txt] of [[300,'ĐÊM'],[722,'NGÀY']]){const t=svg('text',{x:500,y,class:'fl-half'});t.textContent=txt;dial.append(t);}
- dial.append(orbits,beams,marks,hand);
+ dial.append(orbits,beams,hand);
  const hub=h('div',{class:'fl-hub'},h('div',{class:'fl-core'},h('b',{},'FACIUP'),h('small',{},'')));
- const now=h('div',{class:'fl-now'},h('i',{}),h('span',{},'Đang kết nối…')),tray=h('div',{class:'fl-tray'});
- const stage=h('section',{class:'fl-stage','aria-label':'Đội AI FACIUP trên mặt đồng hồ 24 giờ'},dial,hub,tray,now);
+ const now=h('div',{class:'fl-now'},h('i',{}),h('span',{},'Đang kết nối…'));
+ const stage=h('section',{class:'fl-stage','aria-label':'Đội AI FACIUP trên mặt đồng hồ 24 giờ'},dial,hub,now);
  const trail=svg('svg',{class:'fl-trail','aria-hidden':'true'});stage.append(trail);
- const times=h('ul',{class:'fl-times'}),count=h('small',{}),log=h('ul',{class:'fl-log'});
- const side=h('aside',{class:'fl-side'},h('div',{class:'fl-panel'},h('h2',{},'Thời gian xử lý',count),times),h('div',{class:'fl-panel'},h('h2',{},'Bàn giao gần đây'),log));
+ const log=h('ul',{class:'fl-log'});
+ const side=h('aside',{class:'fl-side'},h('div',{class:'fl-panel'},h('h2',{},'Bàn giao gần đây'),log));
  const kpis=h('section',{class:'fl-kpis','aria-label':'Chỉ số hoạt động'});
  const page=h('div',{class:'fl-live'},h('h1',{class:'sr'},'Faciup Live'),stage,side,kpis);
  show(page,footer());
@@ -119,24 +119,15 @@ export function showLive({h,show,api,footer}){
  const nameOf=i=>i===0?'FACIUP':data.runtime.agents[i]?.name||'Agent';
  function tagText(s,look){return look==='live24'?`Trực 24/7 · ~${fmt(s.avg)}`:look==='work'?`Đang xử lý ${fmt(runFor(s))}`:look==='wait'?`Chờ lượt${s.avg?' · ~'+fmt(s.avg):''}`:look==='review'?'Chờ duyệt':look==='off'?(stale?'Mất kết nối':'Nhóm đang tắt'):s.avg?`TB ${fmt(s.avg)}/lượt`:'Sẵn sàng';}
  function pillText(s,look){return look==='live24'?'24/7':look==='work'?fmt(runFor(s)):look==='review'?'chờ duyệt':look==='off'?'':look==='wait'?'chờ lượt':'';}
- function paintMarks(){marks.replaceChildren();const list=data.runtime.agents;
-  list.forEach((a,i)=>{for(const [hr,n] of a.hours||[]){const t=ang(hr+.5),rr=446-((i*7)%5)*6;const c=svg('circle',{cx:500+rr*Math.cos(t),cy:500+rr*Math.sin(t),r:Math.min(9,4+n),fill:i===0?'#a21caf':a.color,class:'fl-mark'});const tt=svg('title');tt.textContent=`${i===0?'FACIUP':a.name} · ${pad(hr)}:00 · ${n} lượt`;c.append(tt);marks.append(c);}});}
  function paint(){const r=data.runtime,lead=r.agents[0],meeting=r.sessions[0]||null;
-  const hl=stale?'off':meeting?.current===0&&meeting.state==='running'||LOOK[lead?.state]==='work'?'work':LOOK[lead?.state]||'idle';hub.dataset.state=hl;
-  hub.querySelector('small').textContent=hl==='work'?'Đang tổng hợp':hl==='review'?'Chờ duyệt':hl==='off'?(stale?'Mất kết nối':'Đang tắt'):meeting?`Phiên #${meeting.n} · lượt ${meeting.step+1}`:'Sẵn sàng';
-  tray.textContent='Chờ duyệt · '+r.review;tray.classList.toggle('on',r.review>0);
+  // FACIUP runs the whole team all the time: always lit, busier glow while it is putting a result together
+  const hl=meeting?.current===0&&meeting.state==='running'||LOOK[lead?.state]==='work'?'work':'on';hub.dataset.state=hl;
+  hub.querySelector('small').textContent=hl==='work'?'Đang tổng hợp':meeting?.state==='running'?`Phiên #${meeting.n} · lượt ${meeting.step+1}`:'Vận hành 24/7';
   for(const b of bots){const look=stale?'off':LOOK[b.s.state]||'idle';
    b.el.className='fl-bot fl-'+look+(b.el.classList.contains('fl-new')?' fl-new':'')+(b.left?' fl-left':'')+(b.s.live?' fl-24':'');
    b.el.querySelector('.fl-name b').textContent=b.s.name;b.el.querySelector('.fl-name span').textContent=pillText(b.s,look);b.el.title=b.s.name+' · '+tagText(b.s,look);}
-  now.lastChild.textContent=stale?'Mất kết nối · đang thử lại':`${vn(Date.now()+clockSkew)} giờ VN · ${r.enabled?'trực tuyến':'nhóm AI đang tắt'}`;now.classList.toggle('fl-off',stale||!r.enabled);
-  const rows=[...(lead?[{s:{...lead,name:'FACIUP · tổng hợp',color:'#a21caf'}}]:[]),...bots];
-  if(times.children.length!==rows.length)times.replaceChildren(...rows.map(()=>h('li',{},h('i',{}),h('span',{}),h('span',{class:'t'}),h('span',{class:'bar'},h('b',{})))));
-  rows.forEach((a,i)=>{const li=times.children[i],s=a.s,look=stale?'off':LOOK[s.state]||'idle',el=runFor(s);li.style.setProperty('--c',s.color);li.className=look==='work'||look==='live24'?'fl-row-on':look==='off'?'fl-row-off':'';
-   li.children[1].textContent=s.name;
-   li.children[2].innerHTML=look==='live24'?`${fmt(s.avg)}<small>phản hồi TB · trực 24/7</small>`:look==='work'?`${fmt(el)}<small>đang xử lý${s.avg?' · TB '+fmt(s.avg):''}</small>`
-    :look==='wait'?`${s.avg?'~'+fmt(s.avg):'—'}<small>chờ tới lượt</small>`:look==='review'?`${fmt(s.avg)}<small>chờ duyệt</small>`:`${s.avg?fmt(s.avg):'—'}<small>${s.avg?'trung bình / lượt':s.completed?s.completed+' lượt hôm nay':'chưa có lượt'}</small>`;
-   li.querySelector('.bar b').style.width=(look==='work'&&s.avg?Math.min(100,el/s.avg*100):look==='live24'?100:0)+'%';});
-  count.textContent=r.agents.length+' agent';}
+  now.lastChild.textContent=stale?'Mất kết nối · đang thử lại':`${vn(Date.now()+clockSkew)} giờ VN · trực tuyến`;now.classList.toggle('fl-off',stale);
+  }
  function paintLog(){const list=data.runtime.handovers||[],seen=new Set([...log.children].map(li=>li.dataset.k));
   if(!list.length){log.replaceChildren(h('li',{class:'fl-none'},'Chưa có bàn giao trong 24 giờ'));return;}
   log.replaceChildren(...list.map(x=>{const k=x.agent+':'+x.at,a=data.runtime.agents[x.agent],li=h('li',{'data-k':k,class:seen.has(k)||!seen.size?'':'fl-in'},h('time',{},vn(x.at)),h('i',{}),h('span',{},h('b',{},nameOf(x.agent)),x.agent===0?' tổng hợp, gửi chờ duyệt':' xong lượt, bàn giao hồ sơ'));li.style.setProperty('--c',x.agent===0?'#a21caf':a?.color||'#7c3aed');return li;}));}
@@ -156,7 +147,7 @@ export function showLive({h,show,api,footer}){
   const r=data.runtime;r.sessions=r.sessions||[];build(r.agents.slice(1));
   // a session whose turn moved since the last poll hands its file on
   for(const s of r.sessions){const was=lastTurn.get(s.n);if(was!==undefined&&was!==s.current)fly(was,s.current,s.current===0?'#a21caf':r.agents[s.current]?.color||'#f97316');lastTurn.set(s.n,s.current);}
-  paint();paintMarks();paintLog();paintKpis();}
+  paint();paintLog();paintKpis();}
  load();raf=requestAnimationFrame(frame);
  const tick=setInterval(()=>{if(data)paint();},1000),poll=setInterval(load,10000),visible=()=>{if(!document.hidden)load();};
  document.addEventListener('visibilitychange',visible);

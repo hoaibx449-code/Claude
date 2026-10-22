@@ -11,10 +11,6 @@
   --hand: "Pangolin", "Comic Sans MS", cursive;
   --radius: 16px; --tabbar: 64px;
 }
-@media (prefers-color-scheme: dark) {
-  :root { --paper: #0f0b1d; --card: #19132e; --ink: #f3efff; --muted: #a79fc4; --line: #2b2348; --accent: #a78bfa; --accent-ink: #12091f;
-    --grad-soft: linear-gradient(135deg, #1b1236 0%, #2a160d 100%); --shadow: 0 10px 30px -12px rgba(0,0,0,.6); color-scheme: dark; }
-}
 @font-face { font-family: "Pangolin"; src: url("/assets/fonts/Pangolin-Regular.ttf") format("truetype"); font-display: swap; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
@@ -830,10 +826,6 @@ details.brief textarea { margin: 8px 0; font-size: var(--fs-sm); }
   --shadow: 0 1px 2px rgba(15, 27, 61, .04), 0 6px 18px -10px rgba(15, 27, 61, .18);
   --shadow-lg: 0 24px 48px -24px rgba(15, 27, 61, .28);
   --radius: 14px; --side: 236px;
-}
-@media (prefers-color-scheme: dark) {
-  :root { --paper: #0b1020; --card: #121a30; --ink: #eef2ff; --muted: #9aa6c7; --line: #22304f; --accent: #6b95ff; --blue-soft: #16244a;
-    --grad-soft: linear-gradient(135deg, #131d3a 0%, #0f1730 100%); }
 }
 body { background: var(--paper); }
 .grad-text { background: none; color: var(--accent); -webkit-text-fill-color: currentColor; }
