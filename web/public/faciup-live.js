@@ -19,7 +19,7 @@ const BADGE={
 // server state → how a robot looks
 const LOOK={running:'work',live24:'live24',queued:'wait',retry:'wait',review:'review',paused:'paused',disabled:'off',idle:'idle',unknown:'off'};
 // chairs round the table, in table half-widths/heights
-const SEATS=[[220,230],[474,162],[742,240],[332,412],[678,424]];
+const SEATS=[[230,224],[430,142],[710,245],[332,346],[682,394]];
 const pad=n=>String(n).padStart(2,'0');
 const fmt=s=>{s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+':'+pad(s%60);};
 const vn=t=>{const d=new Date(t+7*3600e3);return pad(d.getUTCHours())+':'+pad(d.getUTCMinutes());};
@@ -39,7 +39,7 @@ function robot(c,badge,id){const lt=tint(c,.45);return `<svg viewBox="0 0 58 70"
  <rect x="9" y="46" width="6" height="11" rx="3" fill="url(#flb${id})"/><rect x="43" y="46" width="6" height="11" rx="3" fill="url(#flb${id})"/></svg>`;}
 const DOC='<svg viewBox="0 0 30 24" aria-hidden="true"><path d="M1 3h10l3 3h15v17H1z" fill="#f59e0b"/><rect x="1" y="8" width="28" height="15" rx="2.5" fill="#fcd34d"/><path d="M7 15h16" stroke="#b45309" stroke-width="2"/></svg>';
 
-export function showLive({h,show,api,footer}){
+export function showLive({h,show,api,footer,openLogin}){
  let stopped=false,busy=false,data=null,stale=false,raf=0,last=performance.now(),clockSkew=0;
  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
  let view='office';try{if(localStorage.getItem('faciup-live-view')==='clock')view='clock';}catch{}
@@ -60,19 +60,48 @@ export function showLive({h,show,api,footer}){
  const hub=h('div',{class:'fl-hub'},h('div',{class:'fl-core'},h('b',{},'FACIUP'),h('small',{},'')));
  const now=h('div',{class:'fl-now'},h('i',{}),h('span',{},'Đang kết nối…'));
  const stage=h('section',{class:'fl-stage','aria-label':'Đội AI FACIUP trên mặt đồng hồ 24 giờ'},dial,hub,now);
- const room=h('img',{class:'fl-office-bg',src:'/assets/live-office.webp',alt:'',width:1536,height:1024,decoding:'async'});
- const officeLinks=svg('svg',{class:'fl-office-links',viewBox:'0 0 1000 667','aria-hidden':'true'});
+ const room=h('img',{class:'fl-office-bg',src:'/assets/live-office-wide.webp',alt:'',width:1672,height:941,decoding:'async'});
+ const officeLinks=svg('svg',{class:'fl-office-links',viewBox:'0 0 1000 562.5',preserveAspectRatio:'none','aria-hidden':'true'});
  const leadBot=h('div',{class:'fl-office-lead',role:'img','aria-label':'FACIUP · Điều phối'});
  leadBot.innerHTML='<div class="fl-name"><b>FACIUP</b></div><div class="fl-body">'+robot('#f97316','coordinator','lead')+'</div>';
  leadBot.style.setProperty('--c','#f97316');stage.prepend(room,officeLinks);stage.append(leadBot);
  const trail=svg('svg',{class:'fl-trail','aria-hidden':'true'});stage.append(trail);
  const log=h('ul',{class:'fl-log'});
  const side=h('aside',{class:'fl-side'},h('div',{class:'fl-panel'},h('h2',{},'Bàn giao gần đây'),log));
+ const screen=h('button',{class:'fl-screen',type:'button','aria-label':'Phóng to màn hình điều hành',onclick:()=>openDashboard()});stage.append(screen);
+ const dialog=h('dialog',{class:'fl-dialog'}),dialogBody=h('div',{});dialog.append(h('button',{type:'button',class:'fl-close',onclick:()=>dialog.close(),'aria-label':'Đóng'},'×'),dialogBody);dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});
+ const chatTitle=h('h2',{},'Zalo Bot · Hỗ trợ'),chatNote=h('small',{},'Đang kết nối…'),chatStats=h('small',{class:'fl-chat-stats'}),chatMessages=h('div',{class:'fl-messages',role:'log','aria-live':'polite'}),chatStatus=h('p',{class:'fl-chat-status'});
+ const webTab=h('button',{type:'button',onclick:()=>{chatMode='web';renderChat();}},'Chat trên web'),zaloTab=h('button',{type:'button',onclick:()=>{chatMode='zalo';renderChat();}},'Zalo của tôi');
+ const input=h('input',{placeholder:'Bạn cần hỗ trợ gì?',maxlength:1000,'aria-label':'Tin nhắn của bạn'}),send=h('button',{type:'submit','aria-label':'Gửi tin nhắn'},'Gửi');
+ const form=h('form',{class:'fl-chat-form',onsubmit:e=>{e.preventDefault();sendChat();}},input,send);
+ const chat=h('section',{class:'fl-chat'},chatTitle,chatStats,chatNote,h('div',{class:'fl-chat-tabs'},webTab,zaloTab),chatMessages,chatStatus,form);
+ side.append(chat);
+ let personal=null,chatMode='web',history=[],sending=false,mineBusy=false,identity=0,demoStep=0;
+ const intro=['Bạn cần hỗ trợ gì? Nhắn mình nhé.','Bạn có thể quan sát hoạt động của đội AI trên màn hình.','Đăng nhập để bắt đầu hội thoại riêng của bạn.'];
+ function renderChat(){
+  chatNote.textContent=personal?(chatMode==='web'?'Chat riêng · Phiên hiện tại':'Zalo riêng · 30 tin gần nhất'):'Hội thoại minh họa · Chưa đăng nhập';
+  chat.querySelector('.fl-chat-tabs').hidden=!personal;form.hidden=!personal||chatMode!=='web';zaloTab.setAttribute('aria-pressed',String(chatMode==='zalo'));webTab.setAttribute('aria-pressed',String(chatMode==='web'));
+  const items=!personal?intro.slice(0,demoStep+1).map(text=>({role:'bot',text})):chatMode==='web'?history:personal.messages;
+  const scroll=chatMessages.scrollHeight-chatMessages.scrollTop-chatMessages.clientHeight<40;
+  chatMessages.replaceChildren(...items.map(m=>h('div',{class:'fl-message '+(m.role==='user'?'me':'bot')},m.text)));
+  if(!items.length)chatMessages.append(h('p',{class:'fl-empty'},chatMode==='zalo'?(personal.linked?'Chưa có tin nhắn sau khi liên kết.':'Liên kết Zalo đã xác minh để xem hội thoại của bạn.'):'Bạn cần hỗ trợ gì? Nhắn mình nhé.'));
+  if(personal&&chatMode==='zalo'&&!personal.linked)chatMessages.append(h('a',{href:'/zalo'},'Liên kết Zalo'));
+  if(!personal)chatMessages.append(h('button',{type:'button',class:'fl-login',onclick:()=>openLogin?.('route',{hash:'/faciup-live'})},'Đăng nhập để trò chuyện'));
+  chatStatus.textContent=sending&&chatMode==='web'?'Đang phản hồi…':personal?.processing&&chatMode==='zalo'?'Đang xử lý tin nhắn Zalo…':personal?'Hội thoại riêng · Sẵn sàng hỗ trợ':'Lời giới thiệu tự động · Không phải tin nhắn khách hàng';
+  input.disabled=sending;send.disabled=sending;if(scroll)chatMessages.scrollTop=chatMessages.scrollHeight;
+  bots.find(b=>b.id==='zalo')?.el.classList.toggle('fl-chatting',sending||!!personal?.processing);
+ }
+ async function loadMine(){if(stopped||mineBusy||document.hidden)return;mineBusy=true;try{const p=await api('/api/faciup-live/mine');if(stopped)return;if(personal?.userId!==p.userId){identity++;history=[];input.value='';chatMode='web';}personal=p;}catch{if(personal){identity++;history=[];input.value='';chatMode='web';}personal=null;}finally{mineBusy=false;if(!stopped)renderChat();}}
+ async function sendChat(){const text=input.value.trim();if(!text||!personal||sending)return;const who=personal.userId,epoch=identity;sending=true;history.push({role:'user',text});input.value='';renderChat();try{const result=await api('/api/faciup-live/chat',{method:'POST',body:{text,history:history.slice(0,-1).slice(-8)}});await loadMine();if(stopped||identity!==epoch||personal?.userId!==who||result.userId!==who)return;history.push({role:'bot',text:result.reply||'Chưa có phản hồi.'});history=history.slice(-30);}catch(e){if(!stopped&&identity===epoch&&personal?.userId===who)history.push({role:'bot',text:e.message||'Chưa gửi được. Vui lòng thử lại.'});}finally{sending=false;if(!stopped)renderChat();}}
+ function openPanel(title,kids){dialogBody.replaceChildren(h('h2',{},title),...kids);dialog.showModal();}
+ function openDashboard(){if(!data)return;const r=data.runtime,k=r.kpi||{};openPanel('Trung tâm điều hành',[h('p',{},`${r.running} đang xử lý · ${r.queued} chờ lượt · ${r.review} chờ duyệt`),h('p',{},`${k.today||0} lượt hoàn thành hôm nay · TB ${k.avgToday?fmt(k.avgToday):'—'}/lượt`),h('p',{},r.sessions[0]?`Phiên #${r.sessions[0].n} · ${nameOf(r.sessions[0].current)} · ${r.sessions[0].state==='paused'?'Tạm dừng':r.sessions[0].state==='review'?'Chờ duyệt':'Lượt '+(r.sessions[0].step+1)}`:'Chưa có phiên đang xử lý'),h('p',{},`Cập nhật ${vn(r.polledAt||Date.now())} giờ Việt Nam`)]);}
+ function openAgent(b){const s=b.s,look=stale?'off':LOOK[s.state]||'idle';openPanel(s.name,[h('p',{},tagText(s,look)),h('p',{},`Hoàn thành hôm nay: ${s.completed||0} lượt`),h('p',{},s.last?`Lần hoàn thành gần nhất: ${vn(s.last)}`:'Chưa có lượt hoàn thành được ghi nhận')]);}
  const kpis=h('section',{class:'fl-kpis','aria-label':'Chỉ số hoạt động'});
  const clockButton=h('button',{type:'button',onclick:()=>setView('clock')},'Đồng hồ');
  const officeButton=h('button',{type:'button',onclick:()=>setView('office')},'Văn phòng');
  const toolbar=h('header',{class:'fl-toolbar'},h('div',{},h('h1',{},'Faciup Live'),h('p',{},'Không gian vận hành của đội AI')),h('div',{class:'fl-view','aria-label':'Chế độ hiển thị'},clockButton,officeButton));
- const page=h('div',{class:'fl-live'},toolbar,stage,side,kpis);
+ const mobileTabs=h('div',{class:'fl-mobile-tabs','aria-label':'Thông tin văn phòng'},...['Hoạt động','Zalo','Chỉ số'].map((text,i)=>h('button',{type:'button','aria-pressed':String(i===0),onclick:e=>{page.dataset.panel=String(i);mobileTabs.querySelectorAll('button').forEach((b,j)=>b.setAttribute('aria-pressed',String(i===j)));}},text)));
+ const page=h('div',{class:'fl-live','data-panel':'0'},toolbar,stage,mobileTabs,side,kpis,dialog);
  function setView(next){view=next;page.dataset.view=view;clockButton.setAttribute('aria-pressed',String(view==='clock'));officeButton.setAttribute('aria-pressed',String(view==='office'));stage.setAttribute('aria-label',view==='office'?'Văn phòng AI FACIUP':'Đội AI FACIUP trên mặt đồng hồ 24 giờ');(view==='office'?officeLinks:dial).append(beams);trail.replaceChildren();stage.querySelectorAll('.fl-doc').forEach(e=>e.remove());try{localStorage.setItem('faciup-live-view',view);}catch{}}
  setView(view);
  show(page,footer());
@@ -88,14 +117,14 @@ export function showLive({h,show,api,footer}){
    if(!el||old.icon!==s.icon||old.color!==s.color){old?.el.remove();el=h('div',{class:'fl-bot fl-new',role:'img','aria-label':s.name});el.style.setProperty('--c',s.color);
     el.innerHTML=`<div class="fl-name"><b></b><span></span></div><i class="fl-pulse"></i><div class="fl-shadow"></div><div class="fl-body">${robot(s.color,s.icon,j+'_'+s.id.replace(/\W/g,''))}</div>`;
     stage.append(el);setTimeout(()=>el.classList.remove('fl-new'),900);}
-   return {id:s.id,i,icon:s.icon,color:s.color,el,o,s,pos:[0,0],v:[500,500],left:false};});
+   const bot={id:s.id,i,icon:s.icon,color:s.color,el,o,s,pos:[0,0],v:[500,500],left:false};el.tabIndex=0;el.setAttribute('role','button');el.onclick=()=>openAgent(bot);el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openAgent(bot);}};return bot;});
   for(const b of keep.values())b.el.remove();
   // links: every robot to FACIUP, and each robot to the next one, so the team reads as one network
   bots.forEach((b,j)=>{link(null,b,b.color);if(bots.length>2||j===0&&bots.length===2)link(b,bots[(j+1)%bots.length],b.color);});}
  let links=[];
  function link(a,b,color){const path=svg('path',{class:'fl-link',stroke:color}),dot=svg('circle',{r:a?5:6,class:'fl-spark',fill:color});beams.append(path,dot);links.push({a,b,path,dot,t:Math.random(),sp:a?.18:.28});}
  const bez=(p,c,q,t)=>[(1-t)*(1-t)*p[0]+2*(1-t)*t*c[0]+t*t*q[0],(1-t)*(1-t)*p[1]+2*(1-t)*t*c[1]+t*t*q[1]];
- const centre=()=>view==='office'?[500,312]:[500,500];
+ const centre=()=>view==='office'?[510,280]:[500,500];
  function drawLinks(dt,off){const turn=data?.runtime?.sessions?.[0];
   const [cx,cy]=centre();for(const l of links){const q=l.b.v,p=l.a?l.a.v:(()=>{const d=Math.hypot(q[0]-cx,q[1]-cy)||1,k=view==='office'?26:112;return [cx+(q[0]-cx)/d*k,cy+(q[1]-cy)/d*k];})();
    // bend towards the centre so the web curves round FACIUP
@@ -107,20 +136,20 @@ export function showLive({h,show,api,footer}){
    // FACIUP links carry work in to the centre; robot-to-robot links pass it along
    const [x,y]=bez(p,c,q,l.a?l.t:1-l.t);l.dot.setAttribute('cx',x.toFixed(1));l.dot.setAttribute('cy',y.toFixed(1));}}
  // robots keep circling: faster while working, slower when the team is off
- function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;const r=stage.getBoundingClientRect(),sc=r.width/1000,off=stale||!data?.runtime?.enabled;
+ function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;const r=stage.getBoundingClientRect(),sc=r.width/1000,sy=view==='office'?r.height/562.5:sc,off=stale||!data?.runtime?.enabled;
   for(const [j,b] of bots.entries()){const look=stale?'off':LOOK[b.s.state]||'idle',k=look==='work'?2.6:off&&!b.s.live?.35:1;
    if(!reduce){b.o.ph+=b.o.sp*dt*k;b.o.wob+=dt*1.4;}
    b.left=b.o.sp>0?Math.sin(b.o.ph)>0:Math.sin(b.o.ph)<0;
    const seat=SEATS[j]||[180+((j-5)%5)*160,535+Math.floor((j-5)/5)*40];
-   const x=view==='office'?seat[0]:500+b.o.r*Math.cos(b.o.ph),y=view==='office'?seat[1]:500+b.o.r*Math.sin(b.o.ph)+Math.sin(b.o.wob)*6;b.pos=[x*sc,y*sc];
-   b.el.style.transform=`translate(${(x*sc-b.el.offsetWidth/2).toFixed(1)}px,${(y*sc-b.el.offsetHeight*.62).toFixed(1)}px)`;b.el.style.zIndex=5+Math.round(y/50);
+   const x=view==='office'?seat[0]:500+b.o.r*Math.cos(b.o.ph),y=view==='office'?seat[1]:500+b.o.r*Math.sin(b.o.ph)+Math.sin(b.o.wob)*6;b.pos=[x*sc,y*sy];
+   b.el.style.transform=`translate(${(x*sc-b.el.offsetWidth/2).toFixed(1)}px,${(y*sy-b.el.offsetHeight*.62).toFixed(1)}px)`;b.el.style.zIndex=5+Math.round(y/50);
    b.el.classList.toggle('fl-left',view==='clock'&&b.left);
    b.v=[x,y-18];}
   drawLinks(dt,off);
   const p=ang(((Date.now()+clockSkew+7*3600e3)%864e5)/36e5);hand.setAttribute('transform',`translate(${500+462*Math.cos(p)} ${500+462*Math.sin(p)})`);
   if(!stopped)raf=requestAnimationFrame(frame);}
  // the file flies along a curve from one robot to the next (index 0 = FACIUP)
- function fly(from,to,color){if(reduce)return;const r=stage.getBoundingClientRect(),at=i=>{const b=bots.find(x=>x.i===i),c=centre();return i===0||!b?[c[0]*r.width/1000,c[1]*r.width/1000]:[b.pos[0],b.pos[1]-b.el.offsetHeight*.3];};
+ function fly(from,to,color){if(reduce)return;const r=stage.getBoundingClientRect(),at=i=>{const b=bots.find(x=>x.i===i),c=centre();return i===0||!b?[c[0]*r.width/1000,c[1]*(view==='office'?r.height/562.5:r.width/1000)]:[b.pos[0],b.pos[1]-b.el.offsetHeight*.3];};
   const p0=at(from),p1=at(to);trail.setAttribute('viewBox',`0 0 ${r.width} ${r.height}`);
   const mid=[(p0[0]+p1[0])/2+(r.width/2-(p0[0]+p1[0])/2)*.5,(p0[1]+p1[1])/2+(r.height/2-(p0[1]+p1[1])/2)*.5-60],path=svg('path',{d:`M${p0[0]} ${p0[1]} Q${mid[0]} ${mid[1]} ${p1[0]} ${p1[1]}`,stroke:color,class:'fl-path'});trail.append(path);
   const doc=h('div',{class:'fl-doc'});doc.innerHTML=DOC;stage.append(doc);
@@ -132,10 +161,14 @@ export function showLive({h,show,api,footer}){
  function paint(){const r=data.runtime,lead=r.agents[0],meeting=r.sessions[0]||null;
   // FACIUP runs the whole team all the time: always lit, busier glow while it is putting a result together
   const hl=meeting?.current===0&&meeting.state==='running'||LOOK[lead?.state]==='work'?'work':'on';hub.dataset.state=hl;
+  const za=r.agents.find(a=>a.id==='zalo');chatStats.textContent=za?`Hôm nay: nhận ${za.received??'—'} · phản hồi ${za.replies??'—'}`:'Zalo chưa bật';
   leadBot.className='fl-office-lead fl-'+(stale?'off':hl==='work'?'work':'idle');leadBot.title='FACIUP · '+(stale?'Mất kết nối':hl==='work'?'Đang tổng hợp':'Điều phối đội AI');
+  const values=h('div',{class:'fl-screen-counts'},...[[r.running,'Xử lý'],[r.queued,'Chờ lượt'],[r.review,'Chờ duyệt']].map(([n,label])=>h('div',{},h('b',{},n),h('span',{},label))));
+  const chart=h('div',{class:'fl-screen-chart'});chart.innerHTML=spark(r.kpi?.series||[0,0,0,0,0,0,0],'#67e8f9');
+  screen.replaceChildren(h('strong',{},stale?'MẤT KẾT NỐI':'TRUNG TÂM ĐIỀU HÀNH'),values,h('small',{},meeting?`#${meeting.n} · ${nameOf(meeting.current)}`:'Đội AI · Sẵn sàng'),chart);
   hub.querySelector('small').textContent=hl==='work'?'Đang tổng hợp':meeting?.state==='running'?`Phiên #${meeting.n} · lượt ${meeting.step+1}`:'Vận hành 24/7';
   for(const b of bots){const look=stale?'off':LOOK[b.s.state]||'idle';
-   b.el.className='fl-bot fl-'+look+(b.el.classList.contains('fl-new')?' fl-new':'')+(b.left?' fl-left':'')+(b.s.live?' fl-24':'');
+   b.el.className='fl-bot fl-'+look+(b.el.classList.contains('fl-new')?' fl-new':'')+(view==='clock'&&b.left?' fl-left':'')+(b.s.live?' fl-24':'')+(b.id==='zalo'&&(sending||personal?.processing)?' fl-chatting':'');
    b.el.querySelector('.fl-name b').textContent=b.s.name;b.el.querySelector('.fl-name span').textContent=pillText(b.s,look);b.el.title=b.s.name+' · '+tagText(b.s,look);}
   now.lastChild.textContent=stale?'Mất kết nối · đang thử lại':`${vn(Date.now()+clockSkew)} giờ VN · trực tuyến`;now.classList.toggle('fl-off',stale);
   }
@@ -154,13 +187,14 @@ export function showLive({h,show,api,footer}){
   kpis.querySelectorAll('.fl-top li').forEach((li,i)=>{li.firstChild.textContent=k.top[i].name===r.agents[0]?.name?'FACIUP':k.top[i].name;li.style.setProperty('--c',li.dataset.c);li.querySelector('i').style.width=li.dataset.w+'%';});}
  async function load(){if(stopped||busy||document.hidden)return;busy=true;
   try{data=await api('/api/faciup-live');clockSkew=(data.runtime?.polledAt||Date.now())-Date.now();stale=false;}catch{stale=true;}finally{busy=false;}
-  if(stopped)return;page.classList.toggle('fl-stale',stale);if(!data)return;
+  if(stopped)return;page.classList.toggle('fl-stale',stale);if(!data){now.lastChild.textContent='Chưa kết nối được · đang thử lại';return;}
   const r=data.runtime;r.sessions=r.sessions||[];build(r.agents.slice(1));
   // a session whose turn moved since the last poll hands its file on
   for(const s of r.sessions){const was=lastTurn.get(s.n);if(was!==undefined&&was!==s.current)fly(was,s.current,s.current===0?'#a21caf':r.agents[s.current]?.color||'#f97316');lastTurn.set(s.n,s.current);}
   paint();paintLog();paintKpis();}
- load();raf=requestAnimationFrame(frame);
- const tick=setInterval(()=>{if(data)paint();},1000),poll=setInterval(load,10000),visible=()=>{if(!document.hidden)load();};
+ load();loadMine();raf=requestAnimationFrame(frame);
+ const demo=setInterval(()=>{if(!personal&&!reduce&&!document.hidden){demoStep=(demoStep+1)%intro.length;renderChat();}},6000);
+ const tick=setInterval(()=>{if(data)paint();},1000),poll=setInterval(()=>{load();loadMine();},10000),visible=()=>{if(!document.hidden){load();loadMine();}};
  document.addEventListener('visibilitychange',visible);
- return ()=>{stopped=true;cancelAnimationFrame(raf);clearInterval(tick);clearInterval(poll);document.removeEventListener('visibilitychange',visible);};
+ return ()=>{stopped=true;identity++;personal=null;history=[];dialog.close();cancelAnimationFrame(raf);clearInterval(tick);clearInterval(poll);clearInterval(demo);document.removeEventListener('visibilitychange',visible);};
 }

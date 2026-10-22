@@ -2,6 +2,7 @@ import {publicNavigation,initialPageContent,PUBLIC_PAGES,isAppPage,pageMetadata,
 import {councilWebhook,tickCouncil} from './council.ts';
 import {hunterPublic} from './hunter.ts';
 import {liveOverview} from './live.ts';
+import {liveConversation} from './live-private.ts';
 import {solutionPage,solutionSitemap,solutionDownload,solutionList,cleanupSolutionFiles} from './solutions.ts';
 import {secureResponse} from './security.ts';
 import {feedPhoto,tickFeed} from './image-feed.ts';
@@ -279,6 +280,12 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
   if (path === '/api/help/chat' && method === 'POST') return helpChat(req, env, rc, user);
   if (!user) throw new HttpError(401, 'Bạn cần đăng nhập.');
   if (await blocked(env, user.id)) throw new HttpError(403, BLOCKED);
+  // Strictly personal: even admins receive only their own verified Zalo conversation.
+  if(path==='/api/faciup-live/mine'&&method==='GET'){rc.quiet=true;return json(await liveConversation(env,user.id),200,{'cache-control':'private, no-store'});}
+  if(path==='/api/faciup-live/chat'&&method==='POST'){
+    const response=await helpChat(req,env,rc,user),result=await response.json() as Record<string,unknown>;
+    return json({...result,userId:user.id},response.status,{'cache-control':'private, no-store'});
+  }
   if (path.startsWith('/api/admin/')) {
     if (!(await isAdmin(env, env.config, user))) throw new HttpError(403, 'Chỉ quản trị viên mới vào được trang này.');
     return adminRoutes(req, env, rawEnv, path.slice('/api/admin/'.length), method, rc, user);
