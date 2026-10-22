@@ -754,7 +754,30 @@ function budgetCard(c) {
 }
 
 function contentTab(c) {
-  const LABEL_GROUPS = [['navigation','Menu trang chính'],['adminMenu','Menu quản trị']];
+  const LABEL_GROUPS = [['adminMenu','Menu quản trị']];
+  // menus: one list for every place a page link appears (header, side bar, phone tab bar, footer)
+  const MENU_KEYS = ['home', 'tao', 'mau', 'cong-dong', 'kham-pha', 'faciup-live', 'prompt-hunter', 'video', 'goi', 'tro-giup'];
+  c.site.menu ||= { hidden: [], order: [] }; c.labels.navigation ||= {};
+  const menuOrder = () => [...c.site.menu.order.filter((k) => MENU_KEYS.includes(k)), ...MENU_KEYS.filter((k) => !c.site.menu.order.includes(k))];
+  const menuList = h('ol', { class: 'menu-edit' });
+  const paintMenu = () => { const order = menuOrder(); menuList.replaceChildren(...order.map((k, i) => {
+    const shown = !c.site.menu.hidden.includes(k), move = (d) => { const o = menuOrder(); [o[i], o[i + d]] = [o[i + d], o[i]]; c.site.menu.order = o; paintMenu(); };
+    return h('li', { class: shown ? '' : 'off' },
+      h('label', { class: 'switch', title: shown ? 'Đang hiện' : 'Đang ẩn' }, h('input', { type: 'checkbox', checked: shown, 'aria-label': 'Hiện ' + (c.labels.navigation[k] || k), onchange: (e) => { c.site.menu.hidden = e.target.checked ? c.site.menu.hidden.filter((x) => x !== k) : [...c.site.menu.hidden, k]; paintMenu(); } }), h('i', {})),
+      input(c.labels.navigation[k] || '', (v) => { c.labels.navigation[k] = v; }, { maxlength: 40, 'aria-label': 'Tên mục ' + k, placeholder: k }),
+      h('code', {}, '/' + (k === 'home' ? '' : k)),
+      h('span', { class: 'menu-move' }, h('button', { type: 'button', class: 'ghost small', disabled: i === 0, 'aria-label': 'Lên', onclick: () => move(-1) }, '↑'), h('button', { type: 'button', class: 'ghost small', disabled: i === order.length - 1, 'aria-label': 'Xuống', onclick: () => move(1) }, '↓')));
+  })); };
+  paintMenu();
+  // the logo: upload a picture, or pick an icon and a background
+  c.site.logo ||= { image: '', icon: 'pen', bg: 'brand' };
+  const logoPreview = h('span', { class: 'logo logo-preview', 'aria-hidden': 'true' }), paintLogoPreview = () => { paintLogo(logoPreview, c.site.logo, c.brand.name); paintLogoChoices(); };
+  const logoChoices = h('div', { class: 'logo-choices' });
+  const paintLogoChoices = () => logoChoices.replaceChildren(
+    h('div', { class: 'chips' }, h('span', { class: 'muted' }, 'Biểu tượng:'), ...[['pen', 'Cây bút'], ['robot', 'Robot'], ['spark', 'Tia sáng'], ['play', 'Nút phát'], ['brush', 'Cọ vẽ'], ['star', 'Ngôi sao'], ['letter', 'Chữ cái đầu']].map(([k, n]) => h('button', { type: 'button', class: 'chip' + (c.site.logo.icon === k && !c.site.logo.image ? ' on' : ''), onclick: () => { c.site.logo.icon = k; c.site.logo.image = ''; paintLogoPreview(); } }, n))),
+    h('div', { class: 'chips' }, h('span', { class: 'muted' }, 'Nền:'), ...[['brand', 'Tím cam'], ['sunset', 'Hoàng hôn'], ['ocean', 'Đại dương'], ['forest', 'Rừng xanh'], ['night', 'Đêm tím']].map(([k, n]) => { const b = h('button', { type: 'button', class: 'chip logo-bg' + (c.site.logo.bg === k ? ' on' : ''), onclick: () => { c.site.logo.bg = k; paintLogoPreview(); } }, h('i', {}), n); b.firstChild.style.background = LOGO_BG[k]; return b; }),
+      h('label', { class: 'chip logo-bg' + (/^#/.test(c.site.logo.bg) ? ' on' : '') }, 'Màu riêng ', h('input', { type: 'color', value: /^#/.test(c.site.logo.bg) ? c.site.logo.bg : '#7c3aed', oninput: (e) => { c.site.logo.bg = e.target.value; paintLogo(logoPreview, c.site.logo, c.brand.name); } }))));
+  paintLogoPreview();
   const tplList = h('div', { class: 'scenes' });
   const drawTpls = () => tplList.replaceChildren(...c.templates.map((t, i) => h('div', { class: 'scene' },
     h('div', { class: 'grid' }, h('label', {}, 'Tên mẫu', input(t.title, (v) => { t.title = v; })), h('label', {}, 'Mã', input(t.id, (v) => { t.id = v; })),
@@ -781,7 +804,10 @@ function contentTab(c) {
         h('label', {}, 'Số câu hỏi mỗi người mỗi ngày', input(hb.perDay, (v) => { hb.perDay = v; }, { type: 'number', min: 1, max: 1000 }))),
       h('label', {}, 'Lời chào', input(hb.welcome, (v) => { hb.welcome = v; }, { maxlength: 300 })),
       h('label', {}, 'Thông tin thêm cho trợ lý (giá, chính sách, liên hệ, câu hỏi hay gặp…)', area(hb.knowledge, (v) => { hb.knowledge = v; }, 6))),
-    card('Thương hiệu', null, h('div', { class: 'grid' },
+    card('Menu & trang', 'Một danh sách cho mọi nơi có menu: đầu trang, menu bên, thanh dưới trên điện thoại và chân trang. Tắt là ẩn ở tất cả các nơi; đổi tên và thứ tự cũng áp dụng chung.', menuList),
+    card('Thương hiệu', 'Logo hiện ở đầu trang, menu bên và biểu tượng tab trình duyệt.', h('div', { class: 'logo-edit' }, logoPreview, logoChoices),
+      mediaField('Hoặc tải ảnh logo (PNG/JPG/WebP, vuông)', c.site.logo.image, (v) => { c.site.logo.image = v; paintLogoPreview(); }, 'image/png,image/jpeg,image/webp'),
+      h('div', { class: 'grid' },
       h('label', {}, 'Tên trang', input(c.brand.name, (v) => { c.brand.name = v; }, { maxlength: 40 })),
       h('label', {}, 'Chữ nổi bật sau tên', input(c.brand.accent, (v) => { c.brand.accent = v; }, { maxlength: 30 })),
       h('label', {}, 'Mô tả ngắn', input(c.brand.tagline, (v) => { c.brand.tagline = v; }, { maxlength: 160 }))),
