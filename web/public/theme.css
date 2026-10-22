@@ -2,13 +2,13 @@
    "aurora" (vibrant purple–orange) is the default; "classic" keeps the earlier plain white look. */
 
 :root, html[data-theme="aurora"] {
-  --blue: #7c3aed; --blue-2: #6d28d9; --blue-soft: #f3ecff; --accent: #7c3aed; --accent-2: #f97316; --sun: #fb923c;
-  --grad: linear-gradient(120deg, #6d28d9 0%, #a21caf 45%, #f43f5e 75%, #f97316 100%);
-  --grad-soft: linear-gradient(135deg, #f5edff 0%, #fff1e6 100%);
-  --paper: #fbf8ff; --ink: #1e1238; --muted: #6b5f8f; --line: #efe6ff;
-  --page-bg: radial-gradient(900px 520px at 100% -10%, #ffe2cc 0%, transparent 58%), radial-gradient(900px 600px at -10% 0%, #ead9ff 0%, transparent 58%);
-  --side-bg: linear-gradient(180deg, #2a0f4d 0%, #4c1470 60%, #6b1a4f 100%); --side-ink: #f7efff; --side-muted: #d1b9ee; --side-on: rgba(255, 255, 255, .14); --side-line: rgba(255, 255, 255, .12);
-  --glow: rgba(244, 63, 94, .35);
+  --blue: #8b5cf6; --blue-2: #7c3aed; --blue-soft: #f5efff; --accent: #8b5cf6; --accent-2: #fb923c; --sun: #fbbf24;
+  --grad: linear-gradient(120deg, #8b5cf6 0%, #d946ef 42%, #fb7185 70%, #fb923c 100%);
+  --grad-soft: linear-gradient(135deg, #faf5ff 0%, #fff7ed 100%);
+  --paper: #fffcff; --ink: #2a2148; --muted: #7b7199; --line: #f0e9fb;
+  --page-bg: radial-gradient(900px 520px at 100% -10%, #ffedd5 0%, transparent 58%), radial-gradient(900px 600px at -10% 0%, #f3e8ff 0%, transparent 58%);
+  --side-bg: linear-gradient(180deg, #ffffff 0%, #fdf8ff 100%); --side-ink: #2a2148; --side-muted: #7b7199; --side-on: rgba(139, 92, 246, .12); --side-line: #f0e9fb;
+  --glow: rgba(217, 70, 239, .32);
 }
 html[data-theme="ocean"] {
   --blue: #0e7490; --blue-2: #155e75; --blue-soft: #e6f7fb; --accent: #0e7490; --accent-2: #f97316; --sun: #fbbf24;
@@ -56,7 +56,7 @@ html[data-theme="classic"] {
 :root:not([data-theme]) .brand .accent, html[data-theme="aurora"] .brand .accent { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
 :root:not([data-theme]) .nav a.on, html[data-theme="aurora"] .nav a.on { border-image: var(--grad) 1; }
 html[data-theme="aurora"] .brand .logo { background: var(--grad); }
-html[data-theme="aurora"] main.wrap .home-minimal h1 { background: linear-gradient(100deg, var(--ink) 25%, var(--accent) 62%, #f97316 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+html[data-theme="aurora"] main.wrap .home-minimal h1 { background: linear-gradient(100deg, var(--ink) 20%, #a855f7 55%, #fb923c 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 html[data-theme="aurora"] .tabbar a.on, html[data-theme="aurora"] .tabbar a[aria-current] { color: var(--accent); }
 
 body { background-color: var(--paper); background-image: var(--page-bg); background-attachment: fixed; background-repeat: no-repeat; }
@@ -140,6 +140,7 @@ footer.site .social a { width: 30px; height: 30px; }
 .ai-order .ai-name { flex: 1; }
 .ai-order button { min-height: 32px; width: 36px; padding: 0; }
 .home-stage { background: var(--side-bg); }
+html[data-theme="aurora"] .home-stage, :root:not([data-theme]) .home-stage { background: linear-gradient(135deg, #8b5cf6 0%, #e879f9 52%, #fb923c 100%); box-shadow: 0 30px 60px -30px rgba(217, 70, 239, .55); }
 html[data-theme="classic"] .home-stage { background: #18293a; }
 /* admins have the save bar in that corner */
 body[data-page="admin"] .helpchat-btn, body[data-page="admin"] .helpchat { display: none; }
@@ -189,3 +190,4 @@ body[data-page="admin"] .helpchat-btn, body[data-page="admin"] .helpchat { displ
 .br-pct { font-variant-numeric: tabular-nums; min-width: 3.5ch; color: var(--accent); }
 .br-clock { font-size: .8125rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .br-steps li.on i, .br-shimmer, .br-rec i, .browser-render .br-stage::before, .browser-render .br-bar span { animation: none !important; } }
+html[data-theme="aurora"] .appside { border-right: 1px solid var(--side-line) !important; }

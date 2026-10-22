@@ -47,7 +47,7 @@ export function showLive({h,show,api,footer}){
  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
  const svg=(tag,attrs={})=>{const e=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e;};
  const ang=hr=>hr/24*2*Math.PI-Math.PI/2;
- // the dial (viewBox 1000×1000): night/day halves, hour ticks, today's activity dots, orbits, beams, the hand
+ // the dial (viewBox 1000×1000): night/day halves, hour ticks, today's activity dots, orbits, links, the hand
  const marks=svg('g'),orbits=svg('g'),beams=svg('g'),hand=svg('g',{class:'fl-hand'});
  hand.append(svg('circle',{r:16,class:'fl-hand-glow'}),svg('circle',{r:9}));
  const dial=svg('svg',{viewBox:'0 0 1000 1000',class:'fl-dial','aria-hidden':'true'});
@@ -71,18 +71,32 @@ export function showLive({h,show,api,footer}){
  let bots=[],key='';const lastTurn=new Map();
  function build(list){
   const k=list.map(a=>a.id+a.name+a.color+a.icon).join('|');if(k===key)return;key=k;
-  const keep=new Map(bots.map(b=>[b.id,b]));orbits.replaceChildren();beams.replaceChildren();
+  const keep=new Map(bots.map(b=>[b.id,b]));orbits.replaceChildren();beams.replaceChildren();links=[];
   const rings=Math.min(3,Math.max(1,Math.ceil(list.length/3)));
   for(let r=0;r<rings;r++)orbits.append(svg('circle',{cx:500,cy:500,r:[190,265,335][r],class:'fl-orbit'}));
   bots=list.map((s,j)=>{const i=j+1,old=keep.get(s.id);keep.delete(s.id);
    const ring=j%rings,o=old?.o||{r:[190,265,335][ring],ph:j/list.length*Math.PI*2,sp:(.16-.03*ring)*(ring%2?-1:1),wob:j};
-   const beam=svg('line',{x1:500,y1:500,x2:500,y2:500,class:'fl-beam',stroke:s.color});beams.append(beam);
    let el=old?.el;
    if(!el||old.icon!==s.icon||old.color!==s.color){old?.el.remove();el=h('div',{class:'fl-bot fl-new',role:'img','aria-label':s.name});el.style.setProperty('--c',s.color);
-    el.innerHTML=`<div class="fl-bubble"></div><i class="fl-pulse"></i><div class="fl-shadow"></div><div class="fl-body">${robot(s.color,s.icon,j+'_'+s.id.replace(/\W/g,''))}</div><div class="fl-tag"><b></b><span></span></div>`;
+    el.innerHTML=`<div class="fl-name"><b></b><span></span></div><i class="fl-pulse"></i><div class="fl-shadow"></div><div class="fl-body">${robot(s.color,s.icon,j+'_'+s.id.replace(/\W/g,''))}</div>`;
     stage.append(el);setTimeout(()=>el.classList.remove('fl-new'),900);}
-   return {id:s.id,i,icon:s.icon,color:s.color,el,o,s,beam,pos:[0,0],left:false};});
-  for(const b of keep.values())b.el.remove();}
+   return {id:s.id,i,icon:s.icon,color:s.color,el,o,s,pos:[0,0],v:[500,500],left:false};});
+  for(const b of keep.values())b.el.remove();
+  // links: every robot to FACIUP, and each robot to the next one, so the team reads as one network
+  bots.forEach((b,j)=>{link(null,b,b.color);if(bots.length>2||j===0&&bots.length===2)link(b,bots[(j+1)%bots.length],b.color);});}
+ let links=[];
+ function link(a,b,color){const path=svg('path',{class:'fl-link',stroke:color}),dot=svg('circle',{r:a?5:6,class:'fl-spark',fill:color});beams.append(path,dot);links.push({a,b,path,dot,t:Math.random(),sp:a?.18:.28});}
+ const bez=(p,c,q,t)=>[(1-t)*(1-t)*p[0]+2*(1-t)*t*c[0]+t*t*q[0],(1-t)*(1-t)*p[1]+2*(1-t)*t*c[1]+t*t*q[1]];
+ function drawLinks(dt,off){const turn=data?.runtime?.sessions?.[0];
+  for(const l of links){const q=l.b.v,p=l.a?l.a.v:(()=>{const d=Math.hypot(q[0]-500,q[1]-500)||1;return [500+(q[0]-500)/d*112,500+(q[1]-500)/d*112];})();
+   // bend towards the centre so the web curves round FACIUP
+   const m=[(p[0]+q[0])/2,(p[1]+q[1])/2],c=l.a?[m[0]+(500-m[0])*.35,m[1]+(500-m[1])*.35]:[m[0]+(q[1]-p[1])*.18,m[1]-(q[0]-p[0])*.18];
+   l.path.setAttribute('d',`M${p[0].toFixed(1)} ${p[1].toFixed(1)}Q${c[0].toFixed(1)} ${c[1].toFixed(1)} ${q[0].toFixed(1)} ${q[1].toFixed(1)}`);
+   const work=LOOK[l.b.s.state]==='work'||(l.a&&LOOK[l.a.s.state]==='work'),hand=l.a&&turn&&turn.current===l.a.i&&turn.state==='running';
+   l.path.classList.toggle('on',!stale&&(work||hand));
+   if(!reduce)l.t=(l.t+dt*l.sp*(work?2.6:off?.3:1))%1;
+   // FACIUP links carry work in to the centre; robot-to-robot links pass it along
+   const [x,y]=bez(p,c,q,l.a?l.t:1-l.t);l.dot.setAttribute('cx',x.toFixed(1));l.dot.setAttribute('cy',y.toFixed(1));}}
  // robots keep circling: faster while working, slower when the team is off
  function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;const r=stage.getBoundingClientRect(),sc=r.width/1000,off=stale||!data?.runtime?.enabled;
   for(const b of bots){const look=stale?'off':LOOK[b.s.state]||'idle',k=look==='work'?2.6:off&&!b.s.live?.35:1;
@@ -91,7 +105,8 @@ export function showLive({h,show,api,footer}){
    const x=500+b.o.r*Math.cos(b.o.ph),y=500+b.o.r*Math.sin(b.o.ph)+Math.sin(b.o.wob)*6;b.pos=[x*sc,y*sc];
    b.el.style.transform=`translate(${(x*sc-b.el.offsetWidth/2).toFixed(1)}px,${(y*sc-b.el.offsetHeight*.62).toFixed(1)}px)`;b.el.style.zIndex=5+Math.round(y/50);
    b.el.classList.toggle('fl-left',b.left);
-   b.beam.setAttribute('x2',x.toFixed(1));b.beam.setAttribute('y2',y.toFixed(1));b.beam.classList.toggle('on',look==='work');}
+   b.v=[x,y-18];}
+  drawLinks(dt,off);
   const p=ang(((Date.now()+clockSkew+7*3600e3)%864e5)/36e5);hand.setAttribute('transform',`translate(${500+462*Math.cos(p)} ${500+462*Math.sin(p)})`);
   if(!stopped)raf=requestAnimationFrame(frame);}
  // the file flies along a curve from one robot to the next (index 0 = FACIUP)
@@ -103,16 +118,16 @@ export function showLive({h,show,api,footer}){
  const runFor=s=>s.since?(Date.now()+clockSkew-s.since)/1000:0;
  const nameOf=i=>i===0?'FACIUP':data.runtime.agents[i]?.name||'Agent';
  function tagText(s,look){return look==='live24'?`Trực 24/7 · ~${fmt(s.avg)}`:look==='work'?`Đang xử lý ${fmt(runFor(s))}`:look==='wait'?`Chờ lượt${s.avg?' · ~'+fmt(s.avg):''}`:look==='review'?'Chờ duyệt':look==='off'?(stale?'Mất kết nối':'Nhóm đang tắt'):s.avg?`TB ${fmt(s.avg)}/lượt`:'Sẵn sàng';}
+ function pillText(s,look){return look==='live24'?'24/7':look==='work'?fmt(runFor(s)):look==='review'?'chờ duyệt':look==='off'?'':look==='wait'?'chờ lượt':'';}
  function paintMarks(){marks.replaceChildren();const list=data.runtime.agents;
   list.forEach((a,i)=>{for(const [hr,n] of a.hours||[]){const t=ang(hr+.5),rr=446-((i*7)%5)*6;const c=svg('circle',{cx:500+rr*Math.cos(t),cy:500+rr*Math.sin(t),r:Math.min(9,4+n),fill:i===0?'#a21caf':a.color,class:'fl-mark'});const tt=svg('title');tt.textContent=`${i===0?'FACIUP':a.name} · ${pad(hr)}:00 · ${n} lượt`;c.append(tt);marks.append(c);}});}
  function paint(){const r=data.runtime,lead=r.agents[0],meeting=r.sessions[0]||null;
   const hl=stale?'off':meeting?.current===0&&meeting.state==='running'||LOOK[lead?.state]==='work'?'work':LOOK[lead?.state]||'idle';hub.dataset.state=hl;
   hub.querySelector('small').textContent=hl==='work'?'Đang tổng hợp':hl==='review'?'Chờ duyệt':hl==='off'?(stale?'Mất kết nối':'Đang tắt'):meeting?`Phiên #${meeting.n} · lượt ${meeting.step+1}`:'Sẵn sàng';
   tray.textContent='Chờ duyệt · '+r.review;tray.classList.toggle('on',r.review>0);
-  for(const b of bots){const look=stale?'off':LOOK[b.s.state]||'idle',turn=meeting?.current===b.i;
-   b.el.className='fl-bot fl-'+look+(b.el.classList.contains('fl-new')?' fl-new':'')+(b.left?' fl-left':'')+(b.s.live?' fl-24':'')+(turn?' fl-turn':'');
-   b.el.querySelector('b').textContent=b.s.name;b.el.querySelector('.fl-tag span').textContent=tagText(b.s,look);
-   b.el.querySelector('.fl-bubble').textContent=turn?`Lượt ${meeting.step+1}`:'';}
+  for(const b of bots){const look=stale?'off':LOOK[b.s.state]||'idle';
+   b.el.className='fl-bot fl-'+look+(b.el.classList.contains('fl-new')?' fl-new':'')+(b.left?' fl-left':'')+(b.s.live?' fl-24':'');
+   b.el.querySelector('.fl-name b').textContent=b.s.name;b.el.querySelector('.fl-name span').textContent=pillText(b.s,look);b.el.title=b.s.name+' · '+tagText(b.s,look);}
   now.lastChild.textContent=stale?'Mất kết nối · đang thử lại':`${vn(Date.now()+clockSkew)} giờ VN · ${r.enabled?'trực tuyến':'nhóm AI đang tắt'}`;now.classList.toggle('fl-off',stale||!r.enabled);
   const rows=[...(lead?[{s:{...lead,name:'FACIUP · tổng hợp',color:'#a21caf'}}]:[]),...bots];
   if(times.children.length!==rows.length)times.replaceChildren(...rows.map(()=>h('li',{},h('i',{}),h('span',{}),h('span',{class:'t'}),h('span',{class:'bar'},h('b',{})))));
