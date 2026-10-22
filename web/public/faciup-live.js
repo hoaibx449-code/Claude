@@ -70,9 +70,7 @@ export function showLive({h,show,api,footer,openLogin,zaloLink}){
   0:[[[446,300,7,13],[465,294,6,12]],[[440,332,17,11],[477,317,20,15]]],1:[[[853,166,6,13],[871,161,5,12]],[[847,200,20,13],[882,188,12,14]]],
   2:[[[1454,348,6,13],[1472,342,5,13]],[[1459,380,19,12],[1492,371,16,10]]],3:[[[649,465,8,15],[669,471,7,14]],[[618,498,16,10],[639,508,20,9]]],
   4:[[[1373,510,8,14],[1391,502,5,14]],[[1379,545,19,11],[1414,535,15,11]]]};
- // living eyes, typing hands and the writing window are under review: shown with ?demo=1 until approved
- const DEMO=new URLSearchParams(location.search).get('demo')==='1';
- const rig=h('div',{class:'fl-rig','aria-hidden':'true',hidden:!DEMO}),rigs={};
+ const rig=h('div',{class:'fl-rig','aria-hidden':'true'}),rigs={};
  const pct=(v,t)=>(v/t*100).toFixed(3)+'%';
  for(const [key,[eyes,hands]] of Object.entries(RIG)){const g=h('div',{class:'fl-rig-bot'});
   // the eyes: the painted ones are covered by a visor patch and redrawn so they can blink and glance
@@ -82,8 +80,8 @@ export function showLive({h,show,api,footer,openLogin,zaloLink}){
    Object.assign(e.style,{left:pct(X,2054),top:pct(Y,766),width:pct(W,2054),height:pct(H,766),backgroundSize:`${(2054/W*100).toFixed(2)}% ${(766/H*100).toFixed(2)}%`,backgroundPosition:`${pct(X,2054-W)} ${pct(Y,766-H)}`});g.append(e);});
   rigs[key]=g;rig.append(g);}
  const roles={coordinator:'Tổng hợp kết quả',target:'Lập dàn ý',search:'Tra cứu nguồn',pen:'Soạn lời đọc',check:'Rà soát kịch bản',news:'Lọc tin nóng',design:'Phác thumbnail',mega:'Lên kế hoạch đăng',chart:'Đọc số liệu',video:'Dựng phân cảnh'};
- // while an agent works, a small writing window floats over its desk: lines appear as if typed (never the real content)
- function composer(){const el=h('div',{class:'fl-compose','aria-hidden':'true'},h('div',{class:'fl-compose-top'},h('i',{}),h('i',{}),h('i',{}),h('b',{})),h('div',{class:'fl-compose-lines'},...[0,1,2,3].map(()=>h('span',{}))),h('div',{class:'fl-compose-bar'},h('i',{})));stage.append(el);return el;}
+ // while an agent works, a small one-line card floats beside it: role, a blinking caret and a thin progress bar (never the real content)
+ function composer(){const el=h('div',{class:'fl-compose','aria-hidden':'true'},h('i',{class:'fl-compose-dot'}),h('b',{}),h('span',{class:'fl-compose-caret'}),h('div',{class:'fl-compose-bar'},h('i',{})));stage.append(el);return el;}
  const deskLayers=[];
  const officeLinks=svg('svg',{class:'fl-office-links',viewBox:'0 0 1000 562.5',preserveAspectRatio:'none','aria-hidden':'true'});
  const leadBot=h('div',{class:'fl-office-lead',role:'img','aria-label':'FACIUP · Điều phối'});
@@ -98,7 +96,10 @@ export function showLive({h,show,api,footer,openLogin,zaloLink}){
  const chatTitle=h('h2',{},'Trò chuyện'),chatNote=h('small',{},'Đang kết nối…'),chatStats=h('small',{class:'fl-chat-stats'}),chatMessages=h('div',{class:'fl-messages',role:'log','aria-live':'polite'}),chatStatus=h('p',{class:'fl-chat-status'});
  const chat=h('section',{class:'fl-chat'},chatTitle,chatStats,chatNote,chatMessages,chatStatus);
  const chatHost=h('div',{class:'fl-chat-host',hidden:true},chat);
- const zaloBubble=h('button',{class:'fl-zalo-bubble',type:'button','aria-label':'Mở hội thoại Zalo',onclick:()=>openChat()});stage.append(zaloBubble);
+ // Zalo: a small button in the corner; a light popup shows the newest message for a few seconds
+ const zaloBtn=h('button',{class:'fl-zalo-btn',type:'button','aria-label':'Mở hội thoại Zalo',onclick:()=>openChat()}),zaloPop=h('div',{class:'fl-zalo-pop',role:'status','aria-live':'polite'}),zaloBubble=h('div',{class:'fl-zalo-fab'},zaloPop,zaloBtn);
+ zaloBtn.innerHTML=ZALO;stage.append(zaloBubble);let zaloSig='',zaloTimer=0;
+ function zaloShow(side,label,content,stay){clearTimeout(zaloTimer);zaloPop.className='fl-zalo-pop show '+side;zaloPop.replaceChildren(h('small',{},label),content);if(!stay)zaloTimer=setTimeout(()=>zaloPop.classList.remove('show'),6500);}
  if(zaloLink&&/^https:\/\//.test(zaloLink))chat.append(h('a',{class:'fl-zalo-open',href:zaloLink,target:'_blank',rel:'noopener'},'Nhắn qua Zalo ↗'));
  let personal=null,mineBusy=false,demoStep=0;
  const intro=['Bạn cần hỗ trợ gì? Nhắn mình nhé.','Bạn có thể quan sát hoạt động của đội AI trên màn hình.','Đăng nhập để bắt đầu hội thoại riêng của bạn.'];
@@ -148,18 +149,27 @@ export function showLive({h,show,api,footer,openLogin,zaloLink}){
    h('div',{class:'fl-bd-kpis'},tile(r.running,'Đang xử lý','hot'),tile(r.queued,'Chờ lượt','cool'),tile(r.review,'Chờ duyệt','warm'),tile(k.today||0,'Lượt hôm nay','good')));
   paintClock();
   const items=personal?personal.messages:intro.slice(0,demoStep+1).map(text=>({role:'bot',text}));
-  const preview=h('div',{class:'fl-bubble-messages'});
-  // the last few messages, the customer on the right and the assistant on the left, like Zalo
-  for(const m of (items.length?items:[{role:'bot',text:personal?.linked?'Sẵn sàng hỗ trợ bạn qua Zalo':'Liên kết Zalo để xem hội thoại của bạn'}]).slice(-3)){preview.append(h('div',{class:'fl-bubble-message '+(m.role==='user'?'me':'bot')},h('span',{},m.text.slice(0,160))));}
-  if(personal?.processing)preview.append(h('div',{class:'fl-bubble-message bot fl-typing','aria-label':'Đang soạn'},h('span',{},h('i',{}),h('i',{}),h('i',{}))));
-  const icon=h('i',{class:'fl-zalo-avatar'});icon.innerHTML=ZALO;zaloBubble.replaceChildren(h('div',{class:'fl-bubble-heading'},icon,h('b',{},'Hội thoại Zalo'),h('small',{},personal?'Riêng tư':'Minh họa')),preview,h('small',{class:'fl-bubble-status'},personal?.processing?'••• Đang phản hồi…':'Bấm để xem hội thoại'));
+  const lastMsg=items.at(-1),sig=lastMsg?lastMsg.role+':'+lastMsg.text:'';
+  if(personal?.processing){if(zaloSig!=='typing'){zaloSig='typing';zaloShow('bot','Zalo đang trả lời',h('span',{class:'fl-pop-dots'},h('i',{}),h('i',{}),h('i',{})),true);}}
+  else if(sig&&sig!==zaloSig){zaloSig=sig;zaloShow(lastMsg.role==='user'?'me':'bot',lastMsg.role==='user'?'Bạn':personal?'Zalo':'Zalo · minh họa',h('span',{},lastMsg.text.slice(0,140)));}
+  zaloBtn.classList.toggle('busy',!!personal?.processing);
  }
  function openAgent(b){const s=b.s,look=stale?'off':LOOK[s.state]||'idle';openPanel(s.name,[h('p',{},tagText(s,look)),h('p',{},`Hoàn thành hôm nay: ${s.completed||0} lượt`),h('p',{},s.last?`Lần hoàn thành gần nhất: ${vn(s.last)}`:'Chưa có lượt hoàn thành được ghi nhận')]);}
+ // a soft chime when a file is handed on (browsers allow sound only after the viewer touches the page)
+ let soundOn=true,audio=null;try{soundOn=localStorage.getItem('faciup-live-sound')!=='off';}catch{}
+ const unlock=()=>{if(!audio&&window.AudioContext)audio=new AudioContext();audio?.resume?.();};
+ document.addEventListener('pointerdown',unlock,{once:true});document.addEventListener('keydown',unlock,{once:true});
+ function chime(toLead){if(!soundOn||!audio||audio.state!=='running'||document.hidden)return;const t=audio.currentTime;
+  (toLead?[659,880,1175]:[880,1320]).forEach((f,n)=>{const o=audio.createOscillator(),g=audio.createGain(),at=t+n*.09;o.type='sine';o.frequency.value=f;o.connect(g);g.connect(audio.destination);
+   g.gain.setValueAtTime(0,at);g.gain.linearRampToValueAtTime(.07,at+.015);g.gain.exponentialRampToValueAtTime(.0001,at+.45);o.start(at);o.stop(at+.5);});}
+ const soundBtn=h('button',{type:'button',class:'fl-sound',onclick:()=>{soundOn=!soundOn;unlock();try{localStorage.setItem('faciup-live-sound',soundOn?'on':'off');}catch{}paintSound();if(soundOn)setTimeout(()=>chime(false),60);}});
+ function paintSound(){soundBtn.setAttribute('aria-pressed',String(soundOn));soundBtn.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/>${soundOn?'<path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>':'<path d="M17 9l5 6M22 9l-5 6"/>'}</svg><span>${soundOn?'Âm thanh bàn giao: bật':'Âm thanh: tắt'}</span>`;}
+ paintSound();
  const kpis=h('section',{class:'fl-kpis','aria-label':'Chỉ số hoạt động'});
- const toolbar=h('header',{class:'fl-toolbar'},h('div',{},h('h1',{},'Faciup Live'),h('p',{},'Không gian vận hành của đội AI')));
+ const toolbar=h('header',{class:'fl-toolbar'},h('div',{},h('h1',{},'Faciup Live'),h('p',{},'Không gian vận hành của đội AI')),soundBtn);
  const mobileTabs=h('div',{class:'fl-mobile-tabs','aria-label':'Thông tin văn phòng'},...['Hoạt động','Zalo','Chỉ số'].map((text,i)=>h('button',{type:'button','aria-pressed':String(i===0),onclick:e=>{if(i===1){openChat();return;}page.dataset.panel=String(i);mobileTabs.querySelectorAll('button').forEach((b,j)=>b.setAttribute('aria-pressed',String(i===j)));}},text)));
- const zaloDock=h('div',{class:'fl-zalo-dock'});
- const page=h('div',{class:'fl-live','data-panel':'0'},toolbar,stage,zaloDock,mobileTabs,side,kpis,dialog,chatHost);
+
+ const page=h('div',{class:'fl-live','data-panel':'0'},toolbar,stage,mobileTabs,side,kpis,dialog,chatHost);
  page.dataset.view=view;stage.setAttribute('aria-label','Văn phòng AI FACIUP');officeLinks.append(beams);
  show(page,footer());
  let bots=[],key='';const lastTurn=new Map();
@@ -206,14 +216,12 @@ export function showLive({h,show,api,footer,openLogin,zaloLink}){
    b.v=[x,view==='office'?y+35:y-18];
    // the writing window sits beside the robot's name, flipped to the left near the right edge
    if(b.compose){const w=b.compose.offsetWidth,right=x>=500?x*sc+70+w<r.width:x*sc-70-w<0;b.compose.style.transform=`translate(${(right?x*sc+70:x*sc-70-w).toFixed(1)}px,${Math.max(8,y*sy-20).toFixed(1)}px)`;}}
-  const phone=innerWidth<=560;if(phone&&zaloBubble.parentElement!==zaloDock)zaloDock.append(zaloBubble);else if(!phone&&zaloBubble.parentElement!==stage)stage.append(zaloBubble);
-  if(!phone){zaloBubble.style.left='77.5%';zaloBubble.style.top='62%';}
 
   drawLinks(dt,off);
   const p=ang(((Date.now()+clockSkew+7*3600e3)%864e5)/36e5);hand.setAttribute('transform',`translate(${500+462*Math.cos(p)} ${500+462*Math.sin(p)})`);
   if(!stopped)raf=requestAnimationFrame(frame);}
  // the file flies along a curve from one robot to the next (index 0 = FACIUP)
- function fly(from,to,color){if(reduce)return;const r=stage.getBoundingClientRect(),at=i=>{const b=bots.find(x=>x.i===i),c=centre();return i===0||!b?[c[0]*r.width/1000,c[1]*(view==='office'?r.height/562.5:r.width/1000)]:[b.pos[0],b.pos[1]-b.el.offsetHeight*.3];};
+ function fly(from,to,color){chime(to===0);if(reduce)return;const r=stage.getBoundingClientRect(),at=i=>{const b=bots.find(x=>x.i===i),c=centre();return i===0||!b?[c[0]*r.width/1000,c[1]*(view==='office'?r.height/562.5:r.width/1000)]:[b.pos[0],b.pos[1]-b.el.offsetHeight*.3];};
   const p0=at(from),p1=at(to);trail.setAttribute('viewBox',`0 0 ${r.width} ${r.height}`);
   const mid=[(p0[0]+p1[0])/2+(r.width/2-(p0[0]+p1[0])/2)*.5,(p0[1]+p1[1])/2+(r.height/2-(p0[1]+p1[1])/2)*.5-60],path=svg('path',{d:`M${p0[0]} ${p0[1]} Q${mid[0]} ${mid[1]} ${p1[0]} ${p1[1]}`,stroke:color,class:'fl-path'});trail.append(path);
   const doc=h('div',{class:'fl-doc'});doc.innerHTML=DOC;stage.append(doc);
@@ -233,7 +241,7 @@ export function showLive({h,show,api,footer,openLogin,zaloLink}){
    b.el.className='fl-bot fl-'+look+(b.el.classList.contains('fl-new')?' fl-new':'')+(view==='clock'&&b.left?' fl-left':'')+(b.s.live?' fl-24':'')+(b.id==='zalo'&&personal?.processing?' fl-chatting':'');
    b.el.querySelector('.fl-name b').textContent=b.s.name;b.el.querySelector('.fl-name span').textContent=pillText(b.s,look);b.el.title=b.s.name+' · '+tagText(b.s,look);b.hands.classList.toggle('fl-off',look==='off');
    const j=bots.indexOf(b),work=look==='work';rigs[j]?.classList.toggle('on',work);rigs[j]?.classList.toggle('off',look==='off'||look==='paused');
-   if(DEMO&&work&&j<5){b.compose||=composer();b.compose.style.setProperty('--c',b.color);b.compose.querySelector('b').textContent=`${b.s.name} · ${roles[b.icon]||'Đang xử lý'}…`;b.compose.querySelector('.fl-compose-bar i').style.width=Math.min(96,b.s.avg?runFor(b.s)/b.s.avg*100:40)+'%';b.compose.classList.add('show');}
+   if(work&&j<5){b.compose||=composer();b.compose.style.setProperty('--c',b.color);b.compose.querySelector('b').textContent=`${b.s.name} · ${roles[b.icon]||'Đang xử lý'}…`;b.compose.querySelector('.fl-compose-bar i').style.width=Math.min(96,b.s.avg?runFor(b.s)/b.s.avg*100:40)+'%';b.compose.classList.add('show');}
    else b.compose?.classList.remove('show');}
   rigs.lead.classList.toggle('on',hl==='work');
   now.lastChild.textContent=stale?'Mất kết nối · đang thử lại':`${vn(Date.now()+clockSkew)} giờ VN · trực tuyến`;now.classList.toggle('fl-off',stale);
