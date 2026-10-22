@@ -81,7 +81,9 @@ const isAdminUser = () => !!(typeof me !== 'undefined' && me?.admin);
 const DEV = ' · chỉ quản trị thấy';
 const view = document.getElementById('view');
 /** Replace the page content; null/false entries (optional sections) are skipped. */
-const show = (...nodes) => { view.replaceChildren(...nodes.flat().filter((n) => n != null && n !== false)); view.classList.remove('enter'); void view.offsetWidth; view.classList.add('enter'); };
+let routingTimer = 0;
+const routing = (on) => { clearTimeout(routingTimer); document.body.classList.toggle('routing', on); if (on) routingTimer = setTimeout(() => routing(false), 8000); };
+const show = (...nodes) => { routing(false); view.replaceChildren(...nodes.flat().filter((n) => n != null && n !== false)); view.classList.remove('enter'); void view.offsetWidth; view.classList.add('enter'); };
 /** Placeholder blocks shown while a page loads, so nothing feels frozen. */
 const skeleton = (n = 3, cls = 'sk-card') => h('div', { class: 'sk-grid' }, Array.from({ length: n }, () => h('div', { class: 'sk ' + cls })));
 /** Button feedback while waiting: spinner + text, restored afterwards. */
@@ -321,16 +323,41 @@ function paintHeader() {
   closeMenu();
 }
 // everything about the account lives in one menu behind the avatar
+let menuWanted = false, menuCredits = '';
 function closeMenu() { const m = document.getElementById('userMenu'); if (m) m.hidden = true; document.getElementById('account')?.setAttribute('aria-expanded', 'false'); }
-async function openMenu() { if(me) await showAccount(); }
+function hideMenu() { menuWanted = false; closeMenu(); }
+const MI = { user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>', video: '<rect x="3" y="5" width="14" height="14" rx="3"/><path d="M17 10l4-2v8l-4-2"/>', plan: '<path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.5 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/>', admin: '<path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/>', out: '<path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/>' };
+const mIcon = (k) => { const i = h('i', { class: 'mi', 'aria-hidden': 'true' }); i.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${MI[k]}</svg>`; return i; };
+// the avatar opens a small menu at once from what is already known; fresh numbers fill in behind it
+function renderMenu() {
+  const m = document.getElementById('userMenu'); if (!m || !me) return;
+  const l = me.limits || {}, u = me.used || {}, meter = (label, k) => { const total = l[k] || 0, left = Math.max(0, total - (u[k] || 0)), bar = h('span', { class: 'mbar' }, h('b', {}));
+    bar.firstChild.style.width = (total ? left / total * 100 : 0) + '%'; return h('div', { class: 'mmeter' }, h('span', {}, label), h('b', {}, total ? `${left}/${total}` : '—'), bar); };
+  const go = (href) => (e) => { e.preventDefault(); hideMenu(); navigate(href); };
+  const item = (icon, label, opts) => h(opts.href ? 'a' : 'button', { class: 'mitem', role: 'menuitem', ...(opts.href ? { href: opts.href.replace('#', ''), onclick: go(opts.href) } : { type: 'button', onclick: () => { hideMenu(); opts.do(); } }) }, mIcon(icon), h('span', {}, label));
+  const name = me.user.name || me.user.email.split('@')[0];
+  m.replaceChildren(
+    h('div', { class: 'mhead' }, h('span', { class: 'avatar big' }, name.charAt(0).toUpperCase()), h('div', {}, h('b', {}, name), h('span', {}, me.user.email)), h('em', { class: 'mplan' }, me.plan?.name || 'Miễn phí')),
+    h('div', { class: 'musage' }, meter('Lượt dựng hôm nay', 'render'), meter('Lượt AI viết', 'script'), h('p', { class: 'mcredit' }, menuCredits || 'Đang xem số dư…')),
+    h('nav', { class: 'mlist' }, item('user', 'Tài khoản & cài đặt', { do: showAccount }), item('video', 'Video của tôi', { href: '#/video' }),
+      V('feature:plans') === 'on' ? item('plan', 'Gói cước & credit', { href: '#/goi' }) : null, me.admin ? item('admin', 'Quản trị', { href: '#/admin' }) : null,
+      item('out', 'Đăng xuất', { do: () => document.getElementById('logout').click() })));
+}
+function openMenu() {
+  if (!me) return; const m = document.getElementById('userMenu'), acc = document.getElementById('account');
+  menuWanted = true; renderMenu(); m.hidden = false; acc.setAttribute('aria-expanded', 'true'); m.querySelector('.mitem')?.focus({ preventScroll: true });
+  const reopen = () => { if (!menuWanted) return; renderMenu(); m.hidden = false; acc.setAttribute('aria-expanded', 'true'); };
+  refreshMemberState().then(reopen, () => {});
+  api('/api/credits').then((c) => { menuCredits = (c.monthlyLeft ? c.monthlyLeft + ' video trong gói tháng này · ' : '') + c.balance + ' credit'; reopen(); }, () => {});
+}
 
 document.addEventListener('click', (e) => {
-  if(e.target.closest('a[href="/tai-khoan"]') && me){e.preventDefault();showAccount();return;}
+  if(e.target.closest('a[href="/tai-khoan"]') && me){e.preventDefault();hideMenu();showAccount();return;}
   const acc = document.getElementById('account'), m = document.getElementById('userMenu');
-  if (acc && e.target.closest('#account')) { m.hidden ? openMenu() : closeMenu(); return; }
-  if (m && !m.hidden && !e.target.closest('#userMenu')) closeMenu();
+  if (acc && e.target.closest('#account')) { m.hidden ? openMenu() : hideMenu(); return; }
+  if (m && !m.hidden && !e.target.closest('#userMenu')) hideMenu();
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideMenu(); });
 // one search box for the whole site: community videos, formats, or the user's own videos
 document.addEventListener('submit', (e) => {
   if (e.target.id !== 'topSearch') return;
@@ -370,7 +397,7 @@ async function showSolutionPage() {
  const ticket=++solutionNavigation, key=location.pathname+location.search;
  markNav('kham-pha');document.body.dataset.page='kham-pha';document.body.classList.add('solutions-site');view.classList.add('solutions-main');
  const accessUser=me?.user?.id||'';if(view.dataset.solutionAccessUser!==undefined&&view.dataset.solutionAccessUser!==accessUser)delete view.dataset.solutionPath;view.dataset.solutionAccessUser=accessUser;
- if(view.dataset.solutionPath===key&&!(me&&view.querySelector('[data-solution-locked]')&&view.dataset.solutionCheckedUser!==accessUser)){if(!view.querySelector('footer'))view.append(footer());return;}
+ if(view.dataset.solutionPath===key&&!(me&&view.querySelector('[data-solution-locked]')&&view.dataset.solutionCheckedUser!==accessUser)){routing(false);if(!view.querySelector('footer'))view.append(footer());return;}
  delete view.dataset.solutionPath;show(skeleton(3));
  try{
   const endpoint=me&&/^\/giai-phap\//.test(location.pathname)?'/api/solution-view/'+location.pathname.split('/')[2]:key;
@@ -395,6 +422,7 @@ document.addEventListener('click',async e=>{
 document.addEventListener('submit',e=>{const form=e.target.closest?.('form.catalog-search');if(!form)return;e.preventDefault();const q=new URLSearchParams(new FormData(form));navigate(form.getAttribute('action')+'?'+q.toString());});
 document.addEventListener('click',async e=>{const b=e.target.closest?.('[data-copy-resource]');if(!b)return;const code=b.closest('.resource-code')?.querySelector('code');if(!code)return;try{await navigator.clipboard.writeText(code.textContent);b.textContent='Đã sao chép';}catch{toast('Hãy chọn nội dung để sao chép.');}});
 function route() {
+  if (view.firstElementChild) routing(true);
   stopLive?.();stopLive=null;
   stopHomeGallery?.(); stopHomeGallery = null;stopVideoLibrary?.();stopVideoLibrary=null;
   stopPreview(); stopDemos();
@@ -435,6 +463,7 @@ function route() {
   go.catch(fatal);
 }
 function fatal(e) {
+  routing(false);
   track('error', { msg: String(e.message || e).slice(0, 200), fatal: true });
   show(h('div', { class: 'card' }, h('p', { class: 'error' }, e.message || String(e)), h('a', { href: '#/' }, 'Về trang chủ')));
 }
@@ -1253,8 +1282,7 @@ async function refreshMemberState(){
 }
 async function showAccount() {
   if(!me)return openLogin();
-  await refreshMemberState().catch(()=>{});
-  closeMenu();
+  hideMenu();refreshMemberState().catch(()=>{});
   const {dialog,content}=detailDialog('Tài khoản của bạn');
   const show=(...kids)=>content.replaceChildren(...kids.filter(k=>k && k.tagName!=='FOOTER'));
   content.addEventListener('click',e=>{if(e.target.closest('a[href^="#/"]'))dialog.close();});

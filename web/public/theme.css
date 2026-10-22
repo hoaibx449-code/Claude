@@ -187,3 +187,39 @@ body[data-page="admin"] .helpchat-btn, body[data-page="admin"] .helpchat { displ
 .br-clock { font-size: .8125rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .br-steps li.on i, .br-shimmer, .br-rec i, .browser-render .br-stage::before, .browser-render .br-bar span { animation: none !important; } }
 html[data-theme="aurora"] .appside { border-right: 1px solid var(--side-line) !important; }
+
+/* account menu behind the avatar: opens at once, numbers fill in */
+#userMenu.menu { width: min(320px, calc(100vw - 24px)); padding: 0; gap: 0; overflow: hidden; border-radius: 18px; border: 1px solid var(--line); box-shadow: 0 24px 60px -18px rgba(76, 29, 149, .35), 0 4px 12px rgba(0, 0, 0, .04); transform-origin: top right; animation: menu-in .18s cubic-bezier(.2, .9, .3, 1.2); }
+@keyframes menu-in { from { opacity: 0; transform: translateY(-6px) scale(.96); } }
+#userMenu .mhead { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; align-items: center; padding: 16px; background: var(--grad-soft); position: relative; }
+#userMenu .mhead .avatar.big { grid-row: span 2; width: 44px; height: 44px; font-size: 1.1rem; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--grad); box-shadow: 0 8px 18px -8px var(--glow); }
+#userMenu .mhead > div { min-width: 0; padding-right: 64px; }
+#userMenu .mhead b { font-size: .975rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#userMenu .mhead span:not(.avatar) { display: block; font-size: .8rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#userMenu .mplan { position: absolute; top: 12px; right: 12px; font-style: normal; font-size: .7rem; font-weight: 700; color: #fff; background: var(--grad); padding: 3px 9px; border-radius: 99px; }
+#userMenu .musage { padding: 12px 16px; display: flex; flex-direction: column; gap: 9px; border-bottom: 1px solid var(--line); }
+#userMenu .mmeter { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; font-size: .8125rem; color: var(--muted); }
+#userMenu .mmeter b { color: var(--ink); font-variant-numeric: tabular-nums; }
+#userMenu .mbar { grid-column: 1 / -1; height: 6px; border-radius: 99px; background: var(--blue-soft); overflow: hidden; }
+#userMenu .mbar b { display: block; height: 100%; border-radius: inherit; background: var(--grad); transition: width .5s ease; }
+#userMenu .mcredit { margin: 0; font-size: .8125rem; color: var(--accent); font-weight: 600; }
+#userMenu .mlist { display: flex; flex-direction: column; padding: 6px; }
+#userMenu .mitem { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 10px; border-radius: 12px; background: none; border: 0; box-shadow: none; color: var(--ink); font-weight: 500; font-size: .9375rem; text-decoration: none; justify-content: flex-start; width: 100%; filter: none; }
+#userMenu .mitem:hover, #userMenu .mitem:focus-visible { background: var(--blue-soft); color: var(--accent); transform: none; box-shadow: none; filter: none; }
+#userMenu .mitem .mi { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: var(--grad-soft); color: var(--accent); flex: none; }
+#userMenu .mitem .mi svg { width: 18px; height: 18px; }
+#userMenu .mitem:last-child { color: #e11d48; } #userMenu .mitem:last-child .mi { background: #fff1f2; color: #e11d48; }
+@media (max-width: 1023px) { #userMenu.menu { position: fixed; top: 64px; right: 12px; } }
+
+/* first paint: the server's text for search engines stays out of sight (it shows on its own if the app never starts) */
+#view > [data-server-content] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; animation: sc-fallback 0s 6s forwards; }
+@keyframes sc-fallback { to { position: static; width: auto; height: auto; overflow: visible; clip-path: none; white-space: normal; } }
+#view > .loader { opacity: 0; animation: loader-in .3s .18s forwards; min-height: 60vh; align-content: center; }
+#view > .loader span { font-size: .9375rem; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+#view > .loader .ink { stroke: var(--accent); }
+@keyframes loader-in { to { opacity: 1; } }
+/* between pages: a thin running bar under the header while the next page loads */
+.route-bar { position: fixed; left: 0; right: 0; top: var(--shell-header-height, 64px); height: 3px; z-index: 70; pointer-events: none; overflow: hidden; opacity: 0; transition: opacity .2s; }
+.route-bar::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 40%; background: var(--grad); border-radius: 0 3px 3px 0; animation: route-run 1s ease-in-out infinite; }
+body.routing .route-bar { opacity: 1; transition-delay: .15s; }
+@keyframes route-run { from { transform: translateX(-100%); } to { transform: translateX(260%); } }

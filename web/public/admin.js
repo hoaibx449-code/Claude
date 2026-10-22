@@ -4,18 +4,42 @@
 'use strict';
 
 // grouped by the job at hand: watch, make videos, people, sell, run the site
+// five groups by what the admin came to do; each page: [route, name, one line on what it is for, icon]
 const ADMIN_GROUPS = [
-  ['Nhóm trợ lý', [['nhom-ai','Nhóm AI nội dung','Thiết lập trợ lý, Telegram, thảo luận đa kênh và duyệt đề xuất. Chỉ dành cho quản trị.']]],
-  ['Theo dõi', [['tong-quan', 'Bảng điều khiển', 'Số liệu chính, phễu người dùng, lỗi và tình trạng cài đặt.'], ['nhat-ky', 'Nhật ký', 'Mọi thao tác và lỗi, lọc theo người, loại, thời gian.']]],
-  ['Sản xuất video', [
-    ['giong-doc', 'Giọng đọc', 'Giọng nào đang đọc thật, giọng nào dùng giọng thay thế, nghe thử từng giọng.'], ['may-dung', 'Máy dựng', 'Hàng chờ, tiến độ và lỗi khi dựng video.']]],
-  ['Giải pháp', [['giai-phap','Giải pháp & tài nguyên','Biên tập giải pháp, tệp, phiên bản và nội dung công khai.']]],
-  ['Người dùng', [['prompt-hunter','Prompt Hunter','Kiểm duyệt và biên tập prompt chia sẻ.'],['nguoi-dung', 'Người dùng', 'Tìm người dùng, xem video, cấp gói hoặc credit, khoá tài khoản.'], ['cong-dong', 'Cộng đồng', 'Duyệt video chia sẻ.'], ['zalo', 'Zalo', 'Kết nối Zalo Bot, tự kiểm tra và hộp thư.'],['anh-zalo','Ảnh Zalo từ Sheet','Nguồn ảnh, lịch gửi và người đăng ký.']]],
-  ['Kinh doanh', [['goi', 'Gói cước', 'Giá, hạn mức, thanh toán.'], ['don-hang', 'Đơn hàng', 'Đơn chờ, đã trả, huỷ.']]],
-  ['Kết nối & AI', [['ket-noi','API & token','Khoá AI, giọng đọc, Zalo, thanh toán và kiểm tra kết nối.'],['ai','AI & model','Thứ tự AI, model chính và dự phòng.'],['chi-phi','Chi phí & ngân sách','Trần chi phí và bảng giá vốn.']]],
-  ['Hệ thống', [['noi-dung', 'Trang chủ & nội dung', 'Ảnh, video mẫu, chữ trên trang, ngân sách AI.'], ['cai-dat', 'Cài đặt chung', 'Máy dựng, mặc định video, đăng nhập và quyền quản trị.']]],
+  ['Tổng quan', [['tong-quan', 'Bảng điều khiển', 'Số liệu chính, phễu người dùng, lỗi và tình trạng cài đặt.', 'chart'], ['nhat-ky', 'Nhật ký', 'Mọi thao tác và lỗi, lọc theo người, loại, thời gian.', 'list']]],
+  ['Vận hành', [['nhom-ai', 'Nhóm AI', 'Giao nhiệm vụ, duyệt đề xuất, thiết lập trợ lý và Telegram.', 'bot'], ['may-dung', 'Máy dựng', 'Hàng chờ, tiến độ và lỗi khi dựng video.', 'film'], ['giong-doc', 'Giọng đọc', 'Giọng nào đang đọc thật, giọng thay thế, nghe thử từng giọng.', 'mic']]],
+  ['Nội dung & cộng đồng', [['noi-dung', 'Giao diện & nội dung', 'Màu, thương hiệu, trang chủ, video mẫu, pháp lý và chữ trên trang.', 'brush'], ['giai-phap', 'Giải pháp & tài nguyên', 'Biên tập giải pháp, tệp, phiên bản và nội dung công khai.', 'box'], ['prompt-hunter', 'Prompt Hunter', 'Kiểm duyệt và biên tập prompt chia sẻ.', 'spark'], ['cong-dong', 'Cộng đồng', 'Duyệt video người dùng chia sẻ.', 'heart']]],
+  ['Khách hàng & doanh thu', [['nguoi-dung', 'Người dùng', 'Tìm người dùng, xem video, cấp gói hoặc credit, khoá tài khoản.', 'users'], ['goi', 'Gói cước', 'Giá, hạn mức, credit và thanh toán chuyển khoản.', 'tag'], ['don-hang', 'Đơn hàng', 'Đơn chờ, đã trả, huỷ.', 'cart'], ['zalo', 'Zalo', 'Hộp thư, trợ lý trả lời khách, chăm sóc lại và cài đặt Zalo Bot.', 'chat'], ['anh-zalo', 'Ảnh Zalo từ Sheet', 'Nguồn ảnh, lịch gửi và người đăng ký.', 'image']]],
+  ['Kết nối & hệ thống', [['ket-noi', 'API & khoá', 'Khoá AI, giọng đọc, Zalo, thanh toán và kiểm tra kết nối.', 'key'], ['ai', 'AI & model', 'Thứ tự AI, model chính và dự phòng.', 'cpu'], ['chi-phi', 'Chi phí & ngân sách', 'Trần chi phí, tốn nhiều nhất và bảng giá vốn.', 'coin'], ['cai-dat', 'Cài đặt chung', 'Máy dựng, mặc định video, đăng nhập và quyền quản trị.', 'gear']]],
 ];
+const ADMIN_ICONS = {
+  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  bot: '<rect x="4" y="8" width="16" height="12" rx="4"/><path d="M12 4v4M9 13h.01M15 13h.01"/>', film: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9l5 3-5 3z"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>', brush: '<path d="M14 4l6 6-8 8H6v-6z"/><path d="M4 20h4"/>',
+  box: '<path d="M3 7l9-4 9 4-9 4zM3 7v10l9 4 9-4V7M12 11v10"/>', spark: '<path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>',
+  heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>', users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>',
+  tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.5"/>', cart: '<path d="M3 4h2l2.5 11h11L21 7H7"/><circle cx="9" cy="19" r="1.5"/><circle cx="18" cy="19" r="1.5"/>',
+  chat: '<path d="M4 5h16v11H9l-5 4z"/>', image: '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
+  key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/>', cpu: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+  coin: '<circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6v2M12 16v2"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7.5 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H2a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 7.5a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 2.7-1.1V2a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H22a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-2.5 1.3z"/>',
+};
+const adminIcon = (k) => { const i = h('i', { class: 'adm-ic', 'aria-hidden': 'true' }); i.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ADMIN_ICONS[k] || ''}</svg>`; return i; };
 const ADMIN_TABS = ADMIN_GROUPS.flatMap(([, list]) => list);
+// pages with many sections get a row of chips to jump between them; the chip of the section in view lights up
+function adminJumpList(body, jump) {
+  let spy = null;
+  const build = () => {
+    const heads = [...body.querySelectorAll(':scope > .card > .section-title > h2, :scope > section.card > h2, :scope > * > .card > .section-title > h2')].filter((x) => x.textContent.trim());
+    if (heads.length < 4) { jump.hidden = true; return; }
+    spy?.disconnect();
+    const chips = heads.map((hd, i) => { const card = hd.closest('.card') || hd; card.id ||= 'adm-sec-' + i; return h('a', { href: '#' + card.id, 'data-for': card.id, onclick: (e) => { e.preventDefault(); const f = body.querySelector('.settings-finder input'); if (f?.value) { f.value = ''; f.dispatchEvent(new Event('input')); } card.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' }); } }, hd.textContent.trim()); });
+    jump.replaceChildren(...chips); jump.hidden = false;
+    spy = new IntersectionObserver((list) => { for (const en of list) if (en.isIntersecting) { jump.querySelectorAll('a').forEach((a) => a.classList.toggle('on', a.dataset.for === en.target.id)); jump.querySelector('a.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } }, { rootMargin: '-30% 0px -60% 0px' });
+    heads.forEach((hd) => spy.observe(hd.closest('.card') || hd));
+  };
+  let t = 0; new MutationObserver(() => { clearTimeout(t); t = setTimeout(build, 120); }).observe(body, { childList: true });
+}
 const SECRET_INFO = {
   GEMINI_API_KEY: ['Gemini (Google AI Studio)', 'Viết kịch bản + vẽ ảnh. aistudio.google.com → Get API key.'],
   OPENAI_API_KEY: ['OpenAI', 'Viết kịch bản + vẽ ảnh. platform.openai.com → API keys.'],
@@ -42,10 +66,10 @@ const VIS_NAMES = { on: 'Hiện', dev: 'Đang phát triển', hidden: 'Ẩn' };
 async function showAdmin() {
   const tab = ADMIN_TABS.some(([k]) => k === currentRoute().split('/')[2]) ? currentRoute().split('/')[2] : 'tong-quan';
   viewed('admin', { tab });
-  const [, defaultTitle, desc] = ADMIN_TABS.find(([k]) => k === tab);
-  const title=ui.labels?.adminMenu?.[tab]||defaultTitle;
+  const [, defaultTitle, desc, icon] = ADMIN_TABS.find(([k]) => k === tab);
+  const title=ui.labels?.adminMenu?.[tab]||defaultTitle, group = ADMIN_GROUPS.find(([, list]) => list.some(([k]) => k === tab))[0];
   const nav = h('nav', { class: 'admin-nav', 'aria-label': 'Mục quản trị' }, ADMIN_GROUPS.map(([g, list]) => h('div', { class: 'admin-group' }, h('span', {}, g),
-    list.map(([k, name]) => h('a', { href: '#/admin/' + k, class: k === tab ? 'on' : null, 'aria-current': k === tab ? 'page' : null }, ui.labels?.adminMenu?.[k]||name)))));
+    list.map(([k, name, , ic]) => h('a', { href: '#/admin/' + k, class: k === tab ? 'on' : null, 'aria-current': k === tab ? 'page' : null }, adminIcon(ic), h('span', {}, ui.labels?.adminMenu?.[k]||name))))));
   const body = h('div', { class: 'admin-body' }, h('p', { class: 'muted' }, 'Đang tải…'));
   // one menu: on wide screens the admin sections replace the app menu in the side bar;
   // on smaller screens they are a single scrolling strip above the page
@@ -54,7 +78,11 @@ async function showAdmin() {
   const sideNav = nav.cloneNode(true);
   sideNav.prepend(h('a', { class: 'admin-back', href: '#/' }, '← Về ứng dụng'));
   side?.querySelector('.sidenav.bottom')?.before(sideNav);
-  show(h('div', { class: 'admin' }, nav, h('div', { class: 'admin-main' }, h('header', { class: 'admin-head' }, h('h1', {}, title), h('p', { class: 'muted' }, desc)), body)));
+  // where am I: group › page, what this page is for, and a jump list of its sections
+  const jump = h('nav', { class: 'admin-jump', 'aria-label': 'Các phần trong trang', hidden: true });
+  show(h('div', { class: 'admin' }, nav, h('div', { class: 'admin-main' }, h('header', { class: 'admin-head' }, h('p', { class: 'admin-crumb' }, h('a', { href: '#/admin' }, 'Quản trị'), h('span', { 'aria-hidden': 'true' }, '›'), group),
+    h('div', { class: 'admin-title' }, h('span', { class: 'admin-badge' }, adminIcon(icon)), h('div', {}, h('h1', {}, title), h('p', { class: 'muted' }, desc)))), jump, body)));
+  adminJumpList(body, jump);
   setTimeout(() => nav.querySelector('a.on')?.scrollIntoView({ block: 'nearest', inline: 'center' }), 0);
   const pages = { 'giai-phap':async(body)=>{const {showSolutionsAdmin}=await import('/solutions-admin.js?v=55');return showSolutionsAdmin({h,api,body,toast,fail});}, 'anh-zalo':async(body)=>{const {showImageFeed}=await import('/image-feed.js?v=44');return showImageFeed({h,api,body,toast,fail});}, 'prompt-hunter':async(body)=>{const {showHunter}=await import('/prompt-hunter.js');return showHunter({h,api,show:(...nodes)=>body.replaceChildren(...nodes.filter(Boolean)),me,toast,fail,detailDialog,openLogin,footer,admin:true});}, 'may-dung': adminRenders, 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings,'ket-noi':adminSettings,'ai':adminSettings,'chi-phi':adminSettings, 'huan-luyen': adminSettings, 'giong-doc': adminSettings };
   if(tab==='nhom-ai'){
@@ -78,19 +106,20 @@ async function adminOverview(body) {
   const draw = async () => {
     const o = await api('/api/admin/overview?days=' + days);
     const t = o.totals || {}, f = o.funnel || {};
-    const stat = (label, value, note) => h('div', { class: 'stat' }, h('small', {}, label), h('b', {}, value), note ? h('small', {}, note) : null);
+    const stat = (label, value, note, icon, tone = 'violet') => h('div', { class: 'stat adm-stat tone-' + tone }, icon ? adminIcon(icon) : null, h('small', {}, label), h('b', {}, value), note ? h('small', {}, note) : null);
+    const period = h('div', { class: 'adm-period', role: 'group', 'aria-label': 'Khoảng thời gian' }, [['1', 'Hôm nay'], ['7', '7 ngày'], ['30', '30 ngày'], ['90', '90 ngày'], ['365', '1 năm']].map(([v, l]) => h('button', { type: 'button', class: 'chip' + (Number(v) === days ? ' on' : ''), 'aria-pressed': String(Number(v) === days), onclick: () => { days = Number(v); draw(); } }, l)));
     const max = Math.max(1, ...o.series.map((d) => d.projects + d.renders));
     const steps = [['Khách vào trang', f.visitors], ['Đăng nhập', f.logged_in], ['Tạo video', f.created], ['Bấm dựng', f.rendered], ['Nhận video', f.got_video], ['Tải video', f.downloaded]];
     const top = Math.max(1, ...steps.map(([, n]) => n || 0));
     const breakdown = (title, rows, names = {}) => h('div', {}, h('h3', {}, title), rows.length ? h('ul', {}, rows.map((r) => h('li', {}, `${names[r.k] || r.k || '(không rõ)'}: ${r.n}`))) : h('p', { class: 'muted' }, 'Chưa có dữ liệu.'));
     body.replaceChildren(
-      h('div', { class: 'row' }, 'Khoảng thời gian: ', select([['1', 'Hôm nay'], ['7', '7 ngày'], ['30', '30 ngày'], ['90', '90 ngày'], ['365', '1 năm']], String(days), (v) => { days = Number(v); draw(); })),
-      h('div', { class: 'stats' },
-        stat('Người dùng', num(o.users.all_users), `+${num(o.users.new_users)} mới`), stat('Hoạt động', num(o.active)),
-        stat('Video tạo', num(t.projects)), stat('Video dựng xong', num(t.renders), t.failed ? `${num(t.failed)} lỗi` : null),
-        stat('AI viết / vẽ', `${num(t.scripts)} / ${num(t.images)}`), stat('Chi phí AI + giọng', money(t.cost)),
-        stat('Thời gian ra video', t.avg_total_sec ? Math.round(t.avg_total_sec) + ' giây' : '—', 'từ lúc bấm dựng'), stat('Lỗi', num(t.errors)),
-        stat('Hàng chờ dựng', `${num(o.jobs.queued)} chờ · ${num(o.jobs.running)} đang dựng`), stat('Tin Zalo', num(t.zalo))),
+      period,
+      h('div', { class: 'stats adm-stats' },
+        stat('Người dùng', num(o.users.all_users), `+${num(o.users.new_users)} mới`, 'users'), stat('Đang hoạt động', num(o.active), null, 'spark'),
+        stat('Video tạo', num(t.projects), null, 'film', 'orange'), stat('Video dựng xong', num(t.renders), t.failed ? `${num(t.failed)} lỗi` : 'không lỗi', 'film', 'green'),
+        stat('AI viết / vẽ', `${num(t.scripts)} / ${num(t.images)}`, null, 'bot', 'pink'), stat('Chi phí AI + giọng', money(t.cost), null, 'coin', 'orange'),
+        stat('Thời gian ra video', t.avg_total_sec ? Math.round(t.avg_total_sec) + ' giây' : '—', 'từ lúc bấm dựng', 'chart', 'blue'), stat('Lỗi', num(t.errors), null, 'list', t.errors ? 'red' : 'green'),
+        stat('Hàng chờ dựng', `${num(o.jobs.queued)} chờ`, `${num(o.jobs.running)} đang dựng`, 'film', 'blue'), stat('Tin Zalo', num(t.zalo), null, 'chat', 'blue')),
       card('Theo ngày', 'Cột = video tạo + video dựng xong mỗi ngày.', h('div', { class: 'spark' }, o.series.map((d) => h('i', { title: `${new Date((d.d) * 86400000).toLocaleDateString('vi-VN')}: ${d.projects} tạo, ${d.renders} xong, ${d.failed} lỗi, ${money(d.cost)}`, style: `height:${Math.round(((d.projects + d.renders) / max) * 100)}%` })))),
       card('Phễu người dùng', 'Số người (không trùng) đi tới từng bước.', h('div', { class: 'funnel' }, steps.map(([k, n]) => h('div', {}, h('span', { style: 'width:130px' }, k), h('i', { style: `width:${Math.round(((n || 0) / top) * 300)}px` }), num(n))))),
       card('Người dùng làm video gì', null, h('div', { class: 'grid' },
@@ -234,8 +263,7 @@ async function adminSettings(body, tab) {
     : ({ goi: plansTab, zalo: zaloTab, 'hien-thi': visTab, 'noi-dung': contentTab, 'cai-dat': settingsTab,'ket-noi':connectionsTab,'ai':(c,s,k)=>settingsTab(c,s,k,'ai'),'chi-phi':(c,s,k)=>settingsTab(c,s,k,'cost') }[tab] || settingsTab)(c, secrets, secretInput, zcheck, inbox);
   const cards=sections.filter(Boolean);
   const finder=h('input',{type:'search',placeholder:'Tìm cài đặt trong trang này…','aria-label':'Tìm cài đặt',oninput:e=>{const q=e.target.value.trim().toLocaleLowerCase('vi');for(const section of cards)section.hidden=!!q&&!section.textContent.toLocaleLowerCase('vi').includes(q);}});
-  const shortcuts=h('nav',{class:'settings-shortcuts','aria-label':'Đến nhóm cài đặt'},cards.map(section=>{const title=section.querySelector('h2')?.textContent;if(!title)return null;return h('button',{type:'button',class:'ghost small',onclick:()=>{finder.value='';cards.forEach(x=>x.hidden=false);section.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});section.querySelector('input,select,button,textarea')?.focus({preventScroll:true});}},title);}));
-  body.replaceChildren(h('div',{class:'settings-finder'},finder,shortcuts),...cards,h('div', { class: 'savebar' }, saveBtn));
+  body.replaceChildren(h('div',{class:'settings-finder'},finder),...cards,h('div', { class: 'savebar' }, saveBtn));
 }
 
 function keysCard(secrets, secretInput, names, title='Khoá API') {

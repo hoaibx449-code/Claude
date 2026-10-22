@@ -1,16 +1,36 @@
-/* Shared interaction feedback. Outlines do not move content or cover controls. */
-:root{--ui-glow:var(--accent,#4f46e5);--ui-glow-halo:color-mix(in srgb,var(--ui-glow) 22%,transparent)}
-:where(button,.btn,a[href],input:not([type="hidden"]),textarea,select,summary,[role="button"],[role="tab"],.card,.hunter-card,.scene,.mediafield,.home-preview,.community-card,.format-card,.template-card){transition:outline-color .16s ease,box-shadow .16s ease}
+/* Shared interaction feedback: things lift a little under the pointer, press in under the finger,
+   and keyboard focus gets a clear soft ring. Nothing jumps the layout or draws boxes round text. */
+:root{--ui-glow:var(--accent,#8b5cf6);--ui-glow-halo:color-mix(in srgb,var(--ui-glow) 24%,transparent);--ui-ease:cubic-bezier(.2,.8,.2,1)}
+:where(button,.btn,.chip,[role="tab"],.mitem,.tabbar a,.sidenav a,.admin-group a,.nav a){transition:transform .14s var(--ui-ease),box-shadow .2s var(--ui-ease),background-color .2s,color .2s,border-color .2s,filter .2s}
+:where(.card,.hunter-card,.community-card,.format-card,.template-card,.home-preview,.vcard,.proj,.mode,.scene,.mediafield){transition:transform .22s var(--ui-ease),box-shadow .25s var(--ui-ease),border-color .25s}
+:where(input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),textarea,select){transition:border-color .18s,box-shadow .18s,background-color .18s}
+
 @media(hover:hover) and (pointer:fine){
- :where(button,.btn,a[href],input:not([type="hidden"]),textarea,select,summary,[role="button"],[role="tab"],.card,.hunter-card,.scene,.mediafield,.home-preview,.community-card,.format-card,.template-card):not(.top *):not(.brand):not(.logo):not(:disabled):not([aria-disabled="true"]):hover{
-  outline:1px solid var(--ui-glow)!important;outline-offset:2px;box-shadow:0 0 0 3px var(--ui-glow-halo),0 0 18px var(--ui-glow-halo)!important;
- }
+ /* filled buttons: lift and glow */
+ :where(button,.btn):not(.ghost):not(.danger):not(.chip):not(.mitem):not(.top *):not(:disabled):not([aria-disabled="true"]):hover{transform:translateY(-1px);filter:saturate(1.15) brightness(1.04);box-shadow:0 10px 22px -10px var(--glow,var(--ui-glow-halo))}
+ /* quiet buttons and chips: a soft tint */
+ :where(button.ghost,.btn.ghost,.chip,[role="tab"]):not(:disabled):not([aria-disabled="true"]):not(.on):not([aria-selected="true"]):hover{background:color-mix(in srgb,var(--ui-glow) 8%,var(--card,#fff));border-color:color-mix(in srgb,var(--ui-glow) 40%,var(--line,#e5e7eb));color:var(--accent)}
+ /* clickable cards: rise with a softer, wider shadow */
+ :where(a.card,.hunter-card,.community-card,.format-card,.template-card,.home-preview,.vcard,.proj,.mode,button.card):hover{transform:translateY(-3px);box-shadow:0 18px 40px -22px color-mix(in srgb,var(--ui-glow) 55%,transparent);border-color:color-mix(in srgb,var(--ui-glow) 30%,var(--line,#e5e7eb))}
+ :where(input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),textarea,select):not(:disabled):not(:focus):hover{border-color:color-mix(in srgb,var(--ui-glow) 35%,var(--line,#e5e7eb))}
 }
-:where(button,.btn,a[href],input,textarea,select,summary,[role="button"],[role="tab"]):not(.top *):not(.brand):not(.logo):not(:disabled):not([aria-disabled="true"]):focus-visible{
- outline:2px solid var(--ui-glow)!important;outline-offset:3px;box-shadow:0 0 0 5px var(--ui-glow-halo)!important;
-}
-@media(hover:none){
- :where(button,.btn,a[href],summary,[role="button"],[role="tab"]):not(.top *):not(.brand):not(.logo):not(:disabled):not([aria-disabled="true"]):active{outline:1px solid var(--ui-glow)!important;outline-offset:2px;box-shadow:0 0 0 3px var(--ui-glow-halo)!important}
-}
-@media(prefers-reduced-motion:reduce){:where(button,.btn,a[href],input,textarea,select,summary,[role="button"],[role="tab"],.card,.hunter-card,.scene,.mediafield,.home-preview,.community-card,.format-card,.template-card){transition:none!important}}
+/* pressing: everything presses in, on touch and mouse alike */
+:where(button,.btn,.chip,[role="tab"],.mitem,.tabbar a):not(:disabled):not([aria-disabled="true"]):active{transform:scale(.96);filter:brightness(.97)}
+:where(a.card,.hunter-card,.community-card,.format-card,.template-card,.home-preview,.vcard,.proj,.mode,button.card):active{transform:scale(.985)}
+/* typing: a soft halo instead of the browser's box */
+:where(input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),textarea,select):focus{outline:none;border-color:var(--ui-glow);box-shadow:0 0 0 4px var(--ui-glow-halo)}
+/* keyboard: a clear ring only when moving with the keyboard */
+:where(button,.btn,a[href],summary,[role="button"],[role="tab"],.chip,.mitem):focus-visible{outline:2px solid var(--ui-glow);outline-offset:3px;box-shadow:0 0 0 6px var(--ui-glow-halo)}
+:where(button,.btn,a[href],summary,[role="button"],[role="tab"]):focus:not(:focus-visible){outline:none}
+/* windows open with a short scale-in over a blurred page */
+dialog[open]:not(.render-desk){animation:ui-dialog-in .22s var(--ui-ease)}
+dialog[open]::backdrop{animation:ui-fade-in .2s ease}
+@keyframes ui-dialog-in{from{opacity:0;transform:translateY(10px) scale(.97)}}
+@keyframes ui-fade-in{from{opacity:0}}
+/* the toast slides up */
+.toast{animation:ui-toast-in .25s var(--ui-ease)}
+@keyframes ui-toast-in{from{opacity:0;transform:translate(-50%,12px)}}
+/* the ripple from where a finger landed, in the theme colour on quiet buttons */
+:where(button.ghost,.btn.ghost,.chip,.mitem) .ripple{background:var(--ui-glow);opacity:.16}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}:where(button,.btn,.chip,a.card,.hunter-card,.community-card,.format-card,.template-card,.home-preview,.vcard,.proj,.mode):is(:hover,:active){transform:none!important}}
 @media(forced-colors:active){:where(button,.btn,a[href],input,textarea,select,summary,[role="button"],[role="tab"]):focus-visible{outline:2px solid Highlight!important;box-shadow:none!important}}

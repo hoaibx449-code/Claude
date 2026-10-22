@@ -42,7 +42,8 @@ export async function initialPageContent(path:string,config:Config,env:Env) {
   const {results}=await env.DB.prepare("SELECT title,description FROM hunter_prompts WHERE status='published' ORDER BY updated_at DESC LIMIT 24").all<{title:string;description:string}>();
   body+=results.map(p=>'<article><h2>'+escape(p.title)+'</h2><p>'+escape(p.description||'')+'</p></article>').join('');
  }
- return '<section class="doc card" data-server-content>'+body+'<nav aria-label="Khám phá website"><a href="/kham-pha">Khám phá giải pháp</a> · <a href="/prompt-hunter">Prompt Hunter</a> · <a href="/tro-giup">Trợ giúp</a></nav></section>';
+ // the readable text is for search engines and no-script readers; people see the loader until the app paints
+ return '<div class="loader" role="status" aria-label="Đang tải"><svg viewBox="0 0 120 60" aria-hidden="true"><path class="ink" d="M8 40 C 22 10, 38 10, 46 34 S 70 58, 82 30 S 104 8, 112 26"/></svg><span>Đang tải…</span></div><section class="doc card" data-server-content>'+body+'<nav aria-label="Khám phá website"><a href="/kham-pha">Khám phá giải pháp</a> · <a href="/prompt-hunter">Prompt Hunter</a> · <a href="/tro-giup">Trợ giúp</a></nav></section>';
 }
 
 export const PRIMARY_NAVIGATION = [
