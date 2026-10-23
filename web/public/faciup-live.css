@@ -54,7 +54,7 @@
 .fl-flash{position:absolute;border-radius:50%;background:radial-gradient(closest-side,rgba(255,255,255,.95),color-mix(in srgb,var(--c) 60%,transparent) 45%,transparent);opacity:0;pointer-events:none;mix-blend-mode:screen}
 .fl-flash.on{animation:fl-flash .9s ease-out}
 @keyframes fl-flash{0%{opacity:0;transform:scale(.5)}25%{opacity:.85}100%{opacity:0;transform:scale(1.25)}}
-.fl-doc{position:absolute;width:calc(48px*var(--k));height:calc(38px*var(--k));transform:translate(-50%,-50%);filter:drop-shadow(0 6px 8px rgba(0,0,0,.3));z-index:30}
+.fl-doc{position:absolute;width:calc(36px*var(--k));height:calc(29px*var(--k));transform:translate(-50%,-50%);filter:drop-shadow(0 6px 8px rgba(0,0,0,.3));z-index:30}
 .fl-doc svg{width:100%;height:100%;display:block}
 /* the wall board: lit text straight on the screen, no frame of its own */
 .fl-board{position:absolute;color:#fff;font-family:inherit;pointer-events:none}

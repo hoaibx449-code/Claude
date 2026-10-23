@@ -1,4 +1,4 @@
-import {createSim} from '/faciup-sim.js?v=3';
+import {createSim} from '/faciup-sim.js?v=5';
 // Faciup Live: the AI team's office. A wide picture on computers and a square one on phones; over it,
 // in the picture's own pixels, the live wall board, the desk name plates and room signs (names come
 // from Quản trị → Nhóm AI), and each robot's living head, eyes and typing hands. Everything shown is
@@ -188,8 +188,8 @@ export function showLive({h,show,api,openLogin,zaloLink}){
   zaloName=r.agents.find(a=>a.icon==='zalo')?.name||'Zalo Bot';
   simChat=S&&!personal&&Date.now()>=zaloHold?S.chat.slice(-8):null;
   if(S)for(const e of S.events){
-   if(e.type==='hand'){const from=r.agents[e.from],to=r.agents[e.to];if(from&&to)fly(from.seat,to.seat,to.color,e.toLead);}
-   else if(e.type==='done')fanfare();
+   if(e.type==='hand'){const from=r.agents[e.from],to=r.agents[e.to];if(from&&to)setTimeout(()=>{if(!stopped)fly(from.seat,to.seat,to.color,e.toLead);},Math.random()*950);}
+   else if(e.type==='done'){if(performance.now()-lastFanfare>20000){lastFanfare=performance.now();fanfare();}}
    else if(e.type==='zalo'&&simChat){ting(e.role==='user');showPop(e.role,e.text,(e.role==='user'?'Khách hàng':zaloName)+' · minh họa');if(dialog.open)renderChat();}}
   if(r.office){if(titleEl.textContent!==r.office.title)titleEl.textContent=r.office.title;if(subEl.textContent!==r.office.subtitle)subEl.textContent=r.office.subtitle;}
   for(const s of signs.children){const name=(r.rooms||[]).find(x=>x.id===s.dataset.room)?.name||'';const words=name.toUpperCase().split(/\s+/).filter(Boolean),rows=words.length>1?[words.slice(0,words.length>2?1:1),words.slice(1)]:[words];s.firstChild.replaceChildren(...rows.map(row=>h('span',{},row.join(' '))));s.hidden=!name;}
@@ -221,13 +221,13 @@ export function showLive({h,show,api,openLogin,zaloLink}){
   lastTypers=typers;paintClock();
  }
  // the file flies along a curve from one desk to the next, with the bell
- let lastBell=0;
- function fly(fromSeat,toSeat,color,toLead){const now=performance.now();if(now-lastBell>1000){lastBell=now;chime(toLead);}if(reduce)return;const a=seats[fromSeat],b=seats[toSeat];if(!a||!b)return;
+ let lastBell=0,lastFanfare=0;
+ function fly(fromSeat,toSeat,color,toLead){const now=performance.now();if(now-lastBell>1400){lastBell=now;chime(toLead);}if(reduce)return;const a=seats[fromSeat],b=seats[toSeat];if(!a||!b)return;
   const d=`M${a.cx} ${a.top}Q${(a.cx+b.cx)/2} ${Math.min(a.top,b.top)-90*L.k} ${b.cx} ${b.top}`,k=L.k,big=4000;
   const g=svg('g',{class:'fl-fly'});g.style.setProperty('--c',color);trail.append(g);
   const layers=[['glow',190],['tail2',170],['tail',110],['body',55],['core',22]].map(([cls,seg])=>{const pth=svg('path',{d,class:'fl-f-'+cls,'stroke-dasharray':`${seg*k} ${big}`});g.append(pth);return [pth,seg*k];});
   const len=layers[0][0].getTotalLength(),doc=h('div',{class:'fl-doc'});doc.innerHTML=DOC;world.append(doc);
-  const t0=performance.now(),T=Math.min(1500,700+len*.9);let sparkAt=0;
+  const t0=performance.now(),T=Math.min(3000,1800+len*.6);let sparkAt=0;
   const go=now=>{if(stopped){g.remove();doc.remove();return;}const u=Math.min(1,(now-t0)/T),e=u<.5?2*u*u:1-Math.pow(-2*u+2,2)/2,dist=e*len,p=layers[0][0].getPointAtLength(dist);
    for(const [pth,seg] of layers)pth.setAttribute('stroke-dashoffset',String(seg-dist));
    doc.style.left=P(p.x,L.w);doc.style.top=P(p.y,L.h);

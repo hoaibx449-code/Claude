@@ -6,8 +6,8 @@ const DAY=864e5,VN=7*3600e3;
 // timings in seconds as [least, spread]; "max" runs three sessions side by side so files keep moving
 const PROFILE={
  normal:{streams:1,intake:[8,12],member:[18,50],synth:[12,18],gap:[20,90],task:[35,80],rest:[120,360],chat:[30,90]},
- high:{streams:1,intake:[5.2,7.8],member:[11.7,32.5],synth:[7.8,11.7],gap:[13,58],task:[23,52],rest:[78,234],chat:[20,58]},
- max:{streams:3,intake:[3,3],member:[5,10],synth:[4,4],gap:[2,4],task:[12,20],rest:[15,40],chat:[15,15]}};
+ high:{streams:16,rounds:3,review:[15,40],intake:[2,2],member:[4,5],synth:[3,2],gap:[1,3],task:[8,12],rest:[6,14],chat:[10,12]},
+ max:{streams:24,rounds:3,review:[10,25],intake:[1.5,1],member:[2.5,3],synth:[2,1.5],gap:[.5,1.5],task:[5,8],rest:[3,8],chat:[6,8]}};
 function rng(seed){let a=seed>>>0;return()=>{a=a+0x6D2B79F5>>>0;let t=a;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;};}
 const hash=s=>{let h=2166136261;for(const c of String(s)){h^=c.charCodeAt(0);h=Math.imul(h,16777619);}return h>>>0;};
 const pick=(r,list)=>list[Math.floor(r()*list.length)];
@@ -57,17 +57,17 @@ export function createSim(){
   if(cache?.key===key)return cache;
   const X=PROFILE[level]||PROFILE.high,start=day*DAY-VN,end=start+DAY,sec=(r,[a,b])=>(a+r()*b)*1e3;
   const streams=[];for(let q=0;q<X.streams;q++){const r=rng(hash(key+'s'+q)),sessions=[];let t=start+r()*30e3+q*X.member[0]*1e3*1.7;
-   while(t<end){const order=members.filter(()=>r()<.85),team=order.length>=2?order:members.slice(0,2),rounds=r()<.25?2:1,turns=[{who:0,kind:'intake',dur:sec(r,X.intake)}];
+   while(t<end){const order=members.filter(()=>r()<.85).sort(()=>r()-.5),team=order.length>=2?order:members.slice(0,2),rounds=X.rounds?1+Math.floor(r()*X.rounds):r()<.25?2:1,turns=[{who:0,kind:'intake',dur:sec(r,X.intake)}];
     for(let k=0;k<rounds;k++)for(const m of team)turns.push({who:m,kind:'member',dur:sec(r,X.member)});
     turns.push({who:0,kind:'synth',dur:sec(r,X.synth)});
     let at=t;for(const x of turns){x.at=at;at+=x.dur;}
-    sessions.push({start:t,end:at,turns,review:(70+r()*260)*1e3});t=at+sec(r,X.gap);}
+    sessions.push({start:t,end:at,turns,review:X.review?sec(r,X.review):(70+r()*260)*1e3});t=at+sec(r,X.gap);}
    streams.push(sessions);}
   const tasks={};for(const a of admins){const r=rng(hash(key+'a'+a.i)),list=[];let t=start+r()*90e3;
    while(t<end){const dur=sec(r,X.task);list.push({at:t,end:t+dur,text:pick(r,ADMIN[a.role]||ADMIN.hr)});t+=dur+sec(r,X.rest);}tasks[a.i]=list;}
   const chats=[];{const r=rng(hash(key+'z'));let t=start+r()*40e3;const recent=[];
    while(t<end){let n;do n=Math.floor(r()*CHATS.length);while(recent.includes(n));recent.push(n);if(recent.length>8)recent.shift();
-    const proc=(2.5+r()*4.5)*1e3;chats.push({at:t,reply:t+proc,q:CHATS[n][0],a:CHATS[n][1]});t+=proc+sec(r,X.chat);}}
+    const proc=(2.5+r()*4.5)*1e3;chats.push({at:t,reply:t+proc,q:CHATS[n][0],a:CHATS[n][1],pass:r()<.35});t+=proc+sec(r,X.chat);}}
   return cache={key,streams,tasks,chats};
  }
  const upto=(list,t,f)=>{let lo=0,hi=list.length;while(lo<hi){const m=lo+hi>>1;if(f(list[m])<=t)lo=m+1;else hi=m;}return lo;};
@@ -96,6 +96,7 @@ export function createSim(){
    }
    if(!mainBusy)prevTurn[q]=turnKey;});
   if(leadWork)out.desk[lead]={look:'work',task:leadWork};else if(leadWatch)out.desk[lead]={look:'watch',task:'Giám sát phiên'};
+  out.working=Object.values(out.desk).filter(d=>d.look==='work').length;
   if(prevDone>=0&&out.done+out.pending>prevDone)out.events.push({type:'done'});
   prevDone=out.done+out.pending;
   // the admin room: short internal jobs, reported to the lead when done
@@ -107,7 +108,7 @@ export function createSim(){
   if(zalo>=0){const m=upto(P.chats,t,c=>c.at),replies=upto(P.chats,t,c=>c.reply);add(zalo,replies);
    const last=m>0?P.chats[m-1]:null;if(last&&last.reply>t){out.desk[zalo]={look:'work'};out.zaloBusy=true;out.working++;}
    for(const c of P.chats.slice(Math.max(0,m-4),m)){out.chat.push({role:'user',text:c.q,at:c.at});if(c.reply<=t)out.chat.push({role:'bot',text:c.a,at:c.reply});}
-   if(prevZalo>=0)for(const c of P.chats.slice(Math.max(0,m-5),m)){if(c.at>prevT)out.events.push({type:'zalo',role:'user',text:c.q});if(c.reply>prevT&&c.reply<=t)out.events.push({type:'zalo',role:'bot',text:c.a});}
+   if(prevZalo>=0)for(const c of P.chats.slice(Math.max(0,m-5),m)){if(c.at>prevT)out.events.push({type:'zalo',role:'user',text:c.q});if(c.reply>prevT&&c.reply<=t){out.events.push({type:'zalo',role:'bot',text:c.a});if(c.pass)out.events.push({type:'hand',from:zalo,to:lead,toLead:true});}}
    prevZalo=m;}
   const share=Object.values(out.count).reduce((a,b)=>a+b,0),adminShare=admins.reduce((s,a)=>s+(out.count[a.i]||0),0);
   out.bars={efficiency:Math.round(74+22*drift(t,1)),quality:Math.round(86+12*drift(t,2)),support:Math.round(93+7*drift(t,3)),internal:share?Math.round(adminShare/share*100):0};
