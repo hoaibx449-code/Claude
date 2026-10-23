@@ -87,7 +87,7 @@ export async function liveRuntime(env:Env,now=Date.now(),config?:Config){
    env.DB.prepare("SELECT MIN(received_at) AS since FROM zalo_messages WHERE status IN ('received','processing') AND received_at>?").bind(now-120000).first<any>(),
    env.DB.prepare(`SELECT CAST(((received_at+${VN})%${DAY})/3600000 AS INTEGER) AS hour,COUNT(*) AS n FROM zalo_messages WHERE received_at>=? GROUP BY hour`).bind(start).all<any>(),
   ]);
-  agents.push({id:'zalo',name:'Zalo Bot',icon:'zalo',color:'#0068ff',state:busy?.since?'running':'live24',completed:Number(z?.n)||0,last:Number(z?.last)||0,received:Number(z?.received)||0,replies:Number(z?.replies)||0,
+  agents.push({id:'zalo',name:c.office?.zaloName||'Zalo Bot',icon:'zalo',color:c.office?.zaloColor||'#0068ff',state:busy?.since?'running':'live24',completed:Number(z?.n)||0,last:Number(z?.last)||0,received:Number(z?.received)||0,replies:Number(z?.replies)||0,
    hours:zh.results.map((r:any)=>[Number(r.hour),Number(r.n)]),avg:Math.round((Number(z?.avg)||0)/1000),since:Number(busy?.since)||0,seat:10,room:'admin',live:true});
  }catch{/* Zalo tables not set up yet */}
  const top=agents.filter((a:any)=>a.completed).map((a:any)=>({name:a.name,color:a.color,n:a.completed})).sort((a:any,b:any)=>b.n-a.n).slice(0,4);
@@ -101,6 +101,7 @@ export async function liveRuntime(env:Env,now=Date.now(),config?:Config){
   support:za?.received?Math.min(100,Math.round(za.replies/za.received*100)):0,internal:completed?Math.round(adminTurns/completed*100):0};
  const rooms=(c.rooms||[]).map((r:any)=>({id:r.id,name:String(r.name||'')}));
  const handovers=recentTurns.results.map((t:any)=>({agent:c.agents.findIndex((a:any)=>a.id===t.agent_id),at:Number(t.created_at)})).filter((x:any)=>x.agent>=0&&x.agent<12);
- return {enabled,rooms,board,sessions:enabled?sessions.slice(0,6):[],handovers,agents,running:enabled?running:0,queued,review,paused,completed,lastActivity,polledAt:now,next:enabled&&nextAgent!==null?{agent:nextAgent,at:nextAt||0}:null,
+ const office={title:c.office?.title||'Faciup Live',subtitle:c.office?.subtitle||'Văn phòng vận hành của đội AI'};
+ return {enabled,rooms,office,board,sessions:enabled?sessions.slice(0,6):[],handovers,agents,running:enabled?running:0,queued,review,paused,completed,lastActivity,polledAt:now,next:enabled&&nextAgent!==null?{agent:nextAgent,at:nextAt||0}:null,
   kpi:{series,today:completed,yesterday:series[5],avgToday:avgOf(today),avgYesterday:avgOf(today-1),approved:dec.approved||0,decided:(dec.approved||0)+(dec.rejected||0)+(dec.revision||0),top}};
 }

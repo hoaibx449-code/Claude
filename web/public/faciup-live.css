@@ -1,13 +1,23 @@
 /* Faciup Live (see faciup-live.js): the office picture with its live overlay. Sizes inside the
    picture use --k (screen pixels per picture pixel), so everything scales with the picture. */
 .fl-live{--fl-ink:#24183f;--fl-muted:#75699a;width:100%;max-width:none;margin:0 auto;padding:8px 0 18px;display:flex;flex-direction:column;gap:10px;color:var(--fl-ink)}
-.fl-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.fl-toolbar h1{margin:0;font-size:1.35rem;font-weight:700}.fl-toolbar p{margin:2px 0 0;font-size:.82rem;color:var(--fl-muted)}
-.fl-tools{display:flex;gap:8px}
+.fl-toolbar{position:relative;display:flex;align-items:center;justify-content:center;min-height:52px}
+.fl-title{display:flex;align-items:center;justify-content:center;gap:16px;width:min(760px,100%);text-align:center}
+.fl-title>div{flex:none;display:flex;flex-direction:column;align-items:center}
+.fl-toolbar h1{margin:0;font-size:1.5rem;font-weight:800;letter-spacing:.02em;line-height:1.1;background:linear-gradient(90deg,#7c3aed,#c026d3 45%,#f97316);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 4px 14px rgba(168,85,247,.35))}
+.fl-toolbar p{margin:2px 0 0;font-size:.72rem;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--fl-muted)}
+.fl-onair{display:inline-flex;align-items:center;gap:5px;margin-bottom:3px;padding:1px 8px;border-radius:99px;font-size:.62rem;font-weight:800;letter-spacing:.18em;color:#fff;background:linear-gradient(90deg,#ef4444,#f97316);box-shadow:0 4px 12px -4px rgba(239,68,68,.7)}
+.fl-onair i{width:6px;height:6px;border-radius:50%;background:#fff;animation:fl-blink 1.2s infinite}
+.fl-rail{position:relative;flex:1;height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,#c4b5fd 40%,#f0abfc);overflow:hidden}
+.fl-rail.r{background:linear-gradient(90deg,#fdba74,#c4b5fd 60%,transparent)}
+.fl-rail::after{content:'';position:absolute;top:0;left:-30%;width:30%;height:100%;background:linear-gradient(90deg,transparent,#fff,transparent);animation:fl-scan 3.2s linear infinite}
+.fl-rail.r::after{animation-direction:reverse}
+@keyframes fl-scan{to{left:100%}}
+.fl-tools{position:absolute;right:0;top:50%;translate:0 -50%;display:flex;gap:8px}
 .fl-tool{width:38px;height:38px;min-height:0;padding:0!important;display:grid;place-items:center;border-radius:12px!important;background:#fff!important;color:#8b5cf6!important;border:1px solid #e9dcfb!important;box-shadow:0 6px 14px -10px rgba(124,58,237,.6)!important;text-shadow:none}
 .fl-tool svg{width:19px;height:19px}.fl-tool[aria-pressed=false]{color:var(--fl-muted)!important}
 /* the office: as large as the screen allows, never cropped */
-.fl-stage{position:relative;width:min(100%,calc((100vh - var(--shell-header-height,64px) - 96px)*1672/941));margin:0 auto;border-radius:22px;overflow:hidden;background:#f6f0ff;box-shadow:0 26px 60px -36px rgba(109,40,217,.55);border:1px solid #eadff9}
+.fl-stage{position:relative;width:min(100%,calc((100vh - var(--shell-header-height,64px) - 170px)*1672/941));margin:0 auto;border-radius:22px;overflow:hidden;background:#f6f0ff;box-shadow:0 26px 60px -36px rgba(109,40,217,.55);border:1px solid #eadff9}
 .fl-tall .fl-stage{width:100%}
 .fl-stage:fullscreen{width:100vw;height:100vh;border-radius:0;border:0;background:#1b1430}
 .fl-room{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;user-select:none;pointer-events:none}
@@ -53,13 +63,22 @@
 .fl-tall .fl-sign b{font-size:calc(25px*var(--k))}
 .fl-desk{position:absolute;inset:0}
 .fl-plate{position:absolute;display:grid;place-items:center;transform-origin:center}
-.fl-plate b{font-size:calc(13px*var(--k));font-weight:700;color:#2a1f4a;white-space:nowrap;letter-spacing:-.01em}
-.fl-tall .fl-plate b{font-size:calc(17px*var(--k))}
+.fl-plate b{font-size:calc(14px*var(--k)*max(.62,var(--fit,1)));font-weight:700;color:#2a1f4a;white-space:nowrap;letter-spacing:-.01em}
+.fl-tall .fl-plate b{font-size:calc(17px*var(--k)*max(.62,var(--fit,1)))}
 /* each robot: the head nods, the eyes blink and glance, the keys flicker; all faster while it works */
 .fl-head{position:absolute;background-repeat:no-repeat;animation:fl-nod 3.4s ease-in-out infinite;animation-delay:var(--b,0s);transform-origin:50% 90%;will-change:transform}
 .fl-eye{position:absolute;width:11%;height:20%;border-radius:50%;background:radial-gradient(closest-side,#0b1236 70%,rgba(11,18,54,0))}
 .fl-eye::after{content:'';position:absolute;left:28%;top:16%;width:44%;height:68%;border-radius:50%;background:radial-gradient(circle at 40% 35%,#effdff 0 15%,#65f2ff 32%,#18cdf0 78%);box-shadow:0 0 calc(4px*var(--k)) #22e1ff;animation:fl-eyeblink 4.8s var(--d,0s) infinite,fl-glance 7s var(--d,0s) infinite ease-in-out}
-@keyframes fl-nod{0%,100%{transform:translateY(0) rotate(0)}30%{transform:translateY(calc(-1.6px*var(--k))) rotate(-1.4deg)}65%{transform:translateY(calc(-.6px*var(--k))) rotate(1.2deg)}}
+@keyframes fl-nod{0%,100%{transform:translateY(0) rotate(0)}30%{transform:translateY(calc(-2.4px*var(--k))) rotate(-2.2deg)}65%{transform:translateY(calc(-.8px*var(--k))) rotate(1.8deg)}}
+.fl-hands{position:absolute;pointer-events:none}
+.fl-hand{position:absolute;top:0;width:50%;height:100%;background-repeat:no-repeat;-webkit-mask:radial-gradient(closest-side,#000 70%,transparent);mask:radial-gradient(closest-side,#000 70%,transparent);animation:fl-tap 1.1s ease-in-out infinite;will-change:transform}
+.fl-hand+.fl-hand{animation-delay:-.55s}
+@keyframes fl-tap{0%,100%{transform:translateY(0)}20%{transform:translateY(calc(-2.2px*var(--k)))}40%{transform:translateY(calc(.6px*var(--k)))}}
+.is-work .fl-hand{animation-duration:.32s}.is-work .fl-hand+.fl-hand{animation-delay:-.16s}
+.is-off .fl-hand,.fl-stale .fl-hand{animation:none}
+.fl-head::before{content:'';position:absolute;inset:8% 6% 20%;border-radius:50%;background:radial-gradient(closest-side,color-mix(in srgb,var(--c,#7dd3fc) 55%,#bff7ff),transparent);mix-blend-mode:screen;opacity:0;pointer-events:none}
+.is-work .fl-head::before{animation:fl-screen 1.3s steps(4) infinite}
+@keyframes fl-screen{0%,100%{opacity:.18}25%{opacity:.42}50%{opacity:.26}75%{opacity:.5}}
 @keyframes fl-eyeblink{0%,90%,100%{transform:scaleY(1)}93%{transform:scaleY(.08)}}
 @keyframes fl-glance{0%,35%,100%{translate:0 0}45%,58%{translate:-24% 6%}70%,82%{translate:22% -2%}}
 .fl-keys{position:absolute;display:flex;justify-content:space-around;align-items:center}
@@ -92,9 +111,15 @@
 .fl-stale .fl-head{animation-play-state:paused}
 /* Zalo */
 .fl-zalo-fab{position:absolute;right:1.6%;bottom:2.4%;z-index:40;display:flex;flex-direction:column;align-items:flex-end;gap:6px;pointer-events:none}
-.fl-zalo-btn{pointer-events:auto;width:44px;height:44px;min-height:0;padding:0!important;border-radius:14px!important;background:#fff!important;border:1px solid #d9e6ff!important;box-shadow:0 10px 22px -12px #0b5bd9aa!important;display:grid;place-items:center}
-.fl-zalo-btn svg{width:30px;height:30px}
-.fl-zalo-pop{max-width:min(240px,46vw);padding:6px 10px 7px;border-radius:12px 12px 4px 12px;background:rgba(255,255,255,.95);border:1px solid #dbe6fb;box-shadow:0 10px 24px -14px #1e3a8a66;opacity:0;translate:0 6px;transition:opacity .3s,translate .3s}
+.fl-zalo-btn{position:relative;pointer-events:auto;width:52px;height:52px;min-height:0;padding:0!important;border-radius:50%!important;background:radial-gradient(circle at 30% 25%,#4da3ff,#0a6cff 55%,#0050d4)!important;border:2px solid #fff!important;box-shadow:0 12px 24px -10px rgba(10,108,255,.75),inset 0 -3px 6px rgba(0,40,140,.35),inset 0 2px 4px rgba(255,255,255,.35)!important;display:grid;place-items:center;animation:fl-breathe 2.8s ease-in-out infinite}
+.fl-zalo-btn svg{width:32px;height:32px;filter:drop-shadow(0 2px 2px rgba(0,40,140,.35))}
+.fl-zalo-btn:hover{transform:translateY(-2px) scale(1.04)}
+@keyframes fl-breathe{0%,100%{outline:0 solid rgba(10,108,255,.35);outline-offset:0}50%{outline:6px solid rgba(10,108,255,0);outline-offset:4px}}
+.fl-zalo-dot{position:absolute;top:1px;right:1px;width:12px;height:12px;border-radius:50%;background:#ef4444;border:2px solid #fff;transform:scale(0);transition:transform .25s cubic-bezier(.3,1.6,.5,1)}
+.fl-zalo-btn.unread .fl-zalo-dot{transform:scale(1)}
+.fl-zalo-btn.ping{animation:fl-bounce .7s cubic-bezier(.3,1.6,.5,1),fl-breathe 2.8s .7s ease-in-out infinite}
+@keyframes fl-bounce{0%{transform:scale(1)}35%{transform:scale(1.16) translateY(-4px)}70%{transform:scale(.96)}100%{transform:scale(1)}}
+.fl-zalo-pop{max-width:min(240px,46vw);padding:6px 11px 7px;border-radius:16px 16px 5px 16px;background:rgba(255,255,255,.95);border:1px solid #dbe6fb;box-shadow:0 10px 24px -14px #1e3a8a66;opacity:0;translate:0 6px;transition:opacity .3s,translate .3s}
 .fl-zalo-pop.show{opacity:1;translate:0 0}.fl-zalo-pop.me{background:linear-gradient(135deg,#f5efff,#fdf0ff);border-color:#e4d6fb}
 .fl-zalo-pop small{display:block;font-size:9.5px;font-weight:500;color:#0868e8}.fl-zalo-pop.me small{color:#8b5cf6}
 .fl-zalo-pop span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:11.5px;line-height:1.4;color:#2a2148}
@@ -108,5 +133,5 @@
 .fl-message.me span{background:linear-gradient(135deg,#8b5cf6,#d946ef);color:#fff;border:0;border-radius:14px 14px 4px 14px}
 .fl-zalo-avatar svg{width:24px;height:24px;display:block}
 .fl-chat-status{margin:0;font-size:12px;color:var(--fl-muted)}
-@media(max-width:700px){.fl-live{padding-top:4px}.fl-toolbar h1{font-size:1.15rem}.fl-toolbar p{display:none}.fl-stage{border-radius:18px}.fl-zalo-btn{width:34px;height:34px;border-radius:11px!important}.fl-zalo-btn svg{width:23px;height:23px}.fl-zalo-fab{flex-direction:row;align-items:flex-end;bottom:2%}.fl-zalo-pop{max-width:58vw;padding:4px 8px;border-radius:10px 10px 4px 10px}.fl-zalo-pop small{font-size:8.5px}.fl-zalo-pop span{font-size:10px;line-height:1.35}}
+@media(max-width:700px){.fl-live{padding-top:4px}.fl-toolbar h1{font-size:1.25rem}.fl-stage{border-radius:18px}.fl-zalo-btn{width:42px;height:42px}.fl-zalo-btn svg{width:26px;height:26px}.fl-toolbar{min-height:0;padding:0 86px}.fl-title .fl-rail{display:none}.fl-onair{margin-bottom:2px;font-size:.55rem}.fl-toolbar p{display:block;font-size:.6rem;letter-spacing:.04em;white-space:nowrap}.fl-tools{gap:6px}.fl-tool{width:34px;height:34px}.fl-zalo-fab{flex-direction:row;align-items:flex-end;bottom:2%}.fl-zalo-pop{max-width:58vw;padding:4px 9px;border-radius:13px 13px 4px 13px}.fl-zalo-pop small{font-size:8.5px}.fl-zalo-pop span{font-size:10px;line-height:1.35}}
 @media(prefers-reduced-motion:reduce){.fl-live *{animation:none!important}}

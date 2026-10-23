@@ -149,7 +149,7 @@ export async function showCouncil({h,api,body,toast,fail}) {
         i>0?button('Bỏ',async()=>{if(c.agents.length<=2)return toast('Cần ít nhất 2 trợ lý.');c.agents.splice(i,1);editing=0;markDirty();paintMembers();},'ghost small danger'):null)),
       h('h3',{},'Vị trí trong văn phòng'),h('div',{class:'ct-grid'},
         field('Phòng',h('select',{onchange:e=>{a.room=e.target.value;markDirty();paintMembers();}},...ROOM_IDS.map(([k,t])=>h('option',{value:k,selected:a.room===k},(c.rooms||[]).find(r=>r.id===k)?.name||t)))),
-        field('Bàn số',h('select',{onchange:e=>{const n=Number(e.target.value),o=c.agents.find(x=>x!==a&&x.seat===n);if(o)o.seat=a.seat;a.seat=n;markDirty();paintMembers();}},...[1,2,3,4,5,6,7,8,9].map(n=>h('option',{value:n,selected:a.seat===n},String(n).padStart(2,'0')+(c.agents.find(x=>x!==a&&x.seat===n)?' (đổi chỗ với '+c.agents.find(x=>x!==a&&x.seat===n).name+')':'')))),'Bàn 10 là của Zalo Bot.')),
+        field('Bàn số',h('select',{onchange:e=>{const n=Number(e.target.value),o=c.agents.find(x=>x!==a&&x.seat===n);if(o)o.seat=a.seat;a.seat=n;markDirty();paintMembers();}},...[1,2,3,4,5,6,7,8,9].map(n=>h('option',{value:n,selected:a.seat===n},String(n).padStart(2,'0')+(c.agents.find(x=>x!==a&&x.seat===n)?' (đổi chỗ với '+c.agents.find(x=>x!==a&&x.seat===n).name+')':'')))),'Bàn 10 là của Zalo Bot (đổi tên ở tab Phòng & luồng).')),
       i>0?toggle('Tham gia phiên làm nội dung',a.joins!==false,v=>{a.joins=v?undefined:false;paintMembers();},'Tắt: vẫn hiện và hoạt động trên Faciup Live nhưng không dùng lượt AI trong phiên.'):null,
       h('h3',{},'Vai trò'),field('Tên',input(a.name,v=>{a.name=v;})),field('Hướng dẫn riêng',area(a.prompt,v=>{a.prompt=v;},6)),
       h('h3',{},'Hiện trên Faciup Live'),h('div',{class:'ct-grid'},field('Tên hiển thị',input(a.live?.name||'',v=>{a.live={...a.live,name:v.trim()||undefined};},{maxlength:40,placeholder:'Để trống: tên theo vai trò'})),field('Màu',color),
@@ -168,7 +168,14 @@ export async function showCouncil({h,api,body,toast,fail}) {
     c.rooms||=ROOM_IDS.map(([id,t])=>({id,name:'Phòng '+t,joins:id!=='admin'}));
     const roomOf=id=>c.rooms.find(r=>r.id===id),team=[c.agents[0],...c.agents.slice(1).filter(a=>a.joins!==false&&roomOf(a.room||'ops')?.joins!==false)];
     const missing=PRESETS.filter(([id])=>!c.agents.some(a=>a.id===id));
+    const o=c.office||={};
     flowBox.replaceChildren(
+      h('section',{class:'card ct-set'},h('h2',{},'Trang Faciup Live'),h('p',{class:'muted'},'Tiêu đề hiện giữa đầu trang Live. Zalo Bot ngồi bàn 10 ở Phòng Hành chính, trả lời Zalo 24/7 và không vào phiên làm nội dung.'),
+        h('div',{class:'ct-grid'},field('Tiêu đề',input(o.title,v=>{o.title=v.trim()||undefined;},{maxlength:40,placeholder:'Faciup Live'})),
+          field('Dòng mô tả',input(o.subtitle,v=>{o.subtitle=v.trim()||undefined;},{maxlength:90,placeholder:'Văn phòng vận hành của đội AI'}))),
+        h('h3',{},'Zalo Bot · bàn 10'),
+        h('div',{class:'ct-grid'},field('Tên hiển thị',input(o.zaloName,v=>{o.zaloName=v.trim()||undefined;},{maxlength:40,placeholder:'Zalo Bot'})),
+          field('Màu',h('input',{type:'color',class:'ct-color',value:o.zaloColor||'#0068ff',oninput:e=>{o.zaloColor=e.target.value;markDirty();}})))),
       h('section',{class:'card ct-set'},h('h2',{},'Phòng'),h('p',{class:'muted'},'Tên phòng hiện trên biển ở văn phòng Faciup Live. Phòng tắt “vào phiên” thì thành viên vẫn hoạt động trên Live nhưng không dùng lượt AI trong phiên làm nội dung.'),
         ...c.rooms.map(r=>h('div',{class:'ct-room'},h('input',{value:r.name,maxlength:40,'aria-label':'Tên phòng',oninput:e=>{r.name=e.target.value;markDirty();}}),
           toggle('Vào phiên',r.joins,v=>{r.joins=v;paintFlow();}),h('small',{class:'muted'},c.agents.filter(a=>(a.room||'ops')===r.id).map(a=>a.name).join(', ')||'Chưa có ai')))),

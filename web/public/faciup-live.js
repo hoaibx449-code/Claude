@@ -12,23 +12,35 @@ const fmt=s=>{s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+':'+pad(s%6
 const vn=t=>{const d=new Date(t+7*3600e3);return pad(d.getUTCHours())+':'+pad(d.getUTCMinutes());};
 const WEEK=['Chủ nhật','Thứ hai','Thứ ba','Thứ tư','Thứ năm','Thứ sáu','Thứ bảy'];
 // The two office pictures, measured in their own pixels: the wall board (screen, title row, four tiles,
-// bar columns), the room signs, and for each desk the robot's two eyes and the name plate [centre x,
-// centre y, width, rotation]. Desk 10 is the Zalo Bot. `k` is how large a robot is in that picture.
+// bar columns), the room signs, and for each desk the robot's two eyes, the name plate on the desk's front
+// panel [centre x, centre y, width, rotation] and the box its two hands type in. Desk 10 is the Zalo Bot. `k` is how large a robot is in that picture.
 const LAYOUTS={
  wide:{src:'/assets/office-wide-v2.webp',w:1672,h:941,k:1,
   board:{box:[622,76,1083,277],head:[648,82,1069,118],tiles:[[648,122,745,180],[752,122,850,180],[856,122,957,180],[963,122,1069,180]],bars:[[650,200,852,274],[874,200,1068,274]]},
   rooms:{exec:[740,412,940,485],ops:[180,712,428,795],admin:[1248,712,1492,795]},
-  seats:{1:{eyes:[[984,311],[1004,313]],plate:[978,381,118,0]},2:{eyes:[[663,312],[682,309]],plate:[703,381,118,0]},3:{eyes:[[217,317],[237,317]],plate:[277,383,124,-2]},
-   4:{eyes:[[423,434],[445,434]],plate:[493,509,106,-2]},5:{eyes:[[168,441],[188,441]],plate:[216,515,118,-2]},6:{eyes:[[128,579],[152,574]],plate:[197,659,120,-2]},
-   7:{eyes:[[420,593],[443,589]],plate:[484,675,124,-2]},8:{eyes:[[1374,345],[1394,346]],plate:[1362,418,116,0]},9:{eyes:[[1486,468],[1508,471]],plate:[1463,543,118,0]},
-   10:{eyes:[[1311,602],[1333,606]],plate:[1297,680,124,0]}}},
+  seats:{1:{eyes:[[984,311],[1004,313]],plate:[979,381,126,3],hands:[958,338,1017,360]},
+   2:{eyes:[[663,312],[682,309]],plate:[703,380,125,-2],hands:[655,340,710,362]},
+   3:{eyes:[[217,317],[237,317]],plate:[277,390,135,0],hands:[200,340,257,362]},
+   4:{eyes:[[423,434],[445,434]],plate:[498,516,127,0],hands:[403,467,470,490]},
+   5:{eyes:[[168,441],[188,441]],plate:[220,521,139,0],hands:[153,473,207,493]},
+   6:{eyes:[[128,579],[152,574]],plate:[196,665,128,0],hands:[110,600,173,630]},
+   7:{eyes:[[420,593],[443,589]],plate:[486,680,138,0],hands:[407,617,467,647]},
+   8:{eyes:[[1374,345],[1394,346]],plate:[1362,417,121,3],hands:[1360,373,1410,391]},
+   9:{eyes:[[1486,468],[1508,471]],plate:[1464,542,124,3],hands:[1473,497,1523,517]},
+   10:{eyes:[[1311,602],[1333,606]],plate:[1298,682,134,3],hands:[1297,633,1350,657]}}},
  tall:{src:'/assets/office-tall-v2.webp',w:1254,h:1254,k:1.3,
   board:{box:[348,30,903,233],head:[373,40,878,110],tiles:[[373,118,490,212],[500,118,620,212],[631,118,750,212],[762,118,878,212]],bars:null},
   rooms:{exec:[523,392,728,468],ops:[260,888,535,995],admin:[955,978,1210,1072]},
-  seats:{1:{eyes:[[750,283],[775,281]],plate:[781,372,132,-1]},2:{eyes:[[488,283],[514,282]],plate:[500,372,130,-1]},3:{eyes:[[146,513],[171,513]],plate:[201,611,140,-3]},
-   4:{eyes:[[449,530],[478,527]],plate:[477,632,128,-3]},5:{eyes:[[706,541],[735,538]],plate:[747,647,138,-3]},6:{eyes:[[218,725],[249,720]],plate:[254,831,144,-3]},
-   7:{eyes:[[556,738],[588,733]],plate:[610,849,142,-3]},8:{eyes:[[1051,478],[1078,475]],plate:[1091,567,130,-3]},9:{eyes:[[1081,654],[1109,651]],plate:[1118,747,132,-3]},
-   10:{eyes:[[1049,844],[1078,839]],plate:[1116,949,142,-3]}}}};
+  seats:{1:{eyes:[[750,283],[775,281]],plate:[782,372,143,0],hands:[722,318,792,342]},
+   2:{eyes:[[488,283],[514,282]],plate:[500,373,133,0],hands:[460,322,520,342]},
+   3:{eyes:[[146,513],[171,513]],plate:[201,612,147,-1],hands:[140,552,200,576]},
+   4:{eyes:[[449,530],[478,527]],plate:[476,632,130,0],hands:[420,570,490,596]},
+   5:{eyes:[[706,541],[735,538]],plate:[745,647,141,-1.5],hands:[685,580,750,606]},
+   6:{eyes:[[218,725],[249,720]],plate:[254,833,149,-3.5],hands:[185,772,250,796]},
+   7:{eyes:[[556,738],[588,733]],plate:[612,849,152,-5.5],hands:[535,777,620,807]},
+   8:{eyes:[[1051,478],[1078,475]],plate:[1090,567,138,-1.5],hands:[1018,514,1080,534]},
+   9:{eyes:[[1081,654],[1109,651]],plate:[1118,750,141,-2.5],hands:[1048,698,1110,720]},
+   10:{eyes:[[1049,844],[1078,839]],plate:[1118,951,146,-5.4],hands:[1010,890,1085,920]}}}};
 
 export function showLive({h,show,api,openLogin,zaloLink}){
  let stopped=false,busy=false,data=null,stale=false,clockSkew=0;
@@ -61,14 +73,16 @@ export function showLive({h,show,api,openLogin,zaloLink}){
  paintSound();
  const fullBtn=h('button',{type:'button',class:'fl-tool',title:'Toàn màn hình','aria-label':'Toàn màn hình',onclick:()=>{document.fullscreenElement?document.exitFullscreen():stage.requestFullscreen?.().catch(()=>{});}});
  fullBtn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
- const toolbar=h('header',{class:'fl-toolbar'},h('div',{},h('h1',{},'Faciup Live'),h('p',{},'Văn phòng vận hành của đội AI')),h('div',{class:'fl-tools'},soundBtn,fullBtn));
+ // the heading sits centred between two light rails; its words are set in Quản trị → Nhóm AI → Phòng & luồng
+ const titleEl=h('h1',{},'Faciup Live'),subEl=h('p',{},'Văn phòng vận hành của đội AI');
+ const toolbar=h('header',{class:'fl-toolbar'},h('div',{class:'fl-title'},h('i',{class:'fl-rail'}),h('div',{},h('span',{class:'fl-onair'},h('i',{}),'LIVE'),titleEl,subEl),h('i',{class:'fl-rail r'})),h('div',{class:'fl-tools'},soundBtn,fullBtn));
  // ---- Zalo: a small button in the corner; a light popup carries each new message for a few seconds
  const dialog=h('dialog',{class:'fl-dialog'}),dialogBody=h('div',{});dialog.append(h('button',{type:'button',class:'fl-close',onclick:()=>dialog.close(),'aria-label':'Đóng'},'×'),dialogBody);dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});
  const chatNote=h('small',{}),chatStats=h('small',{class:'fl-chat-stats'}),chatMessages=h('div',{class:'fl-messages',role:'log','aria-live':'polite'}),chatStatus=h('p',{class:'fl-chat-status'});
  const chat=h('section',{class:'fl-chat'},chatStats,chatNote,chatMessages,chatStatus);
  if(zaloLink&&/^https:\/\//.test(zaloLink))chat.append(h('a',{class:'fl-zalo-open',href:zaloLink,target:'_blank',rel:'noopener'},'Nhắn qua Zalo ↗'));
  const zaloBtn=h('button',{class:'fl-zalo-btn',type:'button','aria-label':'Mở hội thoại Zalo',onclick:()=>openChat()}),zaloPop=h('div',{class:'fl-zalo-pop',role:'status','aria-live':'polite'});
- zaloBtn.innerHTML=ZALO;stage.append(h('div',{class:'fl-zalo-fab'},zaloPop,zaloBtn));
+ zaloBtn.innerHTML='<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 5C9.4 5 4 9.5 4 15c0 3.1 1.7 5.9 4.4 7.7L7.6 27l4.6-2.4c1.2.3 2.5.5 3.8.5 6.6 0 12-4.5 12-10S22.6 5 16 5z" fill="#fff"/><text x="16" y="17.6" text-anchor="middle" fill="#0a6cff" font-size="7.6" font-weight="800" font-family="Arial,sans-serif">Zalo</text></svg><b class="fl-zalo-dot"></b>';stage.append(h('div',{class:'fl-zalo-fab'},zaloPop,zaloBtn));
  let personal=null,mineBusy=false,demoStep=0,zaloSig='',zaloTimer=0;
  const intro=['Bạn cần hỗ trợ gì? Nhắn mình nhé.','Bạn có thể quan sát đội AI làm việc ngay trên màn hình.','Đăng nhập để bắt đầu hội thoại riêng của bạn.'];
  function renderChat(){
@@ -81,11 +95,11 @@ export function showLive({h,show,api,openLogin,zaloLink}){
   chatStatus.textContent=personal?.processing?'Đang xử lý tin nhắn Zalo…':personal?'Hội thoại riêng · Sẵn sàng hỗ trợ':'Lời giới thiệu tự động';
   chatMessages.scrollTop=chatMessages.scrollHeight;
   const last=items.at(-1),sig=last?last.role+':'+last.text:'';
-  if(sig&&sig!==zaloSig){zaloSig=sig;clearTimeout(zaloTimer);zaloPop.className='fl-zalo-pop show '+(last.role==='user'?'me':'bot');zaloPop.replaceChildren(h('small',{},last.role==='user'?'Bạn':personal?'Zalo':'Zalo · minh họa'),h('span',{},last.text.slice(0,140)));zaloTimer=setTimeout(()=>zaloPop.classList.remove('show'),6500);}
+  if(sig&&sig!==zaloSig){zaloSig=sig;clearTimeout(zaloTimer);zaloPop.className='fl-zalo-pop show '+(last.role==='user'?'me':'bot');zaloPop.replaceChildren(h('small',{},last.role==='user'?'Bạn':personal?'Zalo':'Zalo · minh họa'),h('span',{},last.text.slice(0,140)));zaloTimer=setTimeout(()=>zaloPop.classList.remove('show'),6500);if(!dialog.open){zaloBtn.classList.remove('ping');void zaloBtn.offsetWidth;zaloBtn.classList.add('ping','unread');}}
  }
  async function loadMine(){if(stopped||mineBusy||document.hidden)return;mineBusy=true;try{personal=await api('/api/faciup-live/mine');}catch{personal=null;}finally{mineBusy=false;if(!stopped)renderChat();}}
  function openPanel(title,kids){dialogBody.replaceChildren(h('h2',{},title),...kids);dialog.showModal();}
- function openChat(){openPanel('Hội thoại Zalo của bạn',[chat]);renderChat();}
+ function openChat(){zaloBtn.classList.remove('unread');openPanel('Hội thoại Zalo của bạn',[chat]);renderChat();}
  const page=h('div',{class:'fl-live'},toolbar,stage,dialog);
  show(page);
  // ---- the board, signs and desks are rebuilt when the picture changes (phone ↔ computer)
@@ -109,14 +123,18 @@ export function showLive({h,show,api,openLogin,zaloLink}){
    Object.assign(head.style,{backgroundImage:`url('${L.src}')`,backgroundSize:`${(L.w/hw*100).toFixed(2)}% ${(L.h/hh*100).toFixed(2)}%`,backgroundPosition:`${(hx/(L.w-hw)*100).toFixed(3)}% ${(hy/(L.h-hh)*100).toFixed(3)}%`});
    for(const [ex,ey] of S.eyes){const e=h('i',{class:'fl-eye'});Object.assign(e.style,{left:((ex-hx)/hw*100-5.5)+'%',top:((ey-hy)/hh*100-10)+'%'});e.style.setProperty('--d',(Math.random()*4).toFixed(2)+'s');head.append(e);}
    head.style.setProperty('--b',(Math.random()*2).toFixed(2)+'s');
-   const keys=h('div',{class:'fl-keys'},...[0,1,2,3,4].map(i=>{const s=h('i',{});s.style.setProperty('--i',i);return s;}));place(keys,cx-26*k,cy+40*k,52*k,10*k);
+   // the hands: the picture's own hands, cut in a left and a right half that tap the keys in turn
+   const [ux,uy,vx,vy]=S.hands,hands=h('div',{class:'fl-hands'});place(hands,ux,uy,vx-ux,vy-uy);
+   for(const side of [0,1]){const hw2=(vx-ux)/2,x=ux+side*hw2,cut=h('i',{class:'fl-hand'});
+    Object.assign(cut.style,{left:side*50+'%',backgroundImage:`url('${L.src}')`,backgroundSize:`${(L.w/hw2*100).toFixed(2)}% ${(L.h/(vy-uy)*100).toFixed(2)}%`,backgroundPosition:`${(x/(L.w-hw2)*100).toFixed(3)}% ${(uy/(L.h-(vy-uy))*100).toFixed(3)}%`});hands.append(cut);}
+   const keys=h('div',{class:'fl-keys'},...[0,1,2,3,4].map(i=>{const s=h('i',{});s.style.setProperty('--i',i);return s;}));place(keys,ux,vy-4*k,vx-ux,8*k);
    const halo=h('div',{class:'fl-halo'});place(halo,cx-90*k,cy-40*k,180*k,140*k);
-   const [px,py,pw,rot]=S.plate,plate=h('div',{class:'fl-plate'},h('b',{}));place(plate,px-pw/2,py-14*(L.k>1?1.25:1),pw,28*(L.k>1?1.25:1));plate.style.transform=`rotate(${rot}deg)`;
+   const [px,py,pw,rot]=S.plate,ph=(L.k>1?34:28),plate=h('div',{class:'fl-plate'},h('b',{}));place(plate,px-pw*.46,py-ph/2,pw*.92,ph);plate.style.transform=`rotate(${rot}deg)`;
    const chip=h('div',{class:'fl-chip'}),card=h('div',{class:'fl-card'},h('i',{class:'fl-card-dot'}),h('b',{}),h('span',{class:'fl-caret'}),h('div',{class:'fl-card-bar'},h('i',{})));
    // under the board there is no room above the head, so the label sits beside it, away from the board
    const B=L.board.box,side=hy-28*k<B[3]&&cx>B[0]&&cx<B[2]?(cx>(B[0]+B[2])/2?'r':'l'):'';
    for(const el of [chip,card]){Object.assign(el.style,side?{left:P(cx+(side==='r'?46:-46)*k,L.w),top:P(cy,L.h)}:{left:P(cx,L.w),top:P(hy-4*k,L.h)});if(side)el.classList.add('side-'+side);}
-   const g=h('div',{class:'fl-desk'},halo,head,keys,chip,card);desks.append(g);plates.append(plate);
+   const g=h('div',{class:'fl-desk'},halo,head,hands,keys,chip,card);desks.append(g);plates.append(plate);
    seats[n]={g,head,plate,chip,card,cx,cy:hy+hh*.45,top:hy};}
   links.setAttribute('viewBox',`0 0 ${L.w} ${L.h}`);trail.setAttribute('viewBox',`0 0 ${L.w} ${L.h}`);linkKey='';
  }
@@ -139,6 +157,7 @@ export function showLive({h,show,api,openLogin,zaloLink}){
  function chipText(a,look){return look==='live24'?'Trực 24/7':look==='wait'?'Chờ lượt':look==='review'?'Chờ duyệt':look==='paused'?'Tạm dừng':look==='off'?(stale?'Mất kết nối':'Nghỉ'):a.completed?a.completed+' việc hôm nay':'Sẵn sàng';}
  function paintClock(){const d=new Date(Date.now()+clockSkew+7*3600e3);clockEl.replaceChildren(pad(d.getUTCHours())+':'+pad(d.getUTCMinutes()),h('small',{},':'+pad(d.getUTCSeconds())));dateEl.textContent=`${WEEK[d.getUTCDay()]} · ${pad(d.getUTCDate())}/${pad(d.getUTCMonth()+1)}/${d.getUTCFullYear()}`;liveEl.className='fl-live-dot'+(stale?' off':'');liveEl.lastChild.textContent=stale?'MẤT KẾT NỐI':'TRỰC TUYẾN';}
  function paint(){if(!data)return;const r=data.runtime,k=r.kpi||{},b=r.board||{},meeting=r.sessions?.[0]||null;
+  if(r.office){if(titleEl.textContent!==r.office.title)titleEl.textContent=r.office.title;if(subEl.textContent!==r.office.subtitle)subEl.textContent=r.office.subtitle;}
   for(const s of signs.children){const name=(r.rooms||[]).find(x=>x.id===s.dataset.room)?.name||'';const words=name.toUpperCase().split(/\s+/).filter(Boolean),rows=words.length>1?[words.slice(0,words.length>2?1:1),words.slice(1)]:[words];s.firstChild.replaceChildren(...rows.map(row=>h('span',{},row.join(' '))));s.hidden=!name;}
   const values=[[r.agents.length,'Agent'],[r.running,'Đang xử lý'],[r.review,'Chờ duyệt'],[k.today||0,'Hoàn thành']];
   tiles.forEach((t,i)=>{t.firstChild.textContent=pad(values[i][0]);t.lastChild.textContent=values[i][1];});
@@ -151,7 +170,7 @@ export function showLive({h,show,api,openLogin,zaloLink}){
    if(i===0&&meeting?.current===0&&meeting.state==='running')look='work';
    const work=look==='work'||(a.live&&a.state==='running');
    s.g.className='fl-desk is-'+look+(work?' is-work':'')+(i===0?' is-lead':'');s.g.style.setProperty('--c',a.color);s.g.hidden=false;
-   s.plate.firstChild.textContent=pad(a.seat)+' · '+a.name;
+   if(s.plate.firstChild.textContent!==a.name){s.plate.firstChild.textContent=a.name;s.plate.style.setProperty('--fit',Math.min(1,13/Math.max(6,a.name.length)).toFixed(3));}
    s.chip.textContent=chipText(a,look);
    s.card.querySelector('b').textContent=`${a.name} · ${ROLE[a.icon]||'Đang xử lý'}`;
    s.card.querySelector('.fl-card-bar i').style.width=Math.min(96,a.avg?runFor(a)/a.avg*100:45)+'%';
