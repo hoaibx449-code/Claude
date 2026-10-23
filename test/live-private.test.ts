@@ -17,7 +17,7 @@ test('personal Live conversation is scoped to the verified current link, includi
   for(const [id,chat,m,text,status] of [['oa','chat-a','a','Alice reply','sent'],['ob','chat-b','b','Bob reply','sent'],['wrong','chat-a','b','Foreign reply','sent'],['old-o','chat-a','old','Old reply','sent'],['pending','chat-a','a','Undelivered','pending'],['notice','chat-a',null,'Owner notice','sent']] as const)await DB.prepare('INSERT INTO zalo_outbox(id,chat_id,message_id,text,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').bind(id,chat,m,text,status,now-5000,now).run();
   const alice=await liveConversation(env,'alice');assert.equal(alice.userId,'alice');assert.equal(alice.linked,true);assert.equal(alice.processing,true);assert.deepEqual(alice.messages.map(x=>x.text),['Alice private','Alice reply']);assert.doesNotMatch(JSON.stringify(alice),/Bob|Foreign|Previous|Old reply|Undelivered|Owner notice|chat-a/);
   const bob=await liveConversation(env,'bob');assert.deepEqual(bob.messages.map(x=>x.text),['Bob secret','Bob reply']);
-  assert.deepEqual(await liveConversation(env,'guest'),{userId:'guest',linked:false,messages:[],processing:false});
+  assert.deepEqual(await liveConversation(env,'guest'),{userId:'guest',me:{name:'',videos:0,doneToday:0,jobs:[]},linked:false,messages:[],processing:false});
   await DB.prepare("DELETE FROM zalo_links WHERE user_id='alice'").run();assert.deepEqual((await liveConversation(env,'alice')).messages,[]);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });

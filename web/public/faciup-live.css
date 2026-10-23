@@ -165,3 +165,14 @@
 @media(max-width:700px){.fl-title{width:100%}.fl-title,.fl-title>div{min-width:0;max-width:100%}.fl-toolbar h1{min-width:0;max-width:calc(100% - 64px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 
 .fl-desk.is-zalo .fl-head{pointer-events:auto;cursor:pointer}
+/* until the viewer touches the page, browsers keep it silent: a small prompt says so */
+.fl-nudge{position:absolute;left:50%;top:2.2%;translate:-50% 0;z-index:45;display:inline-flex;align-items:center;gap:8px;min-height:0;padding:7px 14px!important;border-radius:99px!important;border:1px solid rgba(255,255,255,.7)!important;background:linear-gradient(90deg,#7c3aed,#c026d3 55%,#f97316)!important;color:#fff!important;font-size:.8rem;font-weight:700;box-shadow:0 10px 24px -10px rgba(124,58,237,.8)!important;animation:fl-nudge 1.8s ease-in-out infinite}
+.fl-nudge i{width:16px;height:16px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 9h4l5-4v14l-5-4H4z'/%3E%3Cpath d='M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 9h4l5-4v14l-5-4H4z'/%3E%3Cpath d='M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12'/%3E%3C/svg%3E") center/contain no-repeat}
+.fl-nudge[hidden]{display:none}
+@keyframes fl-nudge{50%{transform:scale(1.05);box-shadow:0 0 0 6px rgba(192,38,211,.18),0 10px 24px -10px rgba(124,58,237,.8)}}
+.fl-tool.fl-locked{animation:fl-nudge 1.8s ease-in-out infinite;color:#c026d3!important;border-color:#e9b8f5!important}
+/* my own work */
+.fl-mine{margin:-2px auto 0;font-size:.82rem;color:var(--fl-muted)}.fl-mine b{display:inline-block;padding:1px 8px;margin-right:4px;border-radius:99px;background:linear-gradient(90deg,#f97316,#ec4899);color:#fff;font-size:.72rem;letter-spacing:.04em}
+.fl-desk.is-mine .fl-chip,.fl-desk.is-mine .fl-card{border:1.5px solid #f97316;box-shadow:0 0 0 3px rgba(249,115,22,.18),0 calc(8px*var(--k)) calc(18px*var(--k)) -8px rgba(249,115,22,.7)}
+.fl-desk.is-mine .fl-halo{background:radial-gradient(closest-side,rgba(249,115,22,.5),transparent 72%)}
+@media(max-width:700px){.fl-nudge{font-size:.68rem;padding:5px 10px!important;top:1.5%}.fl-mine{font-size:.72rem}}

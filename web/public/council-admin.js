@@ -1,3 +1,4 @@
+import {GUIDE} from '/faciup-sim.js?v=6';
 // Quản trị → Nhóm AI. One status bar on top, then four tabs: the sessions (list + the chosen one),
 // giving work, the members, and settings & Telegram. Private data comes only from authenticated
 // admin endpoints. All model text uses textContent.
@@ -169,6 +170,11 @@ export async function showCouncil({h,api,body,toast,fail}) {
     const roomOf=id=>c.rooms.find(r=>r.id===id),team=[c.agents[0],...c.agents.slice(1).filter(a=>a.joins!==false&&roomOf(a.room||'ops')?.joins!==false)];
     const missing=PRESETS.filter(([id])=>!c.agents.some(a=>a.id===id));
     const o=c.office||={};
+    // the Zalo script, edited as "Khách: … / Bot: …" pairs; the default guide is kept out of the config
+    const toText=pairs=>pairs.map(([q,a])=>'Khách: '+q+'\nBot: '+a).join('\n\n');
+    const scriptBox=h('textarea',{rows:10,value:toText(c.simulate?.script?.length?c.simulate.script:GUIDE),oninput:e=>{const pairs=[];let q='';
+     for(const line of e.target.value.split('\n')){const m=line.match(/^\s*(Khách|Bot)\s*:\s*(.+)$/i);if(!m)continue;if(/^k/i.test(m[1]))q=m[2].trim();else if(q){pairs.push([q,m[2].trim()]);q='';}}
+     c.simulate={...(c.simulate||{enabled:false,level:'high'})};if(toText(pairs)===toText(GUIDE))delete c.simulate.script;else c.simulate.script=pairs.slice(0,60);markDirty();}});
     flowBox.replaceChildren(
       h('section',{class:'card ct-set'},h('h2',{},'Trang Faciup Live'),h('p',{class:'muted'},'Tiêu đề hiện giữa đầu trang Live. Zalo Bot ngồi bàn 10 ở Phòng Hành chính, trả lời Zalo 24/7 và không vào phiên làm nội dung.'),
         h('div',{class:'ct-grid'},field('Tiêu đề',input(o.title,v=>{o.title=v.trim()||undefined;},{maxlength:40,placeholder:'Faciup Live'})),
@@ -178,7 +184,9 @@ export async function showCouncil({h,api,body,toast,fail}) {
           field('Màu',h('input',{type:'color',class:'ct-color',value:o.zaloColor||'#0068ff',oninput:e=>{o.zaloColor=e.target.value;markDirty();}})))),
       h('section',{class:'card ct-set'},h('h2',{},'Vận hành liên tục'),h('p',{class:'muted'},'Chế độ trình diễn trên Faciup Live: các agent nhận việc, bàn giao, Zalo Bot trả lời khách và bảng vận hành chạy liên tục như đang làm thật. Không dùng lượt AI, không ghi dữ liệu; mọi người xem thấy cùng một diễn biến. Khi có việc thật, phần thật được ưu tiên.'),
         toggle('Bật vận hành liên tục',c.simulate?.enabled,v=>{c.simulate={...(c.simulate||{level:'high'}),enabled:v};paintFlow();}),
-        field('Cường độ',h('select',{onchange:e=>{c.simulate={...(c.simulate||{enabled:false}),level:e.target.value};markDirty();}},...[['normal','Vừa'],['high','Cao'],['max','Rất cao']].map(([v,t])=>h('option',{value:v,selected:(c.simulate?.level||'high')===v},t))))),
+        field('Cường độ',h('select',{onchange:e=>{c.simulate={...(c.simulate||{enabled:false}),level:e.target.value};markDirty();}},...[['normal','Vừa'],['high','Cao'],['max','Rất cao']].map(([v,t])=>h('option',{value:v,selected:(c.simulate?.level||'high')===v},t)))),
+        field('Kịch bản tin Zalo minh họa',scriptBox,'Mỗi cặp 2 dòng: "Khách: …" rồi "Bot: …". Khách chưa đăng nhập thấy các tin này ở giữa văn phòng; khách đã đăng nhập nhận hướng dẫn riêng theo tài khoản.'),
+        h('div',{class:'ct-row'},button('Khôi phục kịch bản mặc định',async()=>{scriptBox.value=toText(GUIDE);c.simulate={...(c.simulate||{enabled:false,level:'high'})};delete c.simulate.script;markDirty();}))),
       h('section',{class:'card ct-set'},h('h2',{},'Phòng'),h('p',{class:'muted'},'Tên phòng hiện trên biển ở văn phòng Faciup Live. Phòng tắt “vào phiên” thì thành viên vẫn hoạt động trên Live nhưng không dùng lượt AI trong phiên làm nội dung.'),
         ...c.rooms.map(r=>h('div',{class:'ct-room'},h('input',{value:r.name,maxlength:40,'aria-label':'Tên phòng',oninput:e=>{r.name=e.target.value;markDirty();}}),
           toggle('Vào phiên',r.joins,v=>{r.joins=v;paintFlow();}),h('small',{class:'muted'},c.agents.filter(a=>(a.room||'ops')===r.id).map(a=>a.name).join(', ')||'Chưa có ai')))),

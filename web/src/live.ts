@@ -105,7 +105,7 @@ export async function liveRuntime(env:Env,now=Date.now(),config?:Config){
    hours:zh.results.map((r:any)=>[Number(r.hour),Number(r.n)]),avg:Math.round((Number(z?.avg)||0)/1000),since:Number(busy?.since)||0,seat:10,room:'admin',live:true});
  }catch{/* Zalo tables not set up yet */}
  // continuous operation needs the Zalo desk even before Zalo is connected
- const simulate=c.simulate?.enabled===true?{level:String(c.simulate.level||'high')}:null;
+ const simulate=c.simulate?.enabled===true?{level:String(c.simulate.level||'high'),...(Array.isArray(c.simulate.script)&&c.simulate.script.length?{script:c.simulate.script}:{})}:null;
  if(simulate&&!agents.some((a:any)=>a.id==='zalo'))agents.push({id:'zalo',name:c.office?.zaloName||'Zalo Bot',icon:'zalo',color:c.office?.zaloColor||'#0068ff',state:'live24',completed:0,last:0,received:0,replies:0,hours:[],avg:0,since:0,seat:10,room:'admin',live:true} as any);
  const top=agents.filter((a:any)=>a.completed).map((a:any)=>({name:a.name,color:a.color,n:a.completed})).sort((a:any,b:any)=>b.n-a.n).slice(0,4);
  // the wall board: how far the running session is, today against the last six days, approvals, Zalo

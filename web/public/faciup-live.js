@@ -1,4 +1,4 @@
-import {createSim} from '/faciup-sim.js?v=5';
+import {createSim} from '/faciup-sim.js?v=6';
 // Faciup Live: the AI team's office. A wide picture on computers and a square one on phones; over it,
 // in the picture's own pixels, the live wall board, the desk name plates and room signs (names come
 // from Quản trị → Nhóm AI), and each robot's living head, eyes and typing hands. Everything shown is
@@ -17,7 +17,7 @@ const WEEK=['Chủ nhật','Thứ hai','Thứ ba','Thứ tư','Thứ năm','Th�
 // panel (top-left, top-right, bottom-right, bottom-left: the name is printed onto it in perspective) and the
 // box its two hands type in. `zalo` is the free floor where a new Zalo message shows [centre x, top, width]. Desk 10 is the Zalo Bot. `k` is how large a robot is in that picture.
 const LAYOUTS={
- wide:{src:'/assets/office-wide-v2.webp',w:1672,h:941,k:1,
+ wide:{src:'/assets/office-wide-v2.webp?v=2',w:1672,h:941,k:1,
   board:{box:[622,76,1083,277],head:[648,82,1069,118],tiles:[[648,122,745,180],[752,122,850,180],[856,122,957,180],[963,122,1069,180]],bars:[[650,200,852,274],[874,200,1068,274]]},
   rooms:{exec:[740,412,940,485],ops:[180,712,428,795],admin:[1248,712,1492,795]},zalo:[836,846,430],
   seats:{1:{eyes:[[984,311],[1004,313]],quad:[[918,363],[1040,370],[1041,399],[918,388]],hands:[958,338,1017,360]},
@@ -60,26 +60,39 @@ export function showLive({h,show,api,openLogin,zaloLink}){
  const plates=h('div',{class:'fl-plates'});
  world.append(links,signs,desks,board,plates,trail);
  // ---- sound: a bright bell over a swoosh when a file is handed on (after the viewer has touched the page)
- let soundOn=true,audio=null,bus=null;try{soundOn=localStorage.getItem('faciup-live-sound')!=='off';}catch{}
- const unlock=()=>{if(!audio&&window.AudioContext)audio=new AudioContext();audio?.resume?.();};
- document.addEventListener('pointerdown',unlock,{once:true});document.addEventListener('keydown',unlock,{once:true});
- function chime(toLead){if(!soundOn||!audio||audio.state!=='running'||document.hidden)return;const t=audio.currentTime;
+ // Browsers only let a page play sound after the viewer touches, clicks or types, so until then a small
+ // prompt sits on the office. The audio context is kept for the whole visit, across pages. iPhones need
+ // touchend/click, and play Web Audio through the silent switch only once a media element has played.
+ let soundOn=true,bus=null,audio=window.__flAudio||null;try{soundOn=localStorage.getItem('faciup-live-sound')!=='off';}catch{}
+ const AC=window.AudioContext||window.webkitAudioContext,ready=()=>audio&&audio.state==='running';
+ function silentClip(){const sr=8000,n=800,b=new ArrayBuffer(44+n*2),v=new DataView(b),w=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i));};
+  w(0,'RIFF');v.setUint32(4,36+n*2,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*2,true);
+  return URL.createObjectURL(new Blob([b],{type:'audio/wav'}));}
+ const unlock=()=>{const was=ready();
+  try{if(navigator.audioSession)navigator.audioSession.type='playback';}catch{}
+  if(!audio&&AC){audio=window.__flAudio=new AC();try{const el=new Audio(silentClip());el.setAttribute('playsinline','');el.play().catch(()=>{});}catch{}}
+  if(audio&&audio.state!=='running')audio.resume?.().then(()=>{paintNudge();if(!was&&soundOn&&!window.__flGreeted){window.__flGreeted=true;setTimeout(()=>chime(true),80);}}).catch(()=>{});
+  else paintNudge();};
+ const unlockEvents=['touchend','click','keydown','pointerup'];for(const ev of unlockEvents)document.addEventListener(ev,unlock,{passive:true});
+ function chime(toLead){if(!soundOn||!ready()||document.hidden)return;const t=audio.currentTime;
   if(!bus){const comp=audio.createDynamicsCompressor();comp.threshold.value=-10;comp.ratio.value=4;bus=audio.createGain();bus.gain.value=.9;bus.connect(comp);comp.connect(audio.destination);}
   const noise=audio.createBuffer(1,audio.sampleRate*.25,audio.sampleRate),d=noise.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*(1-i/d.length);
   const sw=audio.createBufferSource(),bp=audio.createBiquadFilter(),sg=audio.createGain();sw.buffer=noise;bp.type='bandpass';bp.frequency.setValueAtTime(600,t);bp.frequency.exponentialRampToValueAtTime(3200,t+.22);sg.gain.value=.35;sw.connect(bp);bp.connect(sg);sg.connect(bus);sw.start(t);
   (toLead?[784,988,1319]:[1047,1568]).forEach((f,n)=>{const at=t+.12+n*.11;for(const [mul,vol,type] of [[1,.55,'sine'],[2,.18,'triangle'],[3,.08,'sine']]){const o=audio.createOscillator(),g=audio.createGain();o.type=type;o.frequency.value=f*mul;o.connect(g);g.connect(bus);
    g.gain.setValueAtTime(0,at);g.gain.linearRampToValueAtTime(vol,at+.01);g.gain.exponentialRampToValueAtTime(.0001,at+.9);o.start(at);o.stop(at+.95);}});}
- function out(){if(!soundOn||!audio||audio.state!=='running'||document.hidden)return null;if(!bus){const comp=audio.createDynamicsCompressor();comp.threshold.value=-10;comp.ratio.value=4;bus=audio.createGain();bus.gain.value=.9;bus.connect(comp);comp.connect(audio.destination);}return bus;}
+ function out(){if(!soundOn||!ready()||document.hidden)return null;if(!bus){const comp=audio.createDynamicsCompressor();comp.threshold.value=-10;comp.ratio.value=4;bus=audio.createGain();bus.gain.value=.9;bus.connect(comp);comp.connect(audio.destination);}return bus;}
  function tone(freqs,step,vol,len){const o0=out();if(!o0)return;const t=audio.currentTime;freqs.forEach((f,n)=>{const at=t+n*step,o=audio.createOscillator(),g=audio.createGain();o.type='sine';o.frequency.value=f;o.connect(g);g.connect(o0);
   g.gain.setValueAtTime(0,at);g.gain.linearRampToValueAtTime(vol,at+.008);g.gain.exponentialRampToValueAtTime(.0001,at+len);o.start(at);o.stop(at+len+.05);});}
  const ting=user=>tone(user?[1175,1568]:[1568,2093],.09,.32,.5),fanfare=()=>tone([523,659,784,1047,1319],.085,.3,.7);
  // soft key clicks while someone types: a few short filtered ticks spread over the next second
  function typing(n){const o0=out();if(!o0||!n)return;const t=audio.currentTime;for(let q=0;q<Math.min(9,2+n*2);q++){const at=t+Math.random()*.95,len=.018,buf=audio.createBuffer(1,Math.ceil(audio.sampleRate*len),audio.sampleRate),d=buf.getChannelData(0);
   for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,3);const src=audio.createBufferSource(),f=audio.createBiquadFilter(),g=audio.createGain();src.buffer=buf;f.type='highpass';f.frequency.value=1800+Math.random()*1600;g.gain.value=.05+Math.random()*.04;src.connect(f);f.connect(g);g.connect(o0);src.start(at);}}
- const soundBtn=h('button',{type:'button',class:'fl-tool',onclick:()=>{soundOn=!soundOn;unlock();try{localStorage.setItem('faciup-live-sound',soundOn?'on':'off');}catch{}paintSound();if(soundOn)setTimeout(()=>chime(false),60);}});
+ const soundBtn=h('button',{type:'button',class:'fl-tool',onclick:()=>{soundOn=!soundOn;unlock();paintNudge();try{localStorage.setItem('faciup-live-sound',soundOn?'on':'off');}catch{}paintSound();if(soundOn)setTimeout(()=>chime(false),60);}});
  function paintSound(){soundBtn.setAttribute('aria-pressed',String(soundOn));soundBtn.title=soundOn?'Âm thanh bàn giao: bật (bấm để tắt)':'Âm thanh bàn giao: tắt (bấm để bật)';soundBtn.setAttribute('aria-label',soundBtn.title);
   soundBtn.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/>${soundOn?'<path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>':'<path d="M17 9l5 6M22 9l-5 6"/>'}</svg>`;}
  paintSound();
+ const nudge=h('button',{type:'button',class:'fl-nudge',onclick:()=>{soundOn=true;try{localStorage.setItem('faciup-live-sound','on');}catch{}paintSound();unlock();}},h('i',{}),'Chạm để bật âm thanh văn phòng');
+ function paintNudge(){const need=soundOn&&!ready();nudge.hidden=!need;soundBtn.classList.toggle('fl-locked',need);}
  const fullBtn=h('button',{type:'button',class:'fl-tool',title:'Toàn màn hình','aria-label':'Toàn màn hình',onclick:()=>{document.fullscreenElement?document.exitFullscreen():stage.requestFullscreen?.().catch(()=>{});}});
  fullBtn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
  // the heading sits centred between two light rails; its words are set in Quản trị → Nhóm AI → Phòng & luồng
@@ -109,10 +122,12 @@ export function showLive({h,show,api,openLogin,zaloLink}){
   const last=items.at(-1),sig=last?last.role+':'+last.text:'';
   if(sig&&sig!==zaloSig&&!simChat){zaloSig=sig;showPop(last.role,last.text,last.role==='user'?'Bạn':personal?zaloName:zaloName+' · minh họa');}
  }
- async function loadMine(){if(stopped||mineBusy||document.hidden)return;mineBusy=true;try{personal=await api('/api/faciup-live/mine');}catch{personal=null;}finally{mineBusy=false;if(!stopped)renderChat();}}
+ let mineAt=0;
+ async function loadMine(){if(stopped||mineBusy||document.hidden)return;mineBusy=true;mineAt=Date.now();try{personal=await api('/api/faciup-live/mine');}catch{personal=null;}finally{mineBusy=false;if(!stopped)renderChat();}}
  function openPanel(title,kids){dialogBody.replaceChildren(h('h2',{},title),...kids);dialog.showModal();}
  function openChat(){openPanel('Hội thoại Zalo của bạn',[chat]);renderChat();}
- const page=h('div',{class:'fl-live'},toolbar,stage,dialog);
+ const mineLine=h('p',{class:'fl-mine',hidden:true});stage.append(nudge);
+ const page=h('div',{class:'fl-live'},toolbar,mineLine,stage,dialog);
  show(page);
  // ---- the board, signs and desks are rebuilt when the picture changes (phone ↔ computer)
  const clockEl=h('b',{class:'fl-clock'}),dateEl=h('small',{class:'fl-date'}),liveEl=h('span',{class:'fl-live-dot'},h('i',{}),'TRỰC TUYẾN');
@@ -183,14 +198,39 @@ export function showLive({h,show,api,openLogin,zaloLink}){
  function chipText(a,look){return look==='live24'?'Trực 24/7':look==='wait'?'Chờ lượt':look==='review'?'Chờ duyệt':look==='watch'?'Giám sát phiên':a.completed?a.completed+' việc hôm nay':'Sẵn sàng';}
  function paintClock(){const d=new Date(Date.now()+clockSkew+7*3600e3);clockEl.replaceChildren(pad(d.getUTCHours())+':'+pad(d.getUTCMinutes()),h('small',{},':'+pad(d.getUTCSeconds())));dateEl.textContent=`${WEEK[d.getUTCDay()]} · ${pad(d.getUTCDate())}/${pad(d.getUTCMonth()+1)}/${d.getUTCFullYear()}`;liveEl.className='fl-live-dot'+(stale?' off':'');liveEl.lastChild.textContent=stale?'MẤT KẾT NỐI':'TRỰC TUYẾN';}
  const sim=createSim();
+ // a video of mine goes from desk to desk with the render's phases
+ const PHASE={queued:['coordinator','Nhận video của bạn'],preparing:['search','Chuẩn bị dữ liệu'],images:['design','Dựng hình ảnh'],voice:['pen','Lồng tiếng'],rendering:['design','Dựng video'],uploading:['check','Kiểm tra & xuất bản']};
+ let mineSeen=new Map(),guideAt=0,guideStep=0;
+ function myDesks(r){const out={},me=personal?.me;if(!me)return out;
+  for(const j of me.jobs||[]){const [icon,task]=PHASE[j.status==='queued'?'queued':j.phase]||PHASE.rendering,i=Math.max(0,r.agents.findIndex(a=>a.icon===icon));if(!out[i])out[i]={task,title:j.title,progress:j.progress};}
+  return out;}
+ function myGuide(me,r){const name=me.name?me.name+' ơi, ':'',job=me.jobs?.[0],desk=job&&r.agents.find(a=>a.icon===(PHASE[job.status==='queued'?'queued':job.phase]||PHASE.rendering)[0]);
+  const lines=[];
+  if(job)lines.push(`${name}video “${job.title}” của bạn đang ở bàn ${desk?.name||'xử lý'}. Bạn theo dõi trực tiếp trên văn phòng nhé.`);
+  if(!me.videos)lines.push(`${name}bạn chưa có video nào. Bấm Tạo video, nhập một chủ đề là đội AI bắt tay vào làm ngay.`);
+  if(me.doneToday)lines.push(`${name}hôm nay bạn đã có ${me.doneToday} video hoàn thành. Xem và tải trong Video của tôi.`);
+  if(!personal?.linked)lines.push(`${name}liên kết Zalo ở mục Zalo để nhắn yêu cầu và nhận báo khi video xong.`);
+  lines.push(`${name}thử mục Gợi ý sáng tạo để có kịch bản mẫu chỉ trong vài giây.`,`${name}video của bạn sẽ hiện thẻ “Của bạn” ngay trên bàn đang xử lý.`);
+  return lines;}
+ function paintMine(r){const me=personal?.me;if(!me){mineLine.hidden=true;return;}
+  const n=(me.jobs||[]).length;mineLine.hidden=!n&&!me.doneToday;mineLine.replaceChildren(h('b',{},'Của bạn'),` ${n} đang dựng · ${me.doneToday} hoàn thành hôm nay`);
+  // a video that left the list is finished: it flies to the lead with the bell
+  const now=new Set((me.jobs||[]).map(j=>j.id));for(const [id,i] of mineSeen)if(!now.has(id)){const a=r.agents[i],lead=r.agents[0];if(a&&lead){fly(a.seat,lead.seat,'#f97316',true);showPop('bot','Video của bạn đã xong! Xem trong Video của tôi.',zaloName);}}
+  mineSeen=new Map();for(const j of me.jobs||[]){const [icon]=PHASE[j.status==='queued'?'queued':j.phase]||PHASE.rendering;mineSeen.set(j.id,Math.max(0,r.agents.findIndex(a=>a.icon===icon)));}
+  // signed in without a Zalo conversation of their own: a guide written for them, every 25 s
+  if(!personal.linked&&Date.now()-guideAt>25000){guideAt=Date.now();const g=myGuide(me,r);showPop('bot',(t=>t[0].toUpperCase()+t.slice(1))(g[guideStep++%g.length]),zaloName+' · gửi bạn');ting(false);}}
+ let lastPop=0,lastTing=0;
  function paint(){if(!data)return;const r=data.runtime,k=r.kpi||{},b=r.board||{},meeting=r.sessions?.[0]||null,live=meeting&&['running','queued','retry'].includes(meeting.state);
-  const S=r.simulate?sim(Date.now()+clockSkew,r.agents,r.simulate.level,{mainBusy:!!live&&meeting.state==='running'}):null;
+  const S=r.simulate?sim(Date.now()+clockSkew,r.agents,r.simulate.level,{mainBusy:!!live&&meeting.state==='running',script:r.simulate.script}):null;
   zaloName=r.agents.find(a=>a.icon==='zalo')?.name||'Zalo Bot';
   simChat=S&&!personal&&Date.now()>=zaloHold?S.chat.slice(-8):null;
   if(S)for(const e of S.events){
    if(e.type==='hand'){const from=r.agents[e.from],to=r.agents[e.to];if(from&&to)setTimeout(()=>{if(!stopped)fly(from.seat,to.seat,to.color,e.toLead);},Math.random()*950);}
    else if(e.type==='done'){if(performance.now()-lastFanfare>20000){lastFanfare=performance.now();fanfare();}}
-   else if(e.type==='zalo'&&simChat){ting(e.role==='user');showPop(e.role,e.text,(e.role==='user'?'Khách hàng':zaloName)+' · minh họa');if(dialog.open)renderChat();}}
+   // many chats run at once: the floor shows one at a time, a new one at most every 7 s
+   else if(e.type==='zalo'&&simChat){const now=performance.now();if(now-lastTing>2500){lastTing=now;ting(e.role==='user');}
+    if(now-lastPop>7000&&e.role==='user'){lastPop=now;showPop(e.role,e.text,'Khách hàng · minh họa');setTimeout(()=>{if(!stopped&&simChat)showPop('bot',e.reply||'',zaloName+' · minh họa');},3200);}if(dialog.open)renderChat();}}
+  paintMine(r);const mine=myDesks(r);
   if(r.office){if(titleEl.textContent!==r.office.title)titleEl.textContent=r.office.title;if(subEl.textContent!==r.office.subtitle)subEl.textContent=r.office.subtitle;}
   for(const s of signs.children){const name=(r.rooms||[]).find(x=>x.id===s.dataset.room)?.name||'';const words=name.toUpperCase().split(/\s+/).filter(Boolean),rows=words.length>1?[words.slice(0,words.length>2?1:1),words.slice(1)]:[words];s.firstChild.replaceChildren(...rows.map(row=>h('span',{},row.join(' '))));s.hidden=!name;}
   const values=[[r.agents.length,'Agent'],[r.running+(S?S.working:0),'Đang xử lý'],[r.review+(S?S.pending:0),'Chờ duyệt'],[(k.today||0)+(S?S.done:0),'Hoàn thành']];
@@ -207,14 +247,15 @@ export function showLive({h,show,api,openLogin,zaloLink}){
    if(i===0&&live){look=meeting.current===0&&meeting.state==='running'?'work':'watch';task=meeting.current!==0?'Giám sát phiên':meeting.step>0?'Tổng hợp kết quả':'Nhận việc';}
    // a Zalo reply takes seconds: keep the desk busy a moment so every message is seen
    if(a.icon==='zalo'&&Date.now()<zaloHold)look='work';
-   const sd=S?.desk[i];if(sd&&['idle','live24'].includes(look)&&!(i===0&&live)&&!(a.icon==='zalo'&&Date.now()<zaloHold)){look=sd.look;if(sd.task)task=sd.task;}
+   const md=mine[i];if(md){look='work';task='Video của bạn · '+md.title;}
+   const sd=S?.desk[i];if(!md&&sd&&['idle','live24'].includes(look)&&!(i===0&&live)&&!(a.icon==='zalo'&&Date.now()<zaloHold)){look=sd.look;if(sd.task)task=sd.task;}
    const done=(a.completed||0)+(S?.count[i]||0);
    const work=look==='work'||(a.live&&a.state==='running');
-   s.g.className='fl-desk is-'+look+(work?' is-work':'')+(look==='watch'?' is-watch':'')+(i===0?' is-lead':'')+(a.icon==='zalo'?' is-zalo':'');if(work)typers++;s.g.style.setProperty('--c',a.color);s.g.hidden=false;
+   s.g.className='fl-desk is-'+look+(work?' is-work':'')+(look==='watch'?' is-watch':'')+(i===0?' is-lead':'')+(a.icon==='zalo'?' is-zalo':'')+(md?' is-mine':'');if(work)typers++;s.g.style.setProperty('--c',a.color);s.g.hidden=false;
    if(s.plate.firstChild.textContent!==a.name){s.plate.firstChild.textContent=a.name;s.plate.style.setProperty('--fit',Math.min(1,12/Math.max(6,a.name.length)).toFixed(3));}
-   s.chip.textContent=chipText({...a,completed:done},look);
-   s.card.querySelector('b').textContent=`${a.name} · ${task}`;
-   s.card.querySelector('.fl-card-bar i').style.width=Math.min(96,a.avg?runFor(a)/a.avg*100:45)+'%';
+   s.chip.textContent=md?'Của bạn':chipText({...a,completed:done},look);
+   s.card.querySelector('b').textContent=md?task:`${a.name} · ${task}`;
+   s.card.querySelector('.fl-card-bar i').style.width=(md?Math.max(6,md.progress):Math.min(96,a.avg?runFor(a)/a.avg*100:45))+'%';
    for(const l of linkEls)if(l.seat===a.seat)l.g.classList.toggle('on',work);
   });
   for(const [n,s] of Object.entries(seats)){s.plate.hidden=!used.has(n);if(!used.has(n))s.g.hidden=true;}
@@ -244,14 +285,14 @@ export function showLive({h,show,api,openLogin,zaloLink}){
   const za=r.agents.find(a=>a.icon==='zalo');if(za){if(za.state==='running'||(zaloSeen>=0&&za.received>zaloSeen))zaloHold=Date.now()+6000;zaloSeen=za.received||0;}
   for(const s of r.sessions){const was=lastTurn.get(s.n);if(was!==undefined&&was!==s.current){const from=r.agents[was],to=r.agents[s.current];if(from&&to)fly(from.seat,to.seat,to.color,s.current===0);}lastTurn.set(s.n,s.current);}
   paint();}
- load();loadMine();
+ load();loadMine();paintNudge();
  const demo=setInterval(()=>{if(!personal&&!simChat&&!reduce&&!document.hidden){demoStep=(demoStep+1)%intro.length;renderChat();}},6000);
  async function pulse(){if(stopped||pulseBusy||document.hidden)return;pulseBusy=true;
   try{const p=await api('/api/faciup-live/pulse');stale=false;
    if(!pulseSig.jobs&&!pulseSig.zalo)pulseSig=p;
    else if(p.jobs!==pulseSig.jobs||p.zalo!==pulseSig.zalo){const zaloMoved=p.zalo!==pulseSig.zalo;pulseSig=p;await load();if(zaloMoved||dialog.open)loadMine();}}
   catch{stale=true;page.classList.add('fl-stale');}finally{pulseBusy=false;}}
- const tick=setInterval(()=>{paintClock();if(data)paint();typing(lastTypers);},1000),poll=setInterval(pulse,3000),pollFull=setInterval(load,30000),pollMine=setInterval(()=>{if(dialog.open)loadMine();},3000),visible=()=>{if(!document.hidden){load();loadMine();}};
+ const tick=setInterval(()=>{paintClock();if(data)paint();typing(lastTypers);},1000),poll=setInterval(pulse,3000),pollFull=setInterval(load,30000),pollMine=setInterval(()=>{if(dialog.open||personal?.me?.jobs?.length||Date.now()-mineAt>30000)loadMine();},3000),visible=()=>{if(!document.hidden){load();loadMine();if(audio&&audio.state!=='running')audio.resume?.().then(paintNudge,()=>{});paintNudge();}};
  document.addEventListener('visibilitychange',visible);
- return ()=>{stopped=true;ro.disconnect();phoneMQ.removeEventListener('change',onPhone);personal=null;dialog.close();clearInterval(tick);clearInterval(poll);clearInterval(pollFull);clearInterval(pollMine);clearInterval(demo);document.removeEventListener('visibilitychange',visible);};
+ return ()=>{stopped=true;ro.disconnect();phoneMQ.removeEventListener('change',onPhone);personal=null;dialog.close();clearInterval(tick);clearInterval(poll);clearInterval(pollFull);clearInterval(pollMine);clearInterval(demo);document.removeEventListener('visibilitychange',visible);for(const ev of unlockEvents)document.removeEventListener(ev,unlock);};
 }
