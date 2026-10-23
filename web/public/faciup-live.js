@@ -42,6 +42,12 @@ const LAYOUTS={
    9:{eyes:[[1081,654],[1109,651]],plate:[1118,750,141,-2.5],hands:[1048,698,1110,720]},
    10:{eyes:[[1049,844],[1078,839]],plate:[1118,951,146,-5.4],hands:[1010,890,1085,920]}}}};
 
+
+const PLATE_PLANES={
+ wide:{1:[[920,365],[1040,374],[920,389]],2:[[642,370],[765,358],[642,396]],3:[[211,378],[342,367],[211,402]],4:[[435,504],[560,490],[435,528]],5:[[156,512],[288,498],[156,535]],6:[[133,659],[258,645],[133,683]],7:[[416,675],[554,660],[416,699]],8:[[1302,398],[1420,409],[1302,423]],9:[[1403,521],[1524,533],[1403,546]],10:[[1232,660],[1364,674],[1232,686]]},
+ tall:{1:[[711,355],[849,352],[711,381]],2:[[437,359],[567,358],[437,385]],3:[[128,599],[273,593],[128,625]],4:[[412,619],[540,612],[412,643]],5:[[675,635],[813,626],[675,660]],6:[[182,822],[327,807],[182,850]],7:[[540,839],[689,821],[540,866]],8:[[1021,556],[1155,545],[1021,580]],9:[[1048,738],[1184,724],[1048,763]],10:[[1045,939],[1188,921],[1045,964]]}
+};
+
 export function showLive({h,show,api,openLogin,zaloLink}){
  let stopped=false,busy=false,data=null,stale=false,clockSkew=0;
  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches,phoneMQ=matchMedia('(max-width:700px)');
@@ -75,14 +81,14 @@ export function showLive({h,show,api,openLogin,zaloLink}){
  fullBtn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
  // the heading sits centred between two light rails; its words are set in Quản trị → Nhóm AI → Phòng & luồng
  const titleEl=h('h1',{},'Faciup Live'),subEl=h('p',{},'Văn phòng vận hành của đội AI');
- const toolbar=h('header',{class:'fl-toolbar'},h('div',{class:'fl-title'},h('i',{class:'fl-rail'}),h('div',{},h('span',{class:'fl-onair'},h('i',{}),'LIVE'),titleEl,subEl),h('i',{class:'fl-rail r'})),h('div',{class:'fl-tools'},soundBtn,fullBtn));
+ const toolbar=h('header',{class:'fl-toolbar'},h('div',{class:'fl-title'},h('div',{class:'fl-brand'},h('span',{class:'fl-onair'},h('i',{}),'LIVE'),titleEl),subEl),h('div',{class:'fl-tools'},soundBtn,fullBtn));
  // ---- Zalo: a small button in the corner; a light popup carries each new message for a few seconds
  const dialog=h('dialog',{class:'fl-dialog'}),dialogBody=h('div',{});dialog.append(h('button',{type:'button',class:'fl-close',onclick:()=>dialog.close(),'aria-label':'Đóng'},'×'),dialogBody);dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});
  const chatNote=h('small',{}),chatStats=h('small',{class:'fl-chat-stats'}),chatMessages=h('div',{class:'fl-messages',role:'log','aria-live':'polite'}),chatStatus=h('p',{class:'fl-chat-status'});
  const chat=h('section',{class:'fl-chat'},chatStats,chatNote,chatMessages,chatStatus);
  if(zaloLink&&/^https:\/\//.test(zaloLink))chat.append(h('a',{class:'fl-zalo-open',href:zaloLink,target:'_blank',rel:'noopener'},'Nhắn qua Zalo ↗'));
- const zaloBtn=h('button',{class:'fl-zalo-btn',type:'button','aria-label':'Mở hội thoại Zalo',onclick:()=>openChat()}),zaloPop=h('div',{class:'fl-zalo-pop',role:'status','aria-live':'polite'});
- zaloBtn.innerHTML='<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 5C9.4 5 4 9.5 4 15c0 3.1 1.7 5.9 4.4 7.7L7.6 27l4.6-2.4c1.2.3 2.5.5 3.8.5 6.6 0 12-4.5 12-10S22.6 5 16 5z" fill="#fff"/><text x="16" y="17.6" text-anchor="middle" fill="#0a6cff" font-size="7.6" font-weight="800" font-family="Arial,sans-serif">Zalo</text></svg><b class="fl-zalo-dot"></b>';stage.append(h('div',{class:'fl-zalo-fab'},zaloPop,zaloBtn));
+ const zaloPop=h('button',{class:'fl-zalo-pop',type:'button','aria-label':'Xem hội thoại Zalo',onclick:()=>openChat(),hidden:true});
+ const zaloHost=h('div',{class:'fl-zalo-lounge'});zaloHost.append(zaloPop);world.append(zaloHost);
  let personal=null,mineBusy=false,demoStep=0,zaloSig='',zaloTimer=0;
  const intro=['Bạn cần hỗ trợ gì? Nhắn mình nhé.','Bạn có thể quan sát đội AI làm việc ngay trên màn hình.','Đăng nhập để bắt đầu hội thoại riêng của bạn.'];
  function renderChat(){
@@ -95,11 +101,15 @@ export function showLive({h,show,api,openLogin,zaloLink}){
   chatStatus.textContent=personal?.processing?'Đang xử lý tin nhắn Zalo…':personal?'Hội thoại riêng · Sẵn sàng hỗ trợ':'Lời giới thiệu tự động';
   chatMessages.scrollTop=chatMessages.scrollHeight;
   const last=items.at(-1),sig=last?last.role+':'+last.text:'';
-  if(sig&&sig!==zaloSig){zaloSig=sig;clearTimeout(zaloTimer);zaloPop.className='fl-zalo-pop show '+(last.role==='user'?'me':'bot');zaloPop.replaceChildren(h('small',{},last.role==='user'?'Bạn':personal?'Zalo':'Zalo · minh họa'),h('span',{},last.text.slice(0,140)));zaloTimer=setTimeout(()=>zaloPop.classList.remove('show'),6500);if(!dialog.open){zaloBtn.classList.remove('ping');void zaloBtn.offsetWidth;zaloBtn.classList.add('ping','unread');}}
+  if(sig&&sig!==zaloSig){const first=!zaloSig;zaloSig=sig;clearTimeout(zaloTimer);
+   if(!first||!personal){zaloPop.hidden=false;zaloPop.className='fl-zalo-pop show '+(last.role==='user'?'me':'bot');zaloPop.replaceChildren(h('span',{class:'fl-lounge-head'},h('i',{class:'fl-lounge-dot'}),h('b',{},'Hội thoại Zalo'),h('small',{},personal?'Riêng tư':'Minh họa')),h('span',{class:'fl-lounge-body'},h('small',{},last.role==='user'?'Bạn':'Trợ lý'),h('span',{},last.text.slice(0,220))),h('small',{class:'fl-lounge-hint'},'Chạm để xem hội thoại ↗'));zaloTimer=setTimeout(()=>{zaloPop.classList.remove('show');zaloPop.hidden=true;},8500);}
+  }
+
  }
+ const previewMessage=()=>{if(!personal){demoStep=(demoStep+1)%intro.length;renderChat();}};document.addEventListener('faciup-live:preview-message',previewMessage);
  async function loadMine(){if(stopped||mineBusy||document.hidden)return;mineBusy=true;try{personal=await api('/api/faciup-live/mine');}catch{personal=null;}finally{mineBusy=false;if(!stopped)renderChat();}}
  function openPanel(title,kids){dialogBody.replaceChildren(h('h2',{},title),...kids);dialog.showModal();}
- function openChat(){zaloBtn.classList.remove('unread');openPanel('Hội thoại Zalo của bạn',[chat]);renderChat();}
+ function openChat(){openPanel('Hội thoại Zalo của bạn',[chat]);renderChat();}
  const page=h('div',{class:'fl-live'},toolbar,stage,dialog);
  show(page);
  // ---- the board, signs and desks are rebuilt when the picture changes (phone ↔ computer)
@@ -129,7 +139,8 @@ export function showLive({h,show,api,openLogin,zaloLink}){
     Object.assign(cut.style,{left:side*50+'%',backgroundImage:`url('${L.src}')`,backgroundSize:`${(L.w/hw2*100).toFixed(2)}% ${(L.h/(vy-uy)*100).toFixed(2)}%`,backgroundPosition:`${(x/(L.w-hw2)*100).toFixed(3)}% ${(uy/(L.h-(vy-uy))*100).toFixed(3)}%`});hands.append(cut);}
    const keys=h('div',{class:'fl-keys'},...[0,1,2,3,4].map(i=>{const s=h('i',{});s.style.setProperty('--i',i);return s;}));place(keys,ux,vy-4*k,vx-ux,8*k);
    const halo=h('div',{class:'fl-halo'});place(halo,cx-90*k,cy-40*k,180*k,140*k);
-   const [px,py,pw,rot]=S.plate,ph=(L.k>1?34:28),plate=h('div',{class:'fl-plate'},h('b',{}));place(plate,px-pw*.46,py-ph/2,pw*.92,ph);plate.style.transform=`rotate(${rot}deg)`;
+   const [px,py,pw,rot]=S.plate,ph=(L.k>1?34:28),plate=h('div',{class:'fl-plate'},h('b',{}));place(plate,px-pw*.46,py-ph/2,pw*.92,ph);const Q=PLATE_PLANES[L===LAYOUTS.wide?'wide':'tall'][n];
+   if(Q){const [[ax,ay],[bx,by],[dx,dy]]=Q;place(plate,ax,ay,pw,ph);plate.style.transformOrigin='0 0';plate.style.transform=`matrix(${(bx-ax)/pw},${(by-ay)/pw},${(dx-ax)/ph},${(dy-ay)/ph},0,0)`;}
    const chip=h('div',{class:'fl-chip'}),card=h('div',{class:'fl-card'},h('i',{class:'fl-card-dot'}),h('b',{}),h('span',{class:'fl-caret'}),h('div',{class:'fl-card-bar'},h('i',{})));
    // under the board there is no room above the head, so the label sits beside it, away from the board
    const B=L.board.box,side=hy-28*k<B[3]&&cx>B[0]&&cx<B[2]?(cx>(B[0]+B[2])/2?'r':'l'):'';
@@ -143,9 +154,9 @@ export function showLive({h,show,api,openLogin,zaloLink}){
   const lead=seats[leadSeat];if(!lead)return;
   for(const a of agents){const s=seats[a.seat];if(!s||s===lead)continue;
    const mx=(s.cx+lead.cx)/2,my=Math.max(s.cy,lead.cy)+70*L.k,d=`M${s.cx} ${s.cy}Q${mx} ${my} ${lead.cx} ${lead.cy}`;
-   const path=svg('path',{d,class:'fl-link',stroke:a.color}),dot=svg('circle',{r:4*L.k,class:'fl-spark',fill:a.color});
-   const mo=svg('animateMotion',{dur:(3+Math.random()*2).toFixed(1)+'s',repeatCount:'indefinite',path:d});dot.append(mo);links.append(path,dot);linkEls.push({seat:a.seat,path,dot});}}
- function applyLayout(){room.src=L.src;room.width=L.w;room.height=L.h;page.classList.toggle('fl-tall',L===LAYOUTS.tall);stage.style.aspectRatio=`${L.w}/${L.h}`;buildBoard();buildSigns();buildDesks();fit();if(data)paint();}
+   const under=svg('path',{d,class:'fl-link-bed',stroke:a.color}),path=svg('path',{d,class:'fl-link',stroke:a.color}),dot=svg('circle',{r:4.5*L.k,class:'fl-spark',fill:a.color}),tail=svg('circle',{r:2.2*L.k,class:'fl-spark-tail',fill:'#fff'});tail.append(svg('animateMotion',{dur:'3.6s',begin:'-.2s',repeatCount:'indefinite',path:d}));
+   const mo=svg('animateMotion',{dur:(3+Math.random()*2).toFixed(1)+'s',repeatCount:'indefinite',path:d});dot.append(mo);links.append(under,path,dot,tail);linkEls.push({seat:a.seat,path,dot});}}
+ function applyLayout(){zaloHost.style.left='50%';zaloHost.style.top=L===LAYOUTS.wide?'70.5%':'91.2%';room.src=L.src;room.width=L.w;room.height=L.h;page.classList.toggle('fl-tall',L===LAYOUTS.tall);stage.style.aspectRatio=`${L.w}/${L.h}`;buildBoard();buildSigns();buildDesks();fit();if(data)paint();}
  // the overlay box sits exactly over the picture; --k turns picture pixels into screen pixels for type sizes
  function fit(){const sr=stage.getBoundingClientRect();if(!sr.width)return;const k=Math.min(sr.width/L.w,sr.height/L.h),w=L.w*k,hh=L.h*k;
   Object.assign(world.style,{left:(sr.width-w)/2+'px',top:(sr.height-hh)/2+'px',width:w+'px',height:hh+'px'});world.style.setProperty('--k',k);}
@@ -204,5 +215,5 @@ export function showLive({h,show,api,openLogin,zaloLink}){
   catch{stale=true;page.classList.add('fl-stale');}finally{pulseBusy=false;}}
  const tick=setInterval(()=>{paintClock();if(data)paint();},1000),poll=setInterval(pulse,3000),pollFull=setInterval(load,30000),pollMine=setInterval(()=>{if(dialog.open)loadMine();},3000),visible=()=>{if(!document.hidden){load();loadMine();}};
  document.addEventListener('visibilitychange',visible);
- return ()=>{stopped=true;ro.disconnect();phoneMQ.removeEventListener('change',onPhone);personal=null;dialog.close();clearInterval(tick);clearInterval(poll);clearInterval(pollFull);clearInterval(pollMine);clearInterval(demo);document.removeEventListener('visibilitychange',visible);};
+ return ()=>{stopped=true;clearTimeout(zaloTimer);document.removeEventListener('faciup-live:preview-message',previewMessage);ro.disconnect();phoneMQ.removeEventListener('change',onPhone);personal=null;dialog.close();clearInterval(tick);clearInterval(poll);clearInterval(pollFull);clearInterval(pollMine);clearInterval(demo);document.removeEventListener('visibilitychange',visible);};
 }
