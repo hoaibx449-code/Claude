@@ -1,4 +1,4 @@
-import {createSim} from '/faciup-sim.js?v=2';
+import {createSim} from '/faciup-sim.js?v=3';
 // Faciup Live: the AI team's office. A wide picture on computers and a square one on phones; over it,
 // in the picture's own pixels, the live wall board, the desk name plates and room signs (names come
 // from Quản trị → Nhóm AI), and each robot's living head, eyes and typing hands. Everything shown is
@@ -129,8 +129,9 @@ export function showLive({h,show,api,openLogin,zaloLink}){
  function buildSigns(){signs.replaceChildren();for(const [id,box] of Object.entries(L.rooms)){const s=h('div',{class:'fl-sign','data-room':id},h('b',{}));place(s,box[0],box[1],box[2]-box[0],box[3]-box[1]);signs.append(s);}}
  function buildDesks(){desks.replaceChildren();plates.replaceChildren();seats={};
   for(const [n,S] of Object.entries(L.seats)){const [[ax,ay],[bx,by]]=S.eyes,k=L.k,cx=(ax+bx)/2,cy=(ay+by)/2;
-   const hx=cx-42*k,hy=cy-60*k,hw=84*k,hh=82*k;
-   // the head: a cut of the picture itself, so it can nod and look around; the eyes are redrawn on it
+   const hx=cx-56*k,hy=cy-64*k,hw=112*k,hh=98*k;
+   // the head: an oval cut of the picture itself (helmet, ear pieces, antenna) with a soft edge, so it can
+   // turn a little about the neck without showing a seam; the eyes are redrawn on it
    const head=h('div',{class:'fl-head'});place(head,hx,hy,hw,hh);
    Object.assign(head.style,{backgroundImage:`url('${L.src}')`,backgroundSize:`${(L.w/hw*100).toFixed(2)}% ${(L.h/hh*100).toFixed(2)}%`,backgroundPosition:`${(hx/(L.w-hw)*100).toFixed(3)}% ${(hy/(L.h-hh)*100).toFixed(3)}%`});
    for(const [ex,ey] of S.eyes){const e=h('i',{class:'fl-eye'});Object.assign(e.style,{left:((ex-hx)/hw*100-5.5)+'%',top:((ey-hy)/hh*100-10)+'%'});e.style.setProperty('--d',(Math.random()*4).toFixed(2)+'s');head.append(e);}
@@ -140,27 +141,28 @@ export function showLive({h,show,api,openLogin,zaloLink}){
    for(const side of [0,1]){const hw2=(vx-ux)/2,x=ux+side*hw2,cut=h('i',{class:'fl-hand'});
     Object.assign(cut.style,{left:side*50+'%',backgroundImage:`url('${L.src}')`,backgroundSize:`${(L.w/hw2*100).toFixed(2)}% ${(L.h/(vy-uy)*100).toFixed(2)}%`,backgroundPosition:`${(x/(L.w-hw2)*100).toFixed(3)}% ${(uy/(L.h-(vy-uy))*100).toFixed(3)}%`});hands.append(cut);}
    const keys=h('div',{class:'fl-keys'},...[0,1,2,3,4].map(i=>{const s=h('i',{});s.style.setProperty('--i',i);return s;}));place(keys,ux,vy-4*k,vx-ux,8*k);
-   const halo=h('div',{class:'fl-halo'});place(halo,cx-90*k,cy-40*k,180*k,140*k);
+   const halo=h('div',{class:'fl-halo'});place(halo,cx-90*k,cy-40*k,180*k,140*k);const flash=h('i',{class:'fl-flash'});place(flash,cx-70*k,cy-70*k,140*k,140*k);
    const plate=h('div',{class:'fl-plate'},h('b',{}));
    const chip=h('div',{class:'fl-chip'}),card=h('div',{class:'fl-card'},h('i',{class:'fl-card-dot'}),h('b',{}),h('span',{class:'fl-caret'}),h('div',{class:'fl-card-bar'},h('i',{})));
    // under the board there is no room above the head, so the label sits beside it, away from the board
    const B=L.board.box,side=hy-28*k<B[3]&&cx>B[0]&&cx<B[2]?(cx>(B[0]+B[2])/2?'r':'l'):'';
    for(const el of [chip,card]){Object.assign(el.style,side?{left:P(cx+(side==='r'?46:-46)*k,L.w),top:P(cy,L.h)}:{left:P(cx,L.w),top:P(hy-4*k,L.h)});if(side)el.classList.add('side-'+side);}
-   const g=h('div',{class:'fl-desk'},halo,head,hands,keys,chip,card);desks.append(g);plates.append(plate);
-   seats[n]={g,head,plate,chip,card,cx,cy:hy+hh*.45,top:hy,quad:S.quad};}
+   const g=h('div',{class:'fl-desk'},halo,flash,head,hands,keys,chip,card);desks.append(g);plates.append(plate);
+   seats[n]={g,head,plate,chip,card,flash,cx,cy,top:cy-60*k,quad:S.quad};}
   links.setAttribute('viewBox',`0 0 ${L.w} ${L.h}`);trail.setAttribute('viewBox',`0 0 ${L.w} ${L.h}`);linkKey='';
  }
  let linkKey='',linkEls=[];
  function buildLinks(agents,leadSeat){const key=agents.map(a=>a.seat+a.color).join(',')+'|'+L.src;if(key===linkKey)return;linkKey=key;links.replaceChildren();linkEls=[];
   const lead=seats[leadSeat];if(!lead)return;
   for(const a of agents){const s=seats[a.seat];if(!s||s===lead)continue;
-   const mx=(s.cx+lead.cx)/2,my=Math.max(s.cy,lead.cy)+70*L.k,d=`M${s.cx} ${s.cy}Q${mx} ${my} ${lead.cx} ${lead.cy}`,dur=(2.2+Math.random()*1.2).toFixed(2);
-   const g=svg('g',{class:'fl-beam'});g.style.setProperty('--c',a.color);
-   g.append(svg('path',{d,class:'fl-link-glow'}),svg('path',{d,class:'fl-link'}),svg('path',{d,class:'fl-link-flow'}));
-   // a spark with a fading tail: three dots on the same path, a moment apart
-   for(const [r,lag,o] of [[4.2,0,1],[3,.07,.55],[2,.14,.3]]){const dot=svg('circle',{r:r*L.k,class:'fl-spark',opacity:o});dot.append(svg('animateMotion',{dur:dur+'s',begin:(-lag*dur).toFixed(2)+'s',repeatCount:'indefinite',path:d}));g.append(dot);}
-   for(const p of [s,lead]){const ring=svg('circle',{cx:p.cx,cy:p.cy,r:6*L.k,class:'fl-ripple'});g.append(ring);}
-   links.append(g);linkEls.push({seat:a.seat,g});}}
+   const mx=(s.cx+lead.cx)/2,my=Math.max(s.cy,lead.cy)+70*L.k,d=`M${s.cx} ${s.cy}Q${mx} ${my} ${lead.cx} ${lead.cy}`;
+   const g=svg('g',{class:'fl-beam'}),guide=svg('path',{d,class:'fl-guide'});g.style.setProperty('--c',a.color);g.append(guide);links.append(g);
+   const len=guide.getTotalLength(),dur=(len/(170*L.k)).toFixed(2);g.style.setProperty('--len',len.toFixed(1));g.style.setProperty('--dur',dur+'s');
+   // each comet: a wide soft glow, a coloured body and a white head, all ending at the same point
+   for(const lag of [0,.5]){const c=svg('g',{class:'fl-comet'});c.style.setProperty('--lag',(-lag*dur).toFixed(2)+'s');
+    for(const [cls,seg] of [['glow',110],['tail',90],['body',44],['core',16]]){const pth=svg('path',{d,class:'fl-c-'+cls});pth.style.setProperty('--seg',seg*L.k+'px');c.append(pth);}g.append(c);}
+   for(const p of [s,lead])g.append(svg('circle',{cx:p.cx,cy:p.cy,r:6*L.k,class:'fl-ripple'}));
+   linkEls.push({seat:a.seat,g});}}
  function applyLayout(){(L.zalo?world:zaloCorner).append(zaloPop);if(L.zalo)Object.assign(zaloPop.style,{left:P(L.zalo[0],L.w),top:P(L.zalo[1],L.h)});else Object.assign(zaloPop.style,{left:'',top:'',maxWidth:''});room.src=L.src;room.width=L.w;room.height=L.h;page.classList.toggle('fl-tall',L===LAYOUTS.tall);stage.style.aspectRatio=`${L.w}/${L.h}`;buildBoard();buildSigns();buildDesks();fit();if(data)paint();}
  // the overlay box sits exactly over the picture; --k turns picture pixels into screen pixels for type sizes
  function fit(){const sr=stage.getBoundingClientRect();if(!sr.width)return;const k=Math.min(sr.width/L.w,sr.height/L.h),w=L.w*k,hh=L.h*k;
@@ -219,10 +221,22 @@ export function showLive({h,show,api,openLogin,zaloLink}){
   lastTypers=typers;paintClock();
  }
  // the file flies along a curve from one desk to the next, with the bell
- function fly(fromSeat,toSeat,color,toLead){chime(toLead);if(reduce)return;const a=seats[fromSeat],b=seats[toSeat];if(!a||!b)return;
-  const d=`M${a.cx} ${a.top}Q${(a.cx+b.cx)/2} ${Math.min(a.top,b.top)-90*L.k} ${b.cx} ${b.top}`,path=svg('path',{d,class:'fl-path',stroke:color}),glow=svg('path',{d,class:'fl-path-glow',stroke:color});trail.append(glow,path);
-  const doc=h('div',{class:'fl-doc'});doc.innerHTML=DOC;world.append(doc);
-  const len=path.getTotalLength();let t=0;const go=()=>{if(stopped)return;t+=1/80;const p=path.getPointAtLength(Math.min(1,t)*len);doc.style.left=P(p.x,L.w);doc.style.top=P(p.y,L.h);if(t<1)requestAnimationFrame(go);else{doc.remove();setTimeout(()=>{path.remove();glow.remove();},300);}};go();}
+ let lastBell=0;
+ function fly(fromSeat,toSeat,color,toLead){const now=performance.now();if(now-lastBell>1000){lastBell=now;chime(toLead);}if(reduce)return;const a=seats[fromSeat],b=seats[toSeat];if(!a||!b)return;
+  const d=`M${a.cx} ${a.top}Q${(a.cx+b.cx)/2} ${Math.min(a.top,b.top)-90*L.k} ${b.cx} ${b.top}`,k=L.k,big=4000;
+  const g=svg('g',{class:'fl-fly'});g.style.setProperty('--c',color);trail.append(g);
+  const layers=[['glow',190],['tail2',170],['tail',110],['body',55],['core',22]].map(([cls,seg])=>{const pth=svg('path',{d,class:'fl-f-'+cls,'stroke-dasharray':`${seg*k} ${big}`});g.append(pth);return [pth,seg*k];});
+  const len=layers[0][0].getTotalLength(),doc=h('div',{class:'fl-doc'});doc.innerHTML=DOC;world.append(doc);
+  const t0=performance.now(),T=Math.min(1500,700+len*.9);let sparkAt=0;
+  const go=now=>{if(stopped){g.remove();doc.remove();return;}const u=Math.min(1,(now-t0)/T),e=u<.5?2*u*u:1-Math.pow(-2*u+2,2)/2,dist=e*len,p=layers[0][0].getPointAtLength(dist);
+   for(const [pth,seg] of layers)pth.setAttribute('stroke-dashoffset',String(seg-dist));
+   doc.style.left=P(p.x,L.w);doc.style.top=P(p.y,L.h);
+   if(now-sparkAt>28&&u<.97){sparkAt=now;const sp=svg('circle',{cx:p.x+(Math.random()-.5)*12*k,cy:p.y+(Math.random()-.5)*12*k,r:(1.6+Math.random()*2.8)*k,class:'fl-sparkle'});
+    sp.style.setProperty('--dx',(Math.random()-.5)*26*k+'px');sp.style.setProperty('--dy',(8+Math.random()*22)*k+'px');g.append(sp);setTimeout(()=>sp.remove(),900);}
+   if(u<1)requestAnimationFrame(go);
+   else{doc.remove();const ring=svg('circle',{cx:b.cx,cy:b.top+20*k,r:10*k,class:'fl-burst'});g.append(ring);b.flash.classList.remove('on');void b.flash.offsetWidth;b.flash.classList.add('on');
+    g.classList.add('out');setTimeout(()=>g.remove(),900);}};
+  requestAnimationFrame(go);}
  let lastTypers=0;const lastTurn=new Map();let zaloHold=0,zaloSeen=-1,pulseSig={jobs:'',zalo:''},pulseBusy=false;
  async function load(){if(stopped||busy||document.hidden)return;busy=true;
   try{data=await api('/api/faciup-live');clockSkew=(data.runtime?.polledAt||Date.now())-Date.now();stale=false;}catch{stale=true;}finally{busy=false;}

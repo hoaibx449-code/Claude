@@ -3,7 +3,11 @@
 // seeded random stream per day, so every viewer sees the same sessions, hand-overs and Zalo chats at
 // the same moment, and a day never repeats the same order or timings.
 const DAY=864e5,VN=7*3600e3;
-const SPEED={normal:1,high:.65,max:.42};
+// timings in seconds as [least, spread]; "max" runs three sessions side by side so files keep moving
+const PROFILE={
+ normal:{streams:1,intake:[8,12],member:[18,50],synth:[12,18],gap:[20,90],task:[35,80],rest:[120,360],chat:[30,90]},
+ high:{streams:1,intake:[5.2,7.8],member:[11.7,32.5],synth:[7.8,11.7],gap:[13,58],task:[23,52],rest:[78,234],chat:[20,58]},
+ max:{streams:3,intake:[3,3],member:[5,10],synth:[4,4],gap:[2,4],task:[12,20],rest:[15,40],chat:[15,15]}};
 function rng(seed){let a=seed>>>0;return()=>{a=a+0x6D2B79F5>>>0;let t=a;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;};}
 const hash=s=>{let h=2166136261;for(const c of String(s)){h^=c.charCodeAt(0);h=Math.imul(h,16777619);}return h>>>0;};
 const pick=(r,list)=>list[Math.floor(r()*list.length)];
@@ -46,24 +50,25 @@ const ADMIN={
 };
 
 export function createSim(){
- let cache=null,prevT=0,prevTurn='',prevDone=-1,prevAdmin={},prevZalo=-1;
+ let cache=null,prevT=0,prevTurn=[],prevDone=-1,prevAdmin={},prevZalo=-1;
  // the day's plan for these members: sessions, admin tasks per desk, Zalo chats
  function plan(day,members,admins,level){
   const key=[day,members.join(','),admins.map(a=>a.i).join(','),level].join('|');
   if(cache?.key===key)return cache;
-  const F=SPEED[level]||1,start=day*DAY-VN,end=start+DAY;
-  const sessions=[];{const r=rng(hash(key+'s'));let t=start+r()*30e3;
-   while(t<end){const order=members.filter(()=>r()<.85),team=order.length>=2?order:members.slice(0,2),rounds=r()<.25?2:1,turns=[{who:0,kind:'intake',dur:(8+r()*12)*F*1e3}];
-    for(let k=0;k<rounds;k++)for(const m of team)turns.push({who:m,kind:'member',dur:(18+r()*50)*F*1e3});
-    turns.push({who:0,kind:'synth',dur:(12+r()*18)*F*1e3});
+  const X=PROFILE[level]||PROFILE.high,start=day*DAY-VN,end=start+DAY,sec=(r,[a,b])=>(a+r()*b)*1e3;
+  const streams=[];for(let q=0;q<X.streams;q++){const r=rng(hash(key+'s'+q)),sessions=[];let t=start+r()*30e3+q*X.member[0]*1e3*1.7;
+   while(t<end){const order=members.filter(()=>r()<.85),team=order.length>=2?order:members.slice(0,2),rounds=r()<.25?2:1,turns=[{who:0,kind:'intake',dur:sec(r,X.intake)}];
+    for(let k=0;k<rounds;k++)for(const m of team)turns.push({who:m,kind:'member',dur:sec(r,X.member)});
+    turns.push({who:0,kind:'synth',dur:sec(r,X.synth)});
     let at=t;for(const x of turns){x.at=at;at+=x.dur;}
-    sessions.push({start:t,end:at,turns,review:(70+r()*260)*1e3});t=at+(20+r()*90)*F*1e3;}}
+    sessions.push({start:t,end:at,turns,review:(70+r()*260)*1e3});t=at+sec(r,X.gap);}
+   streams.push(sessions);}
   const tasks={};for(const a of admins){const r=rng(hash(key+'a'+a.i)),list=[];let t=start+r()*90e3;
-   while(t<end){const dur=(35+r()*80)*F*1e3;list.push({at:t,end:t+dur,text:pick(r,ADMIN[a.role]||ADMIN.hr)});t+=dur+(120+r()*360)*F*1e3;}tasks[a.i]=list;}
+   while(t<end){const dur=sec(r,X.task);list.push({at:t,end:t+dur,text:pick(r,ADMIN[a.role]||ADMIN.hr)});t+=dur+sec(r,X.rest);}tasks[a.i]=list;}
   const chats=[];{const r=rng(hash(key+'z'));let t=start+r()*40e3;const recent=[];
    while(t<end){let n;do n=Math.floor(r()*CHATS.length);while(recent.includes(n));recent.push(n);if(recent.length>8)recent.shift();
-    const proc=(2.5+r()*4.5)*1e3;chats.push({at:t,reply:t+proc,q:CHATS[n][0],a:CHATS[n][1]});t+=proc+(30+r()*90)*F*1e3;}}
-  return cache={key,sessions,tasks,chats};
+    const proc=(2.5+r()*4.5)*1e3;chats.push({at:t,reply:t+proc,q:CHATS[n][0],a:CHATS[n][1]});t+=proc+sec(r,X.chat);}}
+  return cache={key,streams,tasks,chats};
  }
  const upto=(list,t,f)=>{let lo=0,hi=list.length;while(lo<hi){const m=lo+hi>>1;if(f(list[m])<=t)lo=m+1;else hi=m;}return lo;};
  /** the office at time t; `events` are what happened since the last call (for hand-overs and sounds) */
@@ -73,23 +78,26 @@ export function createSim(){
   agents.forEach((a,i)=>{if(i===lead)return;if(a.icon==='zalo'){zalo=i;return;}if(a.room==='admin')admins.push({i,role:a.icon==='chart'?'accounting':'hr'});else members.push(i);});
   const P=plan(day,members,admins,level),out={desk:{},count:{},events:[],done:0,pending:0,working:0,progress:0,chat:[],zaloBusy:false};
   const add=(i,n)=>{out.count[i]=(out.count[i]||0)+n;};
-  // sessions: finished ones count for every turn; the open one decides who works, watches and waits
-  const n=upto(P.sessions,t,s=>s.start),cur=n>0?P.sessions[n-1]:null;
-  for(let j=0;j<n;j++){const s=P.sessions[j];if(s.end<=t){for(const x of s.turns)add(x.who,1);if(t-s.end<s.review)out.pending++;else out.done++;}}
-  let turnKey='';
-  if(cur&&cur.end>t&&!mainBusy){
-   const k=cur.turns.findIndex(x=>t<x.at+x.dur),x=cur.turns[k];turnKey=cur.start+':'+k;
-   for(let q=0;q<k;q++)add(cur.turns[q].who,1);
-   out.progress=Math.round(k/cur.turns.length*100);
-   out.desk[lead]=x.kind==='member'?{look:'watch',task:'Giám sát phiên'}:{look:'work',task:x.kind==='intake'?'Nhận việc':'Tổng hợp kết quả'};
-   if(x.kind==='member')out.desk[x.who]={look:'work'};
-   for(const y of cur.turns.slice(k+1))if(y.who!==lead&&!out.desk[y.who])out.desk[y.who]={look:'wait'};
-   out.working++;
-   if(prevTurn&&turnKey!==prevTurn){const [ps,pk]=prevTurn.split(':').map(Number),prev=P.sessions.find(s=>s.start===ps)?.turns[pk];
-    if(prev&&prev.who!==x.who)out.events.push({type:'hand',from:prev.who,to:x.who,toLead:x.who===lead});}
-  }
+  // sessions: finished ones count for every turn; open ones decide who works, watches and waits
+  let leadWork=null,leadWatch=false;
+  P.streams.forEach((sessions,q)=>{
+   const n=upto(sessions,t,s=>s.start),cur=n>0?sessions[n-1]:null;
+   for(let j=0;j<n;j++){const s=sessions[j];if(s.end<=t){for(const x of s.turns)add(x.who,1);if(t-s.end<s.review)out.pending++;else out.done++;}}
+   let turnKey='';
+   if(cur&&cur.end>t&&!mainBusy){
+    const k=cur.turns.findIndex(x=>t<x.at+x.dur),x=cur.turns[k];turnKey=cur.start+':'+k;
+    for(let z=0;z<k;z++)add(cur.turns[z].who,1);
+    if(q===0)out.progress=Math.round(k/cur.turns.length*100);
+    if(x.kind==='member'){leadWatch=true;if(out.desk[x.who]?.look!=='work')out.desk[x.who]={look:'work'};}else leadWork=x.kind==='intake'?'Nhận việc':'Tổng hợp kết quả';
+    for(const y of cur.turns.slice(k+1))if(y.who!==lead&&!out.desk[y.who])out.desk[y.who]={look:'wait'};
+    out.working++;
+    const pk=prevTurn[q];if(pk&&turnKey!==pk){const [ps,pi]=pk.split(':').map(Number),prev=sessions.find(s=>s.start===ps)?.turns[pi];
+     if(prev&&prev.who!==x.who)out.events.push({type:'hand',from:prev.who,to:x.who,toLead:x.who===lead});}
+   }
+   if(!mainBusy)prevTurn[q]=turnKey;});
+  if(leadWork)out.desk[lead]={look:'work',task:leadWork};else if(leadWatch)out.desk[lead]={look:'watch',task:'Giám sát phiên'};
   if(prevDone>=0&&out.done+out.pending>prevDone)out.events.push({type:'done'});
-  prevDone=out.done+out.pending;if(!mainBusy)prevTurn=turnKey;
+  prevDone=out.done+out.pending;
   // the admin room: short internal jobs, reported to the lead when done
   for(const a of admins){const list=P.tasks[a.i]||[],m=upto(list,t,x=>x.at),x=m>0?list[m-1]:null,finished=x&&x.end<=t?m:m-1;add(a.i,Math.max(0,finished));
    if(x&&x.end>t){out.desk[a.i]={look:'work',task:x.text};out.working++;}
