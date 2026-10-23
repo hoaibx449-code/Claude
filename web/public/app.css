@@ -1107,3 +1107,13 @@ body[data-page="editor"] main.wrap { max-width: none; padding: 16px 20px 40px; }
 @media (min-width: 1100px) { .scol, .pcol { max-height: calc(100dvh - 330px); } }
 .studio .screen.flat.stage-screen > canvas { height: min(44dvh, 440px) !important; width: auto !important; aspect-ratio: auto !important; }
 .studio .screen.flat.stage-screen.wide > canvas { height: auto !important; width: 100% !important; max-height: 40dvh; }
+/* the brand never gets cut: on narrower screens the menu tightens, and below 1000px it keeps the main
+   pages (the rest stay in the account menu and the tab bar) */
+.top > .brand { flex: none; overflow: visible; }
+.top > .brand > span:not(.logo) { overflow: visible; }
+.top > .nav { flex: 1 1 auto; min-width: 0; gap: 0; overflow-x: auto; scrollbar-width: none; }
+.top > .nav::-webkit-scrollbar { display: none; }
+.top > .nav a { flex: none; white-space: nowrap; }
+@media (max-width: 1320px) { .top > .nav a { padding: 10px 4px; font-size: .875rem; } }
+@media (max-width: 1100px) { .top > .nav a { padding: 10px 4px; font-size: .8125rem; } .top > .nav a[data-route="video"] { display: none; } .top > .brand #brandAccent { display: none; } }
+@media (max-width: 999px) { .top > .nav a { font-size: .78rem; } .top > .nav a[data-route="prompt-hunter"], .top > .nav a[data-route="video"], .top > .nav a[data-route="goi"], .top > .nav a[data-route="kham-pha"] { display: none; } }
