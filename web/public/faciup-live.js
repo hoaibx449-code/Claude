@@ -46,7 +46,7 @@ const LAYOUTS={
 
 export function showLive({h,show,api,openLogin,zaloLink}){
  let stopped=false,busy=false,data=null,stale=false,clockSkew=0;
- const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches,phoneMQ=matchMedia('(max-width:700px)');
+ const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches,phoneMQ=matchMedia('(max-width:700px), (orientation:portrait) and (max-width:1100px)');
  let L=phoneMQ.matches?LAYOUTS.tall:LAYOUTS.wide;
  const NS='http://www.w3.org/2000/svg',svg=(tag,attrs={})=>{const e=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e;};
  const P=(v,t)=>(v/t*100).toFixed(3)+'%';
@@ -126,8 +126,8 @@ export function showLive({h,show,api,openLogin,zaloLink}){
  async function loadMine(){if(stopped||mineBusy||document.hidden)return;mineBusy=true;mineAt=Date.now();try{personal=await api('/api/faciup-live/mine');}catch{personal=null;}finally{mineBusy=false;if(!stopped)renderChat();}}
  function openPanel(title,kids){dialogBody.replaceChildren(h('h2',{},title),...kids);dialog.showModal();}
  function openChat(){openPanel('Hội thoại Zalo của bạn',[chat]);renderChat();}
- const mineLine=h('p',{class:'fl-mine',hidden:true});stage.append(nudge);
- const page=h('div',{class:'fl-live'},toolbar,mineLine,stage,dialog);
+ stage.append(nudge);
+ const page=h('div',{class:'fl-live'},toolbar,stage,dialog);
  show(page);
  // ---- the board, signs and desks are rebuilt when the picture changes (phone ↔ computer)
  const clockEl=h('b',{class:'fl-clock'}),dateEl=h('small',{class:'fl-date'}),liveEl=h('span',{class:'fl-live-dot'},h('i',{}),'TRỰC TUYẾN');
@@ -212,8 +212,7 @@ export function showLive({h,show,api,openLogin,zaloLink}){
   if(!personal?.linked)lines.push(`${name}liên kết Zalo ở mục Zalo để nhắn yêu cầu và nhận báo khi video xong.`);
   lines.push(`${name}thử mục Gợi ý sáng tạo để có kịch bản mẫu chỉ trong vài giây.`,`${name}video của bạn sẽ hiện thẻ “Của bạn” ngay trên bàn đang xử lý.`);
   return lines;}
- function paintMine(r){const me=personal?.me;if(!me){mineLine.hidden=true;return;}
-  const n=(me.jobs||[]).length;mineLine.hidden=!n&&!me.doneToday;mineLine.replaceChildren(h('b',{},'Của bạn'),` ${n} đang dựng · ${me.doneToday} hoàn thành hôm nay`);
+ function paintMine(r){const me=personal?.me;if(!me)return;
   // a video that left the list is finished: it flies to the lead with the bell
   const now=new Set((me.jobs||[]).map(j=>j.id));for(const [id,i] of mineSeen)if(!now.has(id)){const a=r.agents[i],lead=r.agents[0];if(a&&lead){fly(a.seat,lead.seat,'#f97316',true);showPop('bot','Video của bạn đã xong! Xem trong Video của tôi.',zaloName);}}
   mineSeen=new Map();for(const j of me.jobs||[]){const [icon]=PHASE[j.status==='queued'?'queued':j.phase]||PHASE.rendering;mineSeen.set(j.id,Math.max(0,r.agents.findIndex(a=>a.icon===icon)));}
@@ -233,8 +232,10 @@ export function showLive({h,show,api,openLogin,zaloLink}){
   paintMine(r);const mine=myDesks(r);
   if(r.office){if(titleEl.textContent!==r.office.title)titleEl.textContent=r.office.title;if(subEl.textContent!==r.office.subtitle)subEl.textContent=r.office.subtitle;}
   for(const s of signs.children){const name=(r.rooms||[]).find(x=>x.id===s.dataset.room)?.name||'';const words=name.toUpperCase().split(/\s+/).filter(Boolean),rows=words.length>1?[words.slice(0,words.length>2?1:1),words.slice(1)]:[words];s.firstChild.replaceChildren(...rows.map(row=>h('span',{},row.join(' '))));s.hidden=!name;}
-  const values=[[r.agents.length,'Agent'],[r.running+(S?S.working:0),'Đang xử lý'],[r.review+(S?S.pending:0),'Chờ duyệt'],[(k.today||0)+(S?S.done:0),'Hoàn thành']];
-  tiles.forEach((t,i)=>{t.firstChild.textContent=pad(values[i][0]);t.lastChild.textContent=values[i][1];});
+  // the show's counters stay within five digits: they start over after 99 999
+  const cap=n=>n%100000;
+  const values=[[r.agents.length,'Agent'],[r.running+(S?S.working:0),'Đang xử lý'],[r.review+(S?S.pending:0),'Chờ duyệt'],[cap((k.today||0)+(S?S.done:0)),'Hoàn thành']];
+  tiles.forEach((t,i)=>{const v=pad(values[i][0]);t.firstChild.textContent=v;t.dataset.len=Math.min(5,Math.max(2,v.length));t.lastChild.textContent=values[i][1];});
   const active=r.agents.filter(a=>['work','live24','wait'].includes(LOOK[a.state])).length;
   const sb=S?{...b,...S.bars,progress:live&&meeting.state==='running'?b.progress:S.progress}:b,busyNow=S?Math.min(r.agents.length,active+S.working):active;
   [sb.progress,sb.efficiency,Math.round(busyNow/Math.max(1,r.agents.length)*100),sb.quality,sb.support,sb.internal].forEach((v,i)=>{const row=bars[i];if(!row)return;row.querySelector('i b').style.width=(v||0)+'%';row.lastChild.textContent=(v||0)+'%';});
@@ -249,7 +250,7 @@ export function showLive({h,show,api,openLogin,zaloLink}){
    if(a.icon==='zalo'&&Date.now()<zaloHold)look='work';
    const md=mine[i];if(md){look='work';task='Video của bạn · '+md.title;}
    const sd=S?.desk[i];if(!md&&sd&&['idle','live24'].includes(look)&&!(i===0&&live)&&!(a.icon==='zalo'&&Date.now()<zaloHold)){look=sd.look;if(sd.task)task=sd.task;}
-   const done=(a.completed||0)+(S?.count[i]||0);
+   const done=cap((a.completed||0)+(S?.count[i]||0));
    const work=look==='work'||(a.live&&a.state==='running');
    s.g.className='fl-desk is-'+look+(work?' is-work':'')+(look==='watch'?' is-watch':'')+(i===0?' is-lead':'')+(a.icon==='zalo'?' is-zalo':'')+(md?' is-mine':'');if(work)typers++;s.g.style.setProperty('--c',a.color);s.g.hidden=false;
    if(s.plate.firstChild.textContent!==a.name){s.plate.firstChild.textContent=a.name;s.plate.style.setProperty('--fit',Math.min(1,12/Math.max(6,a.name.length)).toFixed(3));}

@@ -19,7 +19,7 @@
 .fl-tool svg{width:19px;height:19px}.fl-tool[aria-pressed=false]{color:var(--fl-muted)!important}
 /* the office: as large as the screen allows, never cropped */
 .fl-stage{position:relative;width:min(100%,calc((100vh - var(--shell-header-height,64px) - var(--fl-chrome,66px))*1672/941));margin:0 auto;border-radius:22px;overflow:hidden;background:#f6f0ff;box-shadow:0 26px 60px -36px rgba(109,40,217,.55);border:1px solid #eadff9}
-.fl-tall .fl-stage{width:100%}
+.fl-tall .fl-stage{width:min(100%,calc(100vh - var(--shell-header-height,64px) - var(--fl-chrome,66px) - 70px));min-width:min(100%,300px)}
 .fl-stage:fullscreen{width:100vw;height:100vh;border-radius:0;border:0;background:#1b1430}
 .fl-room{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;user-select:none;pointer-events:none}
 .fl-world{position:absolute;left:0;top:0;width:100%;height:100%;--k:1}
@@ -68,7 +68,7 @@
 .fl-clock{display:block;font-size:calc(26px*var(--k));font-weight:800;font-variant-numeric:tabular-nums;color:#ffcf8a;text-shadow:0 0 calc(12px*var(--k)) #f97316}
 .fl-clock small{font-size:.55em;color:#fde68a}
 .fl-date{display:block;margin-top:calc(3px*var(--k));font-size:calc(10px*var(--k));color:#c7d2fe}
-.fl-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(2px*var(--k));text-align:center}
+.fl-tile{overflow:hidden;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(2px*var(--k));text-align:center}
 .fl-tile b{font-size:calc(27px*var(--k));line-height:1;font-weight:800;font-variant-numeric:tabular-nums}
 .fl-tile span{font-size:calc(11.5px*var(--k));font-weight:600;color:#e0e7ff}
 .fl-tile.t0 b{color:#7ff0ff;text-shadow:0 0 calc(10px*var(--k)) #22d3ee}.fl-tile.t1 b{color:#d8b4fe;text-shadow:0 0 calc(10px*var(--k)) #a855f7}
@@ -80,7 +80,11 @@
 .fl-bars:last-child .fl-bar i b{background:linear-gradient(90deg,#14b8a6,#f97316)}
 .fl-bar em{font-style:normal;font-weight:700;color:#fff;text-align:right;font-variant-numeric:tabular-nums}
 .fl-bhead strong{white-space:nowrap}.fl-tall .fl-bhead strong{font-size:calc(23px*var(--k))}.fl-tall .fl-clock{font-size:calc(34px*var(--k))}.fl-tall .fl-date,.fl-tall .fl-live-dot{font-size:calc(14px*var(--k))}
-.fl-tall .fl-tile b{font-size:calc(44px*var(--k))}.fl-tall .fl-tile span{font-size:calc(17px*var(--k))}
+.fl-tall .fl-tile b{font-size:calc(44px*var(--k))}
+/* longer numbers get smaller so five digits always fit the tile */
+.fl-tile[data-len="4"] b{font-size:calc(23px*var(--k))}.fl-tile[data-len="5"] b{font-size:calc(19px*var(--k))}
+.fl-tall .fl-tile[data-len="4"] b{font-size:calc(36px*var(--k))}.fl-tall .fl-tile[data-len="5"] b{font-size:calc(29px*var(--k))}
+.fl-tile span{white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}.fl-tall .fl-tile span{font-size:calc(17px*var(--k))}
 /* room signs and desk name plates, printed on the blank signs of the picture */
 .fl-signs,.fl-desks,.fl-plates{pointer-events:none}
 .fl-sign{position:absolute;display:grid;place-items:center;text-align:center}
@@ -172,7 +176,11 @@
 @keyframes fl-nudge{50%{transform:scale(1.05);box-shadow:0 0 0 6px rgba(192,38,211,.18),0 10px 24px -10px rgba(124,58,237,.8)}}
 .fl-tool.fl-locked{animation:fl-nudge 1.8s ease-in-out infinite;color:#c026d3!important;border-color:#e9b8f5!important}
 /* my own work */
-.fl-mine{margin:-2px auto 0;font-size:.82rem;color:var(--fl-muted)}.fl-mine b{display:inline-block;padding:1px 8px;margin-right:4px;border-radius:99px;background:linear-gradient(90deg,#f97316,#ec4899);color:#fff;font-size:.72rem;letter-spacing:.04em}
+/*unused*/.fl-mine-x{margin:-2px auto 0;font-size:.82rem;color:var(--fl-muted)}.fl-mine b{display:inline-block;padding:1px 8px;margin-right:4px;border-radius:99px;background:linear-gradient(90deg,#f97316,#ec4899);color:#fff;font-size:.72rem;letter-spacing:.04em}
 .fl-desk.is-mine .fl-chip,.fl-desk.is-mine .fl-card{border:1.5px solid #f97316;box-shadow:0 0 0 3px rgba(249,115,22,.18),0 calc(8px*var(--k)) calc(18px*var(--k)) -8px rgba(249,115,22,.7)}
 .fl-desk.is-mine .fl-halo{background:radial-gradient(closest-side,rgba(249,115,22,.5),transparent 72%)}
 @media(max-width:700px){.fl-nudge{font-size:.68rem;padding:5px 10px!important;top:1.5%}.fl-mine{font-size:.72rem}}
+/* tablets: the one-row heading gets a size that fits beside the tools */
+@media(min-width:701px) and (max-width:1100px){.fl-title{width:calc(100% - 100px);gap:10px}.fl-title .fl-rail{display:none}.fl-title>div{gap:8px;min-width:0;max-width:100%}.fl-toolbar h1,.fl-toolbar p{font-size:1.12rem}.fl-toolbar p{min-width:0;overflow:hidden;text-overflow:ellipsis}.fl-toolbar p::before{margin:0 10px 0 4px}}
+/* small screens: robots show they work by halo, hands and comets; only the lead's and my own cards stay */
+@media(max-width:700px){.fl-desk:not(.is-lead):not(.is-mine) .fl-card,.fl-desk.is-wait .fl-chip{display:none}}
