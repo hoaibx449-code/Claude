@@ -15,6 +15,8 @@ interface CouncilConfig {
   rooms?: CouncilRoom[]; review?: boolean;
   /** the Live page: its heading and the Zalo assistant's desk */
   office?: { title?: string; subtitle?: string; zaloName?: string; zaloColor?: string };
+  /** continuous operation: the Live page plays a working day with no AI and nothing stored */
+  simulate?: { enabled: boolean; level: 'normal'|'high'|'max' };
   assistant?: boolean; proposedBrief?: string; workflowCard?: boolean;
 }
 const ROLES = [
@@ -76,10 +78,11 @@ export function cleanCouncil(input:any):CouncilConfig {
   const rooms=ROOMS.map(r=>{const x=Array.isArray(input.rooms)?input.rooms.find((y:any)=>y?.id===r.id):null;return {id:r.id,name:text(x?.name,40)||r.name,joins:typeof x?.joins==='boolean'?x.joins:r.joins};});
   const o=input.office&&typeof input.office==='object'?input.office:{};
   const office={title:text(o.title,40)||undefined,subtitle:text(o.subtitle,90)||undefined,zaloName:text(o.zaloName,40)||undefined,zaloColor:/^#[0-9a-f]{6}$/i.test(o.zaloColor||'')?o.zaloColor:undefined};
+  const sm=input.simulate&&typeof input.simulate==='object'?input.simulate:{},simulate={enabled:sm.enabled===true,level:['normal','high','max'].includes(sm.level)?sm.level:'high'};
   if(councilTeam({agents,rooms}).length<2)throw new HttpError(400,'Cần ít nhất một thành viên tham gia phiên làm nội dung ngoài trợ lý dẫn dắt.');
   return {enabled:input.enabled===true,freeOnly:input.freeOnly!==false,freeConfirmed:input.freeConfirmed===true,
     dailyCalls:Math.min(100,Math.max(1,Math.floor(Number(input.dailyCalls)||base.dailyCalls))),
-    rounds:Math.min(3,Math.max(1,Math.floor(Number(input.rounds)||1))),brand:text(input.brand,12000),review:input.review!==false,rooms,office,agents};
+    rounds:Math.min(3,Math.max(1,Math.floor(Number(input.rounds)||1))),brand:text(input.brand,12000),review:input.review!==false,rooms,office,simulate,agents};
 }
 async function config(env:Env):Promise<CouncilConfig>{
   const row=await env.DB.prepare('SELECT config FROM council_settings WHERE id=1').first<any>();

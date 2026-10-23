@@ -104,6 +104,9 @@ export async function liveRuntime(env:Env,now=Date.now(),config?:Config){
   agents.push({id:'zalo',name:c.office?.zaloName||'Zalo Bot',icon:'zalo',color:c.office?.zaloColor||'#0068ff',state:busy?.since?'running':'live24',completed:Number(z?.n)||0,last:Number(z?.last)||0,received:Number(z?.received)||0,replies:Number(z?.replies)||0,
    hours:zh.results.map((r:any)=>[Number(r.hour),Number(r.n)]),avg:Math.round((Number(z?.avg)||0)/1000),since:Number(busy?.since)||0,seat:10,room:'admin',live:true});
  }catch{/* Zalo tables not set up yet */}
+ // continuous operation needs the Zalo desk even before Zalo is connected
+ const simulate=c.simulate?.enabled===true?{level:String(c.simulate.level||'high')}:null;
+ if(simulate&&!agents.some((a:any)=>a.id==='zalo'))agents.push({id:'zalo',name:c.office?.zaloName||'Zalo Bot',icon:'zalo',color:c.office?.zaloColor||'#0068ff',state:'live24',completed:0,last:0,received:0,replies:0,hours:[],avg:0,since:0,seat:10,room:'admin',live:true} as any);
  const top=agents.filter((a:any)=>a.completed).map((a:any)=>({name:a.name,color:a.color,n:a.completed})).sort((a:any,b:any)=>b.n-a.n).slice(0,4);
  // the wall board: how far the running session is, today against the last six days, approvals, Zalo
  // replies, and how much of today's work the admin room did
@@ -116,6 +119,6 @@ export async function liveRuntime(env:Env,now=Date.now(),config?:Config){
  const rooms=(c.rooms||[]).map((r:any)=>({id:r.id,name:String(r.name||'')}));
  const handovers=recentTurns.results.map((t:any)=>({agent:c.agents.findIndex((a:any)=>a.id===t.agent_id),at:Number(t.created_at)})).filter((x:any)=>x.agent>=0&&x.agent<12);
  const office={title:c.office?.title||'Faciup Live',subtitle:c.office?.subtitle||'Văn phòng vận hành của đội AI'};
- return {enabled,rooms,office,board,sessions:enabled?sessions.slice(0,6):[],handovers,agents,running:enabled?running:0,queued,review,paused,completed,lastActivity,polledAt:now,next:enabled&&nextAgent!==null?{agent:nextAgent,at:nextAt||0}:null,
+ return {enabled,simulate,rooms,office,board,sessions:enabled?sessions.slice(0,6):[],handovers,agents,running:enabled?running:0,queued,review,paused,completed,lastActivity,polledAt:now,next:enabled&&nextAgent!==null?{agent:nextAgent,at:nextAt||0}:null,
   kpi:{series,today:completed,yesterday:series[5],avgToday:avgOf(today),avgYesterday:avgOf(today-1),approved:dec.approved||0,decided:(dec.approved||0)+(dec.rejected||0)+(dec.revision||0),top}};
 }
