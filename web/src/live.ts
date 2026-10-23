@@ -1,5 +1,6 @@
 import type {Env} from './util.ts';
 import type {Config} from './settings.ts';
+import {councilPlaces} from './council.ts';
 /** Public inventory only. Never expose jobs, messages, schedules, keys or customer data. */
 export async function liveOverview(env:Env,config:Config){
  const [prompts,solutions,runtime]=await Promise.all([
@@ -13,7 +14,7 @@ export async function liveOverview(env:Env,config:Config){
  };
 }
 
-const publicRoles:Record<string,[string,string]>={editor:['Điều phối','coordinator'],strategy:['Chiến lược','target'],research:['Nghiên cứu','search'],writer:['Biên kịch','pen'],critic:['Phản biện','check'],news:['Săn tin','news'],design:['Thiết kế','design'],marketing:['Marketing','mega'],data:['Dữ liệu','chart']};
+const publicRoles:Record<string,[string,string]>={editor:['FACIUP','coordinator'],hr:['Nhân sự','spark'],accounting:['Kế toán','chart'],strategy:['Chiến lược','target'],research:['Nghiên cứu','search'],writer:['Biên kịch','pen'],critic:['Phản biện','check'],news:['Săn tin','news'],design:['Thiết kế','design'],marketing:['Marketing','mega'],data:['Dữ liệu','chart']};
 const COLORS=['#f97316','#e8336d','#7c3aed','#2563eb','#0d9488','#ea580c','#db2777','#f59e0b','#0891b2','#4f46e5','#16a34a','#9333ea'];
 const defaults=['editor','strategy','research','writer','critic'];
 const DAY=86400000,VN=7*3600000;
@@ -28,8 +29,10 @@ export async function liveRuntime(env:Env,now=Date.now(),config?:Config){
  const row=await env.DB.prepare('SELECT config FROM council_settings WHERE id=1').first<{config:string}>();
  let c:any={enabled:false,agents:defaults.map(id=>({id}))};
  if(row)try{const parsed=JSON.parse(row.config);if(Array.isArray(parsed.agents)&&parsed.agents.length>=2)c=parsed;}catch{}
+ // every agent sits at a desk in a room of the office (rooms and desks are set in Quản trị → Nhóm AI)
+ councilPlaces(c);
  const enabled=c.enabled===true;
- const agents=c.agents.slice(0,12).map((a:any,i:number)=>{const role=publicRoles[a.id];return {id:'agent-'+i,name:a.live?.name||role?.[0]||(i===0?'Điều phối':'Chuyên gia '+i),icon:a.live?.icon||role?.[1]||'spark',
+ const agents=c.agents.slice(0,12).map((a:any,i:number)=>{const role=publicRoles[a.id];return {id:'agent-'+i,seat:Number(a.seat)||0,room:String(a.room||''),name:a.live?.name||role?.[0]||(i===0?'Điều phối':'Chuyên gia '+i),icon:a.live?.icon||role?.[1]||'spark',
   color:a.live?.color||COLORS[i%COLORS.length],state:enabled?'idle':'disabled',completed:0,last:0,hours:[] as number[][],avg:0,since:0,live:false};});
  const today=dayOf(now),start=today*DAY-VN;
  const [jobs,turns,hourly,decided,recentTurns]=await Promise.all([
@@ -85,10 +88,19 @@ export async function liveRuntime(env:Env,now=Date.now(),config?:Config){
    env.DB.prepare(`SELECT CAST(((received_at+${VN})%${DAY})/3600000 AS INTEGER) AS hour,COUNT(*) AS n FROM zalo_messages WHERE received_at>=? GROUP BY hour`).bind(start).all<any>(),
   ]);
   agents.push({id:'zalo',name:'Zalo Bot',icon:'zalo',color:'#0068ff',state:busy?.since?'running':'live24',completed:Number(z?.n)||0,last:Number(z?.last)||0,received:Number(z?.received)||0,replies:Number(z?.replies)||0,
-   hours:zh.results.map((r:any)=>[Number(r.hour),Number(r.n)]),avg:Math.round((Number(z?.avg)||0)/1000),since:Number(busy?.since)||0,live:true});
+   hours:zh.results.map((r:any)=>[Number(r.hour),Number(r.n)]),avg:Math.round((Number(z?.avg)||0)/1000),since:Number(busy?.since)||0,seat:10,room:'admin',live:true});
  }catch{/* Zalo tables not set up yet */}
  const top=agents.filter((a:any)=>a.completed).map((a:any)=>({name:a.name,color:a.color,n:a.completed})).sort((a:any,b:any)=>b.n-a.n).slice(0,4);
+ // the wall board: how far the running session is, today against the last six days, approvals, Zalo
+ // replies, and how much of today's work the admin room did
+ const run=sessions.find(x=>x.state==='running')||sessions[0],runSnap=run?jobs.results.map((j:any)=>{try{return JSON.parse(j.snapshot);}catch{return null;}}):[];
+ const progress=run?(()=>{const snap=runSnap.find((x:any)=>x&&!x.assistant&&Array.isArray(x.agents));const total=snap?(snap.agents.length-1)*(Number(snap.rounds)||1)+1:run.members.length+1;return Math.min(100,Math.round(run.step/Math.max(1,total)*100));})():0;
+ const week=series.slice(0,6).reduce((a,b)=>a+b,0)/6,za=agents.find((a:any)=>a.id==='zalo') as any;
+ const adminTurns=turns.results.filter((t:any)=>Number(t.day)===today&&c.agents.find((a:any)=>a.id===t.agent_id)?.room==='admin').reduce((n:number,t:any)=>n+Number(t.n),0);
+ const board={progress,efficiency:week?Math.min(100,Math.round(completed/week*100)):completed?100:0,quality:(dec.approved||0)+(dec.rejected||0)+(dec.revision||0)?Math.round((dec.approved||0)/((dec.approved||0)+(dec.rejected||0)+(dec.revision||0))*100):0,
+  support:za?.received?Math.min(100,Math.round(za.replies/za.received*100)):0,internal:completed?Math.round(adminTurns/completed*100):0};
+ const rooms=(c.rooms||[]).map((r:any)=>({id:r.id,name:String(r.name||'')}));
  const handovers=recentTurns.results.map((t:any)=>({agent:c.agents.findIndex((a:any)=>a.id===t.agent_id),at:Number(t.created_at)})).filter((x:any)=>x.agent>=0&&x.agent<12);
- return {enabled,sessions:enabled?sessions.slice(0,6):[],handovers,agents,running:enabled?running:0,queued,review,paused,completed,lastActivity,polledAt:now,next:enabled&&nextAgent!==null?{agent:nextAgent,at:nextAt||0}:null,
+ return {enabled,rooms,board,sessions:enabled?sessions.slice(0,6):[],handovers,agents,running:enabled?running:0,queued,review,paused,completed,lastActivity,polledAt:now,next:enabled&&nextAgent!==null?{agent:nextAgent,at:nextAt||0}:null,
   kpi:{series,today:completed,yesterday:series[5],avgToday:avgOf(today),avgYesterday:avgOf(today-1),approved:dec.approved||0,decided:(dec.approved||0)+(dec.rejected||0)+(dec.revision||0),top}};
 }

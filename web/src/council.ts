@@ -5,12 +5,14 @@ import type { User } from './auth.ts';
 import { councilWorkflow, councilWorkflowText } from './council-workflow.ts';
 import { councilInvocation } from './council-invocation.ts';
 import { councilQuality } from './council-quality.ts';
-import { councilGenerate, councilRoute, councilRouting, councilFailure, FREE_GEMINI, type CouncilAgent, type CouncilModel } from './council-ai.ts';
+import { councilGenerate, councilRoute, councilRouting, councilFailure, FREE_GEMINI, type CouncilAgent, type CouncilModel, type CouncilRoom } from './council-ai.ts';
 import { councilPlain, councilTitle, titleText, councilState, councilMenu, councilButtons, councilTelegramFormat } from './council-present.ts';
 
 interface CouncilConfig {
   enabled: boolean; freeOnly: boolean; freeConfirmed: boolean; dailyCalls: number; rounds: number;
   brand: string; agents: CouncilAgent[];
+  /** office rooms; the session runs agents[0] as lead, then every member that joins, in list order */
+  rooms?: CouncilRoom[]; review?: boolean;
   assistant?: boolean; proposedBrief?: string; workflowCard?: boolean;
 }
 const ROLES = [
@@ -19,12 +21,37 @@ const ROLES = [
   ['research','Nghiên cứu','Đánh giá dữ kiện được cung cấp. Không có công cụ duyệt web: không tự nhận đã tra cứu, không bịa nguồn. Ghi rõ dữ kiện cần kiểm chứng.'],
   ['writer','Biên kịch','Viết nội dung và kịch bản có hook, CTA, điều chỉnh theo từng kênh. Sửa theo phản biện có lý do.'],
   ['critic','Phản biện','Chỉ ra điểm yếu về chính xác, hấp dẫn, giọng thương hiệu và phù hợp kênh. Đề xuất cách sửa cụ thể.'],
+  ['news','Săn tin','Săn tin và xu hướng từ dữ kiện được cung cấp: chọn tin đáng làm nội dung, nêu góc khai thác, độ nóng và điểm cần kiểm chứng. Không tự nhận đã tra cứu web, không bịa nguồn.'],
+  ['design','Thiết kế','Đề xuất hình ảnh cho nội dung: bố cục, màu, phong cách, ý tưởng thumbnail và mô tả ảnh cho từng cảnh/kênh; giữ đúng nhận diện thương hiệu.'],
+  ['hr','Nhân sự','Hỗ trợ nội bộ: phân công, lịch làm việc, quy trình và đào tạo cho đội ngũ. Chỉ làm khi được giao việc riêng.'],
+  ['accounting','Kế toán','Hỗ trợ nội bộ: chi phí, ngân sách, đối soát và báo cáo số liệu. Chỉ làm khi được giao việc riêng.'],
 ];
+export const ROOMS:CouncilRoom[]=[{id:'exec',name:'Phòng Điều hành',joins:true},{id:'ops',name:'Phòng Vận hành',joins:true},{id:'admin',name:'Phòng Hành chính',joins:false}];
+// where each default role sits in the office (desk 10 is the Zalo Bot, which is not part of the council)
+const PLACES:Record<string,[string,number]>={editor:['exec',1],strategy:['exec',2],research:['ops',3],news:['ops',4],writer:['ops',5],design:['ops',6],critic:['ops',7],hr:['admin',8],accounting:['admin',9]};
+const ORDER=['editor','strategy','research','news','writer','design','critic','hr','accounting'];
 export const MAX_AGENTS=12;
 /** icons the Faciup Live page can draw for an agent */
 export const LIVE_ICONS=['target','search','pen','check','mega','chart','news','design','video','spark','zalo','coordinator'];
 export const councilDefaults = ():CouncilConfig => ({enabled:false,freeOnly:true,freeConfirmed:false,dailyCalls:20,rounds:1,brand:'',
-  agents:ROLES.map(([id,name,prompt])=>({id,name,prompt,routing:'global',models:FREE_GEMINI.map(model=>({provider:'gemini' as const,model}))}))});
+  review:true,rooms:ROOMS.map(r=>({...r})),
+  agents:ORDER.map(id=>ROLES.find(r=>r[0]===id)!).map(([id,name,prompt])=>({id,name,prompt,routing:'global' as const,room:PLACES[id][0],seat:PLACES[id][1],...(id==='editor'?{live:{name:'FACIUP'}}:{}),
+    models:FREE_GEMINI.map(model=>({provider:'gemini' as const,model}))}))});
+/** who takes turns in a content session: the lead first, then members of joining rooms who join, in list order */
+export function councilTeam(c:{agents:CouncilAgent[];rooms?:CouncilRoom[]}){
+  const rooms=new Map((c.rooms||ROOMS).map(r=>[r.id,r]));
+  return [c.agents[0],...c.agents.slice(1).filter(a=>a.joins!==false&&rooms.get(a.room||'ops')?.joins!==false)];
+}
+/** fill rooms and seats an older config never had, so the office shows every agent at a desk */
+export function councilPlaces<T extends {agents:CouncilAgent[];rooms?:CouncilRoom[]}>(c:T):T{
+  const used=new Set(c.agents.map(a=>a.seat).filter(Boolean));
+  for(const [i,a] of c.agents.entries()){
+    const p=PLACES[a.id];a.room||=p?.[0]||(i===0?'exec':'ops');
+    if(!a.seat){let s=p&&!used.has(p[1])?p[1]:0;for(let k=1;!s&&k<=9;k++)if(!used.has(k))s=k;if(s){a.seat=s;used.add(s);}}
+  }
+  c.rooms=ROOMS.map(r=>({...r,...(c.rooms||[]).find(x=>x.id===r.id)}));
+  return c;
+}
 const text = (x:unknown,max:number) => typeof x==='string'?x.trim().slice(0,max):'';
 export function cleanCouncil(input:any):CouncilConfig {
   const base=councilDefaults();
@@ -41,15 +68,18 @@ export function cleanCouncil(input:any):CouncilConfig {
     });
     if(a.routing!==undefined&&!['global','custom'].includes(a.routing))throw new HttpError(400,'Cách chọn mô hình không hợp lệ.');
     const look=a.live&&typeof a.live==='object'?{name:text(a.live.name,40)||undefined,color:/^#[0-9a-f]{6}$/i.test(a.live.color||'')?a.live.color:undefined,icon:LIVE_ICONS.includes(a.live.icon)?a.live.icon:undefined}:undefined;
-    return {id,name,prompt,models,routing:councilRouting(a),...(look&&(look.name||look.color||look.icon)?{live:look}:{})};
+    const room=['exec','ops','admin'].includes(a.room)?a.room:undefined,seat=Number.isInteger(a.seat)&&a.seat>=1&&a.seat<=9?a.seat:undefined;
+    return {id,name,prompt,models,routing:councilRouting(a),...(look&&(look.name||look.color||look.icon)?{live:look}:{}),...(room?{room}:{}),...(seat?{seat}:{}),...(a.joins===false?{joins:false}:{})};
   });
+  const rooms=ROOMS.map(r=>{const x=Array.isArray(input.rooms)?input.rooms.find((y:any)=>y?.id===r.id):null;return {id:r.id,name:text(x?.name,40)||r.name,joins:typeof x?.joins==='boolean'?x.joins:r.joins};});
+  if(councilTeam({agents,rooms}).length<2)throw new HttpError(400,'Cần ít nhất một thành viên tham gia phiên làm nội dung ngoài trợ lý dẫn dắt.');
   return {enabled:input.enabled===true,freeOnly:input.freeOnly!==false,freeConfirmed:input.freeConfirmed===true,
     dailyCalls:Math.min(100,Math.max(1,Math.floor(Number(input.dailyCalls)||base.dailyCalls))),
-    rounds:Math.min(3,Math.max(1,Math.floor(Number(input.rounds)||1))),brand:text(input.brand,12000),agents};
+    rounds:Math.min(3,Math.max(1,Math.floor(Number(input.rounds)||1))),brand:text(input.brand,12000),review:input.review!==false,rooms,agents};
 }
 async function config(env:Env):Promise<CouncilConfig>{
   const row=await env.DB.prepare('SELECT config FROM council_settings WHERE id=1').first<any>();
-  return row?cleanCouncil(JSON.parse(row.config)):councilDefaults();
+  return councilPlaces(row?cleanCouncil(JSON.parse(row.config)):councilDefaults());
 }
 async function secret(env:Env,key:string){
   const row=await env.DB.prepare('SELECT value FROM council_secrets WHERE key=?').bind(key).first<any>();
@@ -180,12 +210,13 @@ async function createJob(env:XEnv,userId:string,brief:string,chat='',source:stri
   const c=await config(env);
   if(!c.enabled)throw new HttpError(409,'Nhóm AI đang tắt.');
   if(!brief.trim()||brief.length>8000)throw new HttpError(400,'Nhập brief từ 1 đến 8.000 ký tự.');
-  for(const agent of assistant?c.agents.slice(0,1):c.agents){
+  const team=councilTeam(c);
+  for(const agent of assistant?c.agents.slice(0,1):team){
     const route=councilRoute(env,agent,c.freeOnly,c.freeConfirmed);
     if(!route.plan.length)throw new HttpError(409,agent.name+': chưa có mô hình sẵn sàng. '+[...new Set(route.skipped.map(x=>x.reason))].join(' '));
   }
   const id=randomId(12),now=Date.now();
-  const sessionTitle=titleText(name||brief),snapshot={...c,sessionTitle,assistant,workflowCard:true};
+  const sessionTitle=titleText(name||brief),snapshot={...c,agents:assistant?c.agents:team,sessionTitle,assistant,workflowCard:true};
   const parts=chat?[councilWorkflowText({snapshot,brief,step:0,status:'queued',error:'',next_at:0})]:[];
   const results=await env.DB.batch([env.DB.prepare(`INSERT OR IGNORE INTO council_jobs(id,user_id,brief,snapshot,status,chat_id,source,parent,created_at,updated_at)
     SELECT ?,?,?,?,'queued',?,?,?,?,? WHERE (SELECT COUNT(*) FROM council_jobs WHERE status IN ('queued','running','delegating'))<3
@@ -661,7 +692,7 @@ export async function tickCouncil(env:XEnv){
           SELECT ?,?,?,?,?,?,0 WHERE EXISTS(SELECT 1 FROM council_jobs WHERE id=? AND lease=? AND status='running')`)
           .bind(`${job.id}:${job.step}:${i}`,job.id,job.chat_id,agent.id,part,job.step>=last&&i===parts.length-1?1:0,job.id,lease)),
         env.DB.prepare("UPDATE council_jobs SET step=step+1,attempt=0,status=?,snapshot=CASE WHEN ? IS NULL THEN snapshot ELSE json_set(snapshot,'$.proposedBrief',?) END,error='',lease='',lease_until=0,updated_at=? WHERE id=? AND lease=? AND status='running'")
-          .bind(coordinated?(coordinated.action==='delegate'?'delegating':'answered'):job.step>=last?'pending':'queued',
+          .bind(coordinated?(coordinated.action==='delegate'?'delegating':'answered'):job.step>=last?(snapshot.review===false?'approved':'pending'):'queued',
             coordinated?.brief??null,coordinated?.brief??null,Date.now(),job.id,lease),
       ]);
       await syncWorkflowCard(env,c,job.id).catch(()=>{});

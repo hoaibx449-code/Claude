@@ -4,7 +4,11 @@ export type CouncilProvider = 'gemini' | 'ollama' | 'openai';
 export interface CouncilModel { provider: CouncilProvider; model: string }
 /** How an agent appears on the public Faciup Live page (never its prompt or models). */
 export interface CouncilLook { name?: string; color?: string; icon?: string }
-export interface CouncilAgent { id: string; name: string; prompt: string; models: CouncilModel[]; routing?: 'global' | 'custom'; live?: CouncilLook }
+export interface CouncilAgent { id: string; name: string; prompt: string; models: CouncilModel[]; routing?: 'global' | 'custom'; live?: CouncilLook;
+  /** office room, desk number on Faciup Live (1–10) and whether it takes turns in a content session */
+  room?: string; seat?: number; joins?: boolean }
+/** a room of the office: its sign on Faciup Live and whether its members take part in content sessions */
+export interface CouncilRoom { id: string; name: string; joins: boolean }
 // Explicit free-tier catalogue checked 2026-10-21. Billing status belongs to the account,
 // not to the model ID: cloud use additionally requires the admin's free-account confirmation.
 export const FREE_GEMINI = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite'];

@@ -4,7 +4,8 @@ import {councilDefaults} from '../web/src/council.ts';
 import {councilWorkflow,councilWorkflowText} from '../web/src/council-workflow.ts';
 
 test('workflow follows frozen roles, rounds, approval and explicit human action',()=>{
-  const snapshot={...councilDefaults(),rounds:2,sessionTitle:'Lịch sử thế giới'};
+  // a frozen session snapshot: the lead and four experts, as a session started with that team stores it
+  const snapshot={...councilDefaults(),agents:councilDefaults().agents.filter(a=>['editor','strategy','research','writer','critic'].includes(a.id)),rounds:2,sessionTitle:'Lịch sử thế giới'};
   const job={snapshot,brief:'Lập kế hoạch 7 ngày',step:3,status:'running',lease_until:2000,next_at:0,error:''};
   const w=councilWorkflow(job,1000);
   assert.equal(w.total,9);assert.equal(w.completed,3);
