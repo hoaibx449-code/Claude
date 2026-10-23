@@ -756,7 +756,7 @@ function budgetCard(c) {
 function contentTab(c) {
   const LABEL_GROUPS = [['adminMenu','Menu quản trị']];
   // menus: one list for every place a page link appears (header, side bar, phone tab bar, footer)
-  const MENU_KEYS = ['home', 'tao', 'mau', 'cong-dong', 'kham-pha', 'faciup-live', 'prompt-hunter', 'video', 'goi', 'tro-giup'];
+  const MENU_KEYS = ['home', 'gioi-thieu', 'tao', 'mau', 'cong-dong', 'kham-pha', 'prompt-hunter', 'video', 'goi', 'tro-giup'];
   c.site.menu ||= { hidden: [], order: [] }; c.labels.navigation ||= {};
   const menuOrder = () => [...c.site.menu.order.filter((k) => MENU_KEYS.includes(k)), ...MENU_KEYS.filter((k) => !c.site.menu.order.includes(k))];
   const menuList = h('ol', { class: 'menu-edit' });

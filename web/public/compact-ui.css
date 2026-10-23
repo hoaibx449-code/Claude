@@ -190,3 +190,5 @@ main.wrap .home-minimal h1 { font-size: clamp(1.8rem, 3.1vw, 2.8rem); font-weigh
 .creative-hints{gap:8px;flex-wrap:wrap;margin:12px 0}.creative-plan{margin-bottom:12px;padding:16px}.creative-plan>summary{font-weight:700;cursor:pointer}.creative-plan .description{text-align:justify;font-size:14px;line-height:1.65}.creative-plan textarea{width:100%;min-height:90px}.creative-plan label{display:block;margin:12px 0}.creative-plan details{margin:10px 0}.creative-plan .row{flex-wrap:wrap}
 
 .pcol>.creative-plan{flex:0 0 auto;max-height:30vh;overflow:auto}@media(max-width:1099px){.pcol>.creative-plan{max-height:none}}
+/* the create page switched off in Menu & trang: every button into it goes too */
+body.no-create #createBtn, body.no-create a[href="/tao"], body.no-create a[href="#/tao"], body.no-create [data-ev$="-create"], body.no-create [data-ev="try-create"], body.no-create [data-ev="create"] { display: none !important; }

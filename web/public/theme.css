@@ -315,3 +315,45 @@ button.iconbtn:hover, button.iconbtn[aria-expanded="true"] { background: var(--b
 /* Faciup Live uses the full width of the page */
 body[data-page="faciup-live"] main.wrap { max-width: none !important; padding-top: 6px !important; padding-bottom: 8px !important; }
 @media (min-width: 1024px) { body[data-page="faciup-live"] main.wrap { margin-left: var(--side, 240px) !important; margin-right: 0 !important; width: auto; padding-left: 24px; padding-right: 24px; } }
+/* loading: a small AI network, signals running out from a glowing core to six nodes */
+.loader svg.net { width: 112px; height: 112px; overflow: visible; }
+.net-halo { fill: none; stroke: url(#netg); stroke-width: 1; opacity: .25; stroke-dasharray: 3 6; transform-origin: 60px 60px; animation: net-turn 9s linear infinite; }
+.net-ring { stroke: #c4b5fd; stroke-width: 1.2; opacity: .55; }
+.net-link { stroke: #c4b5fd; stroke-width: 1.6; opacity: .7; }
+.net-pulse { stroke: url(#netg); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 8 60; stroke-dashoffset: 8; animation: net-pulse 1.5s ease-in infinite; filter: drop-shadow(0 0 3px #c026d3); }
+.net-node { fill: #fff; stroke: url(#netg); stroke-width: 2.5; transform-box: fill-box; transform-origin: center; animation: net-node 1.5s ease-out infinite; }
+.net-core-glow { fill: #c026d3; opacity: .3; transform-origin: 60px 60px; animation: net-breathe 1.5s ease-in-out infinite; filter: blur(4px); }
+.net-core { fill: url(#netg); }
+.net .d1 { animation-delay: .25s; } .net .d2 { animation-delay: .5s; } .net .d3 { animation-delay: .75s; } .net .d4 { animation-delay: 1s; } .net .d5 { animation-delay: 1.25s; }
+@keyframes net-turn { to { transform: rotate(360deg); } }
+@keyframes net-pulse { to { stroke-dashoffset: -52; } }
+@keyframes net-node { 0%, 55% { transform: scale(1); fill: #fff; } 70% { transform: scale(1.35); fill: #fde68a; } 100% { transform: scale(1); fill: #fff; } }
+@keyframes net-breathe { 50% { transform: scale(1.45); opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .loader svg.net * { animation: none !important; } }
+
+/* page headings: a soft band with a glowing round icon, the title in the brand gradient (the largest type
+   on the page), the description under it, a faint tech grid behind and a thin light line along the bottom */
+.pagehead { position: relative; overflow: hidden; padding: 18px 22px 18px; border-radius: 20px; border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 7%, transparent) 1px, transparent 1px) 0 0/26px 26px,
+              linear-gradient(color-mix(in srgb, var(--accent) 7%, transparent) 1px, transparent 1px) 0 0/26px 26px,
+              linear-gradient(120deg, color-mix(in srgb, #8b5cf6 10%, var(--card, #fff)), color-mix(in srgb, #f97316 8%, var(--card, #fff)));
+  box-shadow: 0 16px 34px -28px rgba(124, 58, 237, .6); }
+.pagehead::after { content: ''; position: absolute; left: 22px; right: 22px; bottom: 0; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, #a855f7, #f97316, transparent); opacity: .8; }
+.pagehead h1 { margin: 0; font-size: clamp(1.7rem, 1.25rem + 1.4vw, 2.3rem); font-weight: 800; letter-spacing: -.02em; line-height: 1.15; background: linear-gradient(90deg, #7c3aed, #c026d3 50%, #f97316); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.pagehead p { font-size: .95rem; color: var(--muted); }
+.pagehead > div:first-child { position: relative; padding-left: 62px; min-height: 48px; display: flex; flex-direction: column; justify-content: center; }
+.pagehead > div:first-child::before { content: ''; position: absolute; left: 0; top: 50%; translate: 0 -50%; width: 48px; height: 48px; border-radius: 50%; background: radial-gradient(circle at 30% 25%, #c084fc, #7c3aed 55%, #c026d3); box-shadow: 0 0 0 4px rgba(168, 85, 247, .15), 0 10px 22px -8px rgba(192, 38, 211, .8); }
+.pagehead > div:first-child::after { content: ''; position: absolute; left: 13px; top: 50%; translate: 0 -50%; width: 22px; height: 22px; background: #fff; -webkit-mask: var(--ph-icon) center/contain no-repeat; mask: var(--ph-icon) center/contain no-repeat; }
+.pagehead.center > div:first-child { padding-left: 0; padding-top: 58px; align-items: center; }
+.pagehead.center > div:first-child::before { left: 50%; top: 0; translate: -50% 0; }
+.pagehead.center > div:first-child::after { left: 50%; top: 13px; translate: -50% 0; }
+body { --ph-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%223%22%2F%3E%3Cpath%20d%3D%22M12%203v3M12%2018v3M3%2012h3M18%2012h3M5.6%205.6l2.1%202.1M16.3%2016.3l2.1%202.1M5.6%2018.4l2.1-2.1M16.3%207.7l2.1-2.1%22%2F%3E%3C%2Fsvg%3E"); }
+@media (max-width: 700px) { .pagehead { padding: 14px 14px 15px; border-radius: 16px; } .pagehead::after { left: 14px; right: 14px; } .pagehead > div:first-child { padding-left: 52px; } .pagehead > div:first-child::before { width: 40px; height: 40px; } .pagehead > div:first-child::after { left: 10px; width: 20px; height: 20px; } .pagehead h1 { font-size: 1.55rem; } }
+body[data-page="video"] { --ph-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%223%22%20y%3D%225%22%20width%3D%2218%22%20height%3D%2214%22%20rx%3D%223%22%2F%3E%3Cpath%20d%3D%22M10%209l5%203-5%203z%22%2F%3E%3C%2Fsvg%3E"); }
+body[data-page="cong-dong"] { --ph-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%229%22%20cy%3D%228%22%20r%3D%223%22%2F%3E%3Ccircle%20cx%3D%2217%22%20cy%3D%229%22%20r%3D%222.5%22%2F%3E%3Cpath%20d%3D%22M3%2019c.6-3.4%203-5%206-5s5.4%201.6%206%205M15%2014.5c2.6-.3%204.6%201.1%205%204%22%2F%3E%3C%2Fsvg%3E"); }
+body[data-page="mau"] { --ph-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%203l2.4%205.2%205.6.6-4.2%203.8%201.2%205.6L12%2015.4%207%2018.2l1.2-5.6L4%208.8l5.6-.6z%22%2F%3E%3C%2Fsvg%3E"); }
+body[data-page="tao"] { --ph-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%223%22%20y%3D%223%22%20width%3D%2218%22%20height%3D%2218%22%20rx%3D%225%22%2F%3E%3Cpath%20d%3D%22M12%208v8M8%2012h8%22%2F%3E%3C%2Fsvg%3E"); }
+body[data-page="tai-khoan"] { --ph-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%228%22%20r%3D%224%22%2F%3E%3Cpath%20d%3D%22M4%2020c1-4%204-6%208-6s7%202%208%206%22%2F%3E%3C%2Fsvg%3E"); }
+body[data-page="goi"] { --ph-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%207h18v12H3zM3%2011h18M7%2015h4%22%2F%3E%3C%2Fsvg%3E"); }
+body[data-page="tro-giup"] { --ph-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%229%22%2F%3E%3Cpath%20d%3D%22M9.5%209.5a2.6%202.6%200%200%201%205%20.9c0%201.7-2.5%202.1-2.5%203.6M12%2017v.01%22%2F%3E%3C%2Fsvg%3E"); }
+body[data-page="zalo"] { --ph-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M4%205h16v11H9l-5%204z%22%2F%3E%3Cpath%20d%3D%22M8.5%208.5h4l-4%205h4M15%208.5v5%22%2F%3E%3C%2Fsvg%3E"); }

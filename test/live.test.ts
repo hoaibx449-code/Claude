@@ -11,7 +11,7 @@ test('Faciup Live reports only published counts and public feature flags',async(
   assert.equal(result.counts.prompts,1);assert.equal(result.counts.solutions,1);assert.equal(result.features.zalo,false);assert.equal(result.features.assistant,true);
   assert.deepEqual(Object.keys(result).sort(),['counts','features','runtime','timezone','updatedAt']);assert.doesNotMatch(JSON.stringify(result),/secret|private|token|chat|user/);
   assert.ok(pageSitemap('https://test').includes('/faciup-live'));assert.equal(pageMetadata('/faciup-live','FACIUP','https://test').noindex,false);
-  config.labels.navigation['faciup-live']='Vận hành AI';assert.match(publicNavigation(config),/Vận hành AI/);
+  config.labels.navigation['gioi-thieu']='Vận hành AI';assert.match(publicNavigation(config),/Vận hành AI/);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
 

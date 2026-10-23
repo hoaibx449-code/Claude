@@ -3,7 +3,8 @@ import type {Config} from './settings.ts';
 import type {Env} from './util.ts';
 /** Public page addresses are shared by metadata and the sitemap. */
 export const PUBLIC_PAGES: Record<string, [string,string]> = {
- '/':['Trang chủ','Tạo video, tìm prompt và khám phá giải pháp AI phục vụ công việc.'],
+ '/':['Faciup Live','Văn phòng vận hành của đội AI: theo dõi các agent nhận việc, bàn giao và hoàn thành theo thời gian thực.'],
+ '/gioi-thieu':['Giới thiệu','Tạo video, tìm prompt và khám phá giải pháp AI phục vụ công việc.'],
  '/faciup-live':['Faciup Live','Theo dõi đội tác nhân AI xử lý nhiệm vụ, chuyển lượt và chờ duyệt trong hệ thống FACIUP.'],
  '/prompt-hunter':['Prompt Hunter','Khám phá và chia sẻ prompt AI đã được kiểm duyệt trong cộng đồng.'],
  '/cong-dong':['Cộng đồng','Khám phá các video được cộng đồng chia sẻ công khai.'],
@@ -43,13 +44,13 @@ export async function initialPageContent(path:string,config:Config,env:Env) {
   body+=results.map(p=>'<article><h2>'+escape(p.title)+'</h2><p>'+escape(p.description||'')+'</p></article>').join('');
  }
  // the readable text is for search engines and no-script readers; people see the loader until the app paints
- return '<div class="loader" role="status" aria-label="Đang tải"><svg viewBox="0 0 120 60" aria-hidden="true"><path class="ink" d="M8 40 C 22 10, 38 10, 46 34 S 70 58, 82 30 S 104 8, 112 26"/></svg><span>Đang tải…</span></div><section class="doc card" data-server-content>'+body+'<nav aria-label="Khám phá website"><a href="/kham-pha">Khám phá giải pháp</a> · <a href="/prompt-hunter">Prompt Hunter</a> · <a href="/tro-giup">Trợ giúp</a></nav></section>';
+ return '<div class="loader" role="status" aria-label="Đang tải"><svg class="net" viewBox="0 0 120 120" aria-hidden="true"><defs><linearGradient id="netg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c3aed"/><stop offset=".55" stop-color="#c026d3"/><stop offset="1" stop-color="#f97316"/></linearGradient></defs><circle class="net-halo" cx="60" cy="60" r="54"/><path class="net-ring" d="M60.0 20.0L94.6 40.0"/><path class="net-ring" d="M94.6 40.0L94.6 80.0"/><path class="net-ring" d="M94.6 80.0L60.0 100.0"/><path class="net-ring" d="M60.0 100.0L25.4 80.0"/><path class="net-ring" d="M25.4 80.0L25.4 40.0"/><path class="net-ring" d="M25.4 40.0L60.0 20.0"/><path class="net-link" d="M60 60L60.0 20.0"/><path class="net-link" d="M60 60L94.6 40.0"/><path class="net-link" d="M60 60L94.6 80.0"/><path class="net-link" d="M60 60L60.0 100.0"/><path class="net-link" d="M60 60L25.4 80.0"/><path class="net-link" d="M60 60L25.4 40.0"/><path class="net-pulse d0" d="M60 60L60.0 20.0"/><path class="net-pulse d1" d="M60 60L94.6 40.0"/><path class="net-pulse d2" d="M60 60L94.6 80.0"/><path class="net-pulse d3" d="M60 60L60.0 100.0"/><path class="net-pulse d4" d="M60 60L25.4 80.0"/><path class="net-pulse d5" d="M60 60L25.4 40.0"/><circle class="net-node d0" cx="60.0" cy="20.0" r="5"/><circle class="net-node d1" cx="94.6" cy="40.0" r="5"/><circle class="net-node d2" cx="94.6" cy="80.0" r="5"/><circle class="net-node d3" cx="60.0" cy="100.0" r="5"/><circle class="net-node d4" cx="25.4" cy="80.0" r="5"/><circle class="net-node d5" cx="25.4" cy="40.0" r="5"/><circle class="net-core-glow" cx="60" cy="60" r="16"/><circle class="net-core" cx="60" cy="60" r="11"/></svg><span>Đang tải…</span></div><section class="doc card" data-server-content>'+body+'<nav aria-label="Khám phá website"><a href="/kham-pha">Khám phá giải pháp</a> · <a href="/prompt-hunter">Prompt Hunter</a> · <a href="/tro-giup">Trợ giúp</a></nav></section>';
 }
 
 export const PRIMARY_NAVIGATION = [
  ['home','Trang chủ','/'],['mau','Gợi ý sáng tạo','/mau'],['cong-dong','Cộng đồng','/cong-dong'],
  ['kham-pha','Khám phá','/kham-pha'],['prompt-hunter','Prompt Hunter','/prompt-hunter'],
- ['faciup-live','Faciup Live','/faciup-live'],
+ ['gioi-thieu','Giới thiệu','/gioi-thieu'],
  ['goi','Bảng giá','/goi'],['video','Video của tôi','/video'],
 ] as const;
 export function publicNavigation(config:Config,active='') {

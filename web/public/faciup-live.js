@@ -116,7 +116,7 @@ export function showLive({h,show,api,openLogin,zaloLink}){
   chatMessages.replaceChildren(...items.map(m=>{const e=h('div',{class:'fl-message '+(m.role==='user'?'me':'bot')},h('span',{},m.text));if(m.role!=='user'){const i=h('i',{class:'fl-zalo-avatar'});i.innerHTML=ZALO;e.prepend(i);}return e;}));
   if(personal&&!items.length)chatMessages.append(h('p',{class:'fl-empty'},personal.linked?'Chưa có tin nhắn sau khi liên kết.':'Liên kết Zalo đã xác minh để xem hội thoại của bạn.'));
   if(personal&&!personal.linked)chatMessages.append(h('a',{href:'/zalo'},'Liên kết Zalo'));
-  if(!personal)chatMessages.append(h('button',{type:'button',class:'fl-login',onclick:()=>openLogin?.('route',{hash:'/faciup-live'})},'Đăng nhập để trò chuyện'));
+  if(!personal)chatMessages.append(h('button',{type:'button',class:'fl-login',onclick:()=>openLogin?.('route',{hash:'/'})},'Đăng nhập để trò chuyện'));
   chatStatus.textContent=personal?.processing?'Đang xử lý tin nhắn Zalo…':personal?'Hội thoại riêng · Sẵn sàng hỗ trợ':'Lời giới thiệu tự động';
   chatMessages.scrollTop=chatMessages.scrollHeight;
   const last=items.at(-1),sig=last?last.role+':'+last.text:'';

@@ -189,7 +189,7 @@ const myVideos = () => (menuShows('video') ? '#/video' : '#/');
 function applyMenu() {
   for (const a of document.querySelectorAll('[data-route]')) { const r = a.dataset.route; if (r === 'admin' || r === 'tai-khoan') continue; a.hidden = !menuShows(r); }
   // the phone tab bar has little room: short names there
-  const SHORT = { home: 'Trang chủ', 'cong-dong': 'Cộng đồng', 'faciup-live': 'Live', tao: 'Tạo', video: 'Video', 'kham-pha': 'Khám phá', 'prompt-hunter': 'Prompt' };
+  const SHORT = { home: 'Trang chủ', 'cong-dong': 'Cộng đồng', 'gioi-thieu': 'Giới thiệu', tao: 'Tạo', video: 'Video', 'kham-pha': 'Khám phá', 'prompt-hunter': 'Prompt' };
   for (const a of document.querySelectorAll('#tabbar a[data-route]')) { const name = SHORT[a.dataset.route]; if (!name) continue; [...a.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).forEach((n) => n.remove()); let l = a.querySelector('.nav-label'); if (!l) { l = h('span', { class: 'nav-label' }); a.append(l); } l.textContent = name; }
   const order = ui.site?.menu?.order || []; if (!order.length) return;
   for (const nav of document.querySelectorAll('#nav, .sidenav:not(.bottom)')) {
@@ -216,7 +216,7 @@ function applyUI(next) {
   for (const el of document.querySelectorAll('.brand .logo')) paintLogo(el, ui.site?.logo, ui.brand.name);
   logoFavicon(ui.site?.logo, ui.brand.name);
   document.documentElement.dataset.theme = ui.site?.theme || 'aurora';
-  const loading=document.getElementById('loadingText');if(loading)loading.textContent=ui.site?.loadingText||'Đang mở xưởng vẽ…';
+  const loading=document.getElementById('loadingText');if(loading)loading.textContent=ui.site?.loadingText||'Đang kết nối đội AI…';
   window.nvHelpChat?.();
   for(const bb of document.querySelectorAll('[data-beta]')){bb.hidden=!ui.beta;bb.textContent=ui.beta?.label||'Beta';bb.title=ui.beta?.note||'Phiên bản thử nghiệm';}
 }
@@ -349,6 +349,8 @@ async function boot() {
   if (me) { let after = null; try { after = JSON.parse(sessionStorage.getItem('nv_after') || 'null'); sessionStorage.removeItem('nv_after'); } catch {} if (after) resume(after); }
 }
 function paintHeader() {
+  // with the create page switched off, every way into it goes too (header button, hero, templates)
+  document.body.classList.toggle('no-create', !menuShows('tao'));
   const acc = document.getElementById('account');
   document.getElementById('loginBtn').hidden = !!me;
   acc.hidden = !me;
@@ -357,7 +359,7 @@ function paintHeader() {
   if (me) loadNotes();
   // a page switched off in Menu & trang is off everywhere: its address leads home (admins can still open it)
   const pageKey = (location.hash.startsWith('#/') ? location.hash.slice(2) : location.pathname.slice(1)).split(/[/?#]/)[0];
-  if (pageKey && !me?.admin && ui?.site && ['tao', 'mau', 'cong-dong', 'kham-pha', 'faciup-live', 'prompt-hunter', 'video', 'goi', 'tro-giup'].includes(pageKey) && !menuShows(pageKey)) { routing(false); navigate('#/'); return; }
+  if (pageKey && !me?.admin && ui?.site && ['gioi-thieu', 'tao', 'mau', 'cong-dong', 'kham-pha', 'prompt-hunter', 'video', 'goi', 'tro-giup'].includes(pageKey) && !menuShows(pageKey)) { routing(false); navigate('#/'); return; }
   document.getElementById('sideAdmin').hidden = !me?.admin;
   closeMenu();
 }
@@ -454,7 +456,7 @@ async function showHelp() {
 function markNav(name) {
   for (const a of document.querySelectorAll('[data-route]')) a.classList.toggle('on', a.dataset.route === name);
 }
-const PUBLIC = { '#/faciup-live':1, '#/prompt-hunter':1, '#/tro-giup': 1, '': 1, '#/': 1, '#/mau': 1, '#/goi': 1, '#/tao': 1, '#/thu': 1, '#/dieu-khoan': 1, '#/bao-mat': 1, '#/hoan-tien': 1, '#/cong-dong': 1, '#/dang-nhap-loi': 1 };
+const PUBLIC = { '#/faciup-live':1, '#/gioi-thieu':1, '#/prompt-hunter':1, '#/tro-giup': 1, '': 1, '#/': 1, '#/mau': 1, '#/goi': 1, '#/tao': 1, '#/thu': 1, '#/dieu-khoan': 1, '#/bao-mat': 1, '#/hoan-tien': 1, '#/cong-dong': 1, '#/dang-nhap-loi': 1 };
 let stopHomeGallery = null,stopVideoLibrary=null,stopLive=null;
 let solutionNavigation = 0;
 async function showSolutionPage() {
@@ -498,9 +500,11 @@ function route() {
   document.querySelectorAll('script[data-solution-schema]').forEach(n=>n.remove());
   const hash = currentRoute().split('?')[0];
   const m = hash.match(/^#\/p\/([a-f0-9]{24})$/), w = hash.match(/^#\/xem\/([a-f0-9]{24})\/([a-f0-9]{24})$/);
-  markNav(hash === '#/' || hash === '' ? 'home' : w ? 'video' : m ? 'tao' : hash.startsWith('#/admin') ? 'admin' : hash.slice(2));
+  // Faciup Live is the home page; the old home lives on as Giới thiệu, with the wide top bar
+  if (hash === '#/faciup-live') history.replaceState(history.state, '', '/');
+  markNav(hash === '#/' || hash === '' || hash === '#/faciup-live' ? 'home' : w ? 'video' : m ? 'tao' : hash.startsWith('#/admin') ? 'admin' : hash.slice(2));
   // app pages have the side bar (desktop); the home page keeps the wide top bar
-  document.body.dataset.page = hash === '#/' || hash === '' ? 'home' : m ? 'editor' : hash.slice(2).split('/')[0];
+  document.body.dataset.page = hash === '#/' || hash === '' || hash === '#/faciup-live' ? 'faciup-live' : hash === '#/gioi-thieu' ? 'home' : m ? 'editor' : hash.slice(2).split('/')[0];
   const q = new URLSearchParams(currentRoute().split('?')[1] || '').get('q') || '';
   const si = document.getElementById('topSearchInput'); if (si && document.activeElement !== si) si.value = q;
   if (hash === '#/dang-nhap-loi') { toast(new URLSearchParams(currentRoute().split('?')[1] || '').get('m') || 'Đăng nhập chưa thành công.'); history.replaceState(null, '', '/'); }
@@ -509,7 +513,8 @@ function route() {
   if (!me && (m || w)) { showLanding().catch(fatal); return openLogin('route', { hash }); }
   const go = m ? showEditor(m[1])
     : w ? showWatch(w[1], w[2])
-    : hash === '#/faciup-live' ? showFaciupLive()
+    : hash === '#/' || hash === '' || hash === '#/faciup-live' ? showFaciupLive()
+    : hash === '#/gioi-thieu' ? showLanding()
     : hash === '#/prompt-hunter' ? showPromptHunter()
     : hash === '#/cong-dong' ? showCommunity()
     : hash.startsWith('#/admin') && me?.admin ? showAdmin()
@@ -565,7 +570,7 @@ const footer = () => h('footer', { class: 'site' },
     ui.legal?.address ? h('span', {}, ui.legal.address) : null, ui.legal?.taxId ? h('span', {}, 'MST ' + ui.legal.taxId) : null,
     ui.legal?.email && !/example\.(com|org)$/i.test(ui.legal.email) ? h('a', { href: 'mailto:' + ui.legal.email }, ui.legal.email) : null),
   socialLinks(),
-  h('nav', { class: 'policies', 'aria-label': 'Liên kết website' }, menuShows('faciup-live')?h('a',{href:'/faciup-live'},ui.labels?.navigation?.['faciup-live']||'Faciup Live'):null, h('a', { href: '#/dieu-khoan' }, 'Điều khoản'), h('a', { href: '#/bao-mat' }, 'Bảo mật'),
+  h('nav', { class: 'policies', 'aria-label': 'Liên kết website' }, menuShows('gioi-thieu')?h('a',{href:'/gioi-thieu'},ui.labels?.navigation?.['gioi-thieu']||'Giới thiệu'):null, h('a', { href: '#/dieu-khoan' }, 'Điều khoản'), h('a', { href: '#/bao-mat' }, 'Bảo mật'),
     V('feature:plans') === 'on' ? h('a', { href: '#/hoan-tien' }, 'Hoàn tiền') : null, h('a', { href: '#/tro-giup' }, 'Trợ giúp')));
 
 // ---------- notifications on this device when a video is ready (Web Push, no third party)
@@ -2257,7 +2262,7 @@ document.addEventListener('DOMContentLoaded', () => boot().catch(fatal));
 async function showPromptHunter(){viewed('prompt-hunter');const {showHunter}=await import('/prompt-hunter.js');return showHunter({h,api,show,me,toast,fail,detailDialog,openLogin,footer});}
 
 async function showFaciupLive(){
- const routeAtStart=currentRoute(),ticket=solutionNavigation;const {showLive}=await import('/faciup-live.js?v=102');
+ const routeAtStart=currentRoute(),ticket=solutionNavigation;const {showLive}=await import('/faciup-live.js?v=103');
  if(currentRoute()!==routeAtStart||ticket!==solutionNavigation)return;
  stopLive=showLive({h,show,api,footer,openLogin,zaloLink:ui.zalo?.botLink});
 }

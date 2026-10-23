@@ -112,7 +112,7 @@ export interface SiteConfig {
   helpBot: { enabled: boolean; name: string; welcome: string; knowledge: string; perDay: number };
 }
 export const THEMES = ['aurora', 'ocean', 'sunset', 'forest', 'classic'] as const;
-export const MENU_KEYS = ['home', 'tao', 'mau', 'cong-dong', 'kham-pha', 'faciup-live', 'prompt-hunter', 'video', 'goi', 'tro-giup'] as const;
+export const MENU_KEYS = ['home', 'gioi-thieu', 'tao', 'mau', 'cong-dong', 'kham-pha', 'faciup-live', 'prompt-hunter', 'video', 'goi', 'tro-giup'] as const;
 export const LOGO_ICONS = ['pen', 'robot', 'spark', 'play', 'brush', 'star', 'letter'] as const;
 export const LOGO_BGS = ['brand', 'sunset', 'ocean', 'forest', 'night'] as const;
 export const SOCIAL_KEYS = ['facebook', 'youtube', 'tiktok', 'instagram', 'zalo', 'threads', 'x', 'linkedin'] as const;
@@ -192,7 +192,7 @@ export function defaultConfig(env: Env): Config {
   return {
     brand: { name: 'Nét Vẽ', accent: 'Studio', tagline: 'Tạo video bàn tay vẽ kèm thuyết minh tiếng Việt.' },
     labels: {
-      navigation: {'faciup-live':'Faciup Live','kham-pha':'Khám phá','prompt-hunter':'Prompt Hunter',home:'Trang chủ',tao:'Tạo video',mau:'Gợi ý sáng tạo','cong-dong':'Cộng đồng',video:'Video của tôi',goi:'Bảng giá',admin:'Quản trị','tro-giup':'Trợ giúp','tai-khoan':'Tài khoản'},
+      navigation: {'gioi-thieu':'Giới thiệu','faciup-live':'Faciup Live','kham-pha':'Khám phá','prompt-hunter':'Prompt Hunter',home:'Trang chủ',tao:'Tạo video',mau:'Gợi ý sáng tạo','cong-dong':'Cộng đồng',video:'Video của tôi',goi:'Bảng giá',admin:'Quản trị','tro-giup':'Trợ giúp','tai-khoan':'Tài khoản'},
       adminMenu: {'giai-phap':'Giải pháp & tài nguyên','anh-zalo':'Ảnh Zalo từ Sheet','ket-noi':'API & token','ai':'AI & model','chi-phi':'Chi phí & ngân sách','prompt-hunter':'Prompt Hunter','tong-quan':'Bảng điều khiển','nhat-ky':'Nhật ký','giong-doc':'Giọng đọc','may-dung':'Máy dựng','nguoi-dung':'Người dùng','cong-dong':'Cộng đồng',zalo:'Zalo',goi:'Gói cước','don-hang':'Đơn hàng','noi-dung':'Nội dung & menu','cai-dat':'Cài đặt'},
       styles: { sunset: 'Hoàng hôn tím cam', cosmos: 'Vũ trụ phẳng', manim: 'Bảng đen toán học', bold: 'Chữ nổi bật', neon: 'Neon đêm', darkboard: 'Bảng đen hiện đại', comic: 'Truyện tranh', pastel: 'Pastel dễ thương', newspaper: 'Báo giấy cổ điển', whiteboard: 'Bảng trắng', chalkboard: 'Bảng phấn', oly: 'Vở ô ly', kraft: 'Giấy kraft', pencil: 'Sổ phác chì', blueprint: 'Bản vẽ kỹ thuật', ricepaper: 'Giấy dó mực tàu', notebook: 'Giấy kem kể chuyện' },
       tools: { marker: 'Bút dạ bảng', chalk: 'Phấn', fountain: 'Bút máy', colormarker: 'Bút dạ màu', pencil: 'Bút chì', technical: 'Bút kỹ thuật', brush: 'Bút lông' },
@@ -286,7 +286,7 @@ export function defaultConfig(env: Env): Config {
     notice: '',
     templates: DEFAULT_TEMPLATES,
     beta: { enabled: true, label: 'Beta', note: 'Đang thử nghiệm: tính năng và giao diện có thể thay đổi. Góp ý giúp chúng tôi làm video hay hơn.' },
-    site: { loadingText:'Đang mở xưởng vẽ…', heroTitle: 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút', heroText: '', heroMedia: '', heroPoster: '', tutorial: '', showcase: [], theme: 'aurora', menu: { hidden: [], order: [] }, logo: { image: '', icon: 'pen', bg: 'brand' }, social: {},
+    site: { loadingText:'Đang kết nối đội AI…', heroTitle: 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút', heroText: '', heroMedia: '', heroPoster: '', tutorial: '', showcase: [], theme: 'aurora', menu: { hidden: [], order: [] }, logo: { image: '', icon: 'pen', bg: 'brand' }, social: {},
       helpBot: { enabled: true, name: 'Trợ lý', welcome: 'Chào bạn 👋 Mình là trợ lý AI của trang. Bạn cần hướng dẫn tạo video hay có thắc mắc gì?', knowledge: '', perDay: 30 } },
     budget: { dailyVnd: 200_000, monthlyVnd: 3_000_000, warnPct: 80, perVideoVnd: 15_000 },
     // one documentary ≈ 10 AI pictures + voice ≈ 11.000đ cost; 1 credit = 1 video, packs priced with margin
