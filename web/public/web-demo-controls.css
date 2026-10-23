@@ -1,0 +1,4 @@
+#web-demo-note{position:fixed;left:50%;bottom:max(12px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:2000;display:flex;align-items:center;gap:10px;max-width:94vw;padding:8px 12px;background:#fffffff5;border:1px solid #ded1f3;border-radius:12px;box-shadow:0 5px 25px #37205222;color:#625075;font:12px/1.4 system-ui}
+#web-demo-note button{border:1px solid #d8c5ef;background:#f4efff;color:#6d28d9;border-radius:8px;padding:6px 10px;font:600 12px system-ui;white-space:nowrap;cursor:pointer;box-shadow:none}
+body{padding-bottom:46px!important}
+@media(max-width:700px){#web-demo-note{bottom:74px;font-size:10px;padding:6px 9px;gap:6px}#web-demo-note button{font-size:10px}}
