@@ -262,4 +262,19 @@
 .fl-world>*{pointer-events:auto}.fl-world>.fl-rig,.fl-world>.fl-office-links,.fl-world>.fl-trail{pointer-events:none}
 .fl-rig{inset:0}
 /* phones: a taller office, cropped at the empty edges (window wall on the left), so the team reads larger */
-@media(max-width:560px){.fl-live[data-view=office] .fl-stage{aspect-ratio:2.1}.fl-live[data-view=office] .fl-office-bg{object-fit:cover;object-position:68% 50%}}
+/* phones: the square office picture; its desks carry the names, so the floating name tags stay hidden */
+.fl-live.fl-tall[data-view=office] .fl-stage{aspect-ratio:1!important;max-height:none}
+.fl-live.fl-tall .fl-office-bg{object-fit:contain}
+.fl-live.fl-tall .fl-office-lead,.fl-live.fl-tall .fl-bot .fl-name,.fl-live.fl-tall .fl-bot .fl-pulse{display:none!important}
+.fl-live.fl-tall .fl-bot[hidden]{display:none!important}
+/* the board on the phone picture's wide, low screen: clock on the left, the four counters in a row */
+.fl-live.fl-tall[data-view=office] .fl-screen.fl-board{grid-template-columns:auto 1fr;gap:16px;padding:12px 16px;align-items:center}
+.fl-live.fl-tall[data-view=office] .fl-board .fl-bd-left{gap:2px}
+.fl-live.fl-tall[data-view=office] .fl-board .fl-bd-live{font-size:13px}
+.fl-live.fl-tall[data-view=office] .fl-board .fl-bd-time{font-size:62px}
+.fl-live.fl-tall[data-view=office] .fl-board .fl-bd-time small{font-size:26px}
+.fl-live.fl-tall[data-view=office] .fl-board .fl-bd-date{font-size:15px;margin-top:2px}
+.fl-live.fl-tall[data-view=office] .fl-board .fl-bd-kpis{grid-template-columns:repeat(4,1fr);gap:8px}
+.fl-live.fl-tall[data-view=office] .fl-board .fl-bd-kpi{padding:10px 8px;align-items:center;text-align:center}
+.fl-live.fl-tall[data-view=office] .fl-board .fl-bd-kpi b{font-size:44px}
+.fl-live.fl-tall[data-view=office] .fl-board .fl-bd-kpi span{font-size:14px;white-space:normal;line-height:1.15}
