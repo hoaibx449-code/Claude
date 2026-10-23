@@ -2,6 +2,20 @@ import type {Env} from './util.ts';
 import type {Config} from './settings.ts';
 import {councilPlaces} from './council.ts';
 /** Public inventory only. Never expose jobs, messages, schedules, keys or customer data. */
+/** a few index-only reads that change whenever the office does: the page polls this every few seconds
+ *  and only reloads the full picture when it moves */
+export async function livePulse(env:Env){
+ const row=await env.DB.prepare(`SELECT (SELECT MAX(created_at) FROM council_turns) AS t,
+  (SELECT updated_at FROM council_jobs WHERE status='running' ORDER BY updated_at DESC LIMIT 1) AS r,
+  (SELECT updated_at FROM council_jobs WHERE status='queued' ORDER BY updated_at DESC LIMIT 1) AS q,
+  (SELECT updated_at FROM council_jobs WHERE status='delegating' ORDER BY updated_at DESC LIMIT 1) AS d,
+  (SELECT updated_at FROM council_jobs WHERE status='pending' ORDER BY updated_at DESC LIMIT 1) AS p,
+  (SELECT updated_at FROM council_jobs WHERE status='approved' ORDER BY updated_at DESC LIMIT 1) AS a`).first<any>().catch(()=>null);
+ const zalo=await env.DB.prepare(`SELECT (SELECT MAX(received_at) FROM zalo_messages) AS m,(SELECT MAX(created_at) FROM zalo_outbox) AS o,
+  (SELECT updated_at FROM zalo_messages WHERE status='processing' ORDER BY updated_at DESC LIMIT 1) AS w`).first<any>().catch(()=>null);
+ const sig=(o:any)=>o?Object.values(o).map(v=>Number(v)||0).join('.'):'';
+ return {jobs:sig(row),zalo:sig(zalo),at:Date.now()};
+}
 export async function liveOverview(env:Env,config:Config){
  const [prompts,solutions,runtime]=await Promise.all([
   env.DB.prepare("SELECT COUNT(*) AS n FROM hunter_prompts WHERE status='published'").first<{n:number}>(),

@@ -1,8 +1,8 @@
 // Makes the site installable and fast. The page and its scripts come from the network first
 // (with a short timeout, then the cached copy), so a new version shows up at once; heavy static
 // files (fonts, hand, icons, demo videos) are served from the cache and refreshed in the background.
-const SHELL = 'nv-shell-v99-office-v4', STATIC = 'nv-static-v99-office-v4';
-const SHELL_FILES = ['/studio-background.css?v=59','/navigation.js?v=54','/', '/app.css?v=61', '/compact-ui.css', '/polish.css', '/theme.css?v=83', '/hunter.css?v=39','/video-library.css?v=38','/video-previews.js?v=38', '/interaction.css?v=34','/admin-layout.css?v=54','/checkout.css?v=35', '/helpchat.js?v=52', '/app.js?v=92', '/faciup-live.js?v=96', '/faciup-live.css?v=96', '/home-gallery.js', '/voice-picker.js', '/prompt-hunter.js', '/creative-panel.js', '/ui-select.js?v=57', '/admin.js?v=74', '/banks.js', '/engine.js', '/whiteboard-addon.js', '/illustrated-addon.js', '/icons/icon.svg'];
+const SHELL = 'nv-shell-v100-office-v5', STATIC = 'nv-static-v100-office-v5';
+const SHELL_FILES = ['/studio-background.css?v=59','/navigation.js?v=54','/', '/app.css?v=61', '/compact-ui.css', '/polish.css', '/theme.css?v=84', '/hunter.css?v=39','/video-library.css?v=38','/video-previews.js?v=38', '/interaction.css?v=34','/admin-layout.css?v=54','/checkout.css?v=35', '/helpchat.js?v=52', '/app.js?v=93', '/faciup-live.js?v=97', '/faciup-live.css?v=97', '/home-gallery.js', '/voice-picker.js', '/prompt-hunter.js', '/creative-panel.js', '/ui-select.js?v=57', '/admin.js?v=74', '/banks.js', '/engine.js', '/whiteboard-addon.js', '/illustrated-addon.js', '/icons/icon.svg'];
 
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== SHELL && k !== STATIC).map((k) => caches.delete(k))))); self.clients.claim(); });

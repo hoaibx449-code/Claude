@@ -5,7 +5,7 @@
 const ZALO='<svg viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="10" fill="#0878ff"/><path d="M7 8h18v14H14l-6 4 1-5H7z" fill="#fff"/><text x="16" y="18" text-anchor="middle" fill="#0878ff" font-size="7.5" font-weight="800" font-family="Arial,sans-serif">Zalo</text></svg>';
 const DOC='<svg viewBox="0 0 30 24" aria-hidden="true"><path d="M1 3h10l3 3h15v17H1z" fill="#f59e0b"/><rect x="1" y="8" width="28" height="15" rx="2.5" fill="#fcd34d"/><path d="M7 15h16" stroke="#b45309" stroke-width="2"/></svg>';
 // server state → how a robot behaves
-const LOOK={running:'work',live24:'live24',queued:'wait',retry:'wait',review:'review',paused:'paused',disabled:'off',idle:'idle',unknown:'off'};
+const LOOK={running:'work',live24:'live24',queued:'wait',retry:'wait',review:'review',paused:'idle',disabled:'idle',idle:'idle',unknown:'idle'};
 const ROLE={coordinator:'Tổng hợp kết quả',target:'Lập dàn ý',search:'Tra cứu nguồn',pen:'Soạn lời đọc',check:'Rà soát kịch bản',news:'Lọc tin nóng',design:'Phác thumbnail',mega:'Lên kế hoạch đăng',chart:'Đối soát số liệu',video:'Dựng phân cảnh',spark:'Xử lý việc nội bộ',zalo:'Trả lời khách'};
 const pad=n=>String(n).padStart(2,'0');
 const fmt=s=>{s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+':'+pad(s%60);};
@@ -154,9 +154,9 @@ export function showLive({h,show,api,openLogin,zaloLink}){
  applyLayout();
  // ---- painting
  const runFor=s=>s.since?(Date.now()+clockSkew-s.since)/1000:0;
- function chipText(a,look){return look==='live24'?'Trực 24/7':look==='wait'?'Chờ lượt':look==='review'?'Chờ duyệt':look==='paused'?'Tạm dừng':look==='off'?(stale?'Mất kết nối':'Nghỉ'):a.completed?a.completed+' việc hôm nay':'Sẵn sàng';}
+ function chipText(a,look){return look==='live24'?'Trực 24/7':look==='wait'?'Chờ lượt':look==='review'?'Chờ duyệt':look==='watch'?'Giám sát phiên':a.completed?a.completed+' việc hôm nay':'Sẵn sàng';}
  function paintClock(){const d=new Date(Date.now()+clockSkew+7*3600e3);clockEl.replaceChildren(pad(d.getUTCHours())+':'+pad(d.getUTCMinutes()),h('small',{},':'+pad(d.getUTCSeconds())));dateEl.textContent=`${WEEK[d.getUTCDay()]} · ${pad(d.getUTCDate())}/${pad(d.getUTCMonth()+1)}/${d.getUTCFullYear()}`;liveEl.className='fl-live-dot'+(stale?' off':'');liveEl.lastChild.textContent=stale?'MẤT KẾT NỐI':'TRỰC TUYẾN';}
- function paint(){if(!data)return;const r=data.runtime,k=r.kpi||{},b=r.board||{},meeting=r.sessions?.[0]||null;
+ function paint(){if(!data)return;const r=data.runtime,k=r.kpi||{},b=r.board||{},meeting=r.sessions?.[0]||null,live=meeting&&['running','queued','retry'].includes(meeting.state);
   if(r.office){if(titleEl.textContent!==r.office.title)titleEl.textContent=r.office.title;if(subEl.textContent!==r.office.subtitle)subEl.textContent=r.office.subtitle;}
   for(const s of signs.children){const name=(r.rooms||[]).find(x=>x.id===s.dataset.room)?.name||'';const words=name.toUpperCase().split(/\s+/).filter(Boolean),rows=words.length>1?[words.slice(0,words.length>2?1:1),words.slice(1)]:[words];s.firstChild.replaceChildren(...rows.map(row=>h('span',{},row.join(' '))));s.hidden=!name;}
   const values=[[r.agents.length,'Agent'],[r.running,'Đang xử lý'],[r.review,'Chờ duyệt'],[k.today||0,'Hoàn thành']];
@@ -166,13 +166,17 @@ export function showLive({h,show,api,openLogin,zaloLink}){
   const leadSeat=r.agents[0]?.seat||1;buildLinks(r.agents,leadSeat);
   const used=new Set();
   r.agents.forEach((a,i)=>{const s=seats[a.seat];if(!s)return;used.add(String(a.seat));
-   let look=stale?'off':LOOK[a.state]||'idle';
-   if(i===0&&meeting?.current===0&&meeting.state==='running')look='work';
+   // nobody is ever shown idle-off: no work means ready. The lead takes the brief, watches the
+   // session while the members work, and writes the result at the end
+   let look=LOOK[a.state]||'idle',task=ROLE[a.icon]||'Đang xử lý';
+   if(i===0&&live){look=meeting.current===0&&meeting.state==='running'?'work':'watch';task=meeting.current!==0?'Giám sát phiên':meeting.step>0?'Tổng hợp kết quả':'Nhận việc';}
+   // a Zalo reply takes seconds: keep the desk busy a moment so every message is seen
+   if(a.icon==='zalo'&&Date.now()<zaloHold)look='work';
    const work=look==='work'||(a.live&&a.state==='running');
-   s.g.className='fl-desk is-'+look+(work?' is-work':'')+(i===0?' is-lead':'');s.g.style.setProperty('--c',a.color);s.g.hidden=false;
+   s.g.className='fl-desk is-'+look+(work?' is-work':'')+(look==='watch'?' is-watch':'')+(i===0?' is-lead':'');s.g.style.setProperty('--c',a.color);s.g.hidden=false;
    if(s.plate.firstChild.textContent!==a.name){s.plate.firstChild.textContent=a.name;s.plate.style.setProperty('--fit',Math.min(1,13/Math.max(6,a.name.length)).toFixed(3));}
    s.chip.textContent=chipText(a,look);
-   s.card.querySelector('b').textContent=`${a.name} · ${ROLE[a.icon]||'Đang xử lý'}`;
+   s.card.querySelector('b').textContent=`${a.name} · ${task}`;
    s.card.querySelector('.fl-card-bar i').style.width=Math.min(96,a.avg?runFor(a)/a.avg*100:45)+'%';
    for(const l of linkEls)if(l.seat===a.seat){l.path.classList.toggle('on',work);l.dot.classList.toggle('on',work);}
   });
@@ -184,15 +188,21 @@ export function showLive({h,show,api,openLogin,zaloLink}){
   const d=`M${a.cx} ${a.top}Q${(a.cx+b.cx)/2} ${Math.min(a.top,b.top)-90*L.k} ${b.cx} ${b.top}`,path=svg('path',{d,class:'fl-path',stroke:color});trail.append(path);
   const doc=h('div',{class:'fl-doc'});doc.innerHTML=DOC;world.append(doc);
   const len=path.getTotalLength();let t=0;const go=()=>{if(stopped)return;t+=1/80;const p=path.getPointAtLength(Math.min(1,t)*len);doc.style.left=P(p.x,L.w);doc.style.top=P(p.y,L.h);if(t<1)requestAnimationFrame(go);else{doc.remove();setTimeout(()=>path.remove(),300);}};go();}
- const lastTurn=new Map();
+ const lastTurn=new Map();let zaloHold=0,zaloSeen=-1,pulseSig={jobs:'',zalo:''},pulseBusy=false;
  async function load(){if(stopped||busy||document.hidden)return;busy=true;
   try{data=await api('/api/faciup-live');clockSkew=(data.runtime?.polledAt||Date.now())-Date.now();stale=false;}catch{stale=true;}finally{busy=false;}
   if(stopped||!data)return;page.classList.toggle('fl-stale',stale);const r=data.runtime;r.sessions=r.sessions||[];
+  const za=r.agents.find(a=>a.icon==='zalo');if(za){if(za.state==='running'||(zaloSeen>=0&&za.received>zaloSeen))zaloHold=Date.now()+6000;zaloSeen=za.received||0;}
   for(const s of r.sessions){const was=lastTurn.get(s.n);if(was!==undefined&&was!==s.current){const from=r.agents[was],to=r.agents[s.current];if(from&&to)fly(from.seat,to.seat,to.color,s.current===0);}lastTurn.set(s.n,s.current);}
   paint();}
  load();loadMine();
  const demo=setInterval(()=>{if(!personal&&!reduce&&!document.hidden){demoStep=(demoStep+1)%intro.length;renderChat();}},6000);
- const tick=setInterval(()=>{paintClock();if(data)paint();},1000),poll=setInterval(load,20000),pollMine=setInterval(loadMine,30000),visible=()=>{if(!document.hidden){load();loadMine();}};
+ async function pulse(){if(stopped||pulseBusy||document.hidden)return;pulseBusy=true;
+  try{const p=await api('/api/faciup-live/pulse');stale=false;
+   if(!pulseSig.jobs&&!pulseSig.zalo)pulseSig=p;
+   else if(p.jobs!==pulseSig.jobs||p.zalo!==pulseSig.zalo){const zaloMoved=p.zalo!==pulseSig.zalo;pulseSig=p;await load();if(zaloMoved||dialog.open)loadMine();}}
+  catch{stale=true;page.classList.add('fl-stale');}finally{pulseBusy=false;}}
+ const tick=setInterval(()=>{paintClock();if(data)paint();},1000),poll=setInterval(pulse,3000),pollFull=setInterval(load,30000),pollMine=setInterval(()=>{if(dialog.open)loadMine();},3000),visible=()=>{if(!document.hidden){load();loadMine();}};
  document.addEventListener('visibilitychange',visible);
- return ()=>{stopped=true;ro.disconnect();phoneMQ.removeEventListener('change',onPhone);personal=null;dialog.close();clearInterval(tick);clearInterval(poll);clearInterval(pollMine);clearInterval(demo);document.removeEventListener('visibilitychange',visible);};
+ return ()=>{stopped=true;ro.disconnect();phoneMQ.removeEventListener('change',onPhone);personal=null;dialog.close();clearInterval(tick);clearInterval(poll);clearInterval(pollFull);clearInterval(pollMine);clearInterval(demo);document.removeEventListener('visibilitychange',visible);};
 }

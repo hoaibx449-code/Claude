@@ -1,7 +1,7 @@
 import {publicNavigation,initialPageContent,PUBLIC_PAGES,isAppPage,pageMetadata,pageSitemap} from './page-routes.ts';
 import {councilWebhook,tickCouncil} from './council.ts';
 import {hunterPublic} from './hunter.ts';
-import {liveOverview} from './live.ts';
+import {liveOverview,livePulse} from './live.ts';
 import {liveConversation} from './live-private.ts';
 import {solutionPage,solutionSitemap,solutionDownload,solutionList,cleanupSolutionFiles} from './solutions.ts';
 import {secureResponse} from './security.ts';
@@ -126,7 +126,12 @@ export default {
 };
 
 export type XEnv = Env & { config: Config };
-let liveMemo: { at: number; body: unknown } | null = null;
+let liveMemo: { at: number; sig: string; body: unknown } | null = null, pulseMemo: { at: number; body: { jobs: string; zalo: string; at: number } } | null = null;
+
+async function livePulseMemo(env: Env) {
+  if(!pulseMemo||Date.now()-pulseMemo.at>2000)pulseMemo={at:Date.now(),body:await livePulse(env)};
+  return pulseMemo.body;
+}
 
 async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): Promise<Response> {
   const url = new URL(req.url), path = url.pathname, method = req.method;
@@ -170,9 +175,12 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
     rc.quiet=true;
     // everyone sees the same public picture: build it at most once every 20 s per worker, so open
     // tabs polling the page do not each read the database (workers.dev has no edge cache)
-    if(!liveMemo||Date.now()-liveMemo.at>20000)liveMemo={at:Date.now(),body:await liveOverview(env,env.config)};
-    return json(liveMemo.body,200,{'cache-control':'public, max-age=15'});
+    // and rebuild it as soon as the pulse moves (at most every 2 s), or every 30 s for leases that ran out
+    const pulse=await livePulseMemo(env),sig=pulse.jobs+'|'+pulse.zalo,now=Date.now();
+    if(!liveMemo||now-liveMemo.at>30000||(liveMemo.sig!==sig&&now-liveMemo.at>2000))liveMemo={at:now,sig,body:await liveOverview(env,env.config)};
+    return json(liveMemo.body,200,{'cache-control':'public, max-age=2'});
   }
+  if(path==='/api/faciup-live/pulse'&&method==='GET'){rc.quiet=true;return json(await livePulseMemo(env),200,{'cache-control':'public, max-age=2'});}
   if(path==='/api/solutions'&&method==='GET')return json(await solutionList(env,url));
   if(path.startsWith('/api/image-feed/bridge/'))return bridgeReceive(req,env,path.slice('/api/image-feed/bridge/'.length));
   if(path==='/api/image-feed/google/callback'&&method==='GET')return googleFeedCallback(req,env);

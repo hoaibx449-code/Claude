@@ -313,5 +313,5 @@ button.iconbtn:hover, button.iconbtn[aria-expanded="true"] { background: var(--b
 .legal-beta p { margin: 4px 0 0; }
 @media (max-width: 1023px) { #tabbar .nav-label { font-size: 10px !important; line-height: 1.1; white-space: normal !important; text-align: center; overflow: visible !important; text-overflow: clip !important; max-width: 100%; } #tabbar a { gap: 3px; } }
 /* Faciup Live uses the full width of the page */
-body[data-page="faciup-live"] main.wrap { max-width: none !important; }
+body[data-page="faciup-live"] main.wrap { max-width: none !important; padding-top: 6px !important; padding-bottom: 8px !important; }
 @media (min-width: 1024px) { body[data-page="faciup-live"] main.wrap { margin-left: var(--side, 240px) !important; margin-right: 0 !important; width: auto; padding-left: 24px; padding-right: 24px; } }
