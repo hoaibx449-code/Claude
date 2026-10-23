@@ -184,8 +184,13 @@ function logoFavicon(logo, brand) {
 }
 // one list decides which pages the menus show, everywhere: header, side bar, phone tab bar and footer
 const menuShows = (route) => !(ui.site?.menu?.hidden || []).includes(route) && !(route === 'goi' && V('feature:plans') !== 'on') && !(route === 'cong-dong' && V('feature:community') === 'hidden');
+// where "my videos" links go when that page is switched off
+const myVideos = () => (menuShows('video') ? '#/video' : '#/');
 function applyMenu() {
   for (const a of document.querySelectorAll('[data-route]')) { const r = a.dataset.route; if (r === 'admin' || r === 'tai-khoan') continue; a.hidden = !menuShows(r); }
+  // the phone tab bar has little room: short names there
+  const SHORT = { home: 'Trang chủ', 'cong-dong': 'Cộng đồng', 'faciup-live': 'Live', tao: 'Tạo', video: 'Video', 'kham-pha': 'Khám phá', 'prompt-hunter': 'Prompt' };
+  for (const a of document.querySelectorAll('#tabbar a[data-route]')) { const name = SHORT[a.dataset.route]; if (!name) continue; [...a.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).forEach((n) => n.remove()); let l = a.querySelector('.nav-label'); if (!l) { l = h('span', { class: 'nav-label' }); a.append(l); } l.textContent = name; }
   const order = ui.site?.menu?.order || []; if (!order.length) return;
   for (const nav of document.querySelectorAll('#nav, .sidenav:not(.bottom)')) {
     const links = [...nav.querySelectorAll(':scope > a[data-route]')], rank = (a) => { const i = order.indexOf(a.dataset.route); return a.dataset.route === 'admin' ? 1e4 : i >= 0 ? i : 1e3 + links.indexOf(a); };
@@ -350,6 +355,9 @@ function paintHeader() {
   if (me) acc.textContent = (me.user.name || me.user.email || '?').trim().charAt(0).toUpperCase();
   document.getElementById('bellBtn').hidden = !me;
   if (me) loadNotes();
+  // a page switched off in Menu & trang is off everywhere: its address leads home (admins can still open it)
+  const pageKey = (location.hash.startsWith('#/') ? location.hash.slice(2) : location.pathname.slice(1)).split(/[/?#]/)[0];
+  if (pageKey && !me?.admin && ui?.site && ['tao', 'mau', 'cong-dong', 'kham-pha', 'faciup-live', 'prompt-hunter', 'video', 'goi', 'tro-giup'].includes(pageKey) && !menuShows(pageKey)) { routing(false); navigate('#/'); return; }
   document.getElementById('sideAdmin').hidden = !me?.admin;
   closeMenu();
 }
@@ -393,7 +401,7 @@ function renderMenu() {
   m.replaceChildren(
     h('div', { class: 'mhead' }, h('span', { class: 'avatar big' }, name.charAt(0).toUpperCase()), h('div', {}, h('b', {}, name), h('span', {}, me.user.email)), h('em', { class: 'mplan' }, me.plan?.name || 'Miễn phí')),
     h('div', { class: 'musage' }, meter('Lượt dựng hôm nay', 'render'), meter('Lượt AI viết', 'script'), h('p', { class: 'mcredit' }, menuCredits || 'Đang xem số dư…')),
-    h('nav', { class: 'mlist' }, item('user', 'Tài khoản & cài đặt', { do: showAccount }), item('video', 'Video của tôi', { href: '#/video' }),
+    h('nav', { class: 'mlist' }, item('user', 'Tài khoản & cài đặt', { do: showAccount }), menuShows('video') ? item('video', 'Video của tôi', { href: '#/video' }) : null,
       V('feature:plans') === 'on' ? item('plan', 'Gói cước & credit', { href: '#/goi' }) : null, me.admin ? item('admin', 'Quản trị', { href: '#/admin' }) : null,
       item('out', 'Đăng xuất', { do: () => document.getElementById('logout').click() })));
 }
@@ -886,17 +894,21 @@ let legalCache = null;
 async function showLegal(which) {
   viewed('legal', { which });
   const l = (legalCache ||= await api('/api/legal'));
-  const titles = { terms: 'Điều khoản sử dụng', privacy: 'Chính sách bảo mật', refund: 'Chính sách hoàn tiền' };
+  const beta = !!ui.beta, titles = { terms: 'Điều khoản sử dụng', privacy: 'Chính sách bảo mật', refund: 'Chính sách hoàn tiền' };
+  // during Beta everything is free: the sections and lines about prices, payment and refunds do not apply
+  const money = /thanh toán|hoàn tiền|hoàn lại tiền|gói cước|gói trả phí|bảng giá|chuyển khoản|sepay|vietqr|hoá đơn|hóa đơn|credit/i;
   const blocks = [];
-  let list = null;
-  for (const raw of l[which].split('\n')) {
+  let list = null, skip = false;
+  for (const raw of (beta && which === 'refund' ? '' : l[which]).split('\n')) {
     const line = raw.trim();
     if (!line) { list = null; continue; }
-    if (line.startsWith('## ')) { list = null; blocks.push(h('h2', {}, line.slice(3))); }
-    else if (line.startsWith('- ')) { if (!list) { list = h('ul'); blocks.push(list); } list.append(h('li', {}, line.slice(2))); }
+    if (line.startsWith('## ')) { list = null; skip = beta && money.test(line); if (!skip) blocks.push(h('h2', {}, line.slice(3))); continue; }
+    if (skip || (beta && money.test(line))) continue;
+    if (line.startsWith('- ')) { if (!list) { list = h('ul'); blocks.push(list); } list.append(h('li', {}, line.slice(2))); }
     else { list = null; blocks.push(h('p', {}, line)); }
   }
-  show(h('div', { class: 'doc' }, h('div', { class: 'card' }, h('h1', {}, titles[which]), h('p', { class: 'muted' }, `Phiên bản ${l.version} · ${l.company}${l.taxId ? ' · MST ' + l.taxId : ''}`), ...blocks)), footer());
+  const note = beta ? h('div', { class: 'legal-beta' }, h('b', {}, (ui.beta.label || 'Beta') + ' · phiên bản thử nghiệm'), h('p', {}, which === 'refund' ? 'Trong giai đoạn thử nghiệm, mọi tính năng đều miễn phí và không có giao dịch thanh toán nào, nên chưa áp dụng chính sách hoàn tiền.' : 'Trang web đang chạy thử nghiệm và miễn phí. Nội dung dưới đây áp dụng cho giai đoạn này và có thể được cập nhật khi chính thức ra mắt.')) : null;
+  show(h('div', { class: 'doc' }, h('div', { class: 'card' }, h('h1', {}, titles[which] + (beta ? ' (bản Beta)' : '')), h('p', { class: 'muted' }, `Phiên bản ${l.version} · ${l.company}${l.taxId ? ' · MST ' + l.taxId : ''}`), note, ...blocks)), footer());
 }
 
 // ---------- create (guests may fill everything; sign-in is asked only when the video is made)
@@ -1360,12 +1372,12 @@ async function showAccount() {
         h('dt', {}, 'Hôm nay còn'), limitsValue,
         h('dt', {}, 'Số dư credit'), credits),
       V('feature:plans') === 'on' ? h('a', { class: 'btn ghost', href: '#/goi' }, 'Xem bảng giá') : null),
-    orderHistory,
+    ui.beta ? null : orderHistory,
     ui.zalo?.enabled ? h('section', { class: 'card setgroup' }, h('h2', {}, 'Zalo'), row(me.zaloLinked ? 'Đã kết nối' : 'Chưa kết nối', 'Nhận video và tạo video ngay trong Zalo.', h('a', { class: 'btn ghost small', href: '#/zalo' }, me.zaloLinked ? 'Quản lý' : 'Kết nối'))) : null,
     h('section', { class: 'card setgroup' }, h('h2', {}, 'Dữ liệu và quyền riêng tư'),
       row('Tải dữ liệu của tôi', 'Bản sao toàn bộ dữ liệu (JSON): kịch bản, video, đơn hàng, nhật ký.', h('a', { class: 'btn ghost small', href: '/api/account/export', 'data-ev': 'export-data' }, 'Tải về')),
       row('Chính sách', null, h('div', { class: 'row' }, h('a', { href: '#/dieu-khoan' }, 'Điều khoản sử dụng'), h('a', { href: '#/bao-mat' }, 'Chính sách bảo mật')))),
-    h('div',{class:'row account-shortcuts'},h('a',{class:'btn ghost',href:'#/video',onclick:()=>dialog.close()},'Video của tôi'), me.admin?h('a',{class:'btn ghost',href:'#/admin',onclick:()=>dialog.close()},'Quản trị'):null, h('button',{type:'button',class:'ghost',onclick:()=>{dialog.close();document.getElementById('logout').click();}},T('logout'))),
+    h('div',{class:'row account-shortcuts'},menuShows('video')?h('a',{class:'btn ghost',href:'#/video',onclick:()=>dialog.close()},'Video của tôi'):null, me.admin?h('a',{class:'btn ghost',href:'#/admin',onclick:()=>dialog.close()},'Quản trị'):null, h('button',{type:'button',class:'ghost',onclick:()=>{dialog.close();document.getElementById('logout').click();}},T('logout'))),
     h('details', { class: 'card setgroup danger-zone' }, h('summary', {}, 'Xoá tài khoản'),
       h('p', { class: 'muted' }, 'Xoá vĩnh viễn video, kịch bản, ảnh, liên kết Zalo và thông tin đăng nhập. Chứng từ thanh toán được giữ ẩn danh theo luật kế toán.'),
       h('div', { class: 'row' }, del, h('button', { type: 'button', class: 'danger', 'data-ev': 'delete-account', onclick: async () => {
@@ -1576,7 +1588,7 @@ async function showWatch(pid, jobId) {
     shareBtn.textContent = shared ? '🌏 Gỡ khỏi Cộng đồng' : '🌏 Chia sẻ lên Cộng đồng';
   } }, shared ? '🌏 Gỡ khỏi Cộng đồng' : '🌏 Chia sẻ lên Cộng đồng');
   const tags = [spec.caption, (spec.hashtags || []).join(' ')].filter(Boolean).join('\n\n');
-  show(h('a', { href: '#/video' }, '← Video của tôi'),
+  show(menuShows('video') ? h('a', { href: '#/video' }, '← Video của tôi') : h('a', { href: '#/' }, '← Trang chủ'),
     h('div', { class: 'watch' + (portrait ? '' : ' wide') },
       h('div', { class: 'stage' }, platformFrame(portrait ? iphone(video) : h('div', { class: 'screen flat' }, video), spec)),
       h('div', { class: 'scenes' },
@@ -1655,7 +1667,7 @@ async function showCommunity() {
     document.body.append(bg);
   }
   show(h('header', { class: 'pagehead' }, h('div', {}, h('h1', {}, 'Cộng đồng'), h('p', { class: 'muted' }, 'Khám phá video từ cộng đồng.')),
-      h('a', { class: 'btn', href: me ? '#/video' : '#/tao', 'data-ev': 'community-share' }, icon('share'), 'Chia sẻ video')),
+      h('a', { class: 'btn', href: me && menuShows('video') ? '#/video' : '#/tao', 'data-ev': 'community-share' }, icon('share'), 'Chia sẻ video')),
     h('div', { class: 'gallery-toolbar' }, tabs, sorting), grid, footer());
   paintTabs(); load();
 }
@@ -2177,7 +2189,7 @@ async function showEditor(id) {
   const creativeCard=creativePanel(spec,id,{h,api,busy,fail,save,helpHint,refresh:()=>showEditor(id)});
   renderBtn.classList.add('export-btn'); renderBtn.replaceChildren(icon('share'), ui.rendering?.mode==='browser'?'Xuất trên trình duyệt':ui.rendering?.mode==='local'?'Gửi máy cá nhân':'Xuất video');
   show(h('div', { class: 'studio' + (spec.ratio === '16:9' ? ' landscape' : '') },
-    h('div', { class: 'sbar' }, h('a', { class: 'iconbtn', href: '#/video', 'aria-label': T('allVideos') }, '←'), h('span', { class: 'muted' }, 'Dự án:'), titleInput, status, h('span', { class: 'grow' }), ratioSel, reviewBtn, reviewBtn ? helpHint('AI rà soát', 'Dùng 1 lượt AI và chi phí API theo gói. AI xem tối đa 6 khung hình để đề xuất sửa bố cục; bạn xem nhận xét và chọn áp dụng. Không kiểm tra toàn bộ chuyển động hoặc âm thanh.') : null, renderBtn),
+    h('div', { class: 'sbar' }, h('a', { class: 'iconbtn', href: myVideos(), 'aria-label': T('allVideos') }, '←'), h('span', { class: 'muted' }, 'Dự án:'), titleInput, status, h('span', { class: 'grow' }), ratioSel, reviewBtn, reviewBtn ? helpHint('AI rà soát', 'Dùng 1 lượt AI và chi phí API theo gói. AI xem tối đa 6 khung hình để đề xuất sửa bố cục; bạn xem nhận xét và chọn áp dụng. Không kiểm tra toàn bộ chuyển động hoặc âm thanh.') : null, renderBtn),
     h('aside', { class: 'scol' }, listHead, sceneList, h('button', { type: 'button', class: 'ghost small', onclick: () => sceneDetail.querySelector('[data-ev="add-scene"]')?.click() }, icon('plus'), 'Thêm cảnh')),
     h('section', { class: 'stage' }, platformFrame(screenEl, spec),
       h('div', { class: 'transport' }, playBtn, h('button', { type: 'button', class: 'ghost small', onclick: () => { if (pv) { pv.t = 0; pv.playing = true; playBtn.textContent = 'Tạm dừng'; } } }, 'Phát lại'), clock),
@@ -2245,7 +2257,7 @@ document.addEventListener('DOMContentLoaded', () => boot().catch(fatal));
 async function showPromptHunter(){viewed('prompt-hunter');const {showHunter}=await import('/prompt-hunter.js');return showHunter({h,api,show,me,toast,fail,detailDialog,openLogin,footer});}
 
 async function showFaciupLive(){
- const routeAtStart=currentRoute(),ticket=solutionNavigation;const {showLive}=await import('/faciup-live.js?v=90');
+ const routeAtStart=currentRoute(),ticket=solutionNavigation;const {showLive}=await import('/faciup-live.js?v=91');
  if(currentRoute()!==routeAtStart||ticket!==solutionNavigation)return;
  stopLive=showLive({h,show,api,footer,openLogin,zaloLink:ui.zalo?.botLink});
 }

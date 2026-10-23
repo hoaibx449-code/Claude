@@ -298,3 +298,17 @@ button.iconbtn:hover, button.iconbtn[aria-expanded="true"] { background: var(--b
 .logo-bg i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; margin-right: 6px; vertical-align: -2px; }
 .logo-bg input[type=color] { width: 26px; height: 22px; padding: 0; border: 0; background: none; vertical-align: middle; }
 @media (max-width: 560px) { .menu-edit li { grid-template-columns: auto minmax(0, 1fr) auto; } .menu-edit code { display: none; } }
+
+/* phone tab bar: the visible items share the width evenly and stay centred when some are switched off */
+@media (max-width: 1023px) {
+  .tabbar { display: flex !important; justify-content: center; }
+  .tabbar a { flex: 1 1 0; max-width: 92px; min-width: 0; font-size: .625rem; font-weight: 600; letter-spacing: -.01em; }
+  .tabbar .nav-label { overflow: visible !important; text-overflow: clip !important; white-space: nowrap; }
+  .tabbar a[hidden] { display: none !important; }
+  .tabbar a svg { width: 22px; height: 22px; }
+}
+/* legal pages during Beta */
+.legal-beta { margin: 6px 0 18px; padding: 12px 14px; border-radius: 14px; background: var(--grad-soft); border-left: 4px solid var(--accent); }
+.legal-beta b { display: block; color: var(--accent); }
+.legal-beta p { margin: 4px 0 0; }
+@media (max-width: 1023px) { #tabbar .nav-label { font-size: 10px !important; line-height: 1.1; white-space: normal !important; text-align: center; overflow: visible !important; text-overflow: clip !important; max-width: 100%; } #tabbar a { gap: 3px; } }

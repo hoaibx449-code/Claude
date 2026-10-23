@@ -256,3 +256,10 @@
 .fl-view{display:none!important}
 @media(prefers-reduced-motion:reduce){.fl-eye-live::after,.fl-hand-live,.fl-compose-caret,.fl-compose-dot,.fl-board .fl-bd-live i{animation:none!important}}
 @media(max-width:560px){.fl-compose{max-width:104px;padding:2px 5px 3px;border-radius:7px;column-gap:3px}.fl-compose b{font-size:8px}.fl-compose-dot{width:4px;height:4px;box-shadow:none}.fl-compose-caret{height:8px}}
+.fl-sound{width:38px;height:38px;min-height:0;padding:0!important;justify-content:center;border-radius:12px!important}.fl-sound svg{width:19px;height:19px}.fl-sound[aria-pressed=true]{background:var(--grad-soft,#f6efff)}
+/* the box over the picture that carries robots, links, board, eyes and hands */
+.fl-world{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+.fl-world>*{pointer-events:auto}.fl-world>.fl-rig,.fl-world>.fl-office-links,.fl-world>.fl-trail{pointer-events:none}
+.fl-rig{inset:0}
+/* phones: a taller office, cropped at the empty edges (window wall on the left), so the team reads larger */
+@media(max-width:560px){.fl-live[data-view=office] .fl-stage{aspect-ratio:2.1}.fl-live[data-view=office] .fl-office-bg{object-fit:cover;object-position:68% 50%}}
