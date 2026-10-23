@@ -278,3 +278,5 @@
 .fl-live.fl-tall[data-view=office] .fl-board .fl-bd-kpi{padding:10px 8px;align-items:center;text-align:center}
 .fl-live.fl-tall[data-view=office] .fl-board .fl-bd-kpi b{font-size:44px}
 .fl-live.fl-tall[data-view=office] .fl-board .fl-bd-kpi span{font-size:14px;white-space:normal;line-height:1.15}
+/* the plant and cabinet in front of the phone picture's screen cover its lower-left corner: leave them in front */
+.fl-live.fl-tall[data-view=office] .fl-screen.fl-board{clip-path:polygon(0 0,100% 0,100% 100%,34px 100%,34px 98px,0 98px);padding-left:44px!important}
