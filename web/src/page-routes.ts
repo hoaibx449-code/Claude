@@ -19,7 +19,7 @@ export const PUBLIC_PAGES: Record<string, [string,string]> = {
 };
 export function isAppPage(path:string) {
  return !!PUBLIC_PAGES[path] || /^\/(admin(?:\/[a-z0-9-]+)?|video|tai-khoan|zalo|dang-nhap-loi)$/.test(path)
- || /^\/p\/[a-f0-9]{24}$/.test(path) || /^\/xem\/[a-f0-9]{24}\/[a-f0-9]{24}$/.test(path);
+ || /^\/ink(\/[a-f0-9]{24})?$/.test(path) || /^\/p\/[a-f0-9]{24}$/.test(path) || /^\/xem\/[a-f0-9]{24}\/[a-f0-9]{24}$/.test(path);
 }
 export function pageMetadata(path:string,brand:string,origin:string,search='') {
  const page=PUBLIC_PAGES[path];

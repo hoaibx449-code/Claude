@@ -277,8 +277,16 @@ def heart(cv, cx, cy, s=1.0):
     cv.shape(pts, 10, INK, RED)
 
 def brain(cv, cx, cy, s=1.0):
-    for dx, dy, r in ((-60, -40, 70), (10, -70, 75), (75, -30, 65), (-40, 40, 70), (50, 40, 70)): cv.circle(cx + dx * s, cy + dy * s, r * s, 9, INK, PINK)
-    cv.line(bez((cx - 80 * s, cy), (cx, cy - 40 * s), (cx + 90 * s, cy + 10 * s)), 6); cv.line([(cx + 5 * s, cy + 100 * s), (cx + 5 * s, cy + 150 * s)], 10)
+    """a brain seen from the side: one bumpy outline, the two halves, folds, the stem"""
+    pts = []
+    for k in range(73):
+        a = 2 * math.pi * k / 72; bump = 1 + 0.06 * math.sin(a * 9)
+        pts.append((cx + 170 * s * bump * math.cos(a), cy - 10 * s + 120 * s * bump * math.sin(a)))
+    cv.shape(pts, 11, INK, PINK)
+    cv.line(bez((cx - 10 * s, cy - 125 * s), (cx + 20 * s, cy - 10 * s), (cx - 5 * s, cy + 105 * s)), 7)
+    for (x0, y0, x1, y1, x2, y2) in ((-130, -40, -90, -80, -50, -40), (-120, 40, -70, 10, -40, 60), (50, -70, 90, -30, 130, -60), (40, 30, 90, 70, 130, 20)):
+        cv.line(bez((cx + x0 * s, cy + y0 * s), (cx + x1 * s, cy + y1 * s), (cx + x2 * s, cy + y2 * s)), 6)
+    cv.line([(cx + 30 * s, cy + 105 * s), (cx + 45 * s, cy + 170 * s)], 12)
 
 def phone(cv, cx, cy, s=1.0):
     rrect(cv, cx - 85 * s, cy - 160 * s, cx + 85 * s, cy + 160 * s, 24 * s, 10, INK, DARK)
@@ -553,6 +561,23 @@ def tired_face(cv, cx, cy, s=1.0):
     cv.text(cx + 150 * s, cy - 150 * s, 'z', 70 * s, BLUE)
 
 
+def motorbike(cv, cx, cy, s=1.0):
+    """a scooter flat out: speed lines behind it"""
+    for x in (-150, 150): cv.circle(cx + x * s, cy + 90 * s, 62 * s, 12, INK, WHITE); cv.circle(cx + x * s, cy + 90 * s, 14 * s, 6, INK, INK)
+    cv.shape([(cx - 170 * s, cy + 40 * s), (cx - 60 * s, cy + 40 * s), (cx - 20 * s, cy - 40 * s), (cx + 110 * s, cy - 40 * s), (cx + 170 * s, cy + 50 * s),
+              (cx + 90 * s, cy + 60 * s), (cx - 120 * s, cy + 60 * s), (cx - 170 * s, cy + 40 * s)], 10, INK, RED)
+    cv.line([(cx + 110 * s, cy - 40 * s), (cx + 140 * s, cy - 150 * s), (cx + 200 * s, cy - 160 * s)], 12)
+    rrect(cv, cx - 70 * s, cy - 70 * s, cx + 40 * s, cy - 40 * s, 12 * s, 8, INK, DARK)
+    for k in range(3): cv.line([(cx - 330 * s, cy - 40 * s + k * 50 * s), (cx - 230 * s, cy - 40 * s + k * 50 * s)], 8)
+
+def overload(cv, cx, cy, s=1.0):
+    """a head about to burst: brain, sweat, sparks"""
+    brain(cv, cx, cy + 20 * s, s * 0.95)
+    for a in (-150, -110, -70, -30):
+        x0, y0 = cx + 170 * s * math.cos(math.radians(a)), cy + 170 * s * math.sin(math.radians(a))
+        cv.line([(x0, y0), (x0 + 50 * s * math.cos(math.radians(a)), y0 + 50 * s * math.sin(math.radians(a)))], 9, RED)
+    cv.poly([(cx + 190 * s, cy - 60 * s), (cx + 172 * s, cy - 15 * s), (cx + 208 * s, cy - 15 * s)], INK, DROP, 5)
+
 # name: (function, keywords). Keywords are what the storyboard AI matches meanings against.
 PROPS = {
  'book': (book, 'sách đọc học kiến thức book read learn'), 'books': (books, 'chồng sách thư viện học tập books study'),
@@ -598,6 +623,7 @@ PROPS = {
  'backpack': (backpack, 'ba lô balo hành lý mang vác gánh nặng backpack carry'), 'scissors': (scissors, 'cái kéo cắt giảm cắt bớt scissors cut'),
  'feather': (feather, 'lông vũ nhẹ nhàng nhẹ tênh thảnh thơi feather light'), 'weight': (weight, 'quả tạ nặng nề áp lực quá tải weight heavy pressure'),
  'sofa': (sofa, 'ghế sofa nằm dài lười biếng nghỉ ngơi sofa couch lazy'), 'trash': (trash, 'thùng rác bỏ đi loại bỏ vứt bỏ trash discard'),
+ 'motorbike': (motorbike, 'xe máy vặn ga tăng tốc chạy nhanh motorbike speed'), 'overload': (overload, 'quá tải căng thẳng áp lực não bộ sắp nổ overload stress'),
  'todo_long': (todo_long, 'danh sách quá dài quá nhiều việc quá tải to do list overload'), 'tired_face': (tired_face, 'mặt mệt mỏi chán nản kiệt sức tired face'),
 }
 

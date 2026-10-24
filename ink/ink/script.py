@@ -12,6 +12,7 @@ from .props import PROPS, POSE, FACES
 HERE = os.path.dirname(os.path.abspath(__file__))
 WPS = 2.8          # Vietnamese words (syllables) per second for the EverAI voice
 MAX_SECONDS = 300  # five minutes
+GENERIC_BADGES = {'mẹo hay', 'hot', 'xem ngay', 'bí quyết', 'mới', 'hay', 'cực hay', 'must see', 'tips', 'mẹo', 'quan trọng', 'đừng bỏ lỡ'}
 
 
 def prompt(name, **kw):
@@ -32,8 +33,14 @@ def _lines_ok(obj):
         if not isinstance(l, dict) or not str(l.get('say', '')).strip(): raise ValueError('câu đọc rỗng')
 
 
-def from_topic(topic, seconds=60, audience='', goal='truyền cảm hứng', tone='ấm áp, chân thành, truyền động lực', notes='', log=print):
-    seconds = max(20, min(MAX_SECONDS, int(seconds))); target = int(seconds * WPS)
+def speed(pace):
+    """how much faster than the plain voice a pace reads (the scripts are sized to it)"""
+    from .render import pace_rate
+    return 1 + int(pace_rate(pace).rstrip('%')) / 100
+
+
+def from_topic(topic, seconds=60, audience='', goal='truyền cảm hứng', tone='ấm áp, chân thành, truyền động lực', notes='', pace='normal', log=print):
+    seconds = max(20, min(MAX_SECONDS, int(seconds))); target = int(seconds * WPS * speed(pace) / 1.08)
     log('1/4 Chiến lược nội dung…')
     strategy = ai.ask(system(), prompt('strategy', topic=topic, audience=audience or 'chưa rõ, hãy tự xác định', goal=goal, tone=tone, seconds=seconds, notes=notes or 'không'), 0.8,
                       check=lambda o: o.get('core_message') or (_ for _ in ()).throw(ValueError('thiếu core_message')), log=log)
@@ -97,10 +104,10 @@ def fix_hook(strategy, script, review, log, tries=2):
     return script
 
 
-def from_script(text, max_seconds=MAX_SECONDS, log=print):
+def from_script(text, max_seconds=MAX_SECONDS, pace='normal', log=print):
     max_seconds = min(MAX_SECONDS, int(max_seconds))
     log('1/1 Chuẩn hóa kịch bản có sẵn (giữ nguyên ý và giọng văn)…')
-    return ai.ask(system(), prompt('adapt', script=text.strip(), max_seconds=max_seconds, max_words=int(max_seconds * WPS)), 0.2, check=_lines_ok, log=log)
+    return ai.ask(system(), prompt('adapt', script=text.strip(), max_seconds=max_seconds, max_words=int(max_seconds * WPS * speed(pace) / 1.08)), 0.2, check=_lines_ok, log=log)
 
 
 def _storyboard_ok(n):
@@ -135,9 +142,12 @@ def storyboard(script, log=print):
             v['layout'] = HERO_VARIANTS[hero_k % len(HERO_VARIANTS)] if prev in HERO_VARIANTS or hero_k else v['layout']; hero_k += 1
             if v['layout'] == prev: v['layout'] = HERO_VARIANTS[(HERO_VARIANTS.index(prev) + 1) % len(HERO_VARIANTS)]
         prev = v.get('layout')
-        scenes.append({'say': l['say'], 'visual': v, 'camera': s.get('camera') or {'type': 'push'}, 'transition': s.get('transition', 'slide')})
+        ph = [str(p).strip() for p in (s.get('phrases') or []) if str(p).strip()]
+        scenes.append({'say': l['say'], 'phrases': ph if words(' '.join(ph)) == words(l['say']) else [], 'visual': v, 'camera': s.get('camera') or {'type': 'push'}, 'transition': s.get('transition', 'slide')})
+    cover = sb.get('cover') if isinstance(sb.get('cover'), dict) else {}
+    if re.sub(r'[^\w ]', '', str(cover.get('badge', '')).lower()).strip() in GENERIC_BADGES: cover['badge'] = ''
     return {'title': script.get('title', ''), 'core_message': script.get('core_message', ''), 'scenes': scenes,
-            'cover': sb.get('cover') or {}, 'caption': sb.get('caption', ''), 'hashtags': sb.get('hashtags') or [], 'music': sb.get('music', 'motivating')}
+            'cover': cover, 'caption': sb.get('caption', ''), 'hashtags': [h for h in ('#' + str(x).strip().lstrip('#') for x in (sb.get('hashtags') or [])) if re.fullmatch(r'#[A-Za-z0-9_]{2,40}', h)][:10], 'music': sb.get('music', 'motivating')}
 
 
 def clean_visual(v):

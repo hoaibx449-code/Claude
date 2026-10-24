@@ -29,14 +29,16 @@ figure là đối tượng {{"pose": "...", "face": "..."}}.
 
 Camera mỗi cảnh: {{"type": "push"}} (mặc định, chậm rãi), {{"type": "pull"}}, hoặc {{"type": "push", "punch": true}} cho câu nhấn mạnh. transition: "cut" (mặc định), "whoosh" khi sang ý mới, "zoom" khi sang chương mới.
 
+Phụ đề: "phrases" chia NGUYÊN VĂN câu đọc thành các cụm 2–6 chữ theo nhịp đọc và nghĩa (giữ đủ mọi chữ, đúng thứ tự, kể cả dấu câu); KHÔNG tách đôi từ ghép (bản thân, kiên trì, mục tiêu, điện thoại…) hay cụm danh từ; câu ≤ 6 chữ thì chỉ một cụm.
+
 Ngoài ra thiết kế ẢNH BÌA (cover) chuẩn video ngắn:
 - "lines": tiêu đề 2–3 dòng, tổng tối đa 8 chữ, đọc được trong 1 giây; viết hoa chữ cái đầu câu; con số viết bằng chữ số. Tiêu đề phải tạo KHOẢNG TRỐNG TÒ MÒ: nêu vấn đề, nghịch lý hoặc lời hứa, TUYỆT ĐỐI KHÔNG nói ra đáp án/bí quyết (sai: "Bạn bỏ cuộc vì vác quá nặng"; đúng: "Bạn không lười / Bạn đang sai chỗ này").
 - Ảnh bìa đồng thời là KHUNG MỞ ĐẦU video, đọc câu hook trên nó: tiêu đề phải khớp và tăng sức nặng cho câu hook.
 - "highlight": một cụm 1–3 chữ có trong tiêu đề, được tô bút dạ vàng và gạch chân đỏ (từ đắt giá nhất).
-- "badge": nhãn phụ rất ngắn (ví dụ "7 NGÀY", "SAI LẦM #1") hoặc rỗng.
+- "badge": nhãn phụ rất ngắn gắn với ĐÚNG nội dung video (con số, mốc thời gian, tên quy tắc: "7 NGÀY", "SAI LẦM #1", "QUY TẮC 1 DÒNG") hoặc rỗng. Không dùng nhãn chung chung vô nghĩa như "MẸO HAY", "HOT", "XEM NGAY", "BÍ QUYẾT".
 - "prop" và "figure": hình chủ đạo thể hiện cảm xúc/kết quả của video.
 Và "caption" (2–3 câu mời xem, có câu hỏi) cùng "hashtags" (5–8 hashtag tiếng Việt không dấu và phổ biến).
 "music": không khí nhạc nền hợp nội dung, một trong: motivating (truyền động lực), calm (nhẹ nhàng, suy ngẫm), upbeat (vui tươi, sôi động), emotional (cảm xúc, lắng đọng).
 
 JSON:
-{{"scenes": [{{"line": 0, "visual": {{"layout": "...", "...": "..."}}, "camera": {{"type": "push"}}, "transition": "cut"}}], "cover": {{"lines": ["...", "..."], "highlight": "...", "badge": "", "prop": "...", "figure": {{"pose": "...", "face": "..."}}}}, "caption": "...", "hashtags": ["#..."], "music": "motivating"}}
+{{"scenes": [{{"line": 0, "phrases": ["...", "..."], "visual": {{"layout": "...", "...": "..."}}, "camera": {{"type": "push"}}, "transition": "cut"}}], "cover": {{"lines": ["...", "..."], "highlight": "...", "badge": "", "prop": "...", "figure": {{"pose": "...", "face": "..."}}}}, "caption": "...", "hashtags": ["#..."], "music": "motivating"}}

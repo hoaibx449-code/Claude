@@ -305,3 +305,10 @@ CREATE INDEX IF NOT EXISTS zalo_outbox_chat ON zalo_outbox(chat_id, created_at);
 CREATE INDEX IF NOT EXISTS zalo_outbox_message ON zalo_outbox(message_id);
 CREATE INDEX IF NOT EXISTS jobs_user_done ON jobs(user_id, finished_at);
 CREATE INDEX IF NOT EXISTS community_user ON community(user_id, created_at);
+
+-- Ink Studio: hand-drawn videos made on GitHub Actions (src/ink.ts, ink/)
+CREATE TABLE IF NOT EXISTS ink_jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,parent TEXT,title TEXT NOT NULL DEFAULT '',input TEXT NOT NULL,storyboard TEXT,
+  stage TEXT NOT NULL,status TEXT NOT NULL,progress INTEGER NOT NULL DEFAULT 0,message TEXT NOT NULL DEFAULT '',lease TEXT NOT NULL DEFAULT '',heartbeat INTEGER NOT NULL DEFAULT 0,
+  error TEXT NOT NULL DEFAULT '',duration REAL NOT NULL DEFAULT 0,meta TEXT NOT NULL DEFAULT '{}',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,finished_at INTEGER);
+CREATE INDEX IF NOT EXISTS ink_jobs_user ON ink_jobs(user_id,created_at);
+CREATE INDEX IF NOT EXISTS ink_jobs_queue ON ink_jobs(status,created_at);

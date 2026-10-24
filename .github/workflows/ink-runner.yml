@@ -1,0 +1,45 @@
+name: Ink Studio — máy dựng cho trang web
+
+# Trang web đánh thức workflow này (GitHub API) khi có video chờ dựng. Máy nhận lần lượt mọi video
+# đang chờ (/api/ink-runner), dựng rồi gửi kết quả về, hết việc thì dừng.
+# Cần secrets: NV_API_URL (địa chỉ trang, vd https://faciup.id.vn) và RUNNER_TOKEN (giống Worker).
+# Khoá AI và giọng đọc do trang web gửi kèm từng việc (Quản trị → API & khoá), không nằm trong repo.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ink-runner
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: ink/requirements.txt
+      - name: Cài FFmpeg và thư viện
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          pip install -q -r ink/requirements.txt
+      - name: Dùng lại giọng đã đọc
+        uses: actions/cache@v4
+        with:
+          path: |
+            ink/.cache
+            ~/.cache/huggingface
+          key: ink-voice-${{ github.run_id }}
+          restore-keys: ink-voice-
+      - name: Dựng các video đang chờ
+        working-directory: ink
+        env:
+          NV_API_URL: ${{ secrets.NV_API_URL }}
+          RUNNER_TOKEN: ${{ secrets.RUNNER_TOKEN }}
+        run: python -m ink.site

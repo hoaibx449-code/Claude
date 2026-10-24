@@ -16,6 +16,7 @@ import { drawImage, type ImageProvider, type TextProvider, writeScript, reviewDi
 import {claimIllustrated,startIllustrated,assertIllustrated,voiceCache as illustratedVoiceCache} from '../../addons/faciup-illustrated/web.ts';
 import {claimWhiteboard,startWhiteboard,assertWhiteboard,voiceCache} from '../../addons/faciup-whiteboard/web.ts';
 import { startRunner } from './gcp.ts';
+import { inkCron, inkRunner, inkUser } from './ink.ts';
 import { cleanSpec, LOOKS, STYLES } from './spec.ts';
 import { LOOK_BRIEF } from './ai.ts';
 import { clearVoiceFallback, recordRunnerCaps, recordVoiceFallback, voicePreview, voicesWithStatus, voiceUpload, browserVoice } from './voices.ts';
@@ -83,6 +84,7 @@ export default {
     ctx.waitUntil(tickCouncil(xenvZ).catch(()=>console.error('council: background processing failed')));
     if(new Date(e.scheduledTime).getUTCMinutes()===0)ctx.waitUntil(cleanupSolutionFiles(xenvZ).catch(err=>console.error('solutionFileCleanup',err)));
     ctx.waitUntil(tickFeed(xenvZ).catch(err=>console.error('imageFeed',err)));
+    ctx.waitUntil(inkCron(xenvZ).catch(err=>console.error('inkCron',err)));
     // Zalo without a webhook: every minute, ask for new messages (see pollZalo)
     if (xenvZ.config.zalo.enabled && (xenvZ as any).ZALO_BOT_TOKEN && (await receiveMode(xenvZ)) === 'poll') {
       const prc: Rc = { userId: null, visitor: null, ip: '', ua: null, channel: 'zalo', quiet: true,
@@ -189,6 +191,7 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
   if(path.startsWith('/api/illustrated-runner/')){const sub=path.slice('/api/illustrated-runner/'.length);const v=sub.match(/^voice\/([a-f0-9]{24})\/(\d+)$/);if(v)return illustratedVoiceCache(req,env,v[1],Number(v[2]));return sub==='claim'?claimIllustrated(req,env,rc):runner(req,env,sub,rc);}
   if(path.startsWith('/api/whiteboard-runner/')) {const sub=path.slice('/api/whiteboard-runner/'.length);const v=sub.match(/^voice\/([a-f0-9]{24})\/(\d+)$/);if(v)return voiceCache(req,env,v[1],Number(v[2]));return sub==='claim'?claimWhiteboard(req,env,rc):runner(req,env,sub,rc);}
   if (path.startsWith('/api/runner/')) return runner(req, env, path.slice('/api/runner/'.length), rc);
+  if (path.startsWith('/api/ink-runner/')) return inkRunner(req, env, path.slice('/api/ink-runner/'.length), rc);
 
   // called by other services (verified inside), and the no-login share link for finished videos
   if (path === '/api/council/telegram' && method === 'POST') return councilWebhook(req, env);
@@ -299,6 +302,8 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
     const response=await helpChat(req,env,rc,user),result=await response.json() as Record<string,unknown>;
     return json({...result,userId:user.id},response.status,{'cache-control':'private, no-store'});
   }
+  const ink = await inkUser(req, env, rc, user, path);
+  if (ink) return ink;
   if (path.startsWith('/api/admin/')) {
     if (!(await isAdmin(env, env.config, user))) throw new HttpError(403, 'Chỉ quản trị viên mới vào được trang này.');
     return adminRoutes(req, env, rawEnv, path.slice('/api/admin/'.length), method, rc, user);

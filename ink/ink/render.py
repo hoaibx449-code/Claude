@@ -17,6 +17,19 @@ SWAPC = 420
 DRAW_SPEED = 3400.0   # stroke pixels per second
 ARM_END, ARM_FADE = 150, 110
 TR = 0.22             # seconds of a slide between scenes
+# pace: voice rate, longest time to draw a scene, slide length. The pictures follow the voice, so a faster
+# voice makes the whole video faster and stays in sync word by word.
+PACES = {'slow': ('+0%', 1.5, 0.30), 'normal': ('+8%', 1.2, 0.22), 'fast': ('+15%', 0.9, 0.18), 'faster': ('+25%', 0.7, 0.15)}
+def pace_rate(pace):
+    """'fast' or a factor like 1.2 -> the voice rate string edge-tts and EverAI take"""
+    if pace in PACES: return PACES[pace][0]
+    try: return f'{round((float(pace) - 1) * 100):+d}%'
+    except (TypeError, ValueError): return PACES['normal'][0]
+def pace_draw(pace):
+    if pace in PACES: return PACES[pace][1:]
+    try: f = float(pace)
+    except (TypeError, ValueError): return PACES['normal'][1:]
+    return max(0.6, 1.3 / f), max(0.14, 0.24 / f)
 CAP_Y = 1580          # caption line centre
 ease = lambda t: t * t * (3 - 2 * t)
 
@@ -119,20 +132,33 @@ def chunks(ws, size=64, max_w=900, most=6):
     return cuts[::-1]
 
 
-def caption_layer(words, t):
+def phrase_cuts(phrases, n):
+    """the editor's phrase marks for a line, as (start, end) word ranges, if they cover it exactly"""
+    if not phrases: return None
+    sizes = [len(str(p).split()) for p in phrases if str(p).strip()]
+    if sum(sizes) != n or not sizes: return None
+    out, a = [], 0
+    for k in sizes:
+        while k > 7: out.append((a, a + k // 2)); a += k // 2; k -= k // 2  # a long phrase is halved
+        out.append((a, a + k)); a += k
+    return out
+
+
+def caption_layer(words, t, phrases=None):
     """the chunk of the current line that holds the word being said"""
     cur = [w for w in words if w[2] <= t + 0.05]
     if not cur: return None
     line = cur[-1][0]; ws = [w for w in words if w[0] == line]
     k = max(0, min(len(ws) - 1, sum(1 for w in ws if w[2] <= t + 0.05) - 1))
     size = 64
-    for a, b in chunks([w[1] for w in ws], size):
+    cuts = phrase_cuts((phrases or {}).get(line), len(ws)) or chunks([w[1] for w in ws], size)
+    for a, b in cuts:
         if a <= k < b: return [(i, ws[i][1]) for i in range(a, b)], k, size
     return None
 
 
-def draw_caption(frame, words, t):
-    got = caption_layer(words, t)
+def draw_caption(frame, words, t, phrases=None):
+    got = caption_layer(words, t, phrases)
     if not got: return frame
     g, k, size = got
     pil = Image.fromarray(frame).convert('RGBA'); lay = Image.new('RGBA', pil.size, (0, 0, 0, 0)); d = ImageDraw.Draw(lay)
@@ -150,28 +176,30 @@ def progress(frame, gt, total):
     cv2.rectangle(frame, (0, H - 12), (W, H), (225, 218, 200), -1); cv2.rectangle(frame, (0, H - 12), (int(W * gt / total), H), ACC, -1); return frame
 
 
-def render(scenes, timing, voice, out, words=None, cover=None, music=None, music_volume=0.20, captions=True, effects=True, log=print):
+def render(scenes, timing, voice, out, words=None, cover=None, music=None, music_volume=0.20, captions=True, effects=True, pace='normal', log=print):
     """scenes: storyboard scenes; timing: [(i, start, end)] per scene from the voice; words: [(line, word, start, end)];
     cover: (title image, ops the hand draws over it) — the first scene, drawn in the first second"""
     work = os.path.dirname(os.path.abspath(out)) or '.'
     total = timing[-1][2]; silent = os.path.join(work, '_silent.mp4'); mix = os.path.join(work, '_mix.m4a'); fx = os.path.join(work, '_fx.wav')
     pr = subprocess.Popen(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{W}x{H}', '-r', str(FPS), '-i', '-',
                            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', silent], stdin=subprocess.PIPE)
-    written = 0; prev = None; ntr = int(TR * FPS); events = []
+    td_max, TR = pace_draw(pace)
+    phrases = {i: sc.get('phrases') for i, sc in enumerate(scenes) if sc.get('phrases')}
+    written = 0; prev = None; ntr = max(2, int(TR * FPS)); events = []
     for i, sc in enumerate(scenes):
         _, st, en = timing[i]
         nf = int(round(en * FPS)) - written  # frames are counted on the global clock, so drift never builds up
         use_cover = i == 0 and cover is not None
         kind = sc.get('transition', 'slide') if i else 'cut'
         cam = sc.get('camera') or {}; info = {}
-        if use_cover: frames = scene_frames(cover[1], nf / FPS, {'type': 'push', 'amount': 0.05}, cover[0], t_in=0.0, td_max=1.2, info=info)
-        else: frames = scene_frames(build(sc.get('visual') or {}), nf / FPS, cam, info=info)
+        if use_cover: frames = scene_frames(cover[1], nf / FPS, {'type': 'push', 'amount': 0.05}, cover[0], t_in=0.0, td_max=min(1.2, td_max), info=info)
+        else: frames = scene_frames(build(sc.get('visual') or {}), nf / FPS, cam, td_max=td_max, info=info)
         last = None
         for k, fr in enumerate(frames):
             o = fr
             if prev is not None and kind != 'cut' and k < ntr: o = slide(prev, fr, (k + 1) / ntr)
             gt = (written + k) / FPS
-            if captions and words: o = draw_caption(o, words, gt)
+            if captions and words: o = draw_caption(o, words, gt, phrases)
             pr.stdin.write(progress(np.array(o, copy=True), gt, total).tobytes()); last = fr
         t0 = written / FPS
         if i and kind != 'cut': events.append((max(0, t0 - 0.08), 'whoosh', TR))

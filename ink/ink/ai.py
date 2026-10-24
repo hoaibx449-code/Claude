@@ -5,6 +5,7 @@ Environment (keys only come from secrets, never from files):
   INK_AI_ORDER     e.g. "gemini,openai" (default) - who is asked first
   INK_GEMINI_MODELS e.g. "gemini-3.5-flash,gemini-flash-latest"
   INK_OPENAI_MODELS e.g. "gpt-4.1-mini,gpt-4.1-nano"
+  INK_AI_FALLBACK  1 (default): when the first provider fails, the other one answers; 0: never
 Every answer must be JSON; a model that errors, is busy or returns broken JSON hands over to the next one."""
 import json, os, re, time, urllib.request, urllib.error
 
@@ -15,8 +16,9 @@ used = []  # (provider, model) of each successful call, written to the run log
 
 def chain():
     order = [p.strip() for p in os.environ.get('INK_AI_ORDER', 'gemini,openai').split(',') if p.strip() in KEYS]
-    for p in KEYS:
-        if p not in order: order.append(p)
+    if os.environ.get('INK_AI_FALLBACK', '1') != '0':  # 0 = only the first provider, never the other one
+        for p in KEYS:
+            if p not in order: order.append(p)
     out = []
     for p in order:
         if not os.environ.get(KEYS[p]): continue

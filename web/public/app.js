@@ -457,7 +457,13 @@ function markNav(name) {
   for (const a of document.querySelectorAll('[data-route]')) a.classList.toggle('on', a.dataset.route === name);
 }
 const PUBLIC = { '#/faciup-live':1, '#/gioi-thieu':1, '#/prompt-hunter':1, '#/tro-giup': 1, '': 1, '#/': 1, '#/mau': 1, '#/goi': 1, '#/tao': 1, '#/thu': 1, '#/dieu-khoan': 1, '#/bao-mat': 1, '#/hoan-tien': 1, '#/cong-dong': 1, '#/dang-nhap-loi': 1 };
-let stopHomeGallery = null,stopVideoLibrary=null,stopLive=null;
+let stopHomeGallery = null,stopVideoLibrary=null,stopLive=null,stopInk=null;
+/** Ink Studio pages (ink.js): the hand-drawn video maker. */
+async function inkPage(kind, id) {
+  const mod = await import('/ink.js?v=1');
+  const ctx = { h, api, show, me, openLogin, toast, fail, navigate, busy, footer };
+  stopInk = (await (kind === 'create' ? mod.showInkCreate(ctx) : kind === 'list' ? mod.showInkList(ctx) : mod.showInkWatch(ctx, id))) || null;
+}
 let solutionNavigation = 0;
 async function showSolutionPage() {
  const ticket=++solutionNavigation, key=location.pathname+location.search;
@@ -491,7 +497,7 @@ function route() {
   if (view.firstElementChild) routing(true);
   if (me) loadNotes();
   stopLive?.();stopLive=null;
-  stopHomeGallery?.(); stopHomeGallery = null;stopVideoLibrary?.();stopVideoLibrary=null;
+  stopHomeGallery?.(); stopHomeGallery = null;stopVideoLibrary?.();stopVideoLibrary=null;stopInk?.();stopInk=null;
   stopPreview(); stopDemos();
   // a window left open (payment, player, sign-in) never follows the user to another page
   document.querySelectorAll('.sheet-bg').forEach((x) => x.remove());
@@ -499,10 +505,10 @@ function route() {
   ++solutionNavigation;delete view.dataset.solutionPath;document.body.classList.remove('solutions-site');view.classList.remove('solutions-main');
   document.querySelectorAll('script[data-solution-schema]').forEach(n=>n.remove());
   const hash = currentRoute().split('?')[0];
-  const m = hash.match(/^#\/p\/([a-f0-9]{24})$/), w = hash.match(/^#\/xem\/([a-f0-9]{24})\/([a-f0-9]{24})$/);
+  const m = hash.match(/^#\/p\/([a-f0-9]{24})$/), w = hash.match(/^#\/xem\/([a-f0-9]{24})\/([a-f0-9]{24})$/), ik = hash.match(/^#\/ink\/([a-f0-9]{24})$/);
   // Faciup Live is the home page; the old home lives on as Giới thiệu, with the wide top bar
   if (hash === '#/faciup-live') history.replaceState(history.state, '', '/');
-  markNav(hash === '#/' || hash === '' || hash === '#/faciup-live' ? 'home' : w ? 'video' : m ? 'tao' : hash.startsWith('#/admin') ? 'admin' : hash.slice(2));
+  markNav(hash === '#/' || hash === '' || hash === '#/faciup-live' ? 'home' : w || ik || hash === '#/ink' ? 'video' : m ? 'tao' : hash.startsWith('#/admin') ? 'admin' : hash.slice(2));
   // app pages have the side bar (desktop); the home page keeps the wide top bar
   document.body.dataset.page = hash === '#/' || hash === '' || hash === '#/faciup-live' ? 'faciup-live' : hash === '#/gioi-thieu' ? 'home' : m ? 'editor' : hash.slice(2).split('/')[0];
   const q = new URLSearchParams(currentRoute().split('?')[1] || '').get('q') || '';
@@ -511,7 +517,10 @@ function route() {
   scrollTo(0, 0);
   if (!me && !PUBLIC[hash] && !m) { showLanding().catch(fatal); return openLogin('route', { hash }); }
   if (!me && (m || w)) { showLanding().catch(fatal); return openLogin('route', { hash }); }
-  const go = m ? showEditor(m[1])
+  const old = new URLSearchParams(currentRoute().split('?')[1] || '').get('cu') === '1';
+  const go = ik ? inkPage('watch', ik[1])
+    : hash === '#/ink' || (hash === '#/video' && !old) ? inkPage('list')
+    : m ? showEditor(m[1])
     : w ? showWatch(w[1], w[2])
     : hash === '#/' || hash === '' || hash === '#/faciup-live' ? showFaciupLive()
     : hash === '#/gioi-thieu' ? showLanding()
@@ -521,7 +530,7 @@ function route() {
     : hash === '#/goi' ? showPlans()
     : hash === '#/zalo' ? showZalo()
     : hash === '#/mau' ? showStyles()
-    : hash === '#/tao' ? showCreate()
+    : hash === '#/tao' ? inkPage('create')
     : hash === '#/thu' ? showTry()
     : hash === '#/video' ? showVideos()
     : hash === '#/tai-khoan' ? showLanding().then(()=>showAccount())
