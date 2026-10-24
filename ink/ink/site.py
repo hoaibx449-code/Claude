@@ -19,7 +19,8 @@ class Lost(Exception):
 
 
 def call(path, data=None, method=None, body=None, ctype=None, lease='', timeout=60, raw=False):
-    headers = {'authorization': 'Bearer ' + TOKEN}
+    # Cloudflare turns away the default Python-urllib signature (error 1010)
+    headers = {'authorization': 'Bearer ' + TOKEN, 'user-agent': 'faciup-ink-runner/1.0 (+github-actions)', 'accept': 'application/json'}
     if lease: headers['x-nv-lease'] = lease
     if data is not None: body = json.dumps(data).encode(); ctype = 'application/json'
     if ctype: headers['content-type'] = ctype

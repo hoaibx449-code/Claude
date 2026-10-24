@@ -23,3 +23,18 @@ python -m ink.preview storyboard.json --out overview.png
 Trên GitHub: tab Actions → "Ink Studio — dựng video vẽ tay" → Run workflow. Kết quả ở mục Artifacts.
 Secrets cần: `GEMINI_API_KEY` và/hoặc `OPENAI_API_KEY`, `EVERAI_API_KEY`, `EVERAI_VOICE_CODE`.
 Biến (Variables) tuỳ chọn: `INK_AI_ORDER` (vd `openai,gemini`), `INK_GEMINI_MODELS`, `INK_OPENAI_MODELS`.
+
+## Nhịp video
+`--pace slow | normal | fast | faster` (hoặc một hệ số, vd `1.15`): tốc độ đọc, thời gian vẽ mỗi cảnh và độ dài
+chuyển cảnh cùng đổi theo, hình vẫn khớp từng chữ. Dựng lại một video đã có với nhịp khác, không gọi AI:
+```bash
+python -m ink.cli --from out --pace fast --out out-nhanh
+```
+
+## Chạy cho trang web
+Trang web giữ hàng chờ (`web/src/ink.ts`); khi có video mới, nó gọi GitHub API chạy workflow
+`.github/workflows/ink-runner.yml`. Máy dựng (`ink/site.py`) nhận lần lượt các video đang chờ, dựng xong gửi
+video, ảnh bìa, bảng phân cảnh về trang rồi dừng. Khoá AI, giọng đọc và thứ tự ưu tiên lấy từ trang
+Quản trị → Ink Studio và API & khoá, gửi kèm từng việc và được che trong nhật ký GitHub.
+Cần: secrets `NV_API_URL`, `RUNNER_TOKEN` của repo; GitHub token (fine-grained, quyền Actions: Read and write
+cho repo này) nhập ở Quản trị → Ink Studio.
