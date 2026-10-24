@@ -223,6 +223,42 @@ LAYOUTS = {
  'hold': (L_hold, 'nhân vật giơ cao đồ vật (thành quả, gánh nặng): {prop,label,figure?}'),
 }
 
+FILL = (60, 250, 1020, 1490)  # the box a scene may fill: clear of the captions and the platform buttons
+MAX_ZOOM = 1.4
+
+def _is_ground(op):
+    p = op['pts']; return op['k'] == 'line' and np.ptp(p[:, 0]) > 700 and np.ptp(p[:, 1]) < 40
+
+def _bbox(ops):
+    xs, ys = [], []
+    for op in ops:
+        if op['k'] == 'text': x0, y0, x1, y1 = op['bb']; xs += [x0, x1]; ys += [y0, y1]
+        elif _is_ground(op): ys += [op['pts'][:, 1].mean()]  # the ground may run off the sides; only its height counts
+        else: p = op['pts']; pad = op['w'] / 2; xs += [p[:, 0].min() - pad, p[:, 0].max() + pad]; ys += [p[:, 1].min() - pad, p[:, 1].max() + pad]
+    return min(xs), min(ys), max(xs), max(ys)
+
+def fill(ops):
+    """scale a sparse scene up around its centre so the drawing fills the frame (phones show it small otherwise)"""
+    if not ops: return ops
+    x0, y0, x1, y1 = _bbox(ops); bx0, by0, bx1, by1 = FILL
+    z = min((bx1 - bx0) / max(1, x1 - x0), (by1 - by0) / max(1, y1 - y0), MAX_ZOOM)
+    if z < 1.04: return ops
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2; tx, ty = (bx0 + bx1) / 2, (by0 + by1) / 2
+    out = []
+    for op in ops:
+        op = dict(op)
+        if op['k'] == 'text':
+            a0, b0, a1, b1 = op['bb']; m = op['mask']
+            nw, nh = max(1, int(round(m.shape[1] * z))), max(1, int(round(m.shape[0] * z)))
+            nx, ny = int(round(tx + (a0 - cx) * z)), int(round(ty + (b0 - cy) * z))
+            nx = max(0, min(W - nw, nx)); ny = max(0, min(H - nh, ny))
+            op['mask'] = cv2.resize(m, (nw, nh), interpolation=cv2.INTER_LINEAR); op['bb'] = (nx, ny, nx + nw, ny + nh)
+        else:
+            p = op['pts'].astype(np.float64).copy(); p[:, 0] = tx + (p[:, 0] - cx) * z; p[:, 1] = ty + (p[:, 1] - cy) * z
+            op['pts'] = p; op['w'] = op['w'] * min(z, 1.2)
+        out.append(op)
+    return out
+
 def build(scene):
     """ops for a storyboard scene; a broken scene becomes a plain hero card instead of failing the video"""
     cv = Canvas(); name = scene.get('layout', 'hero')
@@ -230,4 +266,4 @@ def build(scene):
     try: fn(cv, scene)
     except Exception as e:  # noqa: BLE001 - a bad slot must not stop the render
         cv = Canvas(); L_hero(cv, {'prop': scene.get('prop', 'star'), 'label': scene.get('label') or scene.get('title') or ''})
-    return cv.done()
+    return fill(cv.done())

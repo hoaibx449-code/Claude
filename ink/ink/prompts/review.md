@@ -5,8 +5,9 @@ Chủ đề / thông điệp: {core}
 Kịch bản:
 {script}
 
-Chấm từng tiêu chí từ 1 đến 10:
-- hook: 3 giây đầu có giữ được người xem không.
+Chấm từng tiêu chí từ 1 đến 10 như người lướt TikTok khó tính, không nể nang (8 là tốt thật sự, 10 là xuất sắc hiếm gặp):
+- hook: câu đầu (≤ 10 chữ) có khiến người đang lướt dừng lại không: có tò mò/bất ngờ, không lộ đáp án, không sáo rỗng. Chấm khắt khe: câu hỏi chung chung kiểu "bạn có hay… không" chỉ được tối đa 6.
+- retention: có câu mở vòng giữ chân tới cuối và giữ lời; cứ vài câu có điểm bất ngờ; không đoạn nào lê thê.
 - clarity: thông điệp cốt lõi có rõ, có một không hai.
 - concrete: có ví dụ, con số, hình ảnh cụ thể, đời thường.
 - value: người xem nhận được giá trị thật (hiểu ra, làm được).
@@ -16,4 +17,4 @@ Chấm từng tiêu chí từ 1 đến 10:
 Nêu tối đa 5 vấn đề cụ thể cần sửa (chỉ rõ câu nào, sửa thế nào).
 
 JSON:
-{{"scores": {{"hook": 0, "clarity": 0, "concrete": 0, "value": 0, "action": 0, "language": 0, "length": 0}}, "issues": ["..."]}}
+{{"scores": {{"hook": 0, "clarity": 0, "concrete": 0, "value": 0, "action": 0, "language": 0, "length": 0, "retention": 0}}, "issues": ["..."]}}

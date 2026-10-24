@@ -14,6 +14,8 @@ Tư duy hình ảnh:
 - Không dùng cùng một bố cục cho 2 cảnh liền nhau; luân phiên để có nhịp. Câu hook dùng big_number, before_after, hero có nhân vật biểu cảm, hoặc obstacle. Câu kết có lời mời tương tác dùng cta.
 - Câu mở đầu một chương mới (có "chapter") dùng bố cục chapter.
 - Nhân vật (figure) giúp người xem đồng cảm: chọn tư thế và nét mặt đúng cảm xúc câu đọc.
+- Đồ vật phải đúng NGHĨA ĐEN của từ trong câu để người xem nhận ra ngay (ba lô → backpack, cắt giảm → scissors, nằm lướt điện thoại → sofa hoặc phone, quá nhiều việc → todo_long). Không thay bằng đồ vật na ná (không dùng boulder cho ba lô).
+- Mỗi khung hình phải đầy đặn, có câu chuyện: ưu tiên bố cục có 2–3 thành phần (nhân vật + đồ vật + nhãn) hơn một đồ vật đứng trơ trọi.
 
 Các bố cục (layout) và ô cần điền:
 {layouts}
@@ -28,7 +30,7 @@ figure là đối tượng {{"pose": "...", "face": "..."}}.
 Camera mỗi cảnh: {{"type": "push"}} (mặc định, chậm rãi), {{"type": "pull"}}, hoặc {{"type": "push", "punch": true}} cho câu nhấn mạnh. transition: "cut" (mặc định), "whoosh" khi sang ý mới, "zoom" khi sang chương mới.
 
 Ngoài ra thiết kế ẢNH BÌA (cover) chuẩn video ngắn:
-- "lines": tiêu đề 2–3 dòng, tổng tối đa 8 chữ, gây tò mò mạnh, đọc được trong 1 giây; viết hoa chữ cái đầu câu; con số viết bằng chữ số.
+- "lines": tiêu đề 2–3 dòng, tổng tối đa 8 chữ, đọc được trong 1 giây; viết hoa chữ cái đầu câu; con số viết bằng chữ số. Tiêu đề phải tạo KHOẢNG TRỐNG TÒ MÒ: nêu vấn đề, nghịch lý hoặc lời hứa, TUYỆT ĐỐI KHÔNG nói ra đáp án/bí quyết (sai: "Bạn bỏ cuộc vì vác quá nặng"; đúng: "Bạn không lười / Bạn đang sai chỗ này").
 - Ảnh bìa đồng thời là KHUNG MỞ ĐẦU video, đọc câu hook trên nó: tiêu đề phải khớp và tăng sức nặng cho câu hook.
 - "highlight": một cụm 1–3 chữ có trong tiêu đề, được tô bút dạ vàng và gạch chân đỏ (từ đắt giá nhất).
 - "badge": nhãn phụ rất ngắn (ví dụ "7 NGÀY", "SAI LẦM #1") hoặc rỗng.

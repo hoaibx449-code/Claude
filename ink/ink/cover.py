@@ -29,6 +29,12 @@ def _doodles(cv):
 
 
 def cover_ops(cover):
+    base, drawn = cover_parts(cover); return base + drawn
+
+
+def cover_parts(cover):
+    """(what is on the board at the very first frame: the title on its swash, what the hand then draws in
+    the first second: the underline, the badge, the hero and the doodles)"""
     lines = [' '.join(str(l).split()) for l in (cover.get('lines') or []) if str(l).strip()][:3] or [cover.get('title') or 'Video mới']
     hl = ' '.join(str(cover.get('highlight') or '').split()).lower(); badge = str(cover.get('badge') or '').strip()
     cv = Canvas()
@@ -43,6 +49,7 @@ def cover_ops(cover):
             x0 = x + (text_width(l[:i].rstrip(), size) + text_width(' ', size) if i else 0) - 18; x1 = x + text_width(l[:i + len(hl)], size) + 18
             y = y0 + k * gap; _swash(cv, x0, y - size * 0.42, x1, y + size * 0.4); marks.append((x0, x1, y))
     for k, l in enumerate(lines): cv.text(W / 2, y0 + k * gap, l, size, INK, max_w=940, lines=1)
+    base = cv.done(); cv = Canvas()
     for x0, x1, y in marks:  # a red marker underline under the key phrase
         cv.line([(x0 + 10, y + size * 0.55), ((x0 + x1) / 2, y + size * 0.62), (x1 - 10, y + size * 0.52)], 11, RED)
     if badge:
@@ -58,7 +65,7 @@ def cover_ops(cover):
     else:
         draw_prop(cv, prop, 540, 1150, 1.9)
     _doodles(cv)
-    return cv.done()
+    return base, cv.done()
 
 
 def cover_frame(cover):

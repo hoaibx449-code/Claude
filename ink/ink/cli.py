@@ -11,7 +11,9 @@ from .preview import sheet
 from .voice import narrate
 from .music import write as write_music, MOODS
 from .render import render
-from .cover import make_cover, cover_frame
+from .cover import make_cover, cover_frame, cover_parts
+from .engine import render_full, prep, BG, W, H
+import numpy as np
 
 
 def main(argv=None):
@@ -55,7 +57,10 @@ def main(argv=None):
         mood = mood if mood in MOODS else 'motivating'
         music = write_music(timing[-1][2] + 1, os.path.join(a.out, 'voice', 'music.wav'), mood); log(f'  nhạc nền: tự tạo, không khí "{mood}"')
     log('Dựng video…')
-    total = render(sb['scenes'], timing, voice, os.path.join(a.out, 'video.mp4'), words=words, cover_img=cover_frame(sb.get('cover') or {}),
+    base_ops, drawn = cover_parts(sb.get('cover') or {'lines': [sb['title']]})
+    base = np.empty((H, W, 3), np.uint8); base[:] = BG
+    for op in base_ops: prep(op); render_full(base, op)
+    total = render(sb['scenes'], timing, voice, os.path.join(a.out, 'video.mp4'), words=words, cover=(base, drawn),
                    music=music, music_volume=a.music_volume, captions=not a.no_captions, log=log)
     log(f'Xong: video {total:.1f} giây, dựng mất {time.time() - t0:.0f} giây. AI đã dùng: {", ".join(f"{p}/{m}" for p, m in ai.used)}')
 

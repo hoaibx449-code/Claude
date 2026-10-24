@@ -505,6 +505,53 @@ def mirror(cv, cx, cy, s=1.0):
 def seed(cv, cx, cy, s=1.0):
     ell(cv, cx, cy, 60 * s, 90 * s, 10, INK, BROWN); cv.line(bez((cx - 10 * s, cy - 50 * s), (cx + 20 * s, cy), (cx - 10 * s, cy + 50 * s)), 6, PAPER)
 
+def backpack(cv, cx, cy, s=1.0):
+    """a heavy backpack with a weight tag"""
+    rrect(cv, cx - 130 * s, cy - 150 * s, cx + 130 * s, cy + 170 * s, 60 * s, 11, INK, ORANGE)
+    cv.arc(cx, cy - 150 * s, 60 * s, 180, 360, 12)
+    rrect(cv, cx - 90 * s, cy + 20 * s, cx + 90 * s, cy + 140 * s, 26 * s, 9, INK, (230, 120, 50))
+    cv.line([(cx - 90 * s, cy - 40 * s), (cx + 90 * s, cy - 40 * s)], 8)
+    rrect(cv, cx + 70 * s, cy - 110 * s, cx + 200 * s, cy - 40 * s, 14 * s, 7, INK, WHITE); cv.text(cx + 135 * s, cy - 75 * s, '20kg', 46 * s, INK)
+
+def scissors(cv, cx, cy, s=1.0):
+    for sg in (-1, 1):
+        cv.line([(cx - 20 * s * sg, cy + 40 * s), (cx + 120 * s * sg, cy - 170 * s)], 13)
+        cv.circle(cx - 70 * s * sg, cy + 110 * s, 52 * s, 11, INK, RED)
+    cv.circle(cx, cy - 10 * s, 12 * s, 6, INK, INK)
+
+def feather(cv, cx, cy, s=1.0):
+    spine = bez((cx - 120 * s, cy + 160 * s), (cx + 10 * s, cy), (cx + 110 * s, cy - 170 * s))
+    left = bez((cx - 60 * s, cy + 90 * s), (cx - 120 * s, cy - 60 * s), (cx + 110 * s, cy - 170 * s))
+    right = bez((cx + 110 * s, cy - 170 * s), (cx + 120 * s, cy + 20 * s), (cx - 60 * s, cy + 90 * s))
+    cv.shape(left + right[1:], 9, INK, SKY); cv.line(spine, 8)
+    for k in range(4): t = 0.3 + k * 0.15; x, y = spine[int(t * (len(spine) - 1))]; cv.line([(x, y), (x + 45 * s, y + 25 * s)], 5)
+
+def weight(cv, cx, cy, s=1.0):
+    cv.poly([(cx - 90 * s, cy - 90 * s), (cx + 90 * s, cy - 90 * s), (cx + 150 * s, cy + 140 * s), (cx - 150 * s, cy + 140 * s)], INK, DARK, 11)
+    cv.arc(cx, cy - 110 * s, 48 * s, 180, 360, 13); cv.text(cx, cy + 40 * s, '100kg', 64 * s, WHITE)
+
+def sofa(cv, cx, cy, s=1.0):
+    rrect(cv, cx - 210 * s, cy - 110 * s, cx + 210 * s, cy + 20 * s, 30 * s, 10, INK, PURPLE)
+    rrect(cv, cx - 240 * s, cy - 20 * s, cx + 240 * s, cy + 90 * s, 30 * s, 10, INK, (180, 150, 235))
+    for x in (-200, 200): cv.line([(cx + x * s, cy + 90 * s), (cx + x * s, cy + 140 * s)], 12)
+
+def trash(cv, cx, cy, s=1.0):
+    cv.poly([(cx - 110 * s, cy - 100 * s), (cx + 110 * s, cy - 100 * s), (cx + 85 * s, cy + 160 * s), (cx - 85 * s, cy + 160 * s)], INK, GRAYR, 11)
+    cv.rect(cx - 135 * s, cy - 135 * s, cx + 135 * s, cy - 100 * s, 10, INK, DARK); cv.line([(cx - 30 * s, cy - 150 * s), (cx + 30 * s, cy - 150 * s)], 12)
+    for x in (-45, 0, 45): cv.line([(cx + x * s, cy - 60 * s), (cx + x * 0.8 * s, cy + 125 * s)], 7)
+
+def todo_long(cv, cx, cy, s=1.0):
+    """a list far too long, running off the page"""
+    cv.rect(cx - 140 * s, cy - 200 * s, cx + 140 * s, cy + 200 * s, 10, INK, WHITE)
+    for k in range(9):
+        y = cy - 165 * s + k * 42 * s; cv.rect(cx - 115 * s, y - 13 * s, cx - 89 * s, y + 13 * s, 4, INK, None)
+        cv.line([(cx - 70 * s, y), (cx + (110 - 40 * (k % 3)) * s, y)], 6, BLUE)
+    cv.line([(cx - 140 * s, cy + 200 * s), (cx - 100 * s, cy + 250 * s), (cx - 40 * s, cy + 215 * s), (cx + 20 * s, cy + 260 * s), (cx + 90 * s, cy + 220 * s), (cx + 140 * s, cy + 200 * s)], 8)
+
+def tired_face(cv, cx, cy, s=1.0):
+    cv.circle(cx, cy, 150 * s, 12, INK, ACC); face(cv, (cx, cy), 2.0 * s, 'tired')
+    cv.text(cx + 150 * s, cy - 150 * s, 'z', 70 * s, BLUE)
+
 
 # name: (function, keywords). Keywords are what the storyboard AI matches meanings against.
 PROPS = {
@@ -548,6 +595,10 @@ PROPS = {
  'thumbs_up': (thumbs_up, 'thích tán thành tốt like good'), 'scale': (scale_balance, 'cân bằng cân nhắc balance scale'),
  'snail': (snail, 'ốc sên chậm chạp trì hoãn slow procrastinate'), 'mirror': (mirror, 'gương bản thân soi mình mirror self'),
  'goal': (paper_plane_goal, 'hướng tới mục tiêu goal aim'),
+ 'backpack': (backpack, 'ba lô balo hành lý mang vác gánh nặng backpack carry'), 'scissors': (scissors, 'cái kéo cắt giảm cắt bớt scissors cut'),
+ 'feather': (feather, 'lông vũ nhẹ nhàng nhẹ tênh thảnh thơi feather light'), 'weight': (weight, 'quả tạ nặng nề áp lực quá tải weight heavy pressure'),
+ 'sofa': (sofa, 'ghế sofa nằm dài lười biếng nghỉ ngơi sofa couch lazy'), 'trash': (trash, 'thùng rác bỏ đi loại bỏ vứt bỏ trash discard'),
+ 'todo_long': (todo_long, 'danh sách quá dài quá nhiều việc quá tải to do list overload'), 'tired_face': (tired_face, 'mặt mệt mỏi chán nản kiệt sức tired face'),
 }
 
 def draw_prop(cv, name, cx, cy, s=1.0, **kw):

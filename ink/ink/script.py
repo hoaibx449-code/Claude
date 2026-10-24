@@ -40,22 +40,60 @@ def from_topic(topic, seconds=60, audience='', goal='truyền cảm hứng', ton
     log('2/4 Dàn ý…')
     outline = ai.ask(system(), prompt('outline', strategy=json.dumps(strategy, ensure_ascii=False), seconds=seconds, words=target), 0.7,
                      check=lambda o: o.get('beats') or (_ for _ in ()).throw(ValueError('thiếu beats')), log=log)
-    feedback = ''; script = None; review = None
-    for round_ in range(2):
-        log('3/4 Viết lời đọc…' if round_ == 0 else '3/4 Viết lại theo góp ý biên tập…')
+    feedback = ''; best = None
+    for round_ in range(3):
+        log('3/4 Viết lời đọc…' if round_ == 0 else f'3/4 Viết lại theo góp ý biên tập (lần {round_})…')
         script = ai.ask(system(), prompt('write', strategy=json.dumps(strategy, ensure_ascii=False), outline=json.dumps(outline, ensure_ascii=False), seconds=seconds, words=target, feedback=feedback), 0.75, check=_lines_ok, log=log)
-        text = '\n'.join(l['say'] for l in script['lines'])
-        log('4/4 Biên tập viên chấm kịch bản…')
-        review = ai.ask(system(), prompt('review', core=strategy.get('core_message', ''), seconds=seconds, words=target, count=words(text), script=text), 0.2,
-                        check=lambda o: o.get('scores') or (_ for _ in ()).throw(ValueError('thiếu scores')), log=log)
-        sc = review.get('scores', {}); low = [k for k, v in sc.items() if isinstance(v, (int, float)) and v < 8]
-        avg = sum(v for v in sc.values() if isinstance(v, (int, float))) / max(1, len(sc))
-        log(f'   điểm trung bình {avg:.1f}, tiêu chí dưới 8: {", ".join(low) or "không"}')
-        if avg >= 8.5 and not [k for k, v in sc.items() if isinstance(v, (int, float)) and v < 8]: break
-        if round_ == 1: break
+        review, avg, low = _review(strategy, script, seconds, target, log)
+        if best is None or avg > best[2]: best = (script, review, avg)
+        if avg >= 8.5 and not low: break
         feedback = 'Biên tập viên yêu cầu sửa những điểm sau (bắt buộc khắc phục):\n- ' + '\n- '.join(review.get('issues', [])[:5])
+    script, review, _ = best
+    hook = _num(review.get('scores', {}).get('hook'))
+    if hook < 8: script = fix_hook(strategy, script, review, log)
     script['strategy'] = strategy; script['outline'] = outline; script['review'] = review
     script.setdefault('core_message', strategy.get('core_message', '')); script.setdefault('title', strategy.get('title', ''))
+    return script
+
+
+def _num(v):
+    try: return float(v)
+    except (TypeError, ValueError): return 0.0
+
+
+def _review(strategy, script, seconds, target, log):
+    text = '\n'.join(l['say'] for l in script['lines'])
+    log('4/4 Biên tập viên chấm kịch bản…')
+    review = ai.ask(system(), prompt('review', core=strategy.get('core_message', ''), seconds=seconds, words=target, count=words(text), script=text), 0.2,
+                    check=lambda o: o.get('scores') or (_ for _ in ()).throw(ValueError('thiếu scores')), log=log)
+    sc = {k: _num(v) for k, v in review.get('scores', {}).items()}
+    low = [k for k, v in sc.items() if v < 8]; avg = sum(sc.values()) / max(1, len(sc))
+    log(f'   điểm trung bình {avg:.1f}, tiêu chí dưới 8: {", ".join(low) or "không"}')
+    return review, avg, low
+
+
+def fix_hook(strategy, script, review, log, tries=2):
+    """the hook decides whether anyone watches: write six new ones of different kinds, have a strict viewer
+    score them, keep the best; a video whose best hook still scores under 8 is not made"""
+    lines = script['lines']; core = strategy.get('core_message', '') if strategy else script.get('core_message', '')
+    issues = '; '.join(review.get('issues', [])[:3]) if review else 'hook chưa đủ mạnh'
+    best = (0.0, None)
+    for k in range(tries):
+        log(f'   viết lại câu mở đầu (lần {k + 1})…')
+        cand = ai.ask(system(), prompt('hook', core=core, script='\n'.join(f'{i}. {l["say"]}' for i, l in enumerate(lines)), issues=issues), 0.9,
+                      check=lambda o: (isinstance(o.get('hooks'), list) and o['hooks']) or (_ for _ in ()).throw(ValueError('thiếu hooks')), log=log)
+        hooks = [' '.join(str(h).split()) for h in cand['hooks'] if str(h).strip() and words(str(h)) <= 12]
+        if not hooks: continue
+        judge = ai.ask(system(), prompt('hook_judge', core=core, next=lines[1]['say'] if len(lines) > 1 else '', hooks='\n'.join(f'{i}. {h}' for i, h in enumerate(hooks))), 0.2,
+                       check=lambda o: isinstance(o.get('scores'), list) or (_ for _ in ()).throw(ValueError('thiếu scores')), log=log)
+        scores = [_num(x) for x in judge['scores']][:len(hooks)]
+        if scores:
+            i = max(range(len(scores)), key=lambda j: scores[j])
+            log(f'   hook tốt nhất {scores[i]:.0f}/10: "{hooks[i]}"')
+            if scores[i] > best[0]: best = (scores[i], hooks[i])
+        if best[0] >= 8: break
+    if best[0] < 8: raise RuntimeError(f'Câu mở đầu chưa đạt (tốt nhất {best[0]:.0f}/10). Không dựng video kém; hãy chạy lại hoặc làm rõ chủ đề.')
+    lines[0] = dict(lines[0], say=best[1], emphasis=[]); script['hook_score'] = best[0]
     return script
 
 
