@@ -198,7 +198,7 @@ def L_hold(cv, d):
     f = d.get('figure') or {'pose': 'lift', 'face': 'proud'}
     _ground(cv); p = fig(cv, 540, G, 1.0, 'lift', f.get('face', 'proud'), 13)
     hx = (p['handL'][0] + p['handR'][0]) / 2; hy = min(p['handL'][1], p['handR'][1])
-    draw_prop(cv, d.get('prop', 'trophy'), hx, hy - 130, 0.8)
+    draw_prop(cv, d.get('prop', 'trophy'), hx, hy - 200, 0.7)
     _lab(cv, 540, 470, _s(d, 'label'), 70, 860)
 
 HERO_VARIANTS = ('hero', 'callout', 'thought', 'hold')
