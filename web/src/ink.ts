@@ -77,6 +77,12 @@ async function settings(env: Env) {
 // ---------------------------------------------------------------- waking GitHub
 /** Start the workflow; GitHub keeps at most one waiting run, and a run takes every queued job. */
 export async function dispatch(env: Env, force = false) {
+  const r = await wake(env, force);
+  // the last failure is kept so the admin page and the waiting users see why nothing moves
+  await env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('ink:wake_error', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(r === 'ok' ? '' : r, Date.now()).run();
+  return r;
+}
+async function wake(env: Env, force: boolean) {
   const { s, token } = await settings(env);
   if (!token) return 'Chưa có GitHub token (Quản trị → Ink Studio).';
   const last = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:dispatch'").first<any>();
@@ -169,7 +175,15 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
   const m = sub.match(/^jobs\/([a-f0-9]{24})(?:\/(file\/[\w.]+|approve|repace|retry|storyboard))?$/);
   if (!m) throw new HttpError(404, 'Không tìm thấy.');
   const j = await own(env, user, m[1]), act = m[2] || '';
-  if (!act && method === 'GET') { rc.quiet = true; return json({ job: view(j) }); }
+  if (!act && method === 'GET') {
+    rc.quiet = true;
+    const v = view(j);
+    if (j.status === 'queued' && Date.now() - j.updated_at > 2 * 60_000) {
+      const err = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:wake_error'").first<any>();
+      if (err?.value) v.message = 'Máy dựng chưa khởi động được. Quản trị viên đã được báo; video sẽ tự chạy khi máy dựng sẵn sàng.';
+    }
+    return json({ job: v });
+  }
   if (!act && method === 'DELETE') {
     if (j.status === 'running') throw new HttpError(409, 'Video đang dựng, đợi xong rồi xoá.');
     const files = (await env.BUCKET.list({ prefix: `ink/${user.id}/${j.id}/` })).objects.map((o) => o.key);
@@ -307,7 +321,8 @@ export async function inkAdmin(req: Request, env: XEnv, sub: string, rc: Rc): Pr
     const jobs = (await env.DB.prepare(`SELECT j.id, j.title, j.status, j.stage, j.progress, j.message, j.error, j.duration, j.created_at, j.finished_at, u.email
       FROM ink_jobs j LEFT JOIN users u ON u.id = j.user_id ORDER BY j.created_at DESC LIMIT 40`).all<any>()).results;
     const last = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:dispatch'").first<any>();
-    return json({ settings: s, token: !!token, keys: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY, everai: !!(env as any).EVERAI_API_KEY }, lastDispatch: Number(last?.value) || 0, jobs });
+    const err = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:wake_error'").first<any>();
+    return json({ wakeError: err?.value || '', settings: s, token: !!token, keys: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY, everai: !!(env as any).EVERAI_API_KEY }, lastDispatch: Number(last?.value) || 0, jobs });
   }
   if (sub === 'ink' && req.method === 'PUT') {
     const b = await body<any>(req, 30_000), s = cleanInk(b.settings || {}), now = Date.now();
