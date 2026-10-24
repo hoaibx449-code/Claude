@@ -1,0 +1,348 @@
+{
+ "title": "Bí mật dừng bỏ cuộc giữa chừng",
+ "core_message": "Bạn bỏ cuộc không phải vì yếu kém, mà vì đặt mục tiêu quá sức.",
+ "scenes": [
+  {
+   "say": "Kỷ luật không giúp bạn hết bỏ cuộc.",
+   "visual": {
+    "layout": "big_number",
+    "number": "0",
+    "label": "hết bỏ cuộc",
+    "prop": "alarm",
+    "figure": {
+     "pose": "worry",
+     "face": "tired"
+    }
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Vì càng gồng mình ép bản thân, bạn càng nhanh đuối sức.",
+   "visual": {
+    "layout": "hero",
+    "prop": "battery_low",
+    "label": "nhanh đuối sức",
+    "figure": {
+     "pose": "tired",
+     "face": "tired"
+    }
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "whoosh"
+  },
+  {
+   "say": "Ngày đầu bạn hào hứng tập thể dục một tiếng.",
+   "visual": {
+    "layout": "big_number",
+    "number": "1",
+    "label": "giờ tập",
+    "prop": "dumbbell",
+    "figure": {
+     "pose": "flex",
+     "face": "happy"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Nhưng sang tuần sau đôi giày chạy lại nằm yên trong góc tủ.",
+   "visual": {
+    "layout": "callout",
+    "prop": "shoe",
+    "label": "góc tủ",
+    "figure": {
+     "pose": "stand",
+     "face": "sad"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Bạn vội tự trách mình thiếu kiên trì.",
+   "visual": {
+    "layout": "thought",
+    "prop": "warning",
+    "label": "thiếu kiên trì",
+    "figure": {
+     "pose": "worry",
+     "face": "worry"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Thật ra não bộ chỉ đang quá tải vì mục tiêu quá lớn.",
+   "visual": {
+    "layout": "hold",
+    "prop": "brain",
+    "label": "quá tải",
+    "figure": {
+     "pose": "think",
+     "face": "think"
+    }
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "whoosh"
+  },
+  {
+   "say": "Bạn bỏ cuộc không phải vì yếu kém.",
+   "visual": {
+    "layout": "choose",
+    "title": "nguyên nhân thực sự",
+    "options": [
+     {
+      "prop": "weight",
+      "label": "quá sức"
+     },
+     {
+      "prop": "warning",
+      "label": "không phải kém"
+     }
+    ],
+    "pick": 2,
+    "label": "không yếu kém"
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Mà vì đang chạy marathon bằng vận tốc nước rút.",
+   "visual": {
+    "layout": "hero",
+    "prop": "rocket",
+    "label": "vận tốc nước rút",
+    "figure": {
+     "pose": "run",
+     "face": "determined"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Dùng một trăm phần trăm sức lực ngay từ đầu.",
+   "visual": {
+    "layout": "big_number",
+    "number": "100%",
+    "label": "hết sức",
+    "prop": "fire",
+    "figure": {
+     "pose": "flex",
+     "face": "tired"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Giống hệt chiếc xe máy luôn vặn ga kịch sàn.",
+   "visual": {
+    "layout": "callout",
+    "prop": "gear",
+    "label": "vặn ga kịch sàn"
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Chỉ chạy được vài chục mét là cạn bình.",
+   "visual": {
+    "layout": "thought",
+    "prop": "battery_low",
+    "label": "cạn bình",
+    "figure": {
+     "pose": "tired",
+     "face": "tired"
+    }
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "whoosh"
+  },
+  {
+   "say": "Nhưng bí mật để bạn đi tới cùng lại nằm ở đây.",
+   "visual": {
+    "layout": "hold",
+    "prop": "key",
+    "label": "đi tới cùng",
+    "figure": {
+     "pose": "point",
+     "face": "happy"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Đó chính là áp dụng quy tắc ngưỡng tối thiểu.",
+   "visual": {
+    "layout": "hero",
+    "prop": "target",
+    "label": "ngưỡng tối thiểu"
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "whoosh"
+  },
+  {
+   "say": "Hãy giảm khối lượng mục tiêu xuống mức siêu nhỏ.",
+   "visual": {
+    "layout": "callout",
+    "prop": "scissors",
+    "label": "mức siêu nhỏ",
+    "figure": {
+     "pose": "stand",
+     "face": "calm"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Để duy trì mỗi ngày mà hoàn toàn không áp lực.",
+   "visual": {
+    "layout": "thought",
+    "prop": "feather",
+    "label": "không áp lực",
+    "figure": {
+     "pose": "stand",
+     "face": "happy"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Thay vì ép mình đọc mươi trang sách.",
+   "visual": {
+    "layout": "before_after",
+    "before": {
+     "title": "cũ",
+     "prop": "book",
+     "label": "10 trang"
+    },
+    "after": {
+     "title": "mới",
+     "prop": "bookmark",
+     "label": "1 dòng"
+    },
+    "arrow": true
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "whoosh"
+  },
+  {
+   "say": "Bạn chỉ cần cam kết mở cuốn sách ra và đọc đúng một dòng.",
+   "visual": {
+    "layout": "hold",
+    "prop": "book",
+    "label": "đọc đúng một dòng",
+    "figure": {
+     "pose": "hold",
+     "face": "happy"
+    }
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Việc nhỏ làm đều đặn luôn thắng mục tiêu lớn bỏ dở.",
+   "visual": {
+    "layout": "stairs",
+    "steps": [
+     "việc nhỏ",
+     "làm đều",
+     "thắng lớn"
+    ],
+    "figure": {
+     "pose": "climb",
+     "face": "proud"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "whoosh"
+  },
+  {
+   "say": "Đêm nay bạn sẽ mở sách ra đọc đúng mấy dòng?",
+   "visual": {
+    "layout": "cta",
+    "title": "bắt đầu ngay",
+    "question": "Đọc mấy dòng tối nay?"
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "cut"
+  }
+ ],
+ "cover": {
+  "lines": [
+   "Bạn bỏ cuộc",
+   "vì sai cách này"
+  ],
+  "highlight": "sai cách",
+  "badge": "MẸO HAY",
+  "prop": "weight",
+  "figure": {
+   "pose": "worry",
+   "face": "think"
+  }
+ },
+ "caption": "Bạn có hay tự trách mình vì mỗi lần đặt mục tiêu rồi lại bỏ dở giữa chừng không? Xem ngay video này để biết lý do thực sự nhé. Đêm nay bạn sẽ thử đọc mấy dòng?",
+ "hashtags": [
+  "#phattrienbanthan",
+  "#kylar",
+  "#muctieu",
+  "#thienتو",
+  "#tuduy",
+  "#sachhay",
+  "#cauchuyen"
+ ],
+ "music": "motivating"
+}

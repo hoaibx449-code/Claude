@@ -1,0 +1,54 @@
+18:18:24 Chế độ: từ chủ đề — "Vì sao bạn luôn bỏ cuộc giữa chừng và cách giữ lửa đến cùng" (60 giây)
+18:18:24 1/4 Chiến lược nội dung…
+18:18:32 2/4 Dàn ý…
+18:18:43 3/4 Viết lời đọc…
+18:18:43   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+18:18:48   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+18:18:49   AI lỗi, thử tiếp: gemini/gemini-3.5-flash-lite: HTTP 503
+18:18:57 4/4 Biên tập viên chấm kịch bản…
+18:18:57   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+18:19:01   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+18:19:04    điểm trung bình 8.1, tiêu chí dưới 8: hook, length
+18:19:04 3/4 Viết lại theo góp ý biên tập (lần 1)…
+18:19:05   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+18:19:09   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+18:19:23 4/4 Biên tập viên chấm kịch bản…
+18:19:23   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+18:19:27   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+18:19:30    điểm trung bình 8.0, tiêu chí dưới 8: concrete, length
+18:19:30 3/4 Viết lại theo góp ý biên tập (lần 2)…
+18:19:31   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+18:19:35   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+18:19:42 4/4 Biên tập viên chấm kịch bản…
+18:19:42   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+18:19:46   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+18:19:52    điểm trung bình 8.2, tiêu chí dưới 8: length
+18:19:52 Kịch bản: 19 câu, 199 chữ
+18:19:52 Phân cảnh và ảnh bìa…
+18:19:52   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+18:19:56   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+18:20:12 Phân cảnh, ảnh bìa, caption: xong
+18:20:12 Giọng đọc (một mạch, có mốc từng chữ)…
+18:20:32   giọng microsoft: 58.1 giây, 199 chữ có mốc thời gian
+18:20:33   nhạc nền: tự tạo, không khí "motivating"
+18:20:33 Dựng video…
+18:20:35 cảnh 1/19 xong
+18:20:39 cảnh 2/19 xong
+18:20:42 cảnh 3/19 xong
+18:20:46 cảnh 4/19 xong
+18:20:48 cảnh 5/19 xong
+18:20:52 cảnh 6/19 xong
+18:20:54 cảnh 7/19 xong
+18:20:57 cảnh 8/19 xong
+18:21:00 cảnh 9/19 xong
+18:21:03 cảnh 10/19 xong
+18:21:05 cảnh 11/19 xong
+18:21:09 cảnh 12/19 xong
+18:21:11 cảnh 13/19 xong
+18:21:14 cảnh 14/19 xong
+18:21:17 cảnh 15/19 xong
+18:21:19 cảnh 16/19 xong
+18:21:24 cảnh 17/19 xong
+18:21:27 cảnh 18/19 xong
+18:21:31 cảnh 19/19 xong
+18:21:33 Xong: video 58.5 giây, dựng mất 189 giây. AI đã dùng: gemini/gemini-3.5-flash, gemini/gemini-3.5-flash, gemini/gemini-3.5-flash-lite, gemini/gemini-3.5-flash-lite, gemini/gemini-3.5-flash-lite, gemini/gemini-3.5-flash-lite, gemini/gemini-3.5-flash-lite, gemini/gemini-3.5-flash-lite, gemini/gemini-3.5-flash-lite

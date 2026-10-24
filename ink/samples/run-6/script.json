@@ -1,0 +1,238 @@
+{
+ "title": "Bí mật dừng bỏ cuộc giữa chừng",
+ "core_message": "Bạn bỏ cuộc không phải vì yếu kém, mà vì đặt mục tiêu quá sức.",
+ "lines": [
+  {
+   "say": "Kỷ luật không giúp bạn hết bỏ cuộc.",
+   "emphasis": [
+    "hết bỏ cuộc"
+   ],
+   "part": "hook",
+   "chapter": ""
+  },
+  {
+   "say": "Vì càng gồng mình ép bản thân, bạn càng nhanh đuối sức.",
+   "emphasis": [
+    "nhanh đuối sức"
+   ],
+   "part": "hook",
+   "chapter": ""
+  },
+  {
+   "say": "Ngày đầu bạn hào hứng tập thể dục một tiếng.",
+   "emphasis": [
+    "một tiếng"
+   ],
+   "part": "problem",
+   "chapter": ""
+  },
+  {
+   "say": "Nhưng sang tuần sau đôi giày chạy lại nằm yên trong góc tủ.",
+   "emphasis": [
+    "góc tủ"
+   ],
+   "part": "problem",
+   "chapter": ""
+  },
+  {
+   "say": "Bạn vội tự trách mình thiếu kiên trì.",
+   "emphasis": [
+    "thiếu kiên trì"
+   ],
+   "part": "problem",
+   "chapter": ""
+  },
+  {
+   "say": "Thật ra não bộ chỉ đang quá tải vì mục tiêu quá lớn.",
+   "emphasis": [
+    "quá tải"
+   ],
+   "part": "problem",
+   "chapter": ""
+  },
+  {
+   "say": "Bạn bỏ cuộc không phải vì yếu kém.",
+   "emphasis": [
+    "không phải vì yếu kém"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Mà vì đang chạy marathon bằng vận tốc nước rút.",
+   "emphasis": [
+    "vận tốc nước rút"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Dùng một trăm phần trăm sức lực ngay từ đầu.",
+   "emphasis": [
+    "một trăm phần trăm sức lực"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Giống hệt chiếc xe máy luôn vặn ga kịch sàn.",
+   "emphasis": [
+    "vặn ga kịch sàn"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Chỉ chạy được vài chục mét là cạn bình.",
+   "emphasis": [
+    "cạn bình"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Nhưng bí mật để bạn đi tới cùng lại nằm ở đây.",
+   "emphasis": [
+    "đi tới cùng"
+   ],
+   "part": "turn",
+   "chapter": ""
+  },
+  {
+   "say": "Đó chính là áp dụng quy tắc ngưỡng tối thiểu.",
+   "emphasis": [
+    "ngưỡng tối thiểu"
+   ],
+   "part": "turn",
+   "chapter": ""
+  },
+  {
+   "say": "Hãy giảm khối lượng mục tiêu xuống mức siêu nhỏ.",
+   "emphasis": [
+    "mức siêu nhỏ"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Để duy trì mỗi ngày mà hoàn toàn không áp lực.",
+   "emphasis": [
+    "không áp lực"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Thay vì ép mình đọc mươi trang sách.",
+   "emphasis": [
+    "mươi trang sách"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Bạn chỉ cần cam kết mở cuốn sách ra và đọc đúng một dòng.",
+   "emphasis": [
+    "đọc đúng một dòng"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Việc nhỏ làm đều đặn luôn thắng mục tiêu lớn bỏ dở.",
+   "emphasis": [
+    "việc nhỏ làm đều đặn"
+   ],
+   "part": "close",
+   "chapter": ""
+  },
+  {
+   "say": "Đêm nay bạn sẽ mở sách ra đọc đúng mấy dòng?",
+   "emphasis": [
+    "đọc đúng mấy dòng"
+   ],
+   "part": "close",
+   "chapter": ""
+  }
+ ],
+ "strategy": {
+  "audience": "Người trẻ từ 20 đến 30 tuổi, hay hào hứng bắt đầu mục tiêu mới nhưng thường bỏ cuộc sau vài tuần.",
+  "pain": "Tự trách bản thân thiếu kỷ luật và luôn cảm thấy thất vọng vì những kế hoạch dở dang.",
+  "core_message": "Bạn bỏ cuộc không phải vì yếu kém, mà vì đặt mục tiêu quá sức.",
+  "angle": "Ẩn dụ chạy marathon bằng vận tốc chạy nước rút: thay vì cố dùng 100% sức lực để rồi kiệt sức, hãy dùng quy tắc ngưỡng tối thiểu.",
+  "takeaway": "Giảm khối lượng công việc hôm nay xuống mức siêu nhỏ để duy trì thói quen mà không thấy áp lực.",
+  "hooks": [
+   "Kỷ luật không giúp bạn hết bỏ cuộc.",
+   "Mọi dự định thường chết sau hai tuần.",
+   "Bạn hay bỏ cuộc vì cố quá sức.",
+   "Lần cuối bạn làm xong việc là khi nào?",
+   "Mẹo nhỏ giúp bạn đi tới cùng."
+  ],
+  "best_hook": 0,
+  "title": "Bí mật dừng bỏ cuộc giữa chừng"
+ },
+ "outline": {
+  "beats": [
+   {
+    "part": "hook",
+    "chapter": "",
+    "idea": "Kỷ luật không giúp bạn hết bỏ cuộc.",
+    "example": "Càng cố gồng mình ép bản thân, bạn càng nhanh đuối sức.",
+    "seconds": 3
+   },
+   {
+    "part": "problem",
+    "chapter": "",
+    "idea": "Ngày đầu hào hứng tập thể dục một tiếng, sang tuần sau đôi giày chạy lại nằm yên trong góc tủ.",
+    "example": "Bạn tự trách mình thiếu kiên trì, nhưng thật ra não bộ chỉ đang quá tải.",
+    "seconds": 12
+   },
+   {
+    "part": "point",
+    "chapter": "",
+    "idea": "Bạn bỏ cuộc không phải vì yếu kém, mà vì đang chạy marathon bằng vận tốc chạy nước rút.",
+    "example": "Dùng một trăm phần trăm sức lực ngay từ đầu giống như chiếc xe máy luôn vặn ga kịch sàn.",
+    "seconds": 15
+   },
+   {
+    "part": "turn",
+    "chapter": "",
+    "idea": "Nhưng bí mật để bạn đi tới cùng lại nằm ở một điều hoàn toàn ngược lại.",
+    "example": "Đó chính là áp dụng quy tắc ngưỡng tối thiểu.",
+    "seconds": 5
+   },
+   {
+    "part": "point",
+    "chapter": "",
+    "idea": "Hãy giảm khối lượng mục tiêu xuống mức siêu nhỏ để duy trì mỗi ngày mà không áp lực.",
+    "example": "Thay vì ép mình đọc mươi trang sách, bạn chỉ cần cam kết đọc đúng một trang.",
+    "seconds": 15
+   },
+   {
+    "part": "close",
+    "chapter": "",
+    "idea": "Việc nhỏ làm đều đặn luôn thắng mục tiêu lớn bỏ dở.",
+    "example": "Mục tiêu nhỏ hai phút tối nay của bạn là gì, chia sẻ bên dưới để làm cùng nhau nhé.",
+    "seconds": 10
+   }
+  ]
+ },
+ "review": {
+  "scores": {
+   "hook": 8,
+   "clarity": 9,
+   "concrete": 8,
+   "value": 9,
+   "action": 8,
+   "language": 9,
+   "length": 7,
+   "retention": 8
+  },
+  "issues": [
+   "Cau hook hien tai co 7 chu nhung dang la cau khang dinh chung chung, nen bien thanh mot cau bat ngo hoac thach thuc hon de giu chan nguoi xem tot hon.",
+   "Kich ban dang co 199 chu, dai hon muc tieu 60 giay (khoang 168 chu), can cat bot khoang 30 chu o doan giua de nhip video don dap va cuon hut hon.",
+   "Doan vi du doc sach chu 'muoi trang' hoi chung chung, nen thay bang mot con so cu the hon nhu 'muoi lam trang' hoac 'nam muoi phut' de gan gui voi thuc te.",
+   "Cau ket 'Dem nay ban se doc dung may dong' hoi giong van tho thoang, nen sua lai thanh mot cau hoi hanh dong thuc te hon nhu 'Toi nay ban se mo sach ra doc dung may chu'."
+  ]
+ }
+}
