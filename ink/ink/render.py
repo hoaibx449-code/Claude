@@ -101,12 +101,12 @@ def caption_layer(words, t):
     if not cur: return None
     line = cur[-1][0]; ws = [w for w in words if w[0] == line]
     k = max(0, min(len(ws) - 1, sum(1 for w in ws if w[2] <= t + 0.05) - 1))
-    # chunk the line into groups of words that fit, show the group holding the current word
-    size = 64; groups = [[]]
-    for i, w in enumerate(ws):
-        trial = ' '.join(x[1] for x in groups[-1] + [w])
-        if groups[-1] and (text_width(trial, size) > 900 or len(groups[-1]) >= 6): groups.append([])
-        groups[-1].append((i, w[1]))
+    # split the line into near-equal chunks of at most 6 words that fit, so no chunk is a lone word
+    size = 64; n = len(ws); parts = max(1, math.ceil(n / 6))
+    while True:
+        per = math.ceil(n / parts); groups = [[(i, ws[i][1]) for i in range(j, min(n, j + per))] for j in range(0, n, per)]
+        if all(text_width(' '.join(w for _, w in gr), size) <= 900 for gr in groups) or parts >= n: break
+        parts += 1
     g = next(gr for gr in groups if any(i == k for i, _ in gr))
     return g, k, size
 

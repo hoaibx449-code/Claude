@@ -7,6 +7,7 @@ Các câu đọc (đánh số từ 0):
 Tư duy hình ảnh:
 - Mỗi cảnh chọn MỘT ẩn dụ trực quan sát nghĩa câu đọc, người xem hiểu trong 2 giây. Không minh họa chung chung.
 - Công thức mạnh: trước/sau; nhỏ → lớn theo thời gian; bậc thang đi lên; so sánh hai cột; chọn 1 trong vài lựa chọn; con số lớn gây sốc; vượt chướng ngại; hành trình nhiều chặng.
+- Con số luôn viết bằng chữ số trên hình và ảnh bìa (80%, 3 ngày, 1 phút), không viết bằng chữ.
 - Nhãn chữ trên hình rất ngắn để nằm trên MỘT dòng: 1–3 chữ (tối đa 4), hoặc con số/mốc thời gian; viết thường như chữ viết tay (không viết HOA toàn bộ), KHÔNG chép lại nguyên câu đọc. Dùng từ khóa nhấn mạnh của câu khi phù hợp.
 - Câu số 0 (hook) được đọc trên ẢNH BÌA (khung mở đầu video): vẫn trả về một cảnh cho câu 0 nhưng có thể dùng bố cục bất kỳ, nó sẽ được thay bằng ảnh bìa.
 - Đa dạng: bố cục "hero" không quá 1/4 số cảnh; ưu tiên các bố cục có nhân vật, so sánh, con số, danh sách để mỗi khung hình đầy đặn và có câu chuyện.
@@ -27,7 +28,7 @@ figure là đối tượng {{"pose": "...", "face": "..."}}.
 Camera mỗi cảnh: {{"type": "push"}} (mặc định, chậm rãi), {{"type": "pull"}}, hoặc {{"type": "push", "punch": true}} cho câu nhấn mạnh. transition: "cut" (mặc định), "whoosh" khi sang ý mới, "zoom" khi sang chương mới.
 
 Ngoài ra thiết kế ẢNH BÌA (cover) chuẩn video ngắn:
-- "lines": tiêu đề 2–3 dòng, tổng tối đa 8 chữ, gây tò mò mạnh, đọc được trong 1 giây.
+- "lines": tiêu đề 2–3 dòng, tổng tối đa 8 chữ, gây tò mò mạnh, đọc được trong 1 giây; viết hoa chữ cái đầu câu; con số viết bằng chữ số.
 - Ảnh bìa đồng thời là KHUNG MỞ ĐẦU video, đọc câu hook trên nó: tiêu đề phải khớp và tăng sức nặng cho câu hook.
 - "highlight": một cụm 1–3 chữ có trong tiêu đề, được tô bút dạ vàng và gạch chân đỏ (từ đắt giá nhất).
 - "badge": nhãn phụ rất ngắn (ví dụ "7 NGÀY", "SAI LẦM #1") hoặc rỗng.

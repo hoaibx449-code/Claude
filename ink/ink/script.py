@@ -85,14 +85,19 @@ def storyboard(script, log=print):
     for s in sb['scenes']:
         try: by_line.setdefault(int(s.get('line')), s)
         except (TypeError, ValueError): pass
-    scenes = []; prev = None
+    from .layouts import HERO_VARIANTS
+    long_video = sum(words(l['say']) for l in lines) / WPS >= 120
+    scenes = []; prev = None; hero_k = 0
     for i, l in enumerate(lines):
         s = by_line.get(i) or {'visual': {'layout': 'hero', 'prop': 'star', 'label': (l.get('emphasis') or [''])[0]}}
         v = clean_visual(s.get('visual') or {})
-        if prev and v.get('layout') == prev and v.get('layout') not in ('chapter',):  # never the same layout twice in a row
-            v = {'layout': 'hero', 'prop': v.get('prop') or 'star', 'label': (l.get('emphasis') or [''])[0]}
+        if v.get('layout') == 'chapter' and (not long_video or not l.get('chapter')):  # chapters only in long videos
+            v = {'layout': 'callout', 'prop': v.get('prop') or 'star', 'label': v.get('title') or (l.get('emphasis') or [''])[0]}
+        if v.get('layout') in HERO_VARIANTS:  # rotate the single-object compositions so no two scenes look alike
+            v['layout'] = HERO_VARIANTS[hero_k % len(HERO_VARIANTS)] if prev in HERO_VARIANTS or hero_k else v['layout']; hero_k += 1
+            if v['layout'] == prev: v['layout'] = HERO_VARIANTS[(HERO_VARIANTS.index(prev) + 1) % len(HERO_VARIANTS)]
         prev = v.get('layout')
-        scenes.append({'say': l['say'], 'visual': v, 'camera': s.get('camera') or {'type': 'push'}, 'transition': s.get('transition', 'cut')})
+        scenes.append({'say': l['say'], 'visual': v, 'camera': s.get('camera') or {'type': 'push'}, 'transition': s.get('transition', 'slide')})
     return {'title': script.get('title', ''), 'core_message': script.get('core_message', ''), 'scenes': scenes,
             'cover': sb.get('cover') or {}, 'caption': sb.get('caption', ''), 'hashtags': sb.get('hashtags') or [], 'music': sb.get('music', 'motivating')}
 

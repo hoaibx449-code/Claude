@@ -174,6 +174,35 @@ def L_chapter(cv, d):
     cv.circle(540, 760, 170, 13, INK, ACC); cv.text(540, 770, n, 190)
     _lab(cv, 540, 1060, _s(d, 'title'), 84, 880); cv.line([(300, 1170), (780, 1170)], 11, ACC)
 
+
+def L_thought(cv, d):
+    """the figure thinking, the object in a big thought bubble, the label under it"""
+    _ground(cv); _fig(cv, 250, G, 0.95, d.get('figure') or {'pose': 'think', 'face': 'think'})
+    ell(cv, 640, 720, 290, 230, 11, INK, WHITE)
+    for (x, y, r) in ((420, 960, 34), (360, 1015, 22)): cv.circle(x, y, r, 8, INK, WHITE)
+    draw_prop(cv, d.get('prop', 'bulb'), 640, 720, 0.95)
+    _lab(cv, 660, 1110, _s(d, 'label'), 64, 560)
+
+def L_callout(cv, d):
+    """a big object with a hand-written tag pointing at it"""
+    draw_prop(cv, d.get('prop', 'star'), 540, 920, 1.55)
+    t = _s(d, 'label')
+    if t:
+        sz = fit_size(t, 66, 640); w = text_width(t, sz) + 70
+        rrect(cv, 540 - w / 2, 470, 540 + w / 2, 580, 30, 9, INK, ACC); cv.text(540, 525, t, sz, INK, max_w=660, lines=1)
+        cv.arrow(540 + w / 2 - 40, 590, 700, 700, 9, INK, 30)
+    for x, y in ((180, 700), (900, 1200), (170, 1250)): cv.poly(star_pts(x, y, 24, 0.42, 4, -90), INK, ACC, 5)
+
+def L_hold(cv, d):
+    """the figure holding the object up, proud or tired"""
+    f = d.get('figure') or {'pose': 'lift', 'face': 'proud'}
+    _ground(cv); p = fig(cv, 540, G, 1.0, 'lift', f.get('face', 'proud'), 13)
+    hx = (p['handL'][0] + p['handR'][0]) / 2; hy = min(p['handL'][1], p['handR'][1])
+    draw_prop(cv, d.get('prop', 'trophy'), hx, hy - 130, 0.8)
+    _lab(cv, 540, 470, _s(d, 'label'), 70, 860)
+
+HERO_VARIANTS = ('hero', 'callout', 'thought', 'hold')
+
 LAYOUTS = {
  'hero': (L_hero, 'một đồ vật lớn + nhãn, có thể kèm nhân vật phản ứng: {prop,label,figure?}'),
  'big_number': (L_big_number, 'con số gây ấn tượng: {number,label,prop?|figure?}'),
@@ -189,6 +218,9 @@ LAYOUTS = {
  'icons': (L_icons, '2-4 ý song song: {title?, items:[{prop,label}]}'),
  'cta': (L_cta, 'kết: Lưu/Chia sẻ/Bình luận + câu hỏi: {title?, question}'),
  'chapter': (L_chapter, 'thẻ chương (video dài): {number,title}'),
+ 'callout': (L_callout, 'một đồ vật lớn với thẻ chữ chỉ vào: {prop,label}'),
+ 'thought': (L_thought, 'nhân vật suy nghĩ, đồ vật trong bong bóng ý nghĩ: {prop,label,figure?}'),
+ 'hold': (L_hold, 'nhân vật giơ cao đồ vật (thành quả, gánh nặng): {prop,label,figure?}'),
 }
 
 def build(scene):
