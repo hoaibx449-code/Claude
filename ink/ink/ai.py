@@ -3,12 +3,12 @@
 Environment (keys only come from secrets, never from files):
   OPENAI_API_KEY, GEMINI_API_KEY
   INK_AI_ORDER     e.g. "gemini,openai" (default) - who is asked first
-  INK_GEMINI_MODELS e.g. "gemini-2.5-flash,gemini-2.5-flash-lite"
+  INK_GEMINI_MODELS e.g. "gemini-3.5-flash,gemini-flash-latest"
   INK_OPENAI_MODELS e.g. "gpt-4.1-mini,gpt-4.1-nano"
 Every answer must be JSON; a model that errors, is busy or returns broken JSON hands over to the next one."""
 import json, os, re, time, urllib.request, urllib.error
 
-DEFAULT_MODELS = {'gemini': 'gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash', 'openai': 'gpt-4.1-mini,gpt-4.1-nano,gpt-4o-mini'}
+DEFAULT_MODELS = {'gemini': 'gemini-3.5-flash,gemini-flash-latest,gemini-3.5-flash-lite,gemini-3.1-flash-lite', 'openai': 'gpt-4.1-mini,gpt-4o-mini'}
 KEYS = {'gemini': 'GEMINI_API_KEY', 'openai': 'OPENAI_API_KEY'}
 used = []  # (provider, model) of each successful call, written to the run log
 
