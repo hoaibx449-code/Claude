@@ -66,7 +66,7 @@ export async function showInkCreate(ctx) {
       h('label', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Nhạc nền'), mood, musicFile, musicNote)),
     h('details', { class: 'ink-more' }, h('summary', {}, 'Tuỳ chọn thêm'),
       h('label', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Người xem là ai'), h('input', { value: st.audience, maxlength: 200, placeholder: 'Ví dụ: người đi làm 22–30 tuổi', oninput: (e) => { st.audience = e.target.value; keep(); } })),
-      h('label', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Giọng văn'), h('input', { value: st.tone, maxlength: 120, placeholder: 'Ấm áp, chân thành, truyền động lực', oninput: (e) => { st.tone = e.target.value; keep(); } })),
+      h('label', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Giọng văn'), h('input', { value: st.tone, maxlength: 120, placeholder: 'Để trống: AI chọn giọng văn hợp chủ đề', oninput: (e) => { st.tone = e.target.value; keep(); } })),
       h('label', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Ghi chú cho AI'), h('textarea', { rows: 2, maxlength: 600, value: st.notes, placeholder: 'Ý bắt buộc có, điều cần tránh…', oninput: (e) => { st.notes = e.target.value; keep(); } })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.captions, onchange: (e) => { st.captions = e.target.checked; keep(); } }), 'Phụ đề trên video'),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.review, onchange: (e) => { st.review = e.target.checked; keep(); } }), 'Cho tôi duyệt phân cảnh trước khi dựng')),

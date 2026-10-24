@@ -39,7 +39,7 @@ def speed(pace):
     return 1 + int(pace_rate(pace).rstrip('%')) / 100
 
 
-def from_topic(topic, seconds=60, audience='', goal='truyền cảm hứng', tone='ấm áp, chân thành, truyền động lực', notes='', pace='normal', log=print):
+def from_topic(topic, seconds=60, audience='', goal='mang lại giá trị thật cho người xem', tone='tự nhiên, hợp với chủ đề', notes='', pace='normal', log=print):
     seconds = max(20, min(MAX_SECONDS, int(seconds))); target = int(seconds * WPS * speed(pace) / 1.08)
     log('1/4 Chiến lược nội dung…')
     strategy = ai.ask(system(), prompt('strategy', topic=topic, audience=audience or 'chưa rõ, hãy tự xác định', goal=goal, tone=tone, seconds=seconds, notes=notes or 'không'), 0.8,
@@ -57,7 +57,7 @@ def from_topic(topic, seconds=60, audience='', goal='truyền cảm hứng', ton
         feedback = 'Biên tập viên yêu cầu sửa những điểm sau (bắt buộc khắc phục):\n- ' + '\n- '.join(review.get('issues', [])[:5])
     script, review, _ = best
     hook = _num(review.get('scores', {}).get('hook'))
-    if hook < 8: script = fix_hook(strategy, script, review, log)
+    if hook < 8: script = fix_hook(strategy, script, review, log, topic=topic)
     script['strategy'] = strategy; script['outline'] = outline; script['review'] = review
     script.setdefault('core_message', strategy.get('core_message', '')); script.setdefault('title', strategy.get('title', ''))
     return script
@@ -79,7 +79,7 @@ def _review(strategy, script, seconds, target, log):
     return review, avg, low
 
 
-def fix_hook(strategy, script, review, log, tries=2):
+def fix_hook(strategy, script, review, log, tries=2, topic=''):
     """the hook decides whether anyone watches: write six new ones of different kinds, have a strict viewer
     score them, keep the best; a video whose best hook still scores under 8 is not made"""
     lines = script['lines']; core = strategy.get('core_message', '') if strategy else script.get('core_message', '')
@@ -87,11 +87,11 @@ def fix_hook(strategy, script, review, log, tries=2):
     best = (0.0, None)
     for k in range(tries):
         log(f'   viết lại câu mở đầu (lần {k + 1})…')
-        cand = ai.ask(system(), prompt('hook', core=core, script='\n'.join(f'{i}. {l["say"]}' for i, l in enumerate(lines)), issues=issues), 0.9,
+        cand = ai.ask(system(), prompt('hook', topic=topic or core, core=core, script='\n'.join(f'{i}. {l["say"]}' for i, l in enumerate(lines)), issues=issues), 0.9,
                       check=lambda o: (isinstance(o.get('hooks'), list) and o['hooks']) or (_ for _ in ()).throw(ValueError('thiếu hooks')), log=log)
         hooks = [' '.join(str(h).split()) for h in cand['hooks'] if str(h).strip() and words(str(h)) <= 12]
         if not hooks: continue
-        judge = ai.ask(system(), prompt('hook_judge', core=core, next=lines[1]['say'] if len(lines) > 1 else '', hooks='\n'.join(f'{i}. {h}' for i, h in enumerate(hooks))), 0.2,
+        judge = ai.ask(system(), prompt('hook_judge', topic=topic or core, core=core, next=lines[1]['say'] if len(lines) > 1 else '', hooks='\n'.join(f'{i}. {h}' for i, h in enumerate(hooks))), 0.2,
                        check=lambda o: isinstance(o.get('scores'), list) or (_ for _ in ()).throw(ValueError('thiếu scores')), log=log)
         scores = [_num(x) for x in judge['scores']][:len(hooks)]
         if scores:

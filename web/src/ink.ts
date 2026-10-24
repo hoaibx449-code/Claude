@@ -237,7 +237,12 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     const lease = 'lease-' + randomId(16);
     const j = await env.DB.prepare(`UPDATE ink_jobs SET status = 'running', lease = ?, heartbeat = ?, progress = 1, message = 'Máy dựng đã nhận việc', updated_at = ?
       WHERE id = (SELECT id FROM ink_jobs WHERE status = 'queued' ORDER BY created_at LIMIT 1) AND status = 'queued' RETURNING *`).bind(lease, now, now).first<any>();
-    if (!j) { rc.quiet = true; return json({ job: null }); }
+    if (!j) {
+      rc.quiet = true;
+      // storyboards a user is looking at right now: the machine waits for them instead of leaving
+      const r = await env.DB.prepare("SELECT COUNT(*) AS n FROM ink_jobs WHERE status = 'review' AND updated_at > ?").bind(now - 30 * 60_000).first<any>();
+      return json({ job: null, review: r?.n || 0 });
+    }
     rc.userId = j.user_id;
     const { s } = await settings(env), input = JSON.parse(j.input);
     const voice = s.voice.list.find((v) => v.id === input.voice) || s.voice.list.find((v) => v.id === s.voice.default) || s.voice.list[0];

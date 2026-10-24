@@ -18,7 +18,7 @@ from .cover import make_cover, cover_frame, cover_parts
 from .engine import render_full, prep, BG, W, H
 
 
-def make_plan(out, topic=None, script_text=None, seconds=60, audience='', goal='truyền cảm hứng và giúp người xem hành động',
+def make_plan(out, topic=None, script_text=None, seconds=60, audience='', goal='mang lại giá trị thật cho người xem: hiểu ra, nhớ được hoặc làm được một điều',
               tone='ấm áp, chân thành, truyền động lực', notes='', pace='normal', brand='', log=print):
     """script + storyboard + cover + caption; returns the storyboard"""
     if topic:

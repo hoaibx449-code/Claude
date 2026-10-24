@@ -1,5 +1,6 @@
 Nhiệm vụ: viết lại CÂU MỞ ĐẦU (hook) cho video ngắn. Đây là câu duy nhất quyết định người đang lướt có dừng lại không.
 
+Chủ đề người dùng yêu cầu: {topic}
 Thông điệp cốt lõi: {core}
 Kịch bản hiện tại (câu 0 là hook cũ):
 {script}
@@ -12,7 +13,7 @@ Viết 6 hook mới, mỗi hook một kiểu khác nhau:
 4. câu hỏi chạm đúng một tình huống rất cụ thể;
 5. lời hứa kết quả cụ thể trong thời gian ngắn;
 6. một câu chuyện nhỏ bắt đầu ở giữa hành động.
-Quy tắc: TỐI ĐA 10 chữ; văn nói tự nhiên; mở khoảng trống tò mò; KHÔNG lộ đáp án; khớp được với câu số 1 của kịch bản (câu 1 nối tiếp tự nhiên sau hook); không "Bạn có biết", không chào hỏi.
+Quy tắc: BÁM ĐÚNG chủ đề người dùng yêu cầu (người xem đọc hook phải biết ngay video nói về chủ đề đó, không đổi sang chủ đề khác); TỐI ĐA 10 chữ; văn nói tự nhiên; mở khoảng trống tò mò; KHÔNG lộ đáp án; khớp được với câu số 1 của kịch bản (câu 1 nối tiếp tự nhiên sau hook); không "Bạn có biết", không chào hỏi.
 
 JSON:
 {{"hooks": ["...", "...", "...", "...", "...", "..."]}}

@@ -68,7 +68,7 @@ def run(job):
     try:
         if job['stage'] == 'plan':
             sb = make_plan(out, inp.get('topic') if inp.get('mode') != 'script' else None, inp.get('script') if inp.get('mode') == 'script' else None,
-                           int(inp.get('seconds') or 60), inp.get('audience', ''), tone=inp.get('tone') or 'ấm áp, chân thành, truyền động lực',
+                           int(inp.get('seconds') or 60), inp.get('audience', ''), tone=inp.get('tone') or 'tự nhiên, hợp với chủ đề và người xem',
                            notes=inp.get('notes', ''), pace=inp.get('pace', 'normal'), log=log)
             for name in ('overview.png', 'cover.jpg'): put(jid, lease, out, name)
             nxt = call(f'jobs/{jid}/planned', {'storyboard': sb, 'ai': [f'{p}/{m}' for p, m in ai.used]}, lease=lease)
@@ -111,10 +111,14 @@ def put(jid, lease, out, name, timeout=120):
 
 def main():
     if not API or not TOKEN: sys.exit('Cần NV_API_URL và RUNNER_TOKEN')
-    once = '--once' in sys.argv; ok = True; started = time.time()
+    once = '--once' in sys.argv; ok = True; started = idle = time.time()
     while time.time() - started < 5.5 * 3600:  # GitHub stops a job at 6 hours
-        job = call('claim', {'runner': 'github-' + socket.gethostname()[:40]}).get('job')
-        if not job: break
+        got = call('claim', {'runner': 'github-' + socket.gethostname()[:40]}); job = got.get('job')
+        if not job:
+            # someone is reviewing a storyboard: wait (up to 20 minutes) so the video starts the moment they approve
+            if got.get('review') and time.time() - idle < 20 * 60: time.sleep(15); continue
+            break
+        idle = time.time()
         ok = run(job) and ok
         if once: break
     sys.exit(0 if ok else 1)
