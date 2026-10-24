@@ -1,0 +1,195 @@
+{
+ "title": "Bỏ cuộc giữa chừng vì sao?",
+ "core_message": "Bạn bỏ cuộc không phải vì lười, mà vì bạn đang vác quá nặng.",
+ "lines": [
+  {
+   "say": "Bạn luôn tràn trề khí thế lúc đầu nhưng rồi lại bỏ cuộc giữa chừng đúng không.",
+   "emphasis": [
+    "bỏ cuộc giữa chừng"
+   ],
+   "part": "hook",
+   "chapter": ""
+  },
+  {
+   "say": "Mới đầu năm, bạn hăm hở viết ra cả đống mục tiêu vào sổ tay.",
+   "emphasis": [
+    "mục tiêu"
+   ],
+   "part": "problem",
+   "chapter": ""
+  },
+  {
+   "say": "Sáng tập gym, trưa học tiếng Anh, tối đọc sách liên tục không nghỉ.",
+   "emphasis": [
+    "liên tục không nghỉ"
+   ],
+   "part": "problem",
+   "chapter": ""
+  },
+  {
+   "say": "Nhưng chỉ đúng hai tuần sau, bạn kiệt sức và nằm lướt điện thoại cả ngày.",
+   "emphasis": [
+    "kiệt sức"
+   ],
+   "part": "problem",
+   "chapter": ""
+  },
+  {
+   "say": "Rồi bạn tự trách mình kém cỏi và thiếu kiên trì.",
+   "emphasis": [
+    "kém cỏi"
+   ],
+   "part": "problem",
+   "chapter": ""
+  },
+  {
+   "say": "Thực ra, bạn không hề lười biếng một chút nào.",
+   "emphasis": [
+    "không hề lười biếng"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Việc đặt quá nhiều mục tiêu giống như bạn đeo một chiếc balo nặng hai mươi ký đi leo núi.",
+   "emphasis": [
+    "balo nặng"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Bạn vác quá nặng so với sức chịu đựng của chính mình.",
+   "emphasis": [
+    "vác quá nặng"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Nhưng điều thay đổi mọi thứ lại là cách bạn vứt bớt đồ đạc ra ngoài.",
+   "emphasis": [
+    "vứt bớt đồ đạc"
+   ],
+   "part": "turn",
+   "chapter": ""
+  },
+  {
+   "say": "Thay vì mang cả thế giới, hãy chỉ giữ lại những thứ thật sự cần thiết.",
+   "emphasis": [
+    "cần thiết"
+   ],
+   "part": "turn",
+   "chapter": ""
+  },
+  {
+   "say": "Hãy cắt giảm một nửa danh sách việc cần làm ngay tối nay.",
+   "emphasis": [
+    "cắt giảm một nửa"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Chỉ để lại một việc quan trọng nhất để hoàn thành vào ngày mai.",
+   "emphasis": [
+    "quan trọng nhất"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Đừng cố kiên trì trong sự quá tải, hãy đi thật nhẹ nhàng để về đích.",
+   "emphasis": [
+    "nhẹ nhàng"
+   ],
+   "part": "close",
+   "chapter": ""
+  },
+  {
+   "say": "Tối nay bạn sẽ bỏ bớt việc gì, hãy comment cho tôi biết nhé.",
+   "emphasis": [
+    "bỏ bớt việc gì"
+   ],
+   "part": "close",
+   "chapter": ""
+  }
+ ],
+ "strategy": {
+  "audience": "Người trẻ từ hai mươi đến ba mươi lăm tuổi, hay hừng hực khí thế lập mục tiêu đầu năm nhưng nhanh chóng nản lòng và bỏ cuộc sau vài tuần.",
+  "pain": "Năng lượng ban đầu rất cao nhưng tụt dần khi gặp khó khăn, liên tục rơi vào vòng lặp lập kế hoạch rồi bỏ dở, tự trách bản thân kém cỏi và thiếu kiên trì.",
+  "core_message": "Bạn bỏ cuộc không phải vì lười, mà vì bạn đang vác quá nặng.",
+  "angle": "So sánh việc theo đuổi mục tiêu với việc mang balo đi du lịch: nhồi nhét quá nhiều thứ sẽ khiến bạn mỏi và bỏ cuộc sớm, thay vào đó hãy vứt bớt để đi đường dài.",
+  "takeaway": "Cắt giảm một nửa số lượng việc cần làm mỗi ngày ngay tối nay để giữ sức đi đến cùng.",
+  "hooks": [
+   "Tại sao bạn luôn hào hứng lúc đầu rồi bỏ cuộc giữa chừng?",
+   "Chín mươi phần trăm người trẻ bỏ cuộc trước khi chạm vạch đích.",
+   "Đừng cố kiên trì nữa nếu bạn muốn hoàn thành mục tiêu."
+  ],
+  "best_hook": 0,
+  "title": "Bỏ cuộc giữa chừng vì sao?"
+ },
+ "outline": {
+  "beats": [
+   {
+    "part": "hook",
+    "chapter": "",
+    "idea": "Tại sao bạn luôn hào hứng lúc đầu rồi bỏ cuộc giữa chừng?",
+    "example": "Cảnh một người trẻ hào hứng viết mục tiêu vào sổ tay rồi vứt vào góc nhà.",
+    "seconds": 3
+   },
+   {
+    "part": "problem",
+    "chapter": "",
+    "idea": "Bạn lập kế hoạch dày đặc, nhưng chỉ sau hai tuần là đuối sức và tự trách bản thân kém cỏi.",
+    "example": "Sáng tập gym, trưa học tiếng Anh, tối đọc sách, cuối cùng là nằm lướt điện thoại vì quá mệt.",
+    "seconds": 12
+   },
+   {
+    "part": "point",
+    "chapter": "",
+    "idea": "Việc đặt quá nhiều mục tiêu giống như việc bạn đeo một chiếc balo nặng hai mươi ký đi leo núi.",
+    "example": "Bạn không lười, bạn chỉ đang vác quá nặng so với sức mình.",
+    "seconds": 15
+   },
+   {
+    "part": "turn",
+    "chapter": "",
+    "idea": "Nhưng điều thay đổi mọi thứ lại là cách bạn vứt bớt đồ đạc ra khỏi balo ngay lập tức.",
+    "example": "Thay vì mang cả thế giới, hãy chỉ mang những thứ giúp bạn đi được xa hơn.",
+    "seconds": 10
+   },
+   {
+    "part": "point",
+    "chapter": "",
+    "idea": "Hãy cắt giảm một nửa danh sách việc cần làm mỗi ngày ngay tối nay.",
+    "example": "Để lại một việc quan trọng nhất, hoàn thành nó, bạn sẽ có đà để đi tiếp vào ngày mai.",
+    "seconds": 10
+   },
+   {
+    "part": "close",
+    "chapter": "",
+    "idea": "Đừng cố kiên trì trong sự quá tải, hãy kiên trì trong sự nhẹ nhàng để về đích. Tối nay bạn sẽ bỏ bớt việc gì?",
+    "example": "Người xem bình luận một việc họ sẽ bỏ bớt xuống dưới video.",
+    "seconds": 10
+   }
+  ]
+ },
+ "review": {
+  "scores": {
+   "hook": 6,
+   "clarity": 8,
+   "concrete": 7,
+   "value": 8,
+   "action": 6,
+   "language": 7,
+   "length": 6
+  },
+  "issues": [
+   "Câu hỏi ở 3 giây đầu còn hơi chung chung và dài dòng, cần đi thẳng vào hiện tượng thực tế hơn.",
+   "Kịch bản hiện tại dài 204 chữ, vượt quá mục tiêu 168 chữ cho video 60 giây, cần cắt bớt các câu lặp ý.",
+   "Câu 'Việc đặt quá nhiều mục tiêu giống như bạn đeo một chiếc balo nặng hai mươi ký đi leo núi' hơi văn vở, nên rút gọn lại cho tự nhiên.",
+   "Lời mời tương tác cuối video 'hãy comment cho tôi biết nhé' chưa thật sự tự nhiên và khơi gợi được sự chia sẻ từ người xem."
+  ]
+ }
+}

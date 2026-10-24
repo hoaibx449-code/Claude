@@ -1,0 +1,265 @@
+{
+ "title": "Bỏ cuộc giữa chừng vì sao?",
+ "core_message": "Bạn bỏ cuộc không phải vì lười, mà vì bạn đang vác quá nặng.",
+ "scenes": [
+  {
+   "say": "Bạn luôn tràn trề khí thế lúc đầu nhưng rồi lại bỏ cuộc giữa chừng đúng không.",
+   "visual": {
+    "layout": "hero",
+    "prop": "battery_low",
+    "label": "bỏ cuộc giữa chừng",
+    "figure": {
+     "pose": "tired",
+     "face": "tired"
+    }
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Mới đầu năm, bạn hăm hở viết ra cả đống mục tiêu vào sổ tay.",
+   "visual": {
+    "layout": "callout",
+    "prop": "notebook",
+    "label": "mục tiêu"
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Sáng tập gym, trưa học tiếng Anh, tối đọc sách liên tục không nghỉ.",
+   "visual": {
+    "layout": "icons",
+    "title": "lịch trình",
+    "items": [
+     {
+      "prop": "dumbbell",
+      "label": "gym"
+     },
+     {
+      "prop": "book",
+      "label": "học"
+     },
+     {
+      "prop": "clock",
+      "label": "không nghỉ"
+     }
+    ]
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "whoosh"
+  },
+  {
+   "say": "Nhưng chỉ đúng hai tuần sau, bạn kiệt sức và nằm lướt điện thoại cả ngày.",
+   "visual": {
+    "layout": "thought",
+    "prop": "phone",
+    "label": "kiệt sức",
+    "figure": {
+     "pose": "tired",
+     "face": "sad"
+    }
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Rồi bạn tự trách mình kém cỏi và thiếu kiên trì.",
+   "visual": {
+    "layout": "hold",
+    "prop": "mirror",
+    "label": "kém cỏi",
+    "figure": {
+     "pose": "worry",
+     "face": "worry"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Thực ra, bạn không hề lười biếng một chút nào.",
+   "visual": {
+    "layout": "hero",
+    "prop": "star",
+    "label": "không lười",
+    "figure": {
+     "pose": "stand",
+     "face": "calm"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "whoosh"
+  },
+  {
+   "say": "Việc đặt quá nhiều mục tiêu giống như bạn đeo một chiếc balo nặng hai mươi ký đi leo núi.",
+   "visual": {
+    "layout": "callout",
+    "prop": "boulder",
+    "label": "balo nặng",
+    "figure": {
+     "pose": "lift",
+     "face": "tired"
+    }
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Bạn vác quá nặng so với sức chịu đựng của chính mình.",
+   "visual": {
+    "layout": "thought",
+    "prop": "mountain",
+    "label": "vác quá nặng"
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Nhưng điều thay đổi mọi thứ lại là cách bạn vứt bớt đồ đạc ra ngoài.",
+   "visual": {
+    "layout": "before_after",
+    "before": {
+     "title": "trước",
+     "prop": "boulder",
+     "label": "nặng"
+    },
+    "after": {
+     "title": "sau",
+     "prop": "gift",
+     "label": "vứt bớt"
+    }
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "whoosh"
+  },
+  {
+   "say": "Thay vì mang cả thế giới, hãy chỉ giữ lại những thứ thật sự cần thiết.",
+   "visual": {
+    "layout": "choose",
+    "title": "lựa chọn",
+    "options": [
+     {
+      "prop": "globe",
+      "label": "cả thế giới"
+     },
+     {
+      "prop": "key",
+      "label": "cần thiết"
+     }
+    ],
+    "pick": 1
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Hãy cắt giảm một nửa danh sách việc cần làm ngay tối nay.",
+   "visual": {
+    "layout": "big_number",
+    "number": "1/2",
+    "label": "cắt giảm",
+    "prop": "checklist"
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Chỉ để lại một việc quan trọng nhất để hoàn thành vào ngày mai.",
+   "visual": {
+    "layout": "stairs",
+    "title": "ngày mai",
+    "steps": [
+     "1 việc",
+     "quan trọng"
+    ],
+    "figure": {
+     "pose": "climb",
+     "face": "determined"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Đừng cố kiên trì trong sự quá tải, hãy đi thật nhẹ nhàng để về đích.",
+   "visual": {
+    "layout": "hold",
+    "prop": "road",
+    "label": "nhẹ nhàng",
+    "figure": {
+     "pose": "walk",
+     "face": "happy"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "whoosh"
+  },
+  {
+   "say": "Tối nay bạn sẽ bỏ bớt việc gì, hãy comment cho tôi biết nhé.",
+   "visual": {
+    "layout": "cta",
+    "title": "bình luận",
+    "question": "bạn bỏ việc gì?"
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  }
+ ],
+ "cover": {
+  "lines": [
+   "Bạn bỏ cuộc",
+   "vì vác quá nặng"
+  ],
+  "highlight": "bỏ cuộc",
+  "badge": "gánh nặng",
+  "prop": "boulder",
+  "figure": {
+   "pose": "tired",
+   "face": "worry"
+  }
+ },
+ "caption": "Bạn luôn cố gắng nhưng rồi lại kiệt sức giữa chừng? Đừng tự trách mình nữa, hãy xem ngay cách gỡ bỏ gánh nặng này nhé. Tối nay bạn sẽ bỏ bớt việc gì?",
+ "hashtags": [
+  "#phattrienbanthan",
+  "#kynangsong",
+  "#quanlythoigian",
+  "#tamly",
+  "#nguoitieudung",
+  "#cuocsong"
+ ],
+ "music": "calm"
+}
