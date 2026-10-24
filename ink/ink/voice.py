@@ -2,7 +2,8 @@
 
 Environment: EVERAI_API_KEY, EVERAI_VOICE_CODE (e.g. vi_female_thuytrang_mb), EVERAI_MODEL (default everai-v1.6),
 EVERAI_API_URL. Clips are cached by text and settings, so a re-render never pays twice. Without a key (local
-tests) a silent clip of the expected length stands in."""
+tests) a silent clip of the expected length stands in. If EverAI fails (bad key, outage), the free Microsoft
+voice (edge-tts, vi-VN-HoaiMyNeural) reads instead and the log says so."""
 import hashlib, json, os, re, subprocess, time, urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor
 
@@ -64,13 +65,25 @@ def silent(text, out, wps=2.8):
     return out
 
 
+def edge(text, out, voice=None):
+    subprocess.check_call(['edge-tts', '--voice', voice or os.environ.get('INK_FREE_VOICE', 'vi-VN-HoaiMyNeural'), '--rate=+8%', '--text', text, '--write-media', out],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return out
+
+
 def synth_all(texts, folder, voice=None, speed=1.0, log=print):
     os.makedirs(folder, exist_ok=True)
-    use = bool(os.environ.get('EVERAI_API_KEY'))
-    if not use: log('  (chưa có EVERAI_API_KEY: dùng âm thanh im lặng để thử hình)')
+    use = 'everai' if os.environ.get('EVERAI_API_KEY') else 'edge'
+    if use == 'everai':
+        try: everai(texts[0], os.path.join(folder, 's000.mp3'), voice, speed)
+        except Exception as e:  # noqa: BLE001
+            log(f'  EverAI không dùng được ({e}); đọc bằng giọng miễn phí Microsoft thay thế'); use = 'edge'
     def one(i):
         out = os.path.join(folder, f's{i:03d}.mp3')
-        return everai(texts[i], out, voice, speed) if use else silent(texts[i], out)
+        try: return everai(texts[i], out, voice, speed) if use == 'everai' else edge(texts[i], out)
+        except Exception as e:  # noqa: BLE001
+            if use == 'edge': return silent(texts[i], out)
+            raise
     with ThreadPoolExecutor(4) as ex: outs = list(ex.map(one, range(len(texts))))
     log(f'  giọng đọc: {len(outs)} đoạn')
     return outs

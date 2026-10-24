@@ -30,9 +30,14 @@ on:
       voice_code:
         description: 'Mã giọng EverAI (trống = secret EVERAI_VOICE_CODE)'
         default: ''
+      save_sample:
+        description: 'Lưu kết quả vào repo (ink/samples) để xem lại'
+        type: choice
+        options: ['no', 'yes']
+        default: 'no'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   ink:
@@ -84,6 +89,18 @@ jobs:
         if: always() && hashFiles('ink/out/video.mp4') != ''
         working-directory: ink/out
         run: ffmpeg -y -loglevel error -i video.mp4 -vf "fps=1/2,scale=270:-1,tile=8x4" -frames:v 1 contact.png
+      - name: Bản tóm tắt kịch bản trong nhật ký
+        if: always() && hashFiles('ink/out/storyboard.json') != ''
+        working-directory: ink/out
+        run: python3 -c "import json;s=json.load(open('storyboard.json'));print(s['title']);[print(i,x['visual'].get('layout'),'|',x['say']) for i,x in enumerate(s['scenes'])];print(s.get('cover'));print(s.get('caption'))"
+      - name: Lưu mẫu vào repo (ink/samples)
+        if: inputs.save_sample == 'yes' && hashFiles('ink/out/storyboard.json') != ''
+        run: |
+          d=ink/samples/run-${{ github.run_number }}; mkdir -p $d
+          cp ink/out/*.json ink/out/*.txt ink/out/*.log $d/ 2>/dev/null || true
+          cp ink/out/*.jpg ink/out/*.png ink/out/*.mp4 $d/ 2>/dev/null || true
+          git config user.name "ink-studio[bot]"; git config user.email "ink-studio@users.noreply.github.com"
+          git add -f $d && git commit -m "Ink Studio: mẫu lần chạy ${{ github.run_number }} [skip ci]" && git pull --rebase -q && git push
       - uses: actions/upload-artifact@v4
         if: always()
         with:
