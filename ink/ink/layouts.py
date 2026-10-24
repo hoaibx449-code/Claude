@@ -10,7 +10,9 @@ from .props import *
 X0, X1, Y0, Y1 = 90, 990, 380, 1470
 G = 1440  # ground line
 
-def _s(d, k, default=''): v = d.get(k); return str(v).strip() if v not in (None, '') else default
+def _s(d, k, default=''):
+    v = d.get(k) if isinstance(d, dict) else None
+    return str(v).strip() if isinstance(v, (str, int, float)) and not isinstance(v, bool) and str(v).strip() else default
 def _fig(cv, x, y, s, f, flip=1):
     f = f or {}
     return fig(cv, x, y, s, f.get('pose', 'stand') if f.get('pose') in POSE else 'stand', f.get('face', 'happy'), 13, flip, shirt=ACC if f.get('accent') else None)

@@ -48,10 +48,11 @@ def from_topic(topic, seconds=60, audience='', goal='truyền cảm hứng', ton
         log('4/4 Biên tập viên chấm kịch bản…')
         review = ai.ask(system(), prompt('review', core=strategy.get('core_message', ''), seconds=seconds, words=target, count=words(text), script=text), 0.2,
                         check=lambda o: o.get('scores') or (_ for _ in ()).throw(ValueError('thiếu scores')), log=log)
-        sc = review.get('scores', {}); low = [k for k, v in sc.items() if isinstance(v, (int, float)) and v < 7]
+        sc = review.get('scores', {}); low = [k for k, v in sc.items() if isinstance(v, (int, float)) and v < 8]
         avg = sum(v for v in sc.values() if isinstance(v, (int, float))) / max(1, len(sc))
-        log(f'   điểm trung bình {avg:.1f}, tiêu chí dưới 7: {", ".join(low) or "không"}')
-        if avg >= 7.5 and not low: break
+        log(f'   điểm trung bình {avg:.1f}, tiêu chí dưới 8: {", ".join(low) or "không"}')
+        if avg >= 8.5 and not [k for k, v in sc.items() if isinstance(v, (int, float)) and v < 8]: break
+        if round_ == 1: break
         feedback = 'Biên tập viên yêu cầu sửa những điểm sau (bắt buộc khắc phục):\n- ' + '\n- '.join(review.get('issues', [])[:5])
     script['strategy'] = strategy; script['outline'] = outline; script['review'] = review
     script.setdefault('core_message', strategy.get('core_message', '')); script.setdefault('title', strategy.get('title', ''))
