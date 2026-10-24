@@ -1,0 +1,98 @@
+name: Ink Studio — dựng video vẽ tay
+
+# Bấm "Run workflow" ở tab Actions. Khoá AI và EverAI lấy từ Settings → Secrets and variables → Actions,
+# không bao giờ nằm trong file của repo. Kết quả (video, ảnh bìa, kịch bản, phân cảnh) nằm ở mục Artifacts.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Nguồn kịch bản'
+        type: choice
+        options: [topic, script]
+        default: topic
+      topic:
+        description: 'Chủ đề (chế độ topic) hoặc toàn bộ kịch bản (chế độ script)'
+        required: true
+      seconds:
+        description: 'Độ dài mong muốn (giây, tối đa 300)'
+        default: '60'
+      audience:
+        description: 'Người xem là ai (tuỳ chọn)'
+        default: ''
+      tone:
+        description: 'Giọng văn'
+        default: 'ấm áp, chân thành, truyền động lực'
+      until:
+        description: 'Dừng ở bước'
+        type: choice
+        options: [video, storyboard, script]
+        default: video
+      voice_code:
+        description: 'Mã giọng EverAI (trống = secret EVERAI_VOICE_CODE)'
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  ink:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: ink/requirements.txt
+      - name: Cài FFmpeg và thư viện
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          pip install -q -r ink/requirements.txt
+      - name: Dùng lại giọng đã đọc
+        uses: actions/cache@v4
+        with:
+          path: ink/.cache
+          key: ink-voice-${{ github.run_id }}
+          restore-keys: ink-voice-
+      - name: Dựng
+        working-directory: ink
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          EVERAI_API_KEY: ${{ secrets.EVERAI_API_KEY }}
+          EVERAI_VOICE_CODE: ${{ inputs.voice_code || secrets.EVERAI_VOICE_CODE }}
+          INK_AI_ORDER: ${{ vars.INK_AI_ORDER || 'gemini,openai' }}
+          INK_GEMINI_MODELS: ${{ vars.INK_GEMINI_MODELS }}
+          INK_OPENAI_MODELS: ${{ vars.INK_OPENAI_MODELS }}
+          MODE: ${{ inputs.mode }}
+          INPUT: ${{ inputs.topic }}
+          SECONDS_: ${{ inputs.seconds }}
+          AUDIENCE: ${{ inputs.audience }}
+          TONE: ${{ inputs.tone }}
+          UNTIL: ${{ inputs.until }}
+        run: |
+          [ -n "$INK_GEMINI_MODELS" ] || unset INK_GEMINI_MODELS
+          [ -n "$INK_OPENAI_MODELS" ] || unset INK_OPENAI_MODELS
+          if [ "$MODE" = script ]; then
+            printf '%s' "$INPUT" > /tmp/script.txt
+            python -m ink.cli --script-file /tmp/script.txt --seconds "$SECONDS_" --until "$UNTIL" --out out
+          else
+            python -m ink.cli --topic "$INPUT" --seconds "$SECONDS_" --audience "$AUDIENCE" --tone "$TONE" --until "$UNTIL" --out out
+          fi
+      - name: Tờ ảnh kiểm tra
+        if: always() && hashFiles('ink/out/video.mp4') != ''
+        working-directory: ink/out
+        run: ffmpeg -y -loglevel error -i video.mp4 -vf "fps=1/2,scale=270:-1,tile=8x4" -frames:v 1 contact.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ink-${{ github.run_number }}
+          path: |
+            ink/out/*.mp4
+            ink/out/*.jpg
+            ink/out/*.png
+            ink/out/*.json
+            ink/out/*.txt
+            ink/out/*.log
+          retention-days: 14
