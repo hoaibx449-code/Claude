@@ -1,0 +1,232 @@
+{
+ "title": "Bí mật ngưng bỏ cuộc giữa chừng",
+ "core_message": "Bạn bỏ cuộc không phải vì thiếu kỷ luật, mà vì đặt mục tiêu quá lớn ngay từ đầu.",
+ "scenes": [
+  {
+   "say": "Muốn hoàn thành mục tiêu, bạn hãy học cách bớt hứng khởi lại.",
+   "visual": {
+    "layout": "hero",
+    "prop": "scale",
+    "label": "BỚT HỨNG KHỎI",
+    "figure": {
+     "pose": "think",
+     "face": "calm"
+    }
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Bạn mua khóa học mới, tập luyện 2 tiếng ngày đầu, rồi bỏ dở sau 3 ngày.",
+   "visual": {
+    "layout": "before_after",
+    "before": {
+     "title": "NGÀY 1",
+     "prop": "dumbbell",
+     "label": "TẬP 2 TIẾNG"
+    },
+    "after": {
+     "title": "NGÀY 3",
+     "prop": "battery_low",
+     "label": "BỎ DỞ"
+    },
+    "arrow": true
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Cuốn sách vừa mua bám đầy bụi ngay khi bạn mới đọc xong chương đầu tiên.",
+   "visual": {
+    "layout": "hero",
+    "prop": "book",
+    "label": "BÁM ĐẦY BỤI",
+    "figure": {
+     "pose": "tired",
+     "face": "sad"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Rồi bạn lại tự trách bản thân kém cỏi và thiếu kỷ luật.",
+   "visual": {
+    "layout": "hero",
+    "prop": "mirror",
+    "label": "tự trách"
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Sự hào hứng ban đầu chỉ như ngọn lửa rơm, cháy rất to rồi tắt phụt.",
+   "visual": {
+    "layout": "hero",
+    "prop": "fire",
+    "label": "lửa rơm"
+   },
+   "camera": {
+    "type": "pull"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Để đi đường dài, bạn cần ngọn lửa than hồng âm ỉ từ thói quen hằng ngày.",
+   "visual": {
+    "layout": "growth",
+    "title": "THÓI QUEN HẰNG NGÀY",
+    "prop": "seedling_pot",
+    "items": [
+     {
+      "label": "NGÀY 1",
+      "prop": "seed"
+     },
+     {
+      "label": "NGÀY 30",
+      "prop": "sprout"
+     },
+     {
+      "label": "NGÀY 100",
+      "prop": "tree"
+     }
+    ]
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "whoosh"
+  },
+  {
+   "say": "Bí mật thực ra nằm ở một thay đổi nhỏ đến mức buồn cười.",
+   "visual": {
+    "layout": "hero",
+    "prop": "key",
+    "label": "THAY ĐỔI NHỎ",
+    "figure": {
+     "pose": "point",
+     "face": "surprised"
+    }
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Hãy giảm quy mô mục tiêu xuống mức bạn không thể thất bại.",
+   "visual": {
+    "layout": "stairs",
+    "title": "MỤC TIÊU DỄ DÀNG",
+    "steps": [
+     "CỰC NHỎ",
+     "DỄ DÀNG",
+     "THÀNH CÔNG"
+    ],
+    "figure": {
+     "pose": "climb",
+     "face": "happy"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Thay vì hít đất 50 cái, bạn chỉ cần hít đất đúng 1 cái mỗi sáng.",
+   "visual": {
+    "layout": "compare",
+    "title": "MỖI SÁNG",
+    "left": {
+     "label": "50 CÁI",
+     "value": 0.9,
+     "prop": "dumbbell"
+    },
+    "right": {
+     "label": "1 CÁI",
+     "value": 0.1,
+     "prop": "sun"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Bạn không kém cỏi, bạn chỉ đang đặt mục tiêu quá lớn mà thôi.",
+   "visual": {
+    "layout": "obstacle",
+    "title": "SAI LẦM",
+    "prop": "boulder",
+    "label": "QUÁ LỚN",
+    "figure": {
+     "pose": "tired",
+     "face": "tired"
+    }
+   },
+   "camera": {
+    "type": "pull"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Ngay hôm nay, bạn sẽ chọn làm việc gì trong đúng 1 phút?",
+   "visual": {
+    "layout": "big_number",
+    "number": "1 PHÚT",
+    "label": "BẮT ĐẦU NGAY",
+    "prop": "clock"
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Hãy để lại bình luận và lưu video này để quay lại kiểm tra sau 1 tuần nhé.",
+   "visual": {
+    "layout": "cta",
+    "title": "THỬ THÁCH 7 NGÀY",
+    "question": "Bạn sẽ chọn thói quen 1 phút nào hôm nay?"
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  }
+ ],
+ "cover": {
+  "lines": [
+   "ĐỪNG ĐẶT MỤC TIÊU",
+   "QUÁ LỚN"
+  ],
+  "highlight": "QUÁ LỚN",
+  "badge": "BÍ MẬT KỶ LUẬT",
+  "prop": "target",
+  "figure": {
+   "pose": "think",
+   "face": "surprised"
+  }
+ },
+ "caption": "Bạn có từng quyết tâm rất cao nhưng chỉ duy trì được vài ngày rồi bỏ dở? Bí mật của kỷ luật không phải là nỗ lực phi thường, mà là hạ mục tiêu xuống mức không thể thất bại. Bạn chọn làm việc gì trong 1 phút hôm nay?",
+ "hashtags": [
+  "#kyluat",
+  "#thoiquen",
+  "#phattrienbanthan",
+  "#thaydoitoitien",
+  "#tuduy"
+ ]
+}
