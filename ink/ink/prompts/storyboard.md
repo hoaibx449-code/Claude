@@ -7,7 +7,9 @@ Các câu đọc (đánh số từ 0):
 Tư duy hình ảnh:
 - Mỗi cảnh chọn MỘT ẩn dụ trực quan sát nghĩa câu đọc, người xem hiểu trong 2 giây. Không minh họa chung chung.
 - Công thức mạnh: trước/sau; nhỏ → lớn theo thời gian; bậc thang đi lên; so sánh hai cột; chọn 1 trong vài lựa chọn; con số lớn gây sốc; vượt chướng ngại; hành trình nhiều chặng.
-- Nhãn chữ trên hình rất ngắn (1–4 chữ, hoặc con số/mốc thời gian), KHÔNG chép lại nguyên câu đọc. Dùng từ khóa nhấn mạnh của câu khi phù hợp.
+- Nhãn chữ trên hình rất ngắn để nằm trên MỘT dòng: 1–3 chữ (tối đa 4), hoặc con số/mốc thời gian; viết thường như chữ viết tay (không viết HOA toàn bộ), KHÔNG chép lại nguyên câu đọc. Dùng từ khóa nhấn mạnh của câu khi phù hợp.
+- Câu số 0 (hook) được đọc trên ẢNH BÌA (khung mở đầu video): vẫn trả về một cảnh cho câu 0 nhưng có thể dùng bố cục bất kỳ, nó sẽ được thay bằng ảnh bìa.
+- Đa dạng: bố cục "hero" không quá 1/4 số cảnh; ưu tiên các bố cục có nhân vật, so sánh, con số, danh sách để mỗi khung hình đầy đặn và có câu chuyện.
 - Không dùng cùng một bố cục cho 2 cảnh liền nhau; luân phiên để có nhịp. Câu hook dùng big_number, before_after, hero có nhân vật biểu cảm, hoặc obstacle. Câu kết có lời mời tương tác dùng cta.
 - Câu mở đầu một chương mới (có "chapter") dùng bố cục chapter.
 - Nhân vật (figure) giúp người xem đồng cảm: chọn tư thế và nét mặt đúng cảm xúc câu đọc.
@@ -26,10 +28,12 @@ Camera mỗi cảnh: {{"type": "push"}} (mặc định, chậm rãi), {{"type": 
 
 Ngoài ra thiết kế ẢNH BÌA (cover) chuẩn video ngắn:
 - "lines": tiêu đề 2–3 dòng, tổng tối đa 8 chữ, gây tò mò mạnh, đọc được trong 1 giây.
-- "highlight": một từ/cụm trong tiêu đề được tô khối vàng (từ đắt giá nhất).
+- Ảnh bìa đồng thời là KHUNG MỞ ĐẦU video, đọc câu hook trên nó: tiêu đề phải khớp và tăng sức nặng cho câu hook.
+- "highlight": một cụm 1–3 chữ có trong tiêu đề, được tô bút dạ vàng và gạch chân đỏ (từ đắt giá nhất).
 - "badge": nhãn phụ rất ngắn (ví dụ "7 NGÀY", "SAI LẦM #1") hoặc rỗng.
 - "prop" và "figure": hình chủ đạo thể hiện cảm xúc/kết quả của video.
 Và "caption" (2–3 câu mời xem, có câu hỏi) cùng "hashtags" (5–8 hashtag tiếng Việt không dấu và phổ biến).
+"music": không khí nhạc nền hợp nội dung, một trong: motivating (truyền động lực), calm (nhẹ nhàng, suy ngẫm), upbeat (vui tươi, sôi động), emotional (cảm xúc, lắng đọng).
 
 JSON:
-{{"scenes": [{{"line": 0, "visual": {{"layout": "...", "...": "..."}}, "camera": {{"type": "push"}}, "transition": "cut"}}], "cover": {{"lines": ["...", "..."], "highlight": "...", "badge": "", "prop": "...", "figure": {{"pose": "...", "face": "..."}}}}, "caption": "...", "hashtags": ["#..."]}}
+{{"scenes": [{{"line": 0, "visual": {{"layout": "...", "...": "..."}}, "camera": {{"type": "push"}}, "transition": "cut"}}], "cover": {{"lines": ["...", "..."], "highlight": "...", "badge": "", "prop": "...", "figure": {{"pose": "...", "face": "..."}}}}, "caption": "...", "hashtags": ["#..."], "music": "motivating"}}

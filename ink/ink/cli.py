@@ -8,9 +8,10 @@ and run.log into --out. --until storyboard stops before the voice and render (to
 import argparse, json, os, sys, time
 from . import ai, script as S
 from .preview import sheet
-from .voice import synth_all
+from .voice import narrate
+from .music import write as write_music, MOODS
 from .render import render
-from .cover import make_cover
+from .cover import make_cover, cover_frame
 
 
 def main(argv=None):
@@ -19,7 +20,9 @@ def main(argv=None):
     src.add_argument('--topic'); src.add_argument('--script-file')
     ap.add_argument('--seconds', type=int, default=60); ap.add_argument('--audience', default=''); ap.add_argument('--goal', default='truyền cảm hứng và giúp người xem hành động')
     ap.add_argument('--tone', default='ấm áp, chân thành, truyền động lực'); ap.add_argument('--notes', default='')
-    ap.add_argument('--voice', default=None); ap.add_argument('--speed', type=float, default=1.0); ap.add_argument('--music', default=None)
+    ap.add_argument('--music', default=None, help='nhạc riêng (mp3/wav); bỏ trống = nhạc tự tạo theo không khí')
+    ap.add_argument('--mood', default='auto', choices=['auto', 'none'] + list(MOODS)); ap.add_argument('--music-volume', type=float, default=0.20)
+    ap.add_argument('--no-captions', action='store_true')
     ap.add_argument('--brand', default=''); ap.add_argument('--out', default='out'); ap.add_argument('--until', choices=['script', 'storyboard', 'video'], default='video')
     a = ap.parse_args(argv)
     os.makedirs(a.out, exist_ok=True); logf = open(os.path.join(a.out, 'run.log'), 'a', encoding='utf-8')
@@ -37,17 +40,23 @@ def main(argv=None):
     if a.until == 'script': return
     sb = S.storyboard(sc, log=log)
     json.dump(sb, open(os.path.join(a.out, 'storyboard.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-    sheet([s['visual'] for s in sb['scenes']], os.path.join(a.out, 'overview.png'))
+    sheet([s['visual'] for s in sb['scenes'][1:]], os.path.join(a.out, 'overview.png'), first=cover_frame(sb.get('cover') or {}))
     make_cover(sb.get('cover') or {'lines': [sb['title']]}, os.path.join(a.out, 'cover.jpg'), a.brand)
     with open(os.path.join(a.out, 'caption.txt'), 'w', encoding='utf-8') as f:
         f.write((sb.get('caption') or '') + '\n\n' + ' '.join(sb.get('hashtags') or []) + '\n')
     log('Phân cảnh, ảnh bìa, caption: xong')
     if a.until == 'storyboard': return
-    log('Giọng đọc EverAI…')
-    audios = synth_all([s['say'] for s in sb['scenes']], os.path.join(a.out, 'voice'), a.voice, a.speed, log=log)
+    log('Giọng đọc (một mạch, có mốc từng chữ)…')
+    voice, timing, words, provider = narrate([s['say'] for s in sb['scenes']], os.path.join(a.out, 'voice'), log=log)
+    json.dump({'provider': provider, 'timing': timing, 'words': words}, open(os.path.join(a.out, 'timing.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+    music = a.music
+    if not music and a.mood != 'none':
+        mood = sb.get('music') if a.mood == 'auto' else a.mood
+        mood = mood if mood in MOODS else 'motivating'
+        music = write_music(timing[-1][2] + 1, os.path.join(a.out, 'voice', 'music.wav'), mood); log(f'  nhạc nền: tự tạo, không khí "{mood}"')
     log('Dựng video…')
-    title = ' '.join((sb.get('cover') or {}).get('lines') or [sb.get('title', '')]).strip()
-    total = render(sb['scenes'], audios, os.path.join(a.out, 'video.mp4'), title=title, music=a.music, log=log)
+    total = render(sb['scenes'], timing, voice, os.path.join(a.out, 'video.mp4'), words=words, cover_img=cover_frame(sb.get('cover') or {}),
+                   music=music, music_volume=a.music_volume, captions=not a.no_captions, log=log)
     log(f'Xong: video {total:.1f} giây, dựng mất {time.time() - t0:.0f} giây. AI đã dùng: {", ".join(f"{p}/{m}" for p, m in ai.used)}')
 
 

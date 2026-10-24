@@ -6,7 +6,8 @@ Tổng độ dài: khoảng {seconds} giây, tức khoảng {words} chữ (giọ
 {feedback}
 
 Yêu cầu viết:
-- Mỗi phần tử trong "lines" là MỘT câu đọc trọn ý (8–20 chữ), sẽ thành một cảnh vẽ tay. Câu quá dài thì tách.
+- Mỗi phần tử trong "lines" là MỘT câu hoặc vế câu đọc trọn ý, NGẮN: 6–14 chữ (video ngắn cần nhịp nhanh, mỗi câu là một cảnh vẽ tay đổi liên tục). Câu dài thì tách thành 2 vế.
+- Các câu NỐI MẠCH vào nhau như một dòng chảy không ngắt: câu sau tiếp lời câu trước (dùng "Nhưng", "Vì sao?", "Kết quả là", "Thử nghĩ xem", "Đây mới là điều quan trọng"...), tạo cảm giác dồn dập, cuốn người xem đi tiếp. Tránh mỗi câu là một ý rời rạc tự đứng một mình.
 - Câu đầu tiên chính là hook, đọc lên phải giật người xem lại ngay.
 - Mỗi ý chính phải có ví dụ, con số hoặc hình ảnh so sánh cụ thể. Không liệt kê khô khan.
 - Nhịp: xen câu ngắn mạnh với câu giải thích; có câu hỏi tu từ khi cần; có chỗ nhấn mạnh.

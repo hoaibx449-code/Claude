@@ -13,27 +13,38 @@ BG = _hex(os.environ.get('VID_BG', '#F5F0E6')); INK = _hex(os.environ.get('VID_I
 HERE = os.path.dirname(os.path.abspath(__file__)); ASSETS = os.path.join(HERE, '..', 'assets')
 GREEN = (0x2E, 0x9E, 0x5B); RED = (0xD9, 0x4F, 0x4F)
 SKIN = (244, 200, 165); SLEEVE = (96, 108, 132)
-# Be Vietnam Pro (OFL) draws Vietnamese well; DejaVu stays as a fallback
-FONT = next((p for p in [os.path.join(ASSETS, 'fonts', 'BeVietnamPro-ExtraBold.ttf'), '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'] if os.path.exists(p)), 'DejaVuSans-Bold.ttf')
+# Pangolin (OFL) reads like marker lettering and has full Vietnamese; Be Vietnam Pro stays for plain UI type
+FONT = next((p for p in [os.path.join(ASSETS, 'fonts', 'Pangolin-Regular.ttf'), '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'] if os.path.exists(p)), 'DejaVuSans-Bold.ttf')
 FONT_BLACK = os.path.join(ASSETS, 'fonts', 'BeVietnamPro-Black.ttf')
+HAND_FONT = FONT
+def ink_stroke(size): return max(1, int(size * 0.045))  # thickens the marker lettering
 _fonts = {}
 def font(size, path=None):
     key = (path or FONT, int(size))
     if key not in _fonts: _fonts[key] = ImageFont.truetype(key[0], key[1])
     return _fonts[key]
 def text_width(txt, size, path=None):
-    b = font(size, path).getbbox(txt); return b[2] - b[0]
+    b = font(size, path).getbbox(txt, stroke_width=ink_stroke(size) if (path or FONT) == FONT else 0); return b[2] - b[0]
+# a line should not end on one of these: they belong with the words after them
+GLUE = set('và của là thì để cho những các một với ở trong khi nếu mà rồi nhưng vì bởi từ đến tới về theo như thật rất quá không chưa đã đang sẽ bạn mình anh chị em người cái con chiếc sự việc'.split())
 def wrap(txt, size, max_w, lines=2):
-    """greedy word wrap; balanced so the last line is not a lone word"""
-    words = txt.split(); rows = []; cur = ''
+    """one line if it fits; else the split into two that reads best: both halves fit, they are close in
+    length, and the first line does not end on a word that belongs to the next (và, của, để, những...)"""
+    words = txt.split()
+    if len(words) < 2 or text_width(txt, size) <= max_w or lines < 2: return [txt]
+    best, bscore = None, 1e18
+    for k in range(1, len(words)):
+        a, b = ' '.join(words[:k]), ' '.join(words[k:]); wa, wb = text_width(a, size), text_width(b, size)
+        score = abs(wa - wb) + (1e6 if max(wa, wb) > max_w else 0) + (400 if words[k - 1].lower() in GLUE else 0) + (300 if k == 1 or k == len(words) - 1 else 0)
+        if score < bscore: best, bscore = [a, b], score
+    if bscore < 1e6 or lines < 3: return best
+    # three lines for very long labels
+    out = []; cur = ''
     for w in words:
         t = (cur + ' ' + w).strip()
-        if cur and text_width(t, size) > max_w: rows.append(cur); cur = w
+        if cur and text_width(t, size) > max_w: out.append(cur); cur = w
         else: cur = t
-    if cur: rows.append(cur)
-    if len(rows) == 2 and len(rows[1].split()) == 1 and len(rows[0].split()) > 2:
-        a = rows[0].split(); rows = [' '.join(a[:-1]), a[-1] + ' ' + rows[1]]
-    return rows
+    return out + [cur]
 def fit_size(txt, size, max_w, path=None, floor=26):
     """the largest size up to `size` at which txt fits in max_w pixels"""
     while size > floor and text_width(txt, size, path) > max_w: size -= 2
@@ -76,18 +87,24 @@ class Canvas:
         for sg in (-1, 1):
             s.line([(x1, y1), (x1 - head * math.cos(a + sg * 0.5), y1 - head * math.sin(a + sg * 0.5))], w, c)
     def text(s, x, y, txt, size=60, c=INK, max_w=None, lines=2):
-        """text centred at (x, y); too wide for max_w it wraps onto up to `lines` lines, then shrinks"""
+        """text centred at (x, y), one line whenever it stays readable (down to 78% of `size`); otherwise
+        split into two balanced lines at a natural break"""
         if not txt: return
-        if max_w and text_width(txt, size) > max_w and lines > 1:
-            rows = wrap(txt, size, max_w, lines)
-            while len(rows) > lines and size > 30: size -= 2; rows = wrap(txt, size, max_w, lines)
-            if len(rows) > 1:
-                gap = size * 1.18; y0 = y - gap * (len(rows) - 1) / 2
-                for k, r in enumerate(rows): s.text(x, y0 + k * gap, r, size, c, max_w, 1)
+        txt = ' '.join(str(txt).split())
+        if max_w and text_width(txt, size) > max_w:
+            one = fit_size(txt, size, max_w)
+            if one >= size * 0.78 or lines < 2 or len(txt.split()) < 2: size = one
+            else:
+                sz = size
+                while sz > 30:
+                    rows = wrap(txt, sz, max_w, 2)
+                    if len(rows) <= 2 and all(text_width(r, sz) <= max_w for r in rows): break
+                    sz -= 2
+                gap = sz * 1.16; y0 = y - gap * (len(rows) - 1) / 2
+                for k, r in enumerate(rows): s.text(x, y0 + k * gap, r, sz, c, max_w, 1)
                 return
-        if max_w: size = fit_size(txt, size, max_w)
         f = font(size); m = Image.new('L', (W, H), 0)
-        ImageDraw.Draw(m).text((x, y), txt, font=f, fill=255, anchor='mm')
+        ImageDraw.Draw(m).text((x, y), txt, font=f, fill=255, anchor='mm', stroke_width=ink_stroke(size), stroke_fill=255)
         bb = m.getbbox()
         if not bb: return
         m = np.asarray(m)[bb[1]:bb[3], bb[0]:bb[2]]
@@ -150,9 +167,11 @@ def make_hand():
 HAND = make_hand()
 
 def phi_for(p, side):
+    """arm angle from horizontal: the forearm comes up from below at 50-78 degrees, a little flatter near
+    the far edge so it never seems to reach across the whole frame"""
     x = min(max(p[0], 0), W); y = min(max(p[1], 0), H)
     ds = (W - x) if side == 1 else x; db = H - y
-    return math.radians(20 + 75 * ds / (ds + db + 1e-6))
+    return math.radians(50 + 28 * ds / (ds + db + 1e-6))
 
 def arm_vec(phi, side): return np.array([side * math.cos(phi), math.sin(phi)])
 

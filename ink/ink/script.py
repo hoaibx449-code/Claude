@@ -94,7 +94,7 @@ def storyboard(script, log=print):
         prev = v.get('layout')
         scenes.append({'say': l['say'], 'visual': v, 'camera': s.get('camera') or {'type': 'push'}, 'transition': s.get('transition', 'cut')})
     return {'title': script.get('title', ''), 'core_message': script.get('core_message', ''), 'scenes': scenes,
-            'cover': sb.get('cover') or {}, 'caption': sb.get('caption', ''), 'hashtags': sb.get('hashtags') or []}
+            'cover': sb.get('cover') or {}, 'caption': sb.get('caption', ''), 'hashtags': sb.get('hashtags') or [], 'music': sb.get('music', 'motivating')}
 
 
 def clean_visual(v):

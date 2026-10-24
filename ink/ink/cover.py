@@ -1,79 +1,75 @@
-"""The cover (thumbnail) for 9:16 videos, 1080x1920.
+"""The cover, drawn in the video's own hand: it is also the first frame of the video (the hook is read over
+it), so platforms that take the first frame show it too.
 
-Rules of a good short-video cover, built in:
-- a 2-3 line title of at most about 8 words in heavy type, readable in one second, its key word on a yellow
-  block outlined in ink with an offset shadow;
-- one big hero illustration with emotion (the figure reacting, an object), a burst of light behind it;
-- everything important inside the middle 3:4 (what profile grids show) and clear of the bottom fifth and the
-  right-hand button column of TikTok/Reels/Shorts; a small badge for a number or hook."""
+Built for short-video covers: a 2-3 line title in marker lettering readable in a second, its key phrase on
+a yellow marker swash and circled in red; one big hand-drawn hero with feeling; small doodles that lead the
+eye; everything in the middle 3:4 and clear of the bottom fifth and the right-hand buttons."""
 from .engine import *
-from .props import draw_prop, fig, POSE, FACES, rays, WHITE
+from .props import draw_prop, fig, POSE, FACES, star_pts, rrect, WHITE
 
-SAFE_TOP, SAFE_BOTTOM = 260, 1500
-
-
-def _paper():
-    img = np.empty((H, W, 3), np.float32); img[:] = BG
-    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
-    v = 1 - 0.10 * (((xx - W / 2) / W) ** 2 + ((yy - H * 0.45) / H) ** 2) * 2.2  # soft vignette
-    noise = np.random.RandomState(3).randn(H, W).astype(np.float32) * 2.2
-    return np.clip(img * v[..., None] + noise[..., None], 0, 255).astype(np.uint8)
+TITLE_Y = 470
 
 
-def _hero(img, cover):
-    """draw the cover's illustration fully, larger than in the video"""
-    from .engine import Canvas
-    cv = Canvas(); cx, g = 540, 1440
-    f = cover.get('figure') if isinstance(cover.get('figure'), dict) else None
+def _swash(cv, x0, y0, x1, y1):
+    """a yellow highlighter stroke behind the key words: slightly tilted, ragged ends"""
+    pts = []; n = 14
+    for k in range(n + 1):
+        t = k / n; pts.append((x0 + (x1 - x0) * t, y0 + rng.uniform(-6, 6) - 8 * t))
+    for k in range(n, -1, -1):
+        t = k / n; pts.append((x0 + (x1 - x0) * t + rng.uniform(-4, 4), y1 + rng.uniform(-6, 6) - 8 * t))
+    cv.shape(pts + [pts[0]], 2, ACC, ACC)
+
+
+def _doodles(cv):
+    for (x, y, r) in ((140, 330, 26), (960, 760, 22), (120, 1000, 18)):
+        cv.poly(star_pts(x, y, r, 0.42, 4, -90), INK, ACC, 5)
+    for (x, y) in ((930, 300), (170, 1270)):
+        for a in (-60, 0, 60): cv.line([(x + 18 * math.cos(math.radians(a - 90)), y + 18 * math.sin(math.radians(a - 90))),
+                                        (x + 40 * math.cos(math.radians(a - 90)), y + 40 * math.sin(math.radians(a - 90)))], 6, INK)
+
+
+def cover_ops(cover):
+    lines = [' '.join(str(l).split()) for l in (cover.get('lines') or []) if str(l).strip()][:3] or [cover.get('title') or 'Video mới']
+    hl = ' '.join(str(cover.get('highlight') or '').split()).lower(); badge = str(cover.get('badge') or '').strip()
+    cv = Canvas()
+    size = min(fit_size(l, 168, 920) for l in lines); gap = size * 1.12
+    y0 = TITLE_Y - gap * (len(lines) - 1) / 2 + (40 if badge else 0)
+    # the swash goes first, under the words
+    marks = []
+    for k, l in enumerate(lines):
+        i = l.lower().find(hl) if hl else -1
+        if i >= 0:
+            tot = text_width(l, size); x = (W - tot) / 2
+            x0 = x + (text_width(l[:i].rstrip(), size) + text_width(' ', size) if i else 0) - 18; x1 = x + text_width(l[:i + len(hl)], size) + 18
+            y = y0 + k * gap; _swash(cv, x0, y - size * 0.42, x1, y + size * 0.4); marks.append((x0, x1, y))
+    for k, l in enumerate(lines): cv.text(W / 2, y0 + k * gap, l, size, INK, max_w=940, lines=1)
+    for x0, x1, y in marks:  # a red marker underline under the key phrase
+        cv.line([(x0 + 10, y + size * 0.55), ((x0 + x1) / 2, y + size * 0.62), (x1 - 10, y + size * 0.52)], 11, RED)
+    if badge:
+        bs = fit_size(badge, 56, 520); bw = text_width(badge, bs) + 70
+        rrect(cv, W / 2 - bw / 2, y0 - gap * 0.5 - 120, W / 2 + bw / 2, y0 - gap * 0.5 - 30, 28, 8, INK, RED)
+        cv.text(W / 2, y0 - gap * 0.5 - 75, badge, bs, WHITE, max_w=520, lines=1)
+    # the hero, big
+    g = 1450; f = cover.get('figure') if isinstance(cover.get('figure'), dict) else None
     prop = cover.get('prop') or 'trophy'
     if f:
-        draw_prop(cv, prop, 700, 1130, 1.25)
-        fig(cv, 330, g, 1.05, f.get('pose') if f.get('pose') in POSE else 'cheer', f.get('face') if f.get('face') in FACES else 'proud', 15)
+        draw_prop(cv, prop, 690, 1150, 1.35); cv.line([(80, g), (1000, g)], 8)
+        fig(cv, 300, g, 1.05, f.get('pose') if f.get('pose') in POSE else 'cheer', f.get('face') if f.get('face') in FACES else 'proud', 15)
     else:
-        draw_prop(cv, prop, cx, 1150, 1.8)
-    for op in cv.done(): prep(op); render_full(img, op)
+        draw_prop(cv, prop, 540, 1150, 1.9)
+    _doodles(cv)
+    return cv.done()
 
 
-def _burst(draw, cx, cy, r0, r1, n=18):
-    for k in range(n):
-        a0 = math.radians(k * 360 / n); a1 = math.radians(k * 360 / n + 360 / n / 2)
-        draw.polygon([(cx + r0 * math.cos(a0), cy + r0 * math.sin(a0)), (cx + r1 * math.cos(a0), cy + r1 * math.sin(a0)),
-                      (cx + r1 * math.cos(a1), cy + r1 * math.sin(a1)), (cx + r0 * math.cos(a1), cy + r0 * math.sin(a1))], fill=ACC + (70,))
+def cover_frame(cover):
+    img = np.empty((H, W, 3), np.uint8); img[:] = BG
+    for op in cover_ops(cover): prep(op); render_full(img, op)
+    return img
 
 
 def make_cover(cover, out, brand=''):
-    lines = [str(l).strip() for l in (cover.get('lines') or []) if str(l).strip()][:3] or [cover.get('title') or 'Video mới']
-    hl = str(cover.get('highlight') or '').strip().lower(); badge = str(cover.get('badge') or '').strip()
-    img = _paper()
-    # light burst behind the hero, then the hero itself
-    pil = Image.fromarray(img).convert('RGBA'); lay = Image.new('RGBA', pil.size, (0, 0, 0, 0)); d = ImageDraw.Draw(lay)
-    _burst(d, 560, 1130, 120, 760); d.ellipse([560 - 330, 1130 - 330, 560 + 330, 1130 + 330], fill=ACC + (60,))
-    img = np.asarray(Image.alpha_composite(pil, lay).convert('RGB')).copy()
-    _hero(img, cover)
-    pil = Image.fromarray(img).convert('RGBA'); lay = Image.new('RGBA', pil.size, (0, 0, 0, 0)); d = ImageDraw.Draw(lay)
-    # the title: one size for all lines, the largest that fits 900px
-    size = min(fit_size(l, 180, 940, FONT_BLACK) for l in lines)
-    f = font(size, FONT_BLACK); gap = int(size * 1.12)
-    y = SAFE_TOP + 120 + (gap if badge else 0) // 2
-    for l in lines:
-        tot = text_width(l, size, FONT_BLACK); x = (W - tot) / 2
-        i = l.lower().find(hl) if hl else -1
-        if i >= 0:  # one block behind the whole highlighted phrase
-            x0 = x + (text_width(l[:i], size, FONT_BLACK) if i else 0); x1 = x + text_width(l[:i + len(hl)], size, FONT_BLACK)
-            pad = 18; box = [x0 - pad, y - size * 0.62, x1 + pad, y + size * 0.52]
-            d.rounded_rectangle([box[0] + 10, box[1] + 12, box[2] + 10, box[3] + 12], 22, fill=INK + (255,))
-            d.rounded_rectangle(box, 22, fill=ACC + (255,), outline=INK + (255,), width=8)
-        # a white edge keeps the type crisp over any part of the drawing
-        d.text((x, y), l, font=f, fill=INK + (255,), anchor='lm', stroke_width=6, stroke_fill=WHITE + (255,))
-        y += gap
-    # brush underline under the title
-    d.line([(250, y - gap * 0.35), (830, y - gap * 0.42)], fill=RED + (230,), width=14, joint='curve')
-    if badge:
-        bf = font(fit_size(badge, 58, 520, FONT_BLACK), FONT_BLACK); bb = d.textbbox((540, SAFE_TOP), badge, font=bf, anchor='mm')
-        d.rounded_rectangle([bb[0] - 30, bb[1] - 18, bb[2] + 30, bb[3] + 18], 40, fill=RED + (255,), outline=INK + (255,), width=6)
-        d.text((540, SAFE_TOP), badge, font=bf, fill=(255, 255, 255, 255), anchor='mm')
+    img = cover_frame(cover)
     if brand:
-        d.text((60, 120), brand, font=font(40), fill=INK + (200,), anchor='lm')
-    out_img = Image.alpha_composite(pil, lay).convert('RGB')
-    out_img.save(out, quality=92)
-    return out
+        pil = Image.fromarray(img); ImageDraw.Draw(pil).text((70, 150), brand, font=font(44), fill=INK, anchor='lm'); img = np.asarray(pil)
+    Image.fromarray(img).save(out, quality=93)
+    return img

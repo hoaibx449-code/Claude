@@ -8,8 +8,8 @@ def still(scene):
     for op in build(scene): prep(op); render_full(img, op)
     return img
 
-def sheet(scenes, out, cols=5, scale=0.25):
-    tiles = [cv2.resize(still(s), None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) for s in scenes]
+def sheet(scenes, out, cols=5, scale=0.25, first=None):
+    tiles = ([cv2.resize(first, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)] if first is not None else []) + [cv2.resize(still(s), None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) for s in scenes]
     th, tw = tiles[0].shape[:2]; rows = (len(tiles) + cols - 1) // cols
     big = np.full((rows * (th + 8), cols * (tw + 8), 3), 255, np.uint8)
     for k, t in enumerate(tiles):
