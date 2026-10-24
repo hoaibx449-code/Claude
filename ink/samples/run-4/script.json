@@ -1,0 +1,209 @@
+{
+ "title": "Cách ngưng bỏ cuộc giữa chừng",
+ "core_message": "Đừng chờ có hứng mới làm, hãy thu nhỏ mục tiêu đến mức không thể thất bại.",
+ "lines": [
+  {
+   "say": "Tám mươi phần trăm chúng ta bỏ cuộc chỉ sau ba tuần.",
+   "emphasis": [
+    "bỏ cuộc"
+   ],
+   "part": "hook",
+   "chapter": ""
+  },
+  {
+   "say": "Không phải do bạn kém cỏi, mà vì bạn ép mình quá sức.",
+   "emphasis": [
+    "ép mình quá sức"
+   ],
+   "part": "hook",
+   "chapter": ""
+  },
+  {
+   "say": "Thấy cuốn sách mới mua còn nguyên lớp nilon.",
+   "emphasis": [
+    "nguyên lớp nilon"
+   ],
+   "part": "problem",
+   "chapter": ""
+  },
+  {
+   "say": "Hay thẻ tập gym bỏ xó suốt cả tháng trời.",
+   "emphasis": [
+    "thẻ tập gym"
+   ],
+   "part": "problem",
+   "chapter": ""
+  },
+  {
+   "say": "Bộ não con người luôn sợ những thay đổi quá lớn.",
+   "emphasis": [
+    "sợ"
+   ],
+   "part": "point",
+   "chapter": "Nghịch lý quyết tâm"
+  },
+  {
+   "say": "Càng gồng sức lúc đầu, bạn càng mau kiệt sức.",
+   "emphasis": [
+    "kiệt sức"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Giống như ngày đầu đã cố nâng tạ nặng hết mức.",
+   "emphasis": [
+    "nâng tạ nặng"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Cơ bắp sẽ biểu tình và não bộ sẽ né tránh ngay.",
+   "emphasis": [
+    "biểu tình"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Cách duy nhất là thu nhỏ mục tiêu đến mức không thể thất bại.",
+   "emphasis": [
+    "thu nhỏ mục tiêu"
+   ],
+   "part": "turn",
+   "chapter": ""
+  },
+  {
+   "say": "Hãy chia nhỏ mục tiêu của bạn xuống mười lần.",
+   "emphasis": [
+    "xuống mười lần"
+   ],
+   "part": "point",
+   "chapter": "Chiến thuật 1 trên 10"
+  },
+  {
+   "say": "Thay vì chạy năm cây số mỗi ngày.",
+   "emphasis": [
+    "năm cây số"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Hãy xỏ giày đi bộ đúng hai trăm mét thôi.",
+   "emphasis": [
+    "hai trăm mét"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Mục tiêu này dễ đến mức bạn sẽ làm được ngay.",
+   "emphasis": [
+    "làm được ngay"
+   ],
+   "part": "point",
+   "chapter": ""
+  },
+  {
+   "say": "Đừng chờ có hứng mới làm việc quan trọng.",
+   "emphasis": [
+    "Đừng chờ có hứng"
+   ],
+   "part": "close",
+   "chapter": ""
+  },
+  {
+   "say": "Bạn sẽ làm bước nhỏ gì trong hai phút tới?",
+   "emphasis": [
+    "hai phút tới"
+   ],
+   "part": "close",
+   "chapter": ""
+  },
+  {
+   "say": "Bình luận cho mình biết nhé.",
+   "emphasis": [
+    "Bình luận"
+   ],
+   "part": "close",
+   "chapter": ""
+  }
+ ],
+ "strategy": {
+  "audience": "Người trẻ từ 20 đến 35 tuổi, hay hăng hái lúc đầu nhưng dễ nản lòng và bỏ dở mục tiêu.",
+  "pain": "Tự trách bản thân thiếu kiên trì sau mỗi lần mua sách, đăng ký tập gym rồi bỏ dở.",
+  "core_message": "Đừng chờ có hứng mới làm, hãy thu nhỏ mục tiêu đến mức không thể thất bại.",
+  "angle": "Nghịch lý của quyết tâm: Bộ não sợ thay đổi lớn, càng gồng sức lúc đầu càng mau kiệt sức.",
+  "takeaway": "Giảm mục tiêu xuống mười lần: thay vì chạy năm cây số, hãy xỏ giày đi bộ hai trăm mét.",
+  "hooks": [
+   "Bạn đã bao giờ mua cuốn sách về rồi để bụi phủ chưa?",
+   "Tám mươi phần trăm người bỏ mục tiêu chỉ sau ba tuần đầu.",
+   "Càng quyết tâm cao, bạn lại càng dễ bỏ cuộc giữa chừng."
+  ],
+  "best_hook": 2,
+  "title": "Cách ngưng bỏ cuộc giữa chừng"
+ },
+ "outline": {
+  "beats": [
+   {
+    "part": "hook",
+    "chapter": "",
+    "idea": "Tám mươi phần trăm người bỏ mục tiêu chỉ sau ba tuần đầu tiên.",
+    "example": "Con số này cho thấy bạn không hề cô đơn hay kém cỏi như bạn vẫn thường nghĩ.",
+    "seconds": 3
+   },
+   {
+    "part": "problem",
+    "chapter": "",
+    "idea": "Bạn tự trách mình thiếu kỷ luật khi thấy cuốn sách mới mua vẫn còn nguyên lớp nilon hay thẻ tập gym bỏ xó.",
+    "example": "Cảm giác tội lỗi này cứ lặp lại mỗi khi bạn lên kế hoạch thay đổi bản thân nhưng lại bỏ cuộc giữa chừng.",
+    "seconds": 12
+   },
+   {
+    "part": "point",
+    "chapter": "Nghịch lý quyết tâm",
+    "idea": "Bộ não con người sợ thay đổi lớn và càng gồng sức lúc đầu, bạn càng mau kiệt sức.",
+    "example": "Giống như việc bạn cố nâng tạ nặng ngay ngày đầu đi tập, cơ bắp sẽ biểu tình và não bộ sẽ tìm cách né tránh.",
+    "seconds": 15
+   },
+   {
+    "part": "turn",
+    "chapter": "",
+    "idea": "Nhưng điều thay đổi mọi thứ không nằm ở ý chí, mà ở cách bạn thu nhỏ mục tiêu.",
+    "example": "Thay vì ép bản thân thay đổi cả thế giới, hãy làm cho mục tiêu nhỏ đến mức bạn không thể thất bại.",
+    "seconds": 10
+   },
+   {
+    "part": "point",
+    "chapter": "Chiến thuật 1/10",
+    "idea": "Hãy chia nhỏ mục tiêu của bạn xuống mười lần để đánh lừa sự phản kháng của não bộ.",
+    "example": "Thay vì chạy năm cây số, hãy xỏ giày đi bộ đúng hai trăm mét, mục tiêu này dễ đến mức bạn sẽ làm được ngay cả khi lười nhất.",
+    "seconds": 10
+   },
+   {
+    "part": "close",
+    "chapter": "",
+    "idea": "Đừng chờ có hứng mới làm, hãy bắt đầu bằng một bước cực nhỏ ngay hôm nay.",
+    "example": "Bạn định làm gì chỉ trong hai phút tới? Hãy bình luận bên dưới để cùng thực hiện nhé.",
+    "seconds": 10
+   }
+  ]
+ },
+ "review": {
+  "scores": {
+   "hook": 6,
+   "clarity": 8,
+   "concrete": 7,
+   "value": 8,
+   "action": 8,
+   "language": 9,
+   "length": 10
+  },
+  "issues": [
+   "Câu đầu tiên Tám mươi phần trăm chúng ta bỏ cuộc chỉ sau ba tuần dùng số liệu hơi chung chung và chưa tạo được sự tò mò mạnh nhất, nên sửa thành: Tám mươi phần trăm chúng ta bỏ cuộc chỉ sau ba tuần vì một sai lầm chết người.",
+   "Câu Không phải do bạn kém cỏi, mà vì bạn ép mình quá sức. còn hơi văn viết, nên đổi thành: Không phải bạn lười, mà vì bạn đang ép não bộ làm việc quá sức."
+  ]
+ }
+}

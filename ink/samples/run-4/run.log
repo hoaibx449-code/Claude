@@ -1,0 +1,53 @@
+17:40:03 Chế độ: từ chủ đề — "Vì sao bạn luôn bỏ cuộc giữa chừng và cách giữ lửa đến cùng" (60 giây)
+17:40:03 1/4 Chiến lược nội dung…
+17:40:04   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 503
+17:40:18 2/4 Dàn ý…
+17:40:22   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 503
+17:40:29   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 503
+17:42:29   AI trả lời chưa đạt, thử tiếp: gemini/gemini-flash-latest: TimeoutError: The read operation timed out
+17:42:35   AI trả lời chưa đạt, thử tiếp: gemini/gemini-3.5-flash-lite: JSONDecodeError: Extra data: line 7 column 4 (char 195)
+17:42:38 3/4 Viết lời đọc…
+17:42:41   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 503
+17:42:45   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+17:42:46   AI lỗi, thử tiếp: gemini/gemini-flash-latest: HTTP 503
+17:42:57   AI lỗi, thử tiếp: gemini/gemini-flash-latest: HTTP 503
+17:43:01 4/4 Biên tập viên chấm kịch bản…
+17:43:14    điểm trung bình 7.9, tiêu chí dưới 8: hook, length
+17:43:14 3/4 Viết lại theo góp ý biên tập…
+17:43:14   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+17:43:20   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 503
+17:45:20   AI trả lời chưa đạt, thử tiếp: gemini/gemini-flash-latest: TimeoutError: The read operation timed out
+17:45:25 4/4 Biên tập viên chấm kịch bản…
+17:45:25   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+17:45:29   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+17:45:36   AI lỗi, thử tiếp: gemini/gemini-flash-latest: HTTP 503
+17:45:44   AI lỗi, thử tiếp: gemini/gemini-flash-latest: HTTP 503
+17:45:48    điểm trung bình 8.0, tiêu chí dưới 8: hook, concrete
+17:45:48 Kịch bản: 16 câu, 166 chữ
+17:45:48 Phân cảnh và ảnh bìa…
+17:45:48   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 429
+17:46:00   AI lỗi, thử tiếp: gemini/gemini-3.5-flash: HTTP 503
+17:48:00   AI trả lời chưa đạt, thử tiếp: gemini/gemini-flash-latest: TimeoutError: The read operation timed out
+17:48:10 Phân cảnh, ảnh bìa, caption: xong
+17:48:10 Giọng đọc (một mạch, có mốc từng chữ)…
+17:48:12   giọng everai không dùng được (EverAI từ chối: Invalid API key); thử nhà cung cấp tiếp theo
+17:48:29   giọng microsoft: 48.9 giây, 166 chữ có mốc thời gian
+17:48:30   nhạc nền: tự tạo, không khí "motivating"
+17:48:30 Dựng video…
+17:48:32 cảnh 1/16 xong
+17:48:37 cảnh 2/16 xong
+17:48:41 cảnh 3/16 xong
+17:48:45 cảnh 4/16 xong
+17:48:50 cảnh 5/16 xong
+17:48:54 cảnh 6/16 xong
+17:48:58 cảnh 7/16 xong
+17:49:03 cảnh 8/16 xong
+17:49:08 cảnh 9/16 xong
+17:49:11 cảnh 10/16 xong
+17:49:15 cảnh 11/16 xong
+17:49:19 cảnh 12/16 xong
+17:49:23 cảnh 13/16 xong
+17:49:27 cảnh 14/16 xong
+17:49:31 cảnh 15/16 xong
+17:49:34 cảnh 16/16 xong
+17:49:38 Xong: video 49.3 giây, dựng mất 574 giây. AI đã dùng: gemini/gemini-3.5-flash, gemini/gemini-3.1-flash-lite, gemini/gemini-3.5-flash-lite, gemini/gemini-3.5-flash, gemini/gemini-3.5-flash-lite, gemini/gemini-3.5-flash-lite, gemini/gemini-3.5-flash-lite
