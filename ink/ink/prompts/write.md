@@ -17,6 +17,7 @@ Yêu cầu viết:
 - Mỗi ý chính phải có ví dụ, con số hoặc hình ảnh so sánh cụ thể. Không liệt kê khô khan.
 - Nhịp: xen câu ngắn mạnh với câu giải thích; có câu hỏi tu từ khi cần; có chỗ nhấn mạnh.
 - Cách kết theo thể loại: {ending} Câu hỏi cuối phải cụ thể, trả lời được bằng vài chữ; KHÔNG dùng câu chung chung như "hãy comment cho tôi biết nhé", "bạn nghĩ sao".
+- Không bao giờ nói ra kỹ thuật làm video với người xem (sai: "điều này giữ chân bạn tới cuối", "xem hết video nhé", "hook"); câu mở vòng phải là nội dung thật (ví dụ "Nhưng chi tiết thú vị nhất là…").
 - Văn nói tự nhiên, chuẩn chính tả, không ký hiệu, không emoji, không viết tắt; số viết sao cho máy đọc đúng (ví dụ "30 phút", "1 triệu đồng").
 - "emphasis": 1–3 từ khóa quan trọng nhất của câu (dùng để nhấn trên hình), lấy nguyên văn từ câu.
 - "chapter": tên chương nếu câu mở đầu một chương mới (video dài), còn lại để rỗng.

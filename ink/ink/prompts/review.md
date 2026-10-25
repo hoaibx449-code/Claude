@@ -14,9 +14,10 @@ Chấm từng tiêu chí từ 1 đến 10 như người lướt TikTok khó tín
 - value: người xem nhận được giá trị thật đúng thể loại (giai_thich: hiểu ra điều thú vị, kiến thức CHÍNH XÁC, không bịa; huong_dan: làm được; dong_luc: cách nhìn mới).
 - genre_fit: đúng thể loại người dùng cần; chủ đề kiến thức mà bị biến thành bài học cuộc sống / truyền động lực gượng ép thì tối đa 4.
 - ending: kết đúng kiểu của thể loại, đáng nhớ, câu hỏi tương tác cụ thể.
+- truth: mọi điều khẳng định đều đúng sự thật, kể cả hook (nói sai để gây sốc thì tối đa 3); không câu nào nói ra kỹ thuật làm video với người xem.
 - language: văn nói tự nhiên, câu ngắn, đúng chính tả, dễ đọc thành tiếng, không sáo rỗng.
 - length: độ dài đúng mục tiêu.
 Nêu tối đa 5 vấn đề cụ thể cần sửa (chỉ rõ câu nào, sửa thế nào).
 
 JSON:
-{{"scores": {{"hook": 0, "clarity": 0, "concrete": 0, "value": 0, "ending": 0, "genre_fit": 0, "language": 0, "length": 0, "retention": 0}}, "issues": ["..."]}}
+{{"scores": {{"hook": 0, "clarity": 0, "concrete": 0, "value": 0, "ending": 0, "genre_fit": 0, "truth": 0, "language": 0, "length": 0, "retention": 0}}, "issues": ["..."]}}

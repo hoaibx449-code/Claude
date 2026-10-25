@@ -2,7 +2,7 @@
 motivation video ends with a small action for today. The strategy step picks the kind from the user's topic."""
 
 GENRES = {
-    'giai_thich': ('Giải thích kiến thức', """- hook: một câu hỏi hay hiện tượng gây tò mò, hoặc một sự thật bất ngờ về chủ đề (không lộ đáp án).
+    'giai_thich': ('Giải thích kiến thức', """- hook: một câu hỏi hay hiện tượng gây tò mò, hoặc một sự thật bất ngờ về chủ đề (không lộ đáp án). Hook phải ĐÚNG sự thật: không phủ nhận điều đúng chỉ để gây sốc (sai: "hoàng hôn thực ra không đỏ").
 - setup: điều ai cũng từng thấy/nghe nhưng ít ai hiểu vì sao; nêu rõ câu hỏi video sẽ trả lời.
 - points: giải thích theo chuỗi nhân quả, từng bước một, mỗi bước một hình ảnh so sánh đời thường dễ hình dung ("tưởng tượng…", "giống như…"); kiến thức phải CHÍNH XÁC, đúng khoa học; có một khoảnh khắc "à, ra thế".
 - turn: một chi tiết thú vị hơn nữa hoặc hệ quả bất ngờ ít ai biết, giữ người xem tới cuối.
