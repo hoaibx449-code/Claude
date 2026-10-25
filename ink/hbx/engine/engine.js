@@ -419,6 +419,14 @@
       o.el.querySelectorAll('mark').forEach(c => ev.push({ t: o.start + +c.dataset.t, k: 'swish' }));
     });
     if (SB.sticker) ev.push({ t: SB.sticker.t0, k: 'pop' });
+    // biên tập nhạc theo nhịp: riser dồn lên trước cú bẻ hướng + nhạc khựng lặng đúng lúc bẻ (mstop) rồi trở lại;
+    // phần thưởng nhỏ có tiếng bass nện vào đúng chữ đắt
+    SC.forEach((o, i) => {
+      const b = o.s.beat, at = (o.s.fx && o.s.fx.at != null) ? +o.s.fx.at : .25;
+      if (b === 'turn' && i > 0) { ev.push({ t: Math.max(0, o.start - 1.5), k: 'riser', d: 1.5 }); ev.push({ t: o.start - .25, k: 'mstop', d: .9 }); }
+      if (b === 'reward') ev.push({ t: o.start + at, k: 'bass' });
+    });
+    if (SC.length > 2) ev.push({ t: Math.max(0, SC[SC.length - 1].start - .2), k: 'mswell', d: SC[SC.length - 1].dur });
     ev.sort((a, b) => a.t - b.t);
     EVENTS = ev.filter((e, i) => i === 0 || e.t - ev[i - 1].t > .1 || e.k !== ev[i - 1].k);
   }

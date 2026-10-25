@@ -103,7 +103,24 @@ def sfx(kind, d=1.0):
         while t < d:
             tk = sfx('tick') * rng.uniform(.25, .5); i = int(t * SR); out[i:i + len(tk)] += tk[:len(out) - i]; t += rng.uniform(.05, .11)
         return out
+    if kind == 'riser':   # tiếng dồn lên trước cú bẻ hướng: ồn trắng lọc + âm cao dần
+        n = int(SR * max(.4, d)); t = np.arange(n) / SR; p = t / t[-1]
+        nz = rng.standard_normal(n); nz = nz - lp(nz, 3 + 30 * (1 - p.mean()))
+        tone = np.sin(2 * np.pi * np.cumsum(200 + 900 * p ** 2) / SR)
+        return (nz * .35 + tone * .25) * p ** 2 * .6
+    if kind == 'bass':    # nện trầm vào chữ đắt
+        n = int(SR * .45); t = np.arange(n) / SR
+        return np.sin(2 * np.pi * (48 + 60 * np.exp(-t * 18)) * t) * np.exp(-t * 7) * .9
     return np.zeros(1)
+
+
+def music_gain(events):
+    """the music bed follows the beats: silent for a moment at each turn (mstop), slightly louder at the end (mswell)"""
+    parts = [f'between(t,{e["t"]:.2f},{e["t"] + e.get("d", .8):.2f})' for e in events if e['k'] == 'mstop']
+    expr = f"if({'+'.join(parts)},0.06,1)" if parts else '1'
+    sw = [e for e in events if e['k'] == 'mswell']
+    if sw: expr = f"({expr})*if(gte(t,{sw[0]['t']:.2f}),1.35,1)"
+    return expr
 
 
 def write_wav(path, x):
@@ -115,6 +132,7 @@ def write_wav(path, x):
 def build_audio(events, total, out, gain=.55):
     buf = np.zeros(int(SR * (total + 1)))
     for e in events:
+        if e['k'] in ('mstop', 'mswell'): continue   # not sounds: they shape the music (music_gain)
         s = sfx(e['k'], e.get('d', 1.0)) * gain; i = int(max(0, e['t']) * SR)
         j = min(len(buf), i + len(s)); buf[i:j] += s[:j - i]
     write_wav(out, buf[:int(SR * total)])
@@ -189,7 +207,7 @@ def main():
         chains.append(f'[{vi}:a]volume={au.get("voice_gain", 1.0)},asplit=2[voice][vsc]'); labels.append('[voice]')
     if au.get('music'):
         inputs += ['-stream_loop', '-1', '-i', au['music']]; mi = idx; idx += 1
-        m = f'[{mi}:a]volume={au.get("music_gain", .32)},afade=t=out:st={max(0, total - 1.6)}:d=1.6'
+        m = f'[{mi}:a]volume={au.get("music_gain", .32)},volume=\'{music_gain(events)}\':eval=frame,afade=t=out:st={max(0, total - 1.6)}:d=1.6'
         if vi is not None:  # nhạc tự hạ khi có giọng (sidechain)
             chains.append(m + '[mraw]'); chains.append('[mraw][vsc]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=350[music]')
         else: chains.append(m + '[music]')
