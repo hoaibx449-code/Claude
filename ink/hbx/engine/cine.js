@@ -15,16 +15,17 @@
   const ramp = t => t >= 1 ? 1 + (t - 1) * .15 : 1 - Math.pow(1 - t, 3);
   const PACE = () => ((window.HBX && window.HBX._sb) || {}).pace === 'fast';
   function camOf(kind, t) {
-    if (PACE()) { const c = camBase(kind, t, ramp); return [c[0] * 1.35, c[1] * 1.3, c[2] * 1.3, c[3] * 1.3, 1 + (c[4] - 1) * 1.5]; }
+    if (PACE()) { const c = camBase(kind, t, ramp); return [c[0] * 1.15, c[1] * 1.2, c[2] * 1.2, c[3] * 1.2, 1 + (c[4] - 1) * 1.3]; }
     return camBase(kind, t, ease);
   }
   function camBase(kind, t, ease) {
     const e = ease(t), sn = Math.sin(Math.PI * Math.min(t, 1));
     switch (kind) {
-      case 'push': return [.09 * e, 0, 0, 0, 1];
-      case 'dolly': return [.22 * e, 0, 0, 0, 1];
-      case 'zoom': return [0, 0, 0, 0, 1 + .28 * e];
-      case 'fpv': return [.38 * e, .05 * sn, -.03 * e, 5 * sn, 1];
+      // chỉ đi vào ảnh một đoạn ngắn (sâu hơn là ảnh 2.5D rách ở mép vật), cảm giác sâu thêm nhờ zoom ống kính
+      case 'push': return [.07 * e, 0, 0, 0, 1];
+      case 'dolly': return [.11 * e, 0, 0, 0, 1 + .05 * e];
+      case 'zoom': return [0, 0, 0, 0, 1 + .16 * e];
+      case 'fpv': return [.13 * e, .04 * sn, -.02 * e, 2 * sn, 1 + .06 * e];
       case 'truckL': return [.03 * e, -.08 * e, 0, 0, 1];
       case 'truckR': return [.03 * e, .08 * e, 0, 0, 1];
       case 'rise': return [.04 * e, 0, -.08 * e, 0, 1];
@@ -151,7 +152,7 @@
     // giật máy (punch-in) đúng lúc giọng đọc tới từ nhấn — nhịp nhấn nhá của video ngắn
     let pk = 0; PUNCH.forEach(t => { const d = T - t; if (d >= 0 && d < .45 && t >= o.start - .05 && t < o.start + o.dur) pk = Math.max(pk, Math.exp(-d * 9) * (1 - Math.exp(-d * 60))); });
     const bgEl = o.el.querySelector('.cbg');
-    if (bgEl) bgEl.style.transform = pk > .01 ? `scale(${(1 + .07 * pk).toFixed(4)}) translate(${(Math.sin(T * 90) * 5 * pk).toFixed(1)}px,${(Math.cos(T * 77) * 4 * pk).toFixed(1)}px)` : '';
+    if (bgEl) bgEl.style.transform = pk > .01 ? `scale(${(1 + .03 * pk).toFixed(4)})` : '';
     o.el.querySelectorAll('.ca').forEach(a => {
       const at = +a.dataset.at, k = a.dataset.k, p = clamp((lt - at) / (k === 'title' ? .9 : .55)), e = E.out3(p);
       const q = project(+a.dataset.px, +a.dataset.py, +a.dataset.d, damp(c, DAMP[k] ?? .4));
@@ -181,10 +182,12 @@
 
   /* ---- chuyển cảnh: lao tiếp về phía trước (through) / bay FPV / hoà ---- */
   X.trans.through = (A, B, p, fx) => {
-    const a = p < .5, q = a ? p / .5 : (p - .5) / .5, E = U().E;
-    A.style.visibility = a ? 'visible' : 'hidden'; B.style.visibility = a ? 'hidden' : 'visible';
-    if (a) { A.style.transform = `scale(${1 + .55 * q * q})`; A.style.filter = `blur(${q * q * 10}px)`; }
-    else { B.style.transform = `scale(${1.35 - .35 * E.out3(q)})`; B.style.filter = `blur(${(1 - q) * 8}px)`; }
+    const E = U().E;
+    // một chiều duy nhất: cảnh cũ tiếp tục lao tới và nhoè, cảnh mới hiện ra từ vệt nhoè (không nhảy cỡ, không lùi lại)
+    const m = U().clamp((p - .3) / .4);
+    A.style.visibility = 'visible'; B.style.visibility = m > 0 ? 'visible' : 'hidden'; B.style.zIndex = 2;
+    A.style.transform = `scale(${1 + .3 * p * p})`; A.style.filter = `blur(${p * 8}px)`;
+    B.style.opacity = E.io(m); B.style.filter = `blur(${(1 - m) * 8}px)`;
     const sch = document.body.dataset.scheme === 'light';
     fx.innerHTML = `<div style="position:absolute;inset:0;background:${sch ? 'rgba(255,250,240,' : 'rgba(0,0,0,'}${(.35 * Math.sin(Math.PI * p)).toFixed(3)})"></div>`;
   };

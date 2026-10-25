@@ -69,8 +69,8 @@
   /* ---------- mỗi khung: máy quay giả, đồ hoạ phủ, hiệu ứng ---------- */
   const E = () => U().E, clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
   const CAMFX = {
-    punchIn: (q, lt, a) => lt >= a ? ` scale(${1.16})` : '',
-    punchOut: (q, lt, a) => lt >= a ? '' : ` scale(1.16)`,
+    punchIn: (q, lt, a) => ` scale(${1 + .12 * E().out3(clamp((lt - a) / .14))})`,
+    punchOut: (q, lt, a) => ` scale(${1.12 - .12 * E().out3(clamp((lt - a) / .14))})`,
     snapZoom: (q, lt, a) => { const p = clamp((lt - a) / .22); return ` scale(${1 + .22 * E().out3(p)})`; },
     crashZoom: (q, lt, a) => { const p = clamp((lt - a) / .16); return ` scale(${1 + .45 * E().out3(p)}) rotate(${(1 - p) * p * 8}deg)`; },
     kenBurns: (q) => ` scale(${1.04 + .1 * q}) translate(${-16 * q}px,${-10 * q}px)`,

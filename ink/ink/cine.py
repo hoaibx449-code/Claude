@@ -19,7 +19,7 @@ TRANS = ['through', 'cut', 'dissolve', 'whip', 'zoom', 'flash', 'slideup', 'glit
          'dipblack', 'dipwhite', 'pushup', 'slide', 'iris', 'wipe', 'smash', 'fpv']
 # the technique library (hbx/engine/fx.js): fake camera, overlays, picture effects, footage speed — chosen per scene
 FX_CAM = ['punchIn', 'punchOut', 'snapZoom', 'crashZoom', 'kenBurns', 'handheld', 'shake', 'pullOut', 'tiltUp', 'tiltDown', 'panL', 'panR', 'dutch', 'breathe']
-FX_OVER = ['arrow', 'circle', 'box', 'underline', 'scribble', 'spotlight', 'impact', 'keyword', 'lowerthird', 'counter', 'progress', 'typewriter', 'stamp', 'sticker', 'bracket', 'flash', 'chapter']
+FX_OVER = ['arrow', 'circle', 'box', 'underline', 'scribble', 'spotlight', 'impact', 'keyword', 'lowerthird', 'counter', 'progress', 'typewriter', 'stamp', 'sticker', 'bracket', 'flash']
 FX_EFF = ['vignette', 'grain', 'glow', 'chroma', 'lightleak', 'halftone', 'bw', 'warm', 'cool', 'blurIn', 'filmburn', 'dim', 'duotone']
 FX_SPEED = ['slow', 'ramp', 'freeze', 'fast']
 # every way of telling a line in pictures the engine knows, and which "family" it belongs to (variety rules)
@@ -31,6 +31,8 @@ FAMILY = {'shot': 'footage', 'callouts': 'footage', 'compare': 'compare', 'warni
           'i_donut': 'number', 'i_gauge': 'number', 'i_rank': 'chart', 'i_scale': 'chart', 'i_funnel': 'flow', 'i_pyramid': 'flow', 'i_cycle': 'flow',
           'i_ipo': 'flow', 'i_venn': 'compare', 'i_matrix': 'compare', 'i_proscons': 'compare', 'i_beforeafter': 'compare', 'i_table': 'compare', 'i_steps': 'list'}
 FOOTAGE = {'shot', 'callouts', 'compare', 'warning', 'c_photo'}
+# on a baked 2.5D shot the camera already moves through the picture: only light hand-held tricks may stack on it
+SHOT_CAM = {'handheld', 'shake', 'dutch'}
 
 # ---------------------------------------------------------------- the video's own fingerprint
 # picked at random for every video, so many people making the same topic still get different videos
@@ -40,9 +42,9 @@ PALETTES = [('#ff8a00', '#1e88e5', '#141008'), ('#ffcf3f', '#3fd0ff', '#141008')
             ('#38bdf8', '#f97316', '#04121c'), ('#d4a373', '#588157', '#1b1209'), ('#e9c46a', '#e63946', '#1a1405'), ('#9b5de5', '#00f5d4', '#ffffff')]
 FONTS = ['Barlow Condensed', 'Oswald', 'Space Grotesk', 'Playfair Display', 'Lora', 'Be Vietnam Pro']
 GRADES = ['dawn', 'warm', 'cool', 'night', 'bright', 'earth', 'none']
-VOICES = ['nhịp cắt nhanh, nhiều đồ hoạ số liệu xen cảnh thật', 'điện ảnh: nhiều cảnh quay rộng, chuyển cảnh mượt, đồ hoạ điểm xuyết',
-          'tạp chí: thẻ, sơ đồ, ô lắp dần xen ảnh chi tiết', 'phóng sự: cảnh thật, ghim chú thích, so sánh trước/sau',
-          'giải thích trực quan: dòng chảy cơ chế, trục thời gian, ví von bằng hình', 'kể chuyện cảm xúc: cảnh người và nơi chốn, chữ lớn ở bước ngoặt']
+VOICES = ['nhịp cắt nhanh, cảnh thật nối nhau, con số nổi trên cảnh', 'điện ảnh: nhiều cảnh quay rộng, chuyển cảnh mượt, đồ hoạ điểm xuyết',
+          'tạp chí: ảnh chi tiết đẹp, chữ lớn đặt trên cảnh, một sơ đồ ở chỗ cần', 'phóng sự: cảnh thật, ghim chú thích, so sánh trước/sau',
+          'giải thích trực quan: ví von bằng hình thật, ghim chỉ chi tiết, một sơ đồ cơ chế', 'kể chuyện cảm xúc: cảnh người và nơi chốn, chữ lớn ở bước ngoặt']
 
 
 def fingerprint(seed):
@@ -107,7 +109,8 @@ def polish(scenes, fp, wps):
             fb.pop('camera', None) if fb.get('camera') in STRONG_CAM else None
             fb['overlay'] = [o for o in fb.get('overlay', []) if o.get('kind') not in STRONG_OVER]
             if b.get('trans') in STRONG_TRANS: b['trans'] = r.choice(['dissolve', 'cut', 'slide'])
-            fb.setdefault('camera', 'breathe' if b['type'] != 'shot' else 'kenBurns'); b['beat'] = 'breath'
+            if b['type'] != 'shot': fb.setdefault('camera', 'breathe')
+            b['beat'] = 'breath'
         if fb: b['fx'] = {k: v for k, v in fb.items() if v}
         else: b.pop('fx', None)
     for i in range(2, len(scenes)):
@@ -122,9 +125,10 @@ def polish(scenes, fp, wps):
         if times[i] - last >= 9 and not strong(scenes[i - 1] if i else {}) and not (i + 1 < len(scenes) and strong(scenes[i + 1])):
             key = re.findall(r'\*([^*]+)\*', s['sub'])
             if key:
-                f = s.setdefault('fx', {}); f['camera'] = 'snapZoom'; f['cue'] = None
+                f = s.setdefault('fx', {})
+                if s['type'] != 'shot': f['camera'] = 'snapZoom'
                 f['overlay'] = [o for o in f.get('overlay', []) if o.get('kind') not in STRONG_OVER][:1] + [{'kind': 'keyword', 'text': key[0][:24], 'y': .2}]
-                f.pop('cue'); s['beat'] = 'reward'; last = times[i]
+                s['beat'] = 'reward'; last = times[i]
     return scenes
 
 
@@ -132,20 +136,13 @@ TURN_WORDS = re.compile(r'\b(nhưng|thật ra|thực ra|khoan|ngược lại|b�
 
 
 def structure(scenes, lines_meta, fp, wps):
-    """the story's shape in pictures: chapter cards where the script opens a chapter (videos of 90 s and more), turns
+    """the story's shape in pictures: turns
     near 1/3 and 2/3 when the director left them out (the line that turns the story: "nhưng…", a question, a word
     cut), and a loop ending that comes back to the opening footage so the video replays seamlessly"""
     r = random.Random(fp['seed'] + 7)
     t, times = 0.0, []
     for s in scenes: times.append(t); t += max(1.2, S.words(s['say']) / wps)
     total = t or 1
-    if total >= 90:
-        n = 0
-        for i, m in enumerate(lines_meta[:len(scenes)]):
-            if i and isinstance(m, dict) and str(m.get('chapter') or '').strip():
-                n += 1; s = scenes[i]; f = s.setdefault('fx', {})
-                f['overlay'] = [o for o in f.get('overlay', []) if o.get('kind') not in ('chapter', 'lowerthird')][:1] + [{'kind': 'chapter', 'sub': f'PHẦN {n + 1}', 'text': str(m['chapter'])[:28]}]
-                s['trans'] = r.choice(['dipblack', 'iris', 'wipe']); s.setdefault('beat', 'turn')
     for mark in (1 / 3, 2 / 3):
         if total < 25 or any(s.get('beat') == 'turn' and abs(times[i] / total - mark) < .15 for i, s in enumerate(scenes)): continue
         near = sorted(range(1, len(scenes) - 1), key=lambda i: abs(times[i] / total - mark))[:5]
@@ -229,7 +226,7 @@ def build(o, lines, fp, clips):
         # J-cut: the next picture arrives before its words; L-cut: the picture stays a little after the words moved on
         s['lead'] = {'J': .55, 'L': .02}.get(str(s.pop('cut', '')).upper()[:1], .18)
         fx = s.get('fx') if isinstance(s.get('fx'), dict) else {}
-        fx = {'camera': fx.get('camera') if fx.get('camera') in FX_CAM else None, 'effect': fx.get('effect') if fx.get('effect') in FX_EFF else None,
+        fx = {'camera': fx.get('camera') if fx.get('camera') in (SHOT_CAM if t == 'shot' else FX_CAM) else None, 'effect': fx.get('effect') if fx.get('effect') in FX_EFF else None,
               'speed': fx.get('speed') if fx.get('speed') in FX_SPEED and t == 'shot' and (s.get('bg') or {}).get('video') else None,
               'cue': fx.get('cue') if isinstance(fx.get('cue'), str) and fx['cue'].lower() in say.lower() else None,
               'overlay': [o for o in (fx.get('overlay') if isinstance(fx.get('overlay'), list) else [fx.get('overlay')] if isinstance(fx.get('overlay'), dict) else [])
@@ -257,20 +254,62 @@ def build(o, lines, fp, clips):
     return scenes
 
 
+def ground(scenes, fp):
+    """real footage carries the video: a board only where a board says it better — at most 1 scene in 4, at most
+    2 infographics (each kind once), never two boards in a row. The rest become shots on the director's own back-up
+    footage (`alt`), keeping the line's number or points floating over the picture."""
+    n, r = len(scenes), random.Random(fp['seed'] + 3)
+    def to_shot(i):
+        s, prev = scenes[i], next((x['bg']['q'] for x in reversed(scenes[:i]) if x['type'] == 'shot' and x.get('bg')), 'city street people')
+        q = str(s.get('alt') or '').strip() or prev + ' ' + r.choice(['close up', 'detail', 'wide view', 'at night', 'hands'])
+        used = {(x.get('bg') or x.get('image') or {}).get('q') for x in scenes}
+        while q in used: q += ' ' + r.choice(['close up', 'detail', 'wide view', 'aerial', 'at sunset'])
+        sh = {k: s[k] for k in ('say', 'sub', 'lead', 'trans', 'beat') if k in s}
+        sh.update(type='shot', bg=_img({'q': q}), cam=r.choice([c for c in CAMS if c != 'fpv']))
+        if isinstance(s.get('value'), (int, float)):
+            sh.update({k: s[k] for k in ('value', 'decimals', 'prefix', 'suffix', 'caption', 'label') if k in s})
+        else:
+            its = [{'text': str(it.get('text') or it.get('label') or it.get('title') or '')[:40], **({'cue': it['cue']} if it.get('cue') else {})}
+                   for it in (s.get('items') or s.get('nodes') or s.get('tiles') or []) if isinstance(it, dict)]
+            its = [it for it in its if it['text']][:3]
+            if its: sh['items'] = its
+            head = str(s.get('title') or s.get('text') or s.get('head') or '').replace('\n', ' ').strip()
+            if head and not its and len(head.split()) <= 6: sh['title'] = [head]
+        f = s.get('fx') or {}
+        f = {k: v for k, v in f.items() if k in ('overlay', 'effect', 'cue') or (k == 'camera' and v in SHOT_CAM)}
+        if f: sh['fx'] = f
+        scenes[i] = sh
+    board = lambda i: scenes[i]['type'] not in FOOTAGE
+    seen = set()
+    for i in range(n):   # infographics: each kind once, two at most
+        t = scenes[i]['type']
+        if t.startswith('i_'):
+            if t in seen or len(seen) >= 2: to_shot(i)
+            else: seen.add(t)
+    for i in range(1, n):   # never two boards in a row
+        if board(i) and board(i - 1): to_shot(i)
+    cap = max(1, n // 4)
+    extra = [i for i in range(n) if board(i)]
+    r.shuffle(extra)   # the plainest boards (no number, no data) go first
+    extra.sort(key=lambda i: bool(scenes[i].get('value') or scenes[i].get('data') or scenes[i]['type'].startswith('i_') or scenes[i].get('beat') == 'turn'))
+    for i in extra[:max(0, len(extra) - cap)]: to_shot(i)
+    for s in scenes: s.pop('alt', None)
+    return scenes
+
+
 def variety(scenes, min_types):
     """the director's rules, checked: problems in plain words (empty = fine)"""
     out, n = [], len(scenes)
     types = [s['type'] for s in scenes]
     for i in range(1, n):
         if types[i] == types[i - 1] and types[i] != 'shot': out.append(f'cảnh {i} và {i + 1} cùng kiểu {types[i]}: đổi một cảnh sang kiểu khác hợp ý câu')
-    for i in range(2, n):
-        if types[i] == types[i - 1] == types[i - 2] == 'shot': out.append(f'cảnh {i - 1}–{i + 1} liền 3 cảnh shot: đổi cảnh giữa sang đồ hoạ hợp ý câu')
-    for t in set(types):
-        if types.count(t) > max(2, .35 * n): out.append(f'kiểu {t} chiếm {types.count(t)}/{n} cảnh (tối đa 35%)')
+    for t in set(types) - FOOTAGE:
+        if types.count(t) > 1 and t.startswith('i_'): out.append(f'infographic {t} dùng {types.count(t)} lần: mỗi loại tối đa 1 lần')
+        elif types.count(t) > max(2, .12 * n): out.append(f'kiểu {t} chiếm {types.count(t)}/{n} cảnh (đồ hoạ một kiểu tối đa 12%)')
     if len(set(types)) < min_types: out.append(f'chỉ dùng {len(set(types))} kiểu cảnh, cần ít nhất {min_types}')
     foot = sum(t in FOOTAGE for t in types) / max(1, n)
-    if foot < .3: out.append(f'cảnh quay thật chỉ {foot:.0%}, cần 35–60% để video sống động')
-    if foot > .7: out.append(f'cảnh quay thật tới {foot:.0%}: đổi vài câu có số liệu/liệt kê/cơ chế sang đồ hoạ')
+    if foot < .7: out.append(f'cảnh quay thật chỉ {foot:.0%}, cần ≥ 70%: bảng đồ hoạ chỉ khi câu thật sự cần (số liệu so sánh, cơ chế)')
+    if sum(t.startswith('i_') for t in types) > 2: out.append('quá 2 infographic: chuyển phần dư sang cảnh quay thật có số/ghim nổi trên cảnh')
     tr = [s.get('trans') for s in scenes[1:]]
     if any(tr[i] and tr[i] == tr[i - 1] == tr[i - 2] for i in range(2, len(tr))): out.append('3 lần chuyển cảnh liền nhau cùng một kiểu')
     if len({t for t in tr if t}) < min(6, max(3, n // 5)): out.append(f'chỉ dùng {len({t for t in tr if t})} kiểu chuyển cảnh, cần đa dạng hơn (cut, whip, smash, iris, lightleak…)')
@@ -318,7 +357,7 @@ def plan(inp, log=print):
         sc = S.from_topic(topic, seconds, inp.get('audience', ''), tone=inp.get('tone') or 'tự nhiên, hợp với chủ đề và người xem', notes=inp.get('notes', ''), pace=pace, log=log)
     lines = [' '.join(str(l['say']).split()) for l in sc['lines'] if str(l.get('say', '')).strip()]
     strategy = sc.get('strategy') or {}
-    min_types = max(4, min(9, len(lines) // 3))
+    min_types = max(3, min(6, len(lines) // 6))
     wps = S.wps() * S.speed(pace); sec_per_line = round(sum(S.words(l) for l in lines) / max(1, len(lines)) / wps, 1)
     best, feedback = None, ''
     for round_ in range(3):
@@ -326,7 +365,7 @@ def plan(inp, log=print):
         o = ai.ask(S.system(), S.prompt('cine_direct', topic=topic, genre=strategy.get('genre') or 'chưa rõ', core=sc.get('core_message') or strategy.get('core_message', ''),
                                         lines='\n'.join(f'{i}. {l}' for i, l in enumerate(lines)), fingerprint=fp_text(fp), clips=clips, min_types=min_types, sec_per_line=sec_per_line, feedback=feedback),
                    0.85, check=lambda x: build(x, lines, fp, clips), log=log)
-        scenes = build(o, lines, fp, clips); problems = variety(scenes, min_types) + rhythm(scenes, wps)
+        scenes = ground(build(o, lines, fp, clips), fp); problems = variety(scenes, min_types) + rhythm(scenes, wps)
         try:
             j = ai.ask(S.system(), S.prompt('cine_judge', topic=topic, scenes=_brief(scenes)), 0.2,
                        check=lambda x: isinstance(x.get('scores'), dict) or (_ for _ in ()).throw(ValueError('thiếu scores')), log=log)

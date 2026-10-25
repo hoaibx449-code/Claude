@@ -96,15 +96,16 @@ def cam(kind, t, pace=None):
     """t: 0..1(+) → (z tiến tới, x ngang, y dọc, roll độ, zoom) — đơn vị theo chiều cao khung. GIỐNG engine/cine.js"""
     if pace == 'fast':
         z, x, y, r, zm = cam_base(kind, t, ramp)
-        return (z * 1.35, x * 1.3, y * 1.3, r * 1.3, 1 + (zm - 1) * 1.5)
+        return (z * 1.15, x * 1.2, y * 1.2, r * 1.2, 1 + (zm - 1) * 1.3)
     return cam_base(kind, t, ease)
 
 def cam_base(kind, t, ease):
     e = ease(t); sn = np.sin(np.pi * min(t, 1))
-    if kind == 'push':   return (.09 * e, 0, 0, 0, 1)
-    if kind == 'dolly':  return (.22 * e, 0, 0, 0, 1)
-    if kind == 'zoom':   return (0, 0, 0, 0, 1 + .28 * e)
-    if kind == 'fpv':    return (.38 * e, .05 * sn, -.03 * e, 5 * sn, 1)
+    # the camera goes only a little way into a single photo (deeper tears it at object edges); the rest is lens zoom
+    if kind == 'push':   return (.07 * e, 0, 0, 0, 1)
+    if kind == 'dolly':  return (.11 * e, 0, 0, 0, 1 + .05 * e)
+    if kind == 'zoom':   return (0, 0, 0, 0, 1 + .16 * e)
+    if kind == 'fpv':    return (.13 * e, .04 * sn, -.02 * e, 2 * sn, 1 + .06 * e)
     if kind == 'truckL': return (.03 * e, -.08 * e, 0, 0, 1)
     if kind == 'truckR': return (.03 * e, .08 * e, 0, 0, 1)
     if kind == 'rise':   return (.04 * e, 0, -.08 * e, 0, 1)
@@ -157,7 +158,7 @@ def bake(src, d, kind, n, out, t_of, ow=720, oh=1280, over=1.07, gname=None, pac
         r = -np.deg2rad(roll); ux, uy = qx / zm, qy / zm
         ux, uy = ux * np.cos(r) - uy * np.sin(r), ux * np.sin(r) + uy * np.cos(r)
         dd = dat(ux, uy)
-        for _ in range(1 if flat else 2):
+        for _ in range(1 if flat else 4):
             sc = 1 / (1 - z * (.12 + .88 * dd)); k = .2 + .8 * dd
             px, py = (ux + x * k) / sc, (uy + y * k) / sc
             dd = dat(px, py)

@@ -258,7 +258,8 @@
     fpv(A, B, p, fx) {
       const a = p < .5, q = a ? p / .5 : (p - .5) / .5, el = a ? A : B;
       A.style.visibility = a ? 'visible' : 'hidden'; B.style.visibility = a ? 'hidden' : 'visible';
-      const sc = a ? 1 + 2.2 * q * q : .55 + .45 * E.out3(q), rot = a ? 9 * q : -9 * (1 - q);
+      // cảnh mới không bao giờ nhỏ hơn khung (trước đây 0,55x → lộ viền đen, giật ngược chiều)
+      const sc = a ? 1 + .9 * q * q : 1, rot = a ? 5 * q * q : 0;
       el.style.transform = `scale(${sc}) rotate(${rot}deg)`; el.style.filter = `blur(${(a ? q : 1 - q) * 9}px)`;
       fx.innerHTML = `<div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,transparent 30%,rgba(0,0,0,${.55 * Math.sin(Math.PI * p)}) 80%)"></div>`;
     },
@@ -289,8 +290,8 @@
     },
     zoom(A, B, p, fx) {
       const e = E.io(p); A.style.visibility = B.style.visibility = 'visible'; B.style.zIndex = 2;
-      A.style.transform = `scale(${1 + 2.2 * e})`; A.style.opacity = clamp(1 - e * 1.4);
-      B.style.transform = `scale(${.7 + .3 * E.out3(p)})`; B.style.opacity = clamp(e * 1.6);
+      A.style.transform = `scale(${1 + .8 * e})`; A.style.opacity = clamp(1 - e * 1.4); A.style.filter = `blur(${e * 10}px)`;
+      B.style.opacity = clamp(e * 1.6 - .2); B.style.filter = `blur(${(1 - e) * 10}px)`;
       fx.innerHTML = '';
     },
     flash(A, B, p, fx) {

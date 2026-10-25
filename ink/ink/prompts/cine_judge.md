@@ -10,6 +10,7 @@ Chấm 0–10 từng tiêu chí, nghiêm khắc (8 = thật sự tốt, 10 = xu�
 - `truth`: chữ, số trên hình có đúng và khớp lời đọc không; có số liệu đáng ngờ không.
 - `visual_fit`: mỗi cảnh có minh hoạ ĐÚNG ý câu đọc không (cảnh quay đúng chủ thể/nơi chốn, đồ hoạ đúng loại nội dung).
 - `variety`: cách kể bằng hình có đa dạng, bất ngờ, đúng nhịp không, hay một màu, lặp lại.
+- `footage`: cảnh quay thật có là xương sống không (≥ 70%); bảng đồ hoạ chỉ ở chỗ thật sự cần hay bị lạm dụng thành bài giảng.
 - `rhythm`: nhịp cảnh, chuyển cảnh, chỗ nhấn, cú bẻ hướng có cuốn đến cuối không.
 - `reward_rhythm`: mỗi 8–12 giây có phần thưởng nhỏ đúng chữ đắt không; có cú bẻ hướng quanh 1/3 và 2/3; sau cú mạnh có khoảng thở không, hay dồn dập gây nhờn.
 - `editing`: kỹ thuật dựng (trong ngoặc [dựng: máy quay giả/đồ hoạ phủ/hiệu ứng/chuyển cảnh]) có đa dạng, đúng chỗ, có "làm mới thị giác" mỗi 15–20 giây không, hay lặp một công thức.
@@ -17,4 +18,4 @@ Chấm 0–10 từng tiêu chí, nghiêm khắc (8 = thật sự tốt, 10 = xu�
 Liệt kê tối đa 6 vấn đề CỤ THỂ, mỗi vấn đề nêu số thứ tự cảnh và cách sửa (ví dụ "cảnh 4: câu nói về 3 nguyên nhân mà lại dùng shot → dùng g_cards 3 thẻ").
 
 Chỉ trả JSON:
-{{"scores": {{"hook": 0, "value": 0, "truth": 0, "visual_fit": 0, "variety": 0, "rhythm": 0, "editing": 0, "reward_rhythm": 0}}, "issues": ["cảnh 3: ...", "..."]}}
+{{"scores": {{"hook": 0, "value": 0, "truth": 0, "visual_fit": 0, "variety": 0, "rhythm": 0, "editing": 0, "reward_rhythm": 0, "footage": 0}}, "issues": ["cảnh 3: ...", "..."]}}
