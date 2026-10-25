@@ -13,12 +13,14 @@ from . import ai, script as S
 
 FRAMES = {'A': 'A. Tiểu luận thức tỉnh', 'B': 'B. Phép tính đời thường', 'C': 'C. Bẻ một lời khuyên phổ biến', 'D': 'D. Một khái niệm – một tập'}
 # colour of the words already read, and the world's palette, chosen by the video's mood (never the same look every time)
+# the island and its character stay the same (the channel is recognised); sky, light and accents follow the mood
+W = lambda sky, floor, side, rock, accent, accent2, cool: {'sky': sky, 'floor': floor, 'side': side, 'rock': rock, 'accent': accent, 'accent2': accent2, 'cool': cool, 'char': '#f3e6d0', 'ink': '#14222a', 'font': 'Be Vietnam Pro'}
 MOODS = {
-    'tiet_kiem_hy_vong': {'subColor': '#ffb38a', 'world': ['#ff9a8b', '#ffd1a8', '#3b2a4a'], 'grade': 'dawn'},
-    'no_canh_giac': {'subColor': '#ff6b6b', 'world': ['#2b1f3a', '#7b2d4a', '#ff5d5d'], 'grade': 'night'},
-    'su_nghiep': {'subColor': '#d4f25a', 'world': ['#1f4e9c', '#7fb3ff', '#d4f25a'], 'grade': 'cool'},
-    'tram_tinh': {'subColor': '#f5c04a', 'world': ['#0f3b3a', '#f1e4c8', '#c8693f'], 'grade': 'earth'},
-    'tinh_thuc': {'subColor': '#9be7ff', 'world': ['#101a2e', '#3c6e9f', '#9be7ff'], 'grade': 'cool'},
+    'tiet_kiem_hy_vong': {'subColor': '#ffb38a', 'grade': 'dawn', 'world': W(['#f7a08a', '#ffd9b8'], '#f6ead8', '#d9785a', '#7a3b2e', '#ffb347', '#ff6f61', '#9ad1c9')},
+    'no_canh_giac': {'subColor': '#ff6b6b', 'grade': 'night', 'world': W(['#1c1430', '#3b2550'], '#e9dfee', '#7b2d4a', '#3a1424', '#ff5d5d', '#ffb347', '#8f7bd6')},
+    'su_nghiep': {'subColor': '#d4f25a', 'grade': 'cool', 'world': W(['#16376e', '#3f74c4'], '#eef2f8', '#2f5fa8', '#1c3560', '#d4f25a', '#ff8a3d', '#8fd3ff')},
+    'tram_tinh': {'subColor': '#f5c04a', 'grade': 'earth', 'world': W(['#0e2a30', '#2d6467'], '#efe4d2', '#c4553b', '#6b3326', '#f2b134', '#e4572e', '#7cc4bb')},
+    'tinh_thuc': {'subColor': '#9be7ff', 'grade': 'cool', 'world': W(['#0d1626', '#2b4a72'], '#e6edf5', '#3c6e9f', '#1b2c45', '#9be7ff', '#ffcf5a', '#7fe0c4')},
 }
 DISCLAIMER = 'Nội dung mang tính thông tin, không phải tư vấn tài chính. Ảnh/video minh hoạ.'
 

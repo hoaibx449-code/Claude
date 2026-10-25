@@ -136,3 +136,30 @@ Facebook/Shorts lấy khung 0 làm ảnh đại diện. Trước đây khung 0 l
 | 7. Chứng minh bằng bài học | "Thay vì ___, hãy làm điều này…", "Điều tôi ước mình biết khi mới bắt đầu…", "Tôi đã học được điều này sau ___ lần thất bại…" | bài học từ một vụ việc thật |
 | 8–10. Bổ sung | "Chúng ta có thể đồng ý rằng ___ là thứ bị đánh giá thấp nhất không?", "Tại sao không ai nói về ___ trong [ngành]?", "Nếu bạn từng gặp khó khăn với ___ trong khi cố gắng ___, mẹo này sẽ giúp bạn rõ ràng hơn" | phân tích, nghề nghiệp |
 Kênh là tin tức: tránh mẫu ngôi "tôi" kể trải nghiệm cá nhân giả (không có thật), mẫu hứa quà/sản phẩm (nhóm 8–9 phần bán hàng). Rút gọn mẫu cho vừa 4–9 chữ trên bìa; câu đầy đủ có thể dùng làm câu mở lời đọc.
+
+## Thế giới ẩn dụ 3D (`m_scene`) — WebGL/three.js, xen trong format `cine`
+Dùng khi ý cần nói là **khái niệm trừu tượng** (tâm lý, cơ chế tiền bạc, thói quen) mà cảnh thật không diễn tả được. Mỗi cảnh = **một vật ẩn dụ đang chuyển động** trên đảo diorama nổi, có nhân vật không mặt. Mọi chuyển động là hàm của thời gian, mốc nào cũng gắn `cue` theo lời đọc.
+```json
+{"type":"m_scene","say":"…","sub":"…","prop":"treadmill",
+ "o":{…tuỳ prop…},
+ "cams":[{"kind":"side"},{"kind":"orbit","cue":"chiếc máy chạy","a0":-50,"a1":-30}],
+ "tag":{"en":"Hedonic treadmill","vi":"Máy chạy bộ hạnh phúc","cue":"hedonic treadmill"},
+ "title":["dòng 1","dòng *2*"], "num":{"value":13.6,"from":3.5,"decimals":1,"suffix":"%","caption":"…","cue":"tăng từ"}}
+```
+- `storyboard.world` = bảng màu thế giới (`sky:[trên,dưới]`, `floor`, `side`, `rock`, `accent`, `accent2`, `cool`, `char`, `ink`, `font`) — chọn theo series/cảm xúc video, không dùng lại y nguyên giữa các series.
+- `cams`: cắt góc máy NGAY TRONG cảnh (vật vẫn chạy liền) để giữ nhịp 2–4 s/cú. `kind`: `orbit` (giới thiệu), `push` (nhấn, kết), `pull` (mở bức tranh), `rise` (cẩu lên), `low` (góc thấp, kịch tính), `top` (nhìn xuống, toàn cục), `side` (ngang). Ghi đè `d0/d1` (xa→gần), `h0/h1` (cao), `a0/a1` (góc độ), `target:[x,y,z]`, `fov`.
+- `tag`: thẻ thuật ngữ song ngữ — chỉ khi video ĐẶT TÊN một khái niệm (tối đa 3–4 thẻ/video). `num`: số đếm lớn phía trên. `title`: 2 dòng khối chữ.
+
+| `prop` | Ẩn dụ | `o` |
+|---|---|---|
+| `leaky` | xô thủng: tiền vào trên, rò ra đáy | `in`, `out` (nhãn), `rate`, `pose` của nhân vật |
+| `stairs2` | 2 cầu thang song song lên bậc (thu nhập/chi tiêu, kỹ năng/lương…) | `beats:[{cue}]` mỗi bậc, `labels:[a,b]`, `gap` |
+| `treadmill` | máy chạy bộ: chạy nhanh dần, có thể bước xuống leo bậc | `speeds:[{at\|cue,k}]`, `screen:['x1','x2']`, `off:{cue}`, `offLabel` |
+| `meter` | thước cảm xúc vọt lên rồi tụt về mức cũ + đám đông | `rise:{cue}`, `fall:{cue}`, `decay`, `crowd`, `baseLabel` |
+| `dominoes` | chuỗi domino: một thứ kéo đổ cả chuỗi | `items:[{text,cue}]`, `start:99` = đứng yên |
+| `cluster` | vật chính kéo theo các vật phụ bay tới | `core`, `start:{cue}`, `items:[{text,cue}]` |
+| `split` | dòng tiền rẽ nhánh vào hũ tiết kiệm | `open:{cue}\|99`, `frac`, `save`, `spend`, `top`, `fillTo`, `fillDur` |
+| `jar` | hũ dâng mực + vạch mốc | `from`, `to` (0..1), `fill:{cue}`, `dur`, `marks:[{v,text}]` |
+| `stage` | nhân vật một mình (câu hỏi, kết) | `pose` idle\|think\|point\|cheer\|slump\|walk\|run, `ry` |
+Thêm vật mới: viết hàm trong `PROPS` của `engine/meta3d.js` (trả `{g, focus, size, update(t)}`), chỉ dùng hình khối dựng sẵn của three.js — không tải mô hình ngoài, không vẽ nhân vật/biểu tượng có bản quyền.
+Đan xen: 3D ~45–55% thời lượng; cảnh thật Pixabay cho ví dụ đời thường, cảm xúc, nơi chốn. Không đặt 3 cảnh 3D liền nhau mà không đổi góc máy. Cùng một prop dùng lại được (≤ 3 lần/video) với góc máy và vai trò khác.
