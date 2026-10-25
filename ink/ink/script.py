@@ -15,6 +15,9 @@ WPS = 2.8          # Vietnamese words (syllables) per second for the EverAI voic
 # words per second of each voice at its plain speed, pauses between sentences included (measured: Microsoft read
 # 199 words in 58.1 s at +8%); the script is sized to the chosen voice and pace so the video lasts the chosen time
 VOICE_WPS = {'microsoft': 3.18, 'everai': 2.9}
+# voices that read clearly faster or slower than their provider's average (measured on real videos):
+# Văn Duy read 549 words in 134 s at speed 1.1 → about 3.75 words a second at its plain speed
+VOICE_CODE_WPS = {'vi_male_vanduy_mb': 3.75}
 MAX_SECONDS = 300  # five minutes
 GENERIC_BADGES = {'mẹo hay', 'hot', 'xem ngay', 'bí quyết', 'mới', 'hay', 'cực hay', 'must see', 'tips', 'mẹo', 'quan trọng', 'đừng bỏ lỡ'}
 
@@ -46,6 +49,8 @@ def speed(pace):
 
 
 def wps():
+    code = os.environ.get('EVERAI_VOICE_CODE', '') if os.environ.get('INK_VOICE_PROVIDER') == 'everai' else ''
+    if code in VOICE_CODE_WPS: return VOICE_CODE_WPS[code]
     return VOICE_WPS.get(os.environ.get('INK_VOICE_PROVIDER', ''), VOICE_WPS['everai'] if os.environ.get('EVERAI_API_KEY') else VOICE_WPS['microsoft'])
 
 

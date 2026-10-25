@@ -146,3 +146,31 @@ def research(system, user, check=None, log=print):
             msg = f'{provider}/{model}: {type(e).__name__}: {str(getattr(e, "code", "") or e)[:160]}'
             errors.append(msg); log('  tìm nguồn chưa được, thử tiếp: ' + msg)
     raise RuntimeError('Không tìm được nguồn trên web: ' + ' | '.join(errors))
+
+
+# ---------------------------------------------------------------- looking at a picture (the preview grid of a video)
+def look(system, user, image_path, check=None, log=print):
+    """a JSON answer about an image; Gemini first, OpenAI after (the chain's order). Raises when no model can see it."""
+    import base64
+    data = base64.b64encode(open(image_path, 'rb').read()).decode()
+    mime = 'image/png' if image_path.endswith('.png') else 'image/jpeg'
+    errors = []
+    for provider, model in chain():
+        if 'lite' in model: continue
+        try:
+            if provider == 'gemini':
+                url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={os.environ["GEMINI_API_KEY"]}'
+                r = _post(url, {'systemInstruction': {'parts': [{'text': system}]}, 'contents': [{'role': 'user', 'parts': [{'inline_data': {'mime_type': mime, 'data': data}}, {'text': user}]}],
+                                'generationConfig': {'temperature': 0.2, 'responseMimeType': 'application/json'}}, {}, timeout=120)
+                raw = ''.join(p.get('text', '') for p in r['candidates'][0]['content']['parts'])
+            else:
+                r = _post('https://api.openai.com/v1/chat/completions', {'model': model, 'temperature': 0.2, 'response_format': {'type': 'json_object'},
+                          'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': [{'type': 'image_url', 'image_url': {'url': f'data:{mime};base64,{data}'}}, {'type': 'text', 'text': user}]}]},
+                          {'authorization': 'Bearer ' + os.environ['OPENAI_API_KEY']}, timeout=120)
+                raw = r['choices'][0]['message']['content']
+            obj = parse_json(raw)
+            if check: check(obj)
+            used.append((provider, model + '+vision')); return obj
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError, KeyError, IndexError, json.JSONDecodeError) as e:
+            errors.append(f'{provider}/{model}: {type(e).__name__}: {str(getattr(e, "code", "") or e)[:120]}'); log('  xem hình chưa được, thử tiếp: ' + errors[-1])
+    raise RuntimeError('Không mô hình nào xem được hình: ' + ' | '.join(errors))
