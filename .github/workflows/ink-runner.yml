@@ -47,4 +47,14 @@ jobs:
         env:
           NV_API_URL: ${{ secrets.NV_API_URL }}
           RUNNER_TOKEN: ${{ secrets.RUNNER_TOKEN }}
+          INK_REVIEW_DIR: ${{ github.workspace }}/ink-review
         run: python -m ink.site
+      # each finished cinematic video with its storyboard, kept 3 days so it can be checked frame by frame
+      - name: Lưu video để kiểm tra
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ink-review
+          path: ink-review
+          retention-days: 3
+          if-no-files-found: ignore

@@ -5,7 +5,7 @@
 A job is either 'plan' (script, storyboard, cover; then the video too unless the user wants to review the
 storyboard first) or 'render' (an approved or re-paced storyboard to video, no AI call). The site hands
 the AI order, models, voice and keys with each job (admin settings), so nothing is configured here."""
-import json, os, re, socket, subprocess, sys, tempfile, threading, time, traceback, urllib.request, urllib.error
+import json, os, re, shutil, socket, subprocess, sys, tempfile, threading, time, traceback, urllib.request, urllib.error
 from . import ai
 from .cli import make_plan, make_video, save_plan
 from . import voice as V
@@ -141,6 +141,11 @@ def run_cine(job, inp, out, state, report, log, t0):
     state.update(progress=96, message='Lưu video'); report()
     thumb = os.path.join(out, 'thumb.jpg')
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', os.path.join(out, 'cover.jpg'), '-vf', 'scale=360:-2', thumb], check=False)
+    keep = os.environ.get('INK_REVIEW_DIR')
+    if keep:   # a copy for checking the result (GitHub keeps it as a run artifact)
+        dst = os.path.join(keep, jid); os.makedirs(dst, exist_ok=True)
+        for f in ('video.mp4', 'cover.jpg', 'cine/w/sb.json', 'cine/plan.json', 'cine/w/qc.json'):
+            if os.path.exists(os.path.join(out, f)): shutil.copy(os.path.join(out, f), os.path.join(dst, f.replace('/', '_')))
     put(jid, lease, out, 'cover.jpg'); put(jid, lease, out, 'video.mp4', timeout=600)
     if os.path.exists(thumb): put(jid, lease, out, 'thumb.jpg')
     call(f'jobs/{jid}/done', {'duration': round(total, 1), 'seconds': round(time.time() - t0), 'voice': provider, 'voiceError': ' | '.join(V.errors), 'ai': sb.get('ai') or [], 'sync': sync, 'footage': sb.get('footage') or []}, lease=lease)
