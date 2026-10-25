@@ -121,7 +121,8 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
   if (sub === 'voices/fallback' && method === 'PUT') { const b = await body<any>(req, 100); await setVoiceFallback(env, b.on === true); return json({ ok: true }); }
   if (sub === 'voices' && method === 'GET') return json({ status: await voiceStatus(env), voices: await voicesWithStatus(env), fallback: await voiceFallbackAllowed(env) });
   if (sub === 'settings' && method === 'PUT') {
-    const b = await body<any>(req, 200_000);
+    // the whole configuration travels each time (templates, assistant knowledge, trained formats…): room to grow
+    const b = await body<any>(req, 1_000_000);
     const before = env.config;
     const config = await saveSettings(rawEnv, b.config, b.secrets || {});
     clearDown(); // a new key or model gets a fresh chance at once
