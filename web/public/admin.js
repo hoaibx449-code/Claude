@@ -594,7 +594,7 @@ function zaloTab(c, secrets, secretInput, zcheck, inbox) {
     payment: 'Bán hàng · Khi khách chốt: thông tin chuyển khoản ({ma} {tenGoi} {soTien} {nganHang} {stk} {chuTk} {kichHoat})', paid: 'Bán hàng · Khi đã nhận tiền ({soTien} {ma} {tenGoi} {han})',
     upsell: 'Bán hàng · Mời nâng cấp khi hết lượt / video quá dài ({goiGoiY} {giaGoiY} {loiIch} {soGoiY})' };
   const owners=h('section',{class:'card'},h('p',{class:'muted'},'Đang tải danh sách chủ web…'));
-  import('/zalo-owners.js?v=44').then(m=>m.showOwners({h,api,root:owners,fail,toast})).catch(fail);
+  import('/zalo-owners.js?v=45').then(m=>m.showOwners({h,api,root:owners,fail,toast})).catch(fail);
   return [owners,
     card('Đọc prompt từ ảnh (OCR)','Gửi ảnh trực tiếp qua Zalo. Bot dùng AI theo thứ tự đã cấu hình để chép chữ, không thực thi prompt. Gửi PROMPT ANH sau khi kiểm tra để đăng/gửi duyệt. Kết quả tạm giữ 7 ngày; tối đa 8 MB mỗi ảnh và 20 ảnh/ngày/người dùng.',check(c.zalo.ocrEnabled,v=>{c.zalo.ocrEnabled=v;},'Cho phép đọc chữ trong ảnh')),
     card('Cách nhận tin nhắn', 'Webhook trực tiếp: Zalo gọi thẳng về web, trả lời ngay (khuyên dùng). Hỏi định kỳ: web tự hỏi Zalo mỗi phút, không cần webhook, trả lời chậm hơn. Bot chỉ có một webhook: hệ thống nào khác dùng chung token bot (Apps Script, n8n, bản chạy thử) sẽ giành mất webhook — hãy gỡ token khỏi nơi đó.',

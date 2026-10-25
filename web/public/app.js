@@ -86,6 +86,27 @@ const routing = (on) => { clearTimeout(routingTimer); document.body.classList.to
 const show = (...nodes) => { routing(false); view.replaceChildren(...nodes.flat().filter((n) => n != null && n !== false)); view.classList.remove('enter'); void view.offsetWidth; view.classList.add('enter'); };
 /** Placeholder blocks shown while a page loads, so nothing feels frozen. */
 const skeleton = (n = 3, cls = 'sk-card') => h('div', { class: 'sk-grid' }, Array.from({ length: n }, () => h('div', { class: 'sk ' + cls })));
+/**
+ * Every button whose click waits for something (a save, a test, a request) shows it at once: a spinner in the
+ * button, no second click while it runs, and a short flash when it is done or a shake when it failed.
+ * Buttons that already show their own waiting state (busy() below, or that disable themselves) are left alone.
+ */
+function waitFeedback(el, fn) {
+  return function (e) {
+    const r = fn.call(this, e);
+    if (!r || typeof r.then !== 'function' || !el.isConnected || el.classList.contains('busy')) return r;
+    const spin = h('i', { class: 'spin', 'aria-hidden': 'true' });
+    el.classList.add('auto-busy'); el.setAttribute('aria-busy', 'true'); el.prepend(spin);
+    const end = (ok) => {
+      spin.remove(); el.classList.remove('auto-busy'); el.removeAttribute('aria-busy');
+      if (!el.isConnected) return;
+      el.classList.remove('ui-done', 'ui-failed'); void el.offsetWidth; el.classList.add(ok ? 'ui-done' : 'ui-failed');
+      setTimeout(() => el.classList.remove('ui-done', 'ui-failed'), 900);
+    };
+    r.then(() => end(true), () => end(false));
+    return r;
+  };
+}
 /** Button feedback while waiting: spinner + text, restored afterwards. */
 async function busy(btn, text, fn) {
   if (!btn) return fn();
@@ -110,7 +131,8 @@ function h(tag, attrs, ...kids) {
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v == null || v === false) continue;
     if (k === 'href' && /^\/?#\//.test(v)) { el.setAttribute(k, cleanRoute(v)); continue; }
-    if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    if (k === 'onclick' && (tag === 'button' || /\bbtn\b/.test(attrs.class || ''))) el.addEventListener('click', waitFeedback(el, v));
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
     else if (k === 'value') el.value = v;
     else if (k === 'style') el.style.cssText = v; // CSSOM: allowed by the CSP, unlike style attributes
     else el.setAttribute(k, v === true ? '' : v);

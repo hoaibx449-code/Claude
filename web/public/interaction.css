@@ -22,6 +22,16 @@
 /* keyboard: a clear ring only when moving with the keyboard */
 :where(button,.btn,a[href],summary,[role="button"],[role="tab"],.chip,.mitem):focus-visible{outline:2px solid var(--ui-glow);outline-offset:3px;box-shadow:0 0 0 6px var(--ui-glow-halo)}
 :where(button,.btn,a[href],summary,[role="button"],[role="tab"]):focus:not(:focus-visible){outline:none}
+/* waiting on a click: a spinner in the button, no second click; then a short flash (done) or shake (failed) */
+.auto-busy{pointer-events:none;cursor:progress;opacity:.88}
+.auto-busy>.spin{margin-right:6px}
+.ui-done{animation:ui-done .9s var(--ui-ease)}
+.ui-failed{animation:ui-failed .45s ease}
+@keyframes ui-done{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--good,#059669) 55%,transparent)}100%{box-shadow:0 0 0 10px transparent}}
+@keyframes ui-failed{20%,60%{transform:translateX(-3px)}40%,80%{transform:translateX(3px)}}
+/* quiet buttons (most of the admin's) answer the finger too: tinted while pressed, on touch and mouse */
+:where(button.ghost,.btn.ghost):not(:disabled):not([aria-disabled="true"]):active{background:linear-gradient(color-mix(in srgb,var(--ui-glow) 14%,var(--card,#fff)),color-mix(in srgb,var(--ui-glow) 14%,var(--card,#fff))) padding-box,var(--grad) border-box!important;color:var(--accent)}
+body[data-page="admin"] :where(button.ghost,.btn.ghost):not(:disabled):hover{transform:translateY(-1px);box-shadow:0 8px 18px -12px var(--glow,var(--ui-glow-halo))}
 /* windows open with a short scale-in over a blurred page */
 dialog[open]:not(.render-desk){animation:ui-dialog-in .22s var(--ui-ease)}
 dialog[open]::backdrop{animation:ui-fade-in .2s ease}

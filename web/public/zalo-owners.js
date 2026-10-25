@@ -1,6 +1,6 @@
 export async function showOwners({h,api,root,fail,toast}){
  const data=await api('/api/admin/zalo/owners');let selected='';
- const action=(label,fn,refresh=true)=>h('button',{type:'button',class:'ghost small',onclick:async e=>{e.currentTarget.disabled=true;try{await fn();if(refresh)await showOwners({h,api,root,fail,toast});}catch(err){fail(err);}finally{e.target.disabled=false;}}},label);
+ const action=(label,fn,refresh=true)=>h('button',{type:'button',class:'ghost small',onclick:async e=>{const b=e.currentTarget;b.disabled=true;try{await fn();if(refresh)await showOwners({h,api,root,fail,toast});}catch(err){fail(err);}finally{b.disabled=false;}}},label);
  const candidates=data.candidates.filter(c=>!data.owners.some(o=>o.chat_id===c.chat_id&&o.active));selected=candidates[0]?.chat_id||'';
  const picker=h('select',{'aria-label':'Chọn Zalo chủ web',onchange:e=>selected=e.target.value},...candidates.map(c=>h('option',{value:c.chat_id},`${c.name||'Chưa có tên'}${c.email?' · '+c.email:''} · …${c.chat_id.slice(-6)}`)));
  root.replaceChildren(h('h2',{},'Chủ web & người nhận thông báo'),h('p',{class:'muted'},'Chỉ những Zalo đang hoạt động trong danh sách này nhận thông báo đơn hàng và vận hành. Đây là quyền chủ web trên bot; quyền quản trị website được quản lý riêng trong Cài đặt. Đăng ký ảnh là lựa chọn riêng qua NHẬN ẢNH.'),
