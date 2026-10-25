@@ -375,7 +375,8 @@
       if (r.w === '|') { if (cur.length) clauses.push(cur); cur = []; return; }
       // *cụm nhiều từ*: mọi từ nằm giữa 2 dấu * đều là từ nhấn (không chỉ từ mang dấu *)
       const st = (r.w.match(/\*/g) || []).length, k = inK || st > 0; if (st % 2) inK = !inK;
-      const i = WORDS.length; WORDS.push({ w: r.w.replace(/\*/g, ''), t: r.t, k, m: r.m });
+      // phụ đề không để dấu chấm cuối câu (giữ "…", "?" và "!" vì chúng mang nghĩa)
+      const i = WORDS.length; WORDS.push({ w: r.w.replace(/\*/g, '').replace(/(^|[^.])\.$/, '$1'), t: r.t, k, m: r.m });
       if (cur.length && sceneOf(r.t) !== sceneOf(WORDS[cur[0]].t)) { clauses.push(cur); cur = []; }
       cur.push(i);
       const len = cur.reduce((a, j) => a + WORDS[j].w.length + 1, 0);

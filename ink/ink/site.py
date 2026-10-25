@@ -129,13 +129,13 @@ def run_cine(job, inp, out, state, report, log, t0):
     else:
         sb = job['storyboard']
     state.update(progress=45, message='Giọng đọc'); report()
-    total, provider = cine.render(sb, out, inp.get('pace', 'normal'), log=log, seconds=0 if inp.get('mode') == 'script' else int(inp.get('seconds') or 0))
+    total, provider, sync = cine.render(sb, out, inp.get('pace', 'normal'), log=log, seconds=0 if inp.get('mode') == 'script' else int(inp.get('seconds') or 0))
     state.update(progress=96, message='Lưu video'); report()
     thumb = os.path.join(out, 'thumb.jpg')
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', os.path.join(out, 'cover.jpg'), '-vf', 'scale=360:-2', thumb], check=False)
     put(jid, lease, out, 'cover.jpg'); put(jid, lease, out, 'video.mp4', timeout=600)
     if os.path.exists(thumb): put(jid, lease, out, 'thumb.jpg')
-    call(f'jobs/{jid}/done', {'duration': round(total, 1), 'seconds': round(time.time() - t0), 'voice': provider, 'voiceError': ' | '.join(V.errors), 'ai': sb.get('ai') or []}, lease=lease)
+    call(f'jobs/{jid}/done', {'duration': round(total, 1), 'seconds': round(time.time() - t0), 'voice': provider, 'voiceError': ' | '.join(V.errors), 'ai': sb.get('ai') or [], 'sync': sync, 'footage': sb.get('footage') or []}, lease=lease)
     print(f'Xong {jid} (điện ảnh): {total:.1f} giây video trong {time.time() - t0:.0f} giây', flush=True)
     return True
 

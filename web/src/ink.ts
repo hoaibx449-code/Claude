@@ -210,6 +210,12 @@ async function readyVoices(env: Env, s: InkSettings) {
   return s.voice.list.filter((v) => v.on && checks[vkey(v)]?.ok === true);
 }
 
+/** Pixabay photos/clips used by the latest cinematic videos (newest first) */
+async function recentFootage(env: Env): Promise<string[]> {
+  const r = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:footage'").first<any>();
+  try { return JSON.parse(r?.value || '[]'); } catch { return []; }
+}
+
 /** Every minute: jobs whose machine went quiet go back in the queue; a waiting queue wakes GitHub again. */
 export async function inkCron(env: Env) {
   const now = Date.now();
@@ -436,7 +442,12 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
       if (!head || head.size < 10_000) throw new HttpError(400, 'Chưa tải video lên.');
       const b = await body<any>(req, 2_000).catch(() => ({} as any)), now = Date.now();
       await env.DB.prepare("UPDATE ink_jobs SET status = 'done', progress = 100, message = 'Đã xong', finished_at = ?, updated_at = ? WHERE id = ?").bind(now, now, j.id).run();
-      rc.log('ink.done', { data: { job: j.id, machine: 'browser', renderSec: num(b.seconds, 0, 99999, 0), device: str(b.device, 80), size: head.size } });
+      if (Array.isArray(b.footage) && b.footage.length) {
+      const ids = b.footage.map((x: unknown) => String(x)).filter((x: string) => /^v?\d{1,12}$/.test(x)).slice(0, 80);
+      const all = [...ids, ...(await recentFootage(env)).filter((x) => !ids.includes(x))].slice(0, 600);
+      await env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('ink:footage', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(JSON.stringify(all), now).run();
+    }
+    rc.log('ink.done', { data: { job: j.id, machine: 'browser', renderSec: num(b.seconds, 0, 99999, 0), device: str(b.device, 80), size: head.size } });
       return json({ ok: true });
     }
     if (act === 'handoff' && method === 'POST') {
@@ -496,7 +507,8 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
       config: { env: {
         INK_AI_ORDER: s.ai.order.join(','), INK_AI_FALLBACK: s.ai.fallback ? '1' : '0', INK_GEMINI_MODELS: s.ai.gemini, INK_OPENAI_MODELS: s.ai.openai,
         GEMINI_API_KEY: env.GEMINI_API_KEY || '', OPENAI_API_KEY: env.OPENAI_API_KEY || '', EVERAI_API_KEY: (env as any).EVERAI_API_KEY || '',
-        ...(input.format === 'cine' ? { PIXABAY_API_KEY: (env as any).PIXABAY_API_KEY || '' } : {}),
+        // footage other videos used lately: this one picks different shots (many people, same topic, different videos)
+        ...(input.format === 'cine' ? { PIXABAY_API_KEY: (env as any).PIXABAY_API_KEY || '', HBX_AVOID: (await recentFootage(env)).join(',') } : {}),
         INK_VOICE_PROVIDER: voice.provider, INK_VOICE_FALLBACK: s.voice.fallback ? '1' : '0',
         ...(voice.provider === 'microsoft' ? { INK_MS_VOICE: voice.code } : { EVERAI_VOICE_CODE: voice.code }),
       } } } });
@@ -555,7 +567,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     if (!(await env.BUCKET.head(key(j, 'video.mp4')))) throw new HttpError(400, 'Chưa tải video lên.');
     const b = await body<any>(req, 5_000).catch(() => ({} as any));
     await env.DB.prepare("UPDATE ink_jobs SET status = 'done', progress = 100, message = 'Đã xong', lease = ?, duration = ?, meta = ?, finished_at = ?, updated_at = ? WHERE id = ?")
-      .bind(lease, num(b.duration, 0, 3600, 0), JSON.stringify({ ...meta, voice: str(b.voice, 40), renderSec: num(b.seconds, 0, 99999, 0), ai: b.ai || meta.ai }), now, now, j.id).run();
+      .bind(lease, num(b.duration, 0, 3600, 0), JSON.stringify({ ...meta, voice: str(b.voice, 40), renderSec: num(b.seconds, 0, 99999, 0), ai: b.ai || meta.ai, ...(b.sync && typeof b.sync === 'object' ? { sync: { median: num(b.sync.median, 0, 60, 0), p90: num(b.sync.p90, 0, 60, 0), bias: num(b.sync.bias, -60, 60, 0) } } : {}) }), now, now, j.id).run();
     rc.log('ink.done', { data: { job: j.id, videoSec: b.duration, renderSec: b.seconds, voice: b.voice, totalSec: Math.round((now - j.created_at) / 1000) } });
     await voiceUsed(env, j, b);
     rc.wait(notify(env, j.user_id, j.id, 'Video đã xong ✓', `"${j.title}" đã dựng xong. Bấm để xem và tải về.`));
