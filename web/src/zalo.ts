@@ -147,6 +147,17 @@ async function adminUsers(env: XEnv): Promise<string[]> {
   if (!emails.length) return [];
   return (await env.DB.prepare(`SELECT id FROM users WHERE lower(email) IN (${emails.map(() => '?').join(',')})`).bind(...emails).all<any>()).results.map((r) => r.id);
 }
+/** The owner's Zalo linked to the first admin's web account (made once, when the owner has none linked). */
+async function ownerAccount(env: XEnv, chatId: string, name: string) {
+  const id = (await adminUsers(env))[0];
+  if (!id) return null;
+  const old = await env.DB.prepare('SELECT prefs FROM zalo_links WHERE chat_id = ?').bind(chatId).first<any>();
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM zalo_links WHERE chat_id = ? OR user_id = ?').bind(chatId, id),
+    env.DB.prepare('INSERT INTO zalo_links (user_id, chat_id, name, linked_at, notify, prefs) VALUES (?, ?, ?, ?, 1, ?)').bind(id, chatId, name.slice(0, 60), Date.now(), old?.prefs || '{}'),
+  ]);
+  return env.DB.prepare('SELECT l.user_id, l.prefs, l.notify, u.email, u.name FROM zalo_links l JOIN users u ON u.id = l.user_id WHERE l.chat_id = ?').bind(chatId).first<any>();
+}
 /** Only the explicitly managed owner roster receives operational notifications. */
 const ownerChats=ownerRecipients;
 
@@ -271,7 +282,9 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   if(isText){const consent=fold(text).trim().toUpperCase().replace(/\s+/g,' ');
     if(['NHAN ANH','DANG KY NHAN ANH','HUY NHAN ANH'].includes(consent))return reply(await feedSubscription(env,chatId,name,consent!=='HUY NHAN ANH'));
   }
-  const link = await env.DB.prepare('SELECT l.user_id, l.prefs, l.notify, u.email, u.name FROM zalo_links l JOIN users u ON u.id = l.user_id WHERE l.chat_id = ?').bind(chatId).first<any>();
+  let link = await env.DB.prepare('SELECT l.user_id, l.prefs, l.notify, u.email, u.name FROM zalo_links l JOIN users u ON u.id = l.user_id WHERE l.chat_id = ?').bind(chatId).first<any>();
+  // the site owner's Zalo works with the admin's web account (its plan, its videos), never with a Zalo-only account
+  if ((!link || String(link.user_id).startsWith('zl-')) && (await ownerChats(env)).chats.includes(chatId)) link = (await ownerAccount(env, chatId, name)) || link;
   rc.userId = link?.user_id || null;
   rc.log('zalo.message', { data: { chat: chatId, linked: !!link, text: text.startsWith('[ocr-image]')?'[image OCR]':text.slice(0, 200) } });
   const owner = (await ownerChats(env)).chats.includes(chatId);
@@ -881,8 +894,11 @@ async function makeVideo(env: XEnv, rc: Rc, user: User, chatId: string, mode: 't
     await env.DB.prepare('UPDATE zalo_messages SET error = ? WHERE id = ?').bind(String(e.message || 'Lỗi tạo video').slice(0, 300), messageId).run();
     const busy = !(e instanceof HttpError) || e.status >= 500;
     // a limit of the plan (videos a day, length): offer the plan that lifts it
-    const up = !busy && (e.status === 429 || e.status === 402) ? await upsellText(env, user).catch(() => '') : '';
-    return send(env, chatId, 'Chưa tạo được video: ' + (busy ? (e instanceof HttpError ? e.message : 'hệ thống đang bận, bạn thử lại sau ít phút nhé.') : e.message) + (up ? '\n' + up : ''), messageId);
+    const limit = !busy && (e.status === 429 || e.status === 402);
+    const up = limit ? await upsellText(env, user).catch(() => '') : '';
+    // a Zalo-only account has its own small allowance: say so, and how to use the web account's instead
+    const guest = limit && user.id.startsWith('zl-') ? '\nZalo này chưa liên kết tài khoản web nên đang dùng lượt riêng của Zalo. Muốn dùng lượt của tài khoản web: mở web → Tài khoản → Kết nối Zalo, rồi gửi KETNOI + mã cho mình.' : '';
+    return send(env, chatId, 'Chưa tạo được video: ' + (busy ? (e instanceof HttpError ? e.message : 'hệ thống đang bận, bạn thử lại sau ít phút nhé.') : e.message) + guest + (up ? '\n' + up : ''), messageId);
   }
 }
 

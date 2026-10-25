@@ -309,3 +309,19 @@ test('Prompt Hunter Zalo command is owner-only, publishes with AI metadata and d
  await f.receive('PROMPT Hãy viết một đoạn giới thiệu cho [SẢN PHẨM] với lợi ích cụ thể.','ph-owner');await f.drain();await resumeZalo(f.env,f.rc);
  assert.equal((await f.env.DB.prepare('SELECT COUNT(*) n FROM hunter_prompts').first()).n,1);
 }));
+test('the owner Zalo makes videos with the admin web account (no daily limit), and a Zalo-only account is told why it ran out',async()=>fixture(async f=>{
+ f.enableAI();
+ f.env.ADMIN_EMAIL='boss@shop.vn';
+ await f.env.DB.prepare("INSERT INTO users (id,email,name,created_at) VALUES ('boss','boss@shop.vn','Chủ',1)").run();
+ await addOwner(f.env,'chat-1');
+ for(let i=0;i<7;i++){await f.receive('TAO chủ đề số '+i+' cho video','o'+i);await f.drain();await f.env.DB.prepare("UPDATE ink_jobs SET status='done'").run();}
+ assert.equal((await f.env.DB.prepare("SELECT user_id FROM zalo_links WHERE chat_id='chat-1'").first()).user_id,'boss');
+ assert.equal((await f.env.DB.prepare("SELECT COUNT(*) AS n FROM ink_jobs WHERE user_id='boss'").first()).n,7);
+ // a customer without a web account: their own allowance, and the way to use the web account's
+ const guest=async(text: string,id: string)=>{await zaloWebhook(new Request('https://studio.test/api/zalo/webhook',{method:'POST',headers:{'x-bot-api-secret-token':await webhookSecret(f.env)},body:JSON.stringify({event_name:'message.text.received',message:{message_id:id,chat:{id:'chat-g'},from:{display_name:'Khách'},text}})}),f.env,f.rc);await f.drain();};
+ const limit=f.env.config.plans.find((p: any)=>p.price===0).limits.render;
+ for(let i=0;i<=limit;i++){await guest('TAO chủ đề khách '+i+' nhé','g'+i);await f.env.DB.prepare("UPDATE ink_jobs SET status='done'").run();}
+ const last=f.sent.filter((x: any)=>x.body.chat_id==='chat-g').at(-1).body.text;
+ assert.match(last,/hết lượt dựng video/);assert.match(last,/chưa liên kết tài khoản web/);assert.match(last,/KETNOI/);
+}));
+
