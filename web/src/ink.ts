@@ -21,7 +21,7 @@ type Rc = { userId: string | null; quiet: boolean; log(type: string, extra?: any
 export const PACES = ['slow', 'normal', 'fast', 'faster'] as const;
 export const MOODS = ['auto', 'motivating', 'calm', 'upbeat', 'emotional', 'none'] as const;
 const FILES: Record<string, string> = { 'video.mp4': 'video/mp4', 'cover.jpg': 'image/jpeg', 'overview.png': 'image/png', 'thumb.jpg': 'image/jpeg', 'draw.json': 'application/json', 'audio.aac': 'audio/aac' };
-const STALE_MS = 15 * 60_000; // no heartbeat for this long: the machine is gone, the job goes back in the queue
+const STALE_MS = 5 * 60_000; // no heartbeat for this long: the machine is gone, the job goes back in the queue
 const MAX_ACTIVE = 2;
 
 export interface InkVoice { id: string; label: string; provider: 'microsoft' | 'everai'; code: string; on: boolean }
