@@ -12,7 +12,7 @@ import storyboard from '../../ink/ink/prompts/storyboard.md';
 import adapt from '../../ink/ink/prompts/adapt.md';
 import fit from '../../ink/ink/prompts/fit.md';
 import { HttpError } from './util.ts';
-import { microsoftSpeak } from './ink-voice.ts';
+import { microsoftSpeak, secMsGec, SEC_MS_GEC_VERSION } from './ink-voice.ts';
 import { aiFetch, aiError } from './relay.ts';
 
 const PROMPTS: Record<string, string> = { common, strategy, outline, write, review, hook, hook_judge: hookJudge, storyboard, adapt, fit };
@@ -68,9 +68,9 @@ export async function speak(env: any, voice: { provider: string; code: string },
   const errors: string[] = [];
   for (const p of tries) {
     try {
-      if (p === 'microsoft') { const r = await microsoftSpeak(text, voice.provider === 'microsoft' ? voice.code : 'vi-VN-HoaiMyNeural', rate); return { ...r, provider: 'microsoft' }; }
+      if (p === 'microsoft') { const r = await microsoftSpeak(text, voice.provider === 'microsoft' ? voice.code : 'vi-VN-HoaiMyNeural', rate); return { ...r, provider: 'microsoft', errors }; }
       if (!env.EVERAI_API_KEY) throw new Error('chưa có khoá EverAI');
-      return { audio: await everai(env.EVERAI_API_KEY, voice.provider === 'everai' ? voice.code : 'vi_female_thuytrang_mb', text, rate), words: [] as [string, number, number][], provider: 'everai' };
+      return { audio: await everai(env.EVERAI_API_KEY, voice.provider === 'everai' ? voice.code : 'vi_female_thuytrang_mb', text, rate), words: [] as [string, number, number][], provider: 'everai', errors };
     } catch (e: any) { errors.push(`${p}: ${String(e?.message || e).slice(0, 120)}`); }
   }
   throw new HttpError(502, 'Không đọc được giọng: ' + errors.join(' | '));
@@ -93,4 +93,14 @@ async function everai(key: string, code: string, text: string, rate: string) {
     if (/FAIL|ERROR|CANCEL/i.test(String(find(s, 'status') || ''))) throw new Error('EverAI báo thất bại');
   }
   throw new Error('EverAI quá thời gian chờ');
+}
+
+/** every Microsoft neural voice (the list the Edge read-aloud uses), Vietnamese first */
+export async function microsoftVoices() {
+  const url = `https://speech.platform.bing.com/consumer/speech/synthesize/readaloud/voices/list?trustedclienttoken=6A5AA1D4EAFF4E9FB37E23D68491D6F4&Sec-MS-GEC=${secMsGec()}&Sec-MS-GEC-Version=${SEC_MS_GEC_VERSION}`;
+  const r = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0' }, signal: AbortSignal.timeout(15_000) });
+  if (!r.ok) throw new HttpError(502, `Microsoft trả lỗi HTTP ${r.status}.`);
+  const list: any[] = await r.json();
+  return list.map((v) => ({ code: String(v.ShortName), label: `${String(v.FriendlyName || v.ShortName).replace(/^Microsoft /, '').replace(/ Online \(Natural\).*$/, '')} · ${v.Gender === 'Male' ? 'nam' : 'nữ'} · ${v.Locale}`, vi: String(v.Locale).startsWith('vi') }))
+    .sort((a, b) => Number(b.vi) - Number(a.vi) || a.code.localeCompare(b.code));
 }

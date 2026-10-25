@@ -8,6 +8,7 @@ the AI order, models, voice and keys with each job (admin settings), so nothing 
 import json, os, socket, subprocess, sys, tempfile, threading, time, traceback, urllib.request, urllib.error
 from . import ai
 from .cli import make_plan, make_video, save_plan
+from . import voice as V
 
 API = os.environ.get('NV_API_URL', '').rstrip('/')
 TOKEN = os.environ.get('RUNNER_TOKEN', '')
@@ -89,7 +90,7 @@ def run(job):
             # the user's own device draws the frames: hand over the drawing plan and the sound
             state.update(progress=60, message='Gửi bản vẽ cho trình duyệt'); report()
             put(jid, lease, out, 'draw.json', timeout=300); put(jid, lease, out, 'audio.aac', timeout=300)
-            call(f'jobs/{jid}/exported', {'duration': round(total, 1), 'voice': provider, 'ai': [f'{p}/{m}' for p, m in ai.used]}, lease=lease)
+            call(f'jobs/{jid}/exported', {'duration': round(total, 1), 'voice': provider, 'voiceError': ' | '.join(V.errors), 'ai': [f'{p}/{m}' for p, m in ai.used]}, lease=lease)
             print(f'Xong phần máy dựng của {jid}: chờ trình duyệt vẽ ({total:.1f} giây video)', flush=True)
             return True
         state.update(progress=96, message='Lưu video'); report()
@@ -97,7 +98,7 @@ def run(job):
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', os.path.join(out, 'cover.jpg'), '-vf', 'scale=360:-2', thumb], check=False)
         put(jid, lease, out, 'video.mp4', timeout=600)
         if os.path.exists(thumb): put(jid, lease, out, 'thumb.jpg')
-        call(f'jobs/{jid}/done', {'duration': round(total, 1), 'seconds': round(time.time() - t0), 'voice': provider, 'ai': [f'{p}/{m}' for p, m in ai.used]}, lease=lease)
+        call(f'jobs/{jid}/done', {'duration': round(total, 1), 'seconds': round(time.time() - t0), 'voice': provider, 'voiceError': ' | '.join(V.errors), 'ai': [f'{p}/{m}' for p, m in ai.used]}, lease=lease)
         print(f'Xong {jid}: {total:.1f} giây video trong {time.time() - t0:.0f} giây', flush=True)
         return True
     except Lost as e:

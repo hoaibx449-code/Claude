@@ -11,7 +11,7 @@ import {bridgeAdmin} from './feed-apps-script.ts';
 // (checked in worker.ts before dispatch) and every change is itself logged.
 import { aiCost } from './log.ts';
 import { analyzeSample, checkGateway, clearDown, downState, LOOK_BRIEF, planNotes, textPlan, type TextProvider } from './ai.ts';
-import { testEverAI, voiceStatus, voicesWithStatus } from './voices.ts';
+import { setVoiceFallback, testEverAI, testVoice, voiceCatalog, voiceFallbackAllowed, voiceStatus, voicesWithStatus } from './voices.ts';
 import type { User } from './auth.ts';
 import { clearCache, effectiveEnv, isAdmin, save as saveSettings, secretStatus } from './settings.ts';
 import { body, type Env, HttpError, json, today } from './util.ts';
@@ -100,11 +100,18 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
     return json(await checkGateway(env, which as TextProvider));
   }
   if (sub === 'voices/test' && method === 'POST') {
-    const r = await testEverAI(env, String((await body<any>(req, 500)).code || '') || undefined);
-    rc.log('admin.voice.test', { ok: r.ok, data: { error: r.error } });
-    return json(r);
+    // one voice read for real (the admin hears the sample right away); no voice given = the EverAI key check
+    const b = await body<any>(req, 500), code = String(b.code || '').trim(), provider = String(b.provider || 'everai');
+    if (!code) { const r = await testEverAI(env); rc.log('admin.voice.test', { ok: r.ok, data: { error: r.error } }); return json(r); }
+    if (!/^[A-Za-z0-9_-]{3,60}$/.test(code)) throw new HttpError(400, 'Mã giọng không hợp lệ.');
+    const r = await testVoice(env, provider, code);
+    rc.log('admin.voice.test', { ok: r.ok, data: { provider, code, error: r.error } });
+    let audio = ''; if (r.audio) { let bin = ''; for (let i = 0; i < r.audio.length; i += 0x8000) bin += String.fromCharCode(...r.audio.subarray(i, i + 0x8000)); audio = btoa(bin); }
+    return json({ ok: r.ok, ms: r.ms, error: r.error, audio });
   }
-  if (sub === 'voices' && method === 'GET') return json({ status: await voiceStatus(env), voices: await voicesWithStatus(env) });
+  if (sub === 'voices/catalog' && method === 'GET') return json(await voiceCatalog(env, new URL(req.url).searchParams.get('p') || 'everai'));
+  if (sub === 'voices/fallback' && method === 'PUT') { const b = await body<any>(req, 100); await setVoiceFallback(env, b.on === true); return json({ ok: true }); }
+  if (sub === 'voices' && method === 'GET') return json({ status: await voiceStatus(env), voices: await voicesWithStatus(env), fallback: await voiceFallbackAllowed(env) });
   if (sub === 'settings' && method === 'PUT') {
     const b = await body<any>(req, 200_000);
     const before = env.config;

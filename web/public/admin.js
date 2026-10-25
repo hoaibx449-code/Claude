@@ -85,7 +85,7 @@ async function showAdmin() {
   adminJumpList(body, jump);
   setTimeout(() => nav.querySelector('a.on')?.scrollIntoView({ block: 'nearest', inline: 'center' }), 0);
   const pages = { 'giai-phap':async(body)=>{const {showSolutionsAdmin}=await import('/solutions-admin.js?v=55');return showSolutionsAdmin({h,api,body,toast,fail});}, 'anh-zalo':async(body)=>{const {showImageFeed}=await import('/image-feed.js?v=44');return showImageFeed({h,api,body,toast,fail});}, 'prompt-hunter':async(body)=>{const {showHunter}=await import('/prompt-hunter.js');return showHunter({h,api,show:(...nodes)=>body.replaceChildren(...nodes.filter(Boolean)),me,toast,fail,detailDialog,openLogin,footer,admin:true});}, 'may-dung': adminRenders, 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings,'ket-noi':adminSettings,'ai':adminSettings,'chi-phi':adminSettings, 'huan-luyen': adminSettings, 'giong-doc': adminSettings };
-  if(tab==='ink-studio'){const {showInkAdmin}=await import('/ink-admin.js?v=6');return showInkAdmin({h,api,body,toast,fail});}
+  if(tab==='ink-studio'){const {showInkAdmin}=await import('/ink-admin.js?v=7');return showInkAdmin({h,api,body,toast,fail});}
   if(tab==='nhom-ai'){
     const {showCouncil}=await import('/council-admin.js?v=18');
     return showCouncil({h,api,body,toast,fail});
@@ -969,28 +969,88 @@ function trainTab(c, briefs) {
   ];
 }
 
-// ---------------------------------------------------------------- voices: what really reads, listen to each
+// ---------------------------------------------------------------- voices: each one tested before users see it
+// A voice reaches users only after it has read a real sentence here (or in the background check of new voices).
+// A voice that fails while rendering is hidden again and the owner is told; users never see the reason.
 function voiceTab(c, secrets, secretInput, data) {
   const st = data?.status || {}, list = data?.voices || [];
-  const state = (ok, yes, no) => h('span', { class: 'pill ' + (ok ? 'done' : 'failed') }, ok ? yes : no);
-  const audioBtn = (code) => { const b = h('button', { type: 'button', class: 'ghost small', onclick: () => window.nvPlayPreview?.('/api/voices/preview?code=' + encodeURIComponent(code), b) }, '▶'); return b; };
+  const checks = Object.fromEntries(list.map((v) => [v.provider + ':' + v.code, v.check]));
+  const PROV = { everai: 'EverAI', google: 'Google', free: 'Miễn phí', elevenlabs: 'ElevenLabs' };
+  const pill = (ok, text) => h('span', { class: 'pill ' + (ok ? 'done' : ok === false ? 'failed' : '') }, text);
+  const playB64 = (b64) => { try { new Audio('data:audio/mpeg;base64,' + b64).play(); } catch { /* no sound */ } };
+  // test one voice: the result and the sample show up right here
+  const tester = (v, cell) => async () => {
+    cell.replaceChildren(pill(null, 'Đang đọc thử…'));
+    try {
+      const r = await api('/api/admin/voices/test', { method: 'POST', body: { provider: v.provider, code: v.code } });
+      checks[v.provider + ':' + v.code] = { ok: r.ok, at: Date.now(), error: r.error };
+      cell.replaceChildren(r.ok ? pill(true, `✓ Đọc được (${(r.ms / 1000).toFixed(1)} giây) · người dùng đã thấy`) : pill(false, '✗ ' + r.error));
+      if (r.audio) playB64(r.audio);
+      return r.ok;
+    } catch (e) { cell.replaceChildren(pill(false, '✗ ' + e.message)); return false; }
+  };
+  const stateOf = (v) => {
+    const k = checks[v.provider + ':' + v.code];
+    if (v.provider === 'free' && !k) return pill(true, 'Giọng nền, luôn có');
+    if (!k) return pill(null, 'Chưa kiểm tra · người dùng chưa thấy');
+    return k.ok ? pill(true, `✓ Đọc được · ${fmtDate(k.at)}`) : pill(false, `✗ ${k.from === 'render' ? 'Lỗi khi dựng' : 'Lỗi'} · ${k.error || ''} · người dùng không thấy`);
+  };
+  const rows = h('tbody');
+  const paint = () => rows.replaceChildren(...c.voices.map((v, i) => {
+    const cell = h('td', {}, stateOf(v)), label = h('input', { value: v.label, oninput: (e) => { v.label = e.target.value; } });
+    return h('tr', {}, h('td', {}, label, h('div', { class: 'muted small' }, v.code)), h('td', {}, PROV[v.provider] || v.provider), cell,
+      h('td', {}, h('div', { class: 'row' },
+        h('button', { type: 'button', class: 'ghost small', onclick: tester(v, cell) }, 'Kiểm tra & nghe'),
+        h('button', { type: 'button', class: 'ghost small', onclick: () => { c.voices.splice(i, 1); paint(); } }, 'Bỏ'))));
+  }));
+  paint();
+  const allBtn = h('button', { type: 'button', class: 'ghost small', onclick: async () => {
+    allBtn.disabled = true; let ok = 0;
+    for (const [i, tr] of [...rows.children].entries()) { allBtn.textContent = `Đang kiểm tra ${i + 1}/${c.voices.length}…`; if (await tester(c.voices[i], tr.children[2])()) ok++; }
+    allBtn.disabled = false; allBtn.textContent = `Kiểm tra tất cả (lần trước: ${ok}/${c.voices.length} đạt)`;
+  } }, 'Kiểm tra tất cả');
+
+  // add voices: from the provider's own list, or a code typed by hand; each is tested on the spot
+  const prov = h('select', {}, ['everai', 'google', 'free'].map((p) => h('option', { value: p }, PROV[p])));
+  const find = h('input', { type: 'search', placeholder: 'Lọc theo tên hoặc mã…' }), catalog = h('div', { class: 'ink-voices' }), note = h('p', { class: 'muted' });
+  let items = [];
+  const paintCatalog = () => {
+    const q = find.value.trim().toLowerCase(), have = new Set(c.voices.map((v) => v.provider + ':' + v.code));
+    catalog.replaceChildren(...items.filter((x) => !q || (x.code + ' ' + x.label).toLowerCase().includes(q)).slice(0, 120).map((x) => {
+      const cell = h('span', { class: 'muted' }), on = have.has(prov.value + ':' + x.code);
+      return h('div', { class: 'row' }, h('span', {}, x.label, ' ', h('code', {}, x.code)), cell,
+        h('button', { type: 'button', class: 'ghost small', disabled: on, onclick: async (e) => {
+          const v = { provider: prov.value, code: x.code, label: x.label.split(' · ')[0] + ' · ' + x.label.split(' · ').slice(1).join(' · ') };
+          c.voices.push(v); e.target.disabled = true; paint(); await tester(v, cell)(); toast('Đã thêm. Bấm "Lưu cài đặt" để giữ danh sách.');
+        } }, on ? 'Đã có' : 'Thêm & kiểm tra'));
+    }));
+  };
+  const load = h('button', { type: 'button', class: 'ghost small', onclick: async () => {
+    note.textContent = 'Đang tải danh sách…';
+    try { const r = await api('/api/admin/voices/catalog?p=' + prov.value); items = r.voices; note.textContent = `${items.length} giọng ${r.source === 'api' ? 'lấy trực tiếp từ API của nhà cung cấp' : '(nhà cung cấp chưa có API danh sách: lấy theo tài liệu; mã mới thì nhập tay bên dưới)'}.`; paintCatalog(); }
+    catch (e) { note.textContent = '✗ ' + e.message; }
+  } }, 'Tải danh sách giọng');
+  find.oninput = paintCatalog; prov.onchange = () => { items = []; catalog.replaceChildren(); note.textContent = ''; };
+  const code = h('input', { placeholder: 'Mã giọng, ví dụ vi_male_vanduy_mb' }), manualCell = h('span', { class: 'muted' });
+  const manual = h('button', { type: 'button', class: 'ghost small', onclick: async () => {
+    const v = { provider: prov.value, code: code.value.trim(), label: code.value.trim() };
+    if (!/^[A-Za-z0-9_-]{3,60}$/.test(v.code)) return toast('Mã giọng không hợp lệ.');
+    if (await tester(v, manualCell)()) { c.voices.push(v); paint(); toast('Giọng đọc được, đã thêm. Đặt tên rồi bấm "Lưu cài đặt".'); }
+  } }, 'Kiểm tra & thêm');
+
+  const fb = h('input', { type: 'checkbox', checked: data?.fallback !== false, onchange: async () => {
+    try { await api('/api/admin/voices/fallback', { method: 'PUT', body: { on: fb.checked } }); toast(fb.checked ? 'Đã bật giọng dự phòng.' : 'Đã tắt giọng dự phòng.'); } catch (e) { fail(e); fb.checked = !fb.checked; }
+  } });
   return [
-    card('Tình trạng', 'Người dùng chỉ thấy giọng đang đọc thật. Giọng chưa có khoá được đọc bằng giọng miễn phí cùng giới tính.',
-      h('dl', { class: 'kv' },
-        h('dt', {}, 'EverAI (giọng Việt tự nhiên)'), h('dd', {}, state(st.everai && !st.failing, 'Đang hoạt động', st.everai ? 'Có khoá nhưng đang lỗi' : 'Chưa có khoá')),
-        h('dt', {}, 'Google Text-to-Speech'), h('dd', {}, state(true, st.google ? 'Có khoá riêng' : 'Dùng tài khoản máy dựng', '')),
-        h('dt', {}, 'Giọng miễn phí'), h('dd', {}, state(true, 'Luôn sẵn sàng', '')),
-        h('dt', {}, 'Máy dựng báo lần cuối'), h('dd', {}, st.runnerSeen ? fmtDate(st.runnerSeen) : 'Chưa có video nào được dựng'),
-        st.failing ? h('dt', {}, 'Lần gần nhất phải đọc thay') : null, st.failing ? h('dd', {}, `${fmtDate(st.failing.at)} · ${st.failing.provider}${st.failing.error ? ' · ' + st.failing.error : ' · (máy dựng chưa gửi lý do)'}`) : null),
-      st.everai ? h('div', { class: 'row' }, h('button', { type: 'button', class: 'ghost small', onclick: async (e) => {
-        const b = e.currentTarget, out = b.nextElementSibling; b.disabled = true; out.textContent = 'Đang gọi EverAI…';
-        try { const r = await api('/api/admin/voices/test', { method: 'POST', body: {} }); out.className = r.ok ? 'ok' : 'bad'; out.textContent = r.ok ? `✓ EverAI đọc được (${Math.round(r.bytes / 1024)} KB, ${(r.ms / 1000).toFixed(1)} giây). Đã bỏ trạng thái lỗi.` : '✗ ' + r.error; }
-        catch (err) { out.className = 'bad'; out.textContent = '✗ ' + err.message; }
-        b.disabled = false; } }, 'Thử EverAI ngay'), h('span', { class: 'muted' }, 'Đọc một câu ngắn bằng khoá đã lưu, báo đúng lỗi EverAI trả về.')) : null),
-    connectionLink(),
-    card('Giọng đang có', null, list.length ? table(['Giọng', 'Nhà cung cấp', 'Tình trạng', 'Nghe'], list.map((v) => h('tr', {}, h('td', {}, v.label), h('td', {}, v.provider), h('td', {}, v.ready ? state(true, 'Đọc thật', '') : h('span', { class: 'pill' }, 'Đọc thay bằng ' + (v.standIn || 'giọng miễn phí'))), h('td', {}, audioBtn(v.code)))))
-      : h('p', { class: 'muted' }, 'Chưa tải được danh sách.')),
-    card('Sửa danh sách giọng', 'Mỗi dòng: nhà cung cấp | mã giọng | tên hiển thị. Nhà cung cấp: everai, google, elevenlabs, free.',
-      area(c.voices.map((v) => `${v.provider} | ${v.code} | ${v.label}`).join('\n'), (v) => { c.voices = v.split('\n').map((l) => l.split('|').map((x) => x.trim())).filter((p) => p.length >= 2 && p[1]).map(([provider, code, label]) => ({ provider, code, label: label || code })); }, 10)),
+    card('Giọng người dùng được chọn', 'Chỉ giọng đã đọc thử thành công mới hiện cho người dùng. Giọng mới thêm được tự kiểm tra trong vài phút, hoặc bấm "Kiểm tra & nghe" để nghe ngay. Giọng lỗi khi dựng sẽ tự ẩn và báo cho chủ trang.',
+      table(['Giọng', 'Nhà cung cấp', 'Tình trạng', ''], rows), h('div', { class: 'row' }, allBtn)),
+    card('Thêm giọng', 'Chọn nhà cung cấp rồi tải danh sách giọng của họ; mỗi giọng thêm vào được đọc thử ngay.',
+      h('div', { class: 'row' }, prov, load, find), note, catalog,
+      h('div', { class: 'row' }, code, manual, manualCell)),
+    card('Khi giọng đã chọn bị lỗi lúc dựng', 'Người dùng không thấy thông báo nào; lý do được ghi cho quản trị viên (Nhật ký, Zalo/thông báo của chủ trang).',
+      h('label', { class: 'check' }, fb, 'Cho phép đọc bằng giọng miễn phí cùng giới tính để video vẫn xong'),
+      h('p', { class: 'muted' }, 'Tắt: video dừng với lời nhắn lịch sự "giọng đang bảo trì" và được hoàn lượt.'),
+      st.failing ? h('p', { class: 'bad' }, `Lần gần nhất phải đọc thay: ${fmtDate(st.failing.at)} · ${st.failing.provider} · ${st.failing.error || 'máy dựng chưa gửi lý do'}`) : null,
+      h('p', { class: 'muted' }, 'Khoá EverAI/Google: ', st.everai ? 'EverAI có khoá' : 'EverAI chưa có khoá', ' · ', st.google ? 'Google có khoá riêng' : 'Google dùng tài khoản máy dựng', '. Máy dựng báo lần cuối: ', st.runnerSeen ? fmtDate(st.runnerSeen) : 'chưa có'), connectionLink()),
   ];
 }

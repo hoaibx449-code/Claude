@@ -3,7 +3,8 @@
 // narration, and an honest status of each voice service for the admin page.
 import { requireBudget } from './budget.ts';
 import { voiceCost } from './log.ts';
-import { standIn } from '../../src/engine/voices.ts';
+import { standIn, genderOf } from '../../src/engine/voices.ts';
+import { EVERAI_VOICES } from '../../src/node/everai-voices.ts';
 import type { User } from './auth.ts';
 import { accessToken } from './gcp.ts';
 import { runnerSecrets } from './settings.ts';
@@ -51,12 +52,76 @@ export async function testEverAI(env: XEnv, code = 'vi_female_thuytrang_mb') {
   } catch (e: any) { return { ok: false, error: String(e.message || e).slice(0, 300), ms: Date.now() - t0 }; }
 }
 
-/** Voices users can pick, each with whether it really reads with its own voice right now. */
+// ---------------------------------------------------------------- each voice is tested before users see it
+// A voice is offered to users only after it has read a real sentence (the admin's "Kiểm tra", the save that added
+// it, or the background check of untested voices). A voice that fails while rendering is taken off the list and the
+// owner is told; users never see why.
+export type VoiceCheck = { ok: boolean; at: number; ms?: number; error?: string; from?: string };
+const CHECKS = 'voice:checks', ck = (provider: string, code: string) => `${provider}:${code}`;
+export async function voiceChecks(env: XEnv): Promise<Record<string, VoiceCheck>> {
+  const r = await env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind(CHECKS).first<any>();
+  try { return JSON.parse(r?.value || '{}'); } catch { return {}; }
+}
+async function saveCheck(env: XEnv, provider: string, code: string, c: VoiceCheck) {
+  const all = await voiceChecks(env); all[ck(provider, code)] = c;
+  const keep = new Set(env.config.voices.map((v) => ck(v.provider, v.code)));
+  for (const k of Object.keys(all)) if (!keep.has(k) && k !== ck(provider, code)) delete all[k]; // voices no longer listed
+  await env.DB.prepare('INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at').bind(CHECKS, JSON.stringify(all), Date.now()).run();
+}
+/** Whether the site may switch to a similar free voice when the chosen one fails (Quản trị → Giọng đọc). */
+export async function voiceFallbackAllowed(env: XEnv) {
+  const r = await env.DB.prepare("SELECT value FROM settings WHERE key = 'voice:fallback'").first<any>();
+  return r?.value !== '0';
+}
+export async function setVoiceFallback(env: XEnv, on: boolean) {
+  await env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('voice:fallback', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(on ? '1' : '0', Date.now()).run();
+}
+
+/** read one short sentence with exactly this voice (no stand-in): the sample is kept as its preview */
+export async function testVoice(env: XEnv, provider: string, code: string, from = 'admin') {
+  const secrets = await runnerSecrets(env), t0 = Date.now();
+  let audio: Uint8Array | null = null, error = '';
+  try {
+    if (provider === 'everai') {
+      if (!secrets.EVERAI_API_KEY) throw new Error('Chưa có khoá EverAI (Quản trị → Kết nối).');
+      audio = await everaiSample(secrets.EVERAI_API_KEY, code);
+    } else if (provider === 'google') audio = await googleSample(env, code, 0, 1, secrets.GOOGLE_TTS_API_KEY);
+    else if (provider === 'free') { const s = standIn(code); audio = await googleSample(env, s.name, s.pitch, s.rate, secrets.GOOGLE_TTS_API_KEY); }
+    else throw new Error('Nhà cung cấp này chưa được hỗ trợ trên máy dựng.');
+    if (audio.byteLength < 1000) throw new Error(`Nhà cung cấp trả về tệp âm thanh rỗng (${audio.byteLength} byte).`);
+  } catch (e: any) { error = String(e?.message || e).slice(0, 300); audio = null; }
+  const c: VoiceCheck = { ok: !!audio, at: Date.now(), ms: Date.now() - t0, ...(error ? { error } : {}), from };
+  await saveCheck(env, provider, code, c);
+  if (audio) {
+    await env.BUCKET.put(`voice-preview/${PREVIEW_V}/${provider === 'free' ? 'standin' : provider}-${code}.mp3`, audio, { httpMetadata: { contentType: 'audio/mpeg' } });
+    if (provider === 'everai') await clearVoiceFallback(env);
+  }
+  return { ...c, audio };
+}
+
+/** a voice that failed while making a video: off the users' list until it passes a test again; the owner is told */
+export async function voiceFailed(env: XEnv, provider: string, code: string, error: string) {
+  const before = (await voiceChecks(env))[ck(provider, code)];
+  await saveCheck(env, provider, code, { ok: false, at: Date.now(), error: error.slice(0, 300) || 'Lỗi khi dựng video (máy dựng chưa gửi lý do).', from: 'render' });
+  if (before?.ok !== false) {
+    const { notifyOwner } = await import('./zalo.ts');
+    await notifyOwner(env, 'support', `Giọng "${code}" (${provider}) vừa lỗi khi dựng video nên đã tạm ẩn khỏi danh sách của người dùng. Lý do: ${error.slice(0, 200) || 'không rõ'}. Vào Quản trị → Giọng đọc để kiểm tra lại.`).catch(() => {});
+  }
+}
+
+/** background: test a few voices nobody has tested yet (new ones added by hand, or right after this update) */
+export async function checkUntestedVoices(env: XEnv, max = 2) {
+  const checks = await voiceChecks(env);
+  for (const v of env.config.voices.filter((x) => !checks[ck(x.provider, x.code)] && x.provider !== 'elevenlabs').slice(0, max)) await testVoice(env, v.provider, v.code, 'auto');
+}
+
+/** Voices users can pick: only those whose last test (or video) read for real. Free voices are the floor and stay. */
 export async function voicesWithStatus(env: XEnv) {
-  const st = await voiceStatus(env);
+  const checks = await voiceChecks(env);
   return env.config.voices.filter((v) => (env.config.visibility['voice:' + v.code] || 'on') !== 'hidden').map((v) => {
-    const ready = v.provider === 'everai' ? st.everai && !st.failing : v.provider === 'google' ? true : v.provider === 'elevenlabs' ? false : true;
-    return { code: v.code, label: v.label, provider: v.provider, ready, standIn: ready ? undefined : standIn(v.code).name };
+    const check = checks[ck(v.provider, v.code)] || null;
+    const ready = v.provider === 'free' || check?.ok === true;
+    return { code: v.code, label: v.label, provider: v.provider, ready, check };
   });
 }
 
@@ -97,8 +162,8 @@ export async function voicePreview(req: Request, env: XEnv, rc: Rc) {
   const code = new URL(req.url).searchParams.get('code') || '';
   const voices = await voicesWithStatus(env);
   const v = voices.find((x) => x.code === code);
-  if (!v) throw new HttpError(404, 'Không có giọng này.');
-  const source = v.ready ? v.provider : 'standin';
+  if (!v || !v.ready) throw new HttpError(404, 'Không có giọng này.');
+  const source = v.provider === 'free' ? 'standin' : v.provider;
   const key = `voice-preview/${PREVIEW_V}/${source}-${code}.mp3`;
   const cached = await env.BUCKET.get(key);
   const head = { 'content-type': 'audio/mpeg', 'cache-control': 'public, max-age=86400', 'x-voice-source': source };
@@ -107,12 +172,13 @@ export async function voicePreview(req: Request, env: XEnv, rc: Rc) {
   const secrets = await runnerSecrets(env);
   let audio: Uint8Array;
   try {
-    if (source === 'everai' && secrets.EVERAI_API_KEY) audio = await everaiSample(secrets.EVERAI_API_KEY, code);
+    if (source === 'everai') audio = await everaiSample(secrets.EVERAI_API_KEY || '', code);
     else if (source === 'google') audio = await googleSample(env, code, 0, 1, secrets.GOOGLE_TTS_API_KEY);
     else { const s = standIn(code); audio = await googleSample(env, s.name, s.pitch, s.rate, secrets.GOOGLE_TTS_API_KEY); }
   } catch (e: any) {
-    if (source === 'everai') { const s = standIn(code); audio = await googleSample(env, s.name, s.pitch, s.rate, secrets.GOOGLE_TTS_API_KEY); }
-    else throw e;
+    // never play a different voice under this name: take it off the list and tell the owner
+    if (source !== 'standin') await voiceFailed(env, v.provider, code, String(e?.message || e));
+    throw new HttpError(503, 'Giọng này đang tạm bảo trì, vui lòng chọn giọng khác.');
   }
   await env.BUCKET.put(key, audio, { httpMetadata: { contentType: 'audio/mpeg' } });
   rc.log('voice.preview', { data: { code, source } });
@@ -158,14 +224,52 @@ export async function browserVoice(env:XEnv,rc:Rc,user:User,projectId:string,spe
   const tries:[string,()=>Promise<Uint8Array>][]=[];
   if(voice.provider==='everai'&&everaiKey)tries.push(['EverAI',()=>everaiSample(everaiKey,voice.voiceId,text,speed)]);
   if(voice.provider==='google')tries.push(['Google',()=>googleSample(env,voice.voiceId,0,speed,googleKey,text)]);
-  const s=standIn(voice.voiceId);tries.push(['Google thay thế',()=>googleSample(env,s.name,s.pitch,s.rate*speed,googleKey,text)]);
+  const s=standIn(voice.voiceId),fallback=voice.provider==='free'||await voiceFallbackAllowed(env);
+  if(fallback)tries.push(['Google thay thế',()=>googleSample(env,s.name,s.pitch,s.rate*speed,googleKey,text)]);
   const errors:string[]=[];let used='';
   for(const [name,run] of tries){
     try{audio=await run();if(audio.byteLength<500)throw new Error('tệp âm thanh rỗng');used=name;break;}
-    catch(e:any){errors.push(`${name}: ${String(e?.message||e).slice(0,160)}`);if(name==='EverAI')await recordVoiceFallback(env,'everai',String(e?.message||e)).catch(()=>{});}
+    catch(e:any){errors.push(`${name}: ${String(e?.message||e).slice(0,160)}`);if(name==='EverAI'||name==='Google')await voiceFailed(env,voice.provider,voice.voiceId,String(e?.message||e)).catch(()=>{});}
   }
-  if(!used){rc.log('voice.browser',{ok:false,projectId,data:{scene:si,errors}});throw new HttpError(502,`Không tạo được giọng đọc cho cảnh ${si+1} (${errors.join('; ')}). Thử giọng khác, hoặc trong Âm thanh chọn Giọng của tôi (tải MP3/WAV) hay Không lời.`);}
+  // the reasons go to the admin's log only; the user gets a calm message
+  if(!used){rc.log('voice.browser',{ok:false,projectId,data:{scene:si,errors}});throw new HttpError(503,'Giọng đọc này đang tạm bảo trì. Vui lòng chọn giọng khác rồi dựng lại.');}
+  if(used==='Google thay thế')rc.log('voice.fallback',{projectId,data:{scene:si,voice:voice.voiceId,errors}});
   await env.BUCKET.put(key,audio!,{httpMetadata:{contentType:'audio/mpeg'}});
   rc.log('voice.browser',{projectId,cost:voiceCost(env.config,voice.provider,text.length),data:{scene:si,chars:text.length,provider:voice.provider,used}});
   return new Response(audio!,{headers:head});
+}
+
+/** Every voice a provider offers, for the admin to add with one click (Google: Vietnamese voices from its API;
+ * EverAI: its API if it lists voices, otherwise the codes published in EverAI's documentation). */
+export async function voiceCatalog(env: XEnv, provider: string) {
+  const secrets = await runnerSecrets(env);
+  if (provider === 'google') {
+    const headers: Record<string, string> = {};
+    let url = 'https://texttospeech.googleapis.com/v1/voices?languageCode=vi-VN';
+    if (secrets.GOOGLE_TTS_API_KEY) url += '&key=' + encodeURIComponent(secrets.GOOGLE_TTS_API_KEY);
+    else if (env.GCP_TRIGGER_KEY) { headers.authorization = 'Bearer ' + (await accessToken(env)); if (env.GCP_PROJECT) headers['x-goog-user-project'] = env.GCP_PROJECT; }
+    else throw new HttpError(503, 'Chưa có khoá Google Text-to-Speech hoặc tài khoản Google Cloud.');
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) throw new HttpError(502, `Google trả lỗi HTTP ${res.status}: ${(await res.text()).match(/"message": *"([^"]{0,160})/)?.[1] || ''}`);
+    const j: any = await res.json();
+    return { source: 'api', voices: (j.voices || []).map((v: any) => ({ code: String(v.name), label: `${String(v.name).replace('vi-VN-', '')} · ${v.ssmlGender === 'MALE' ? 'nam' : 'nữ'}` })) };
+  }
+  if (provider === 'everai') {
+    if (secrets.EVERAI_API_KEY) {
+      for (const path of ['voices', 'tts/voices', 'voice']) {
+        try {
+          const r = await fetch('https://www.everai.vn/api/v1/' + path, { headers: { authorization: 'Bearer ' + secrets.EVERAI_API_KEY }, signal: AbortSignal.timeout(10_000) });
+          if (!r.ok) continue;
+          const j: any = await r.json(), list: any[] = [];
+          const walk = (o: any) => { if (Array.isArray(o)) o.forEach(walk); else if (o && typeof o === 'object') { if (o.voice_code || o.code) list.push(o); else Object.values(o).forEach(walk); } };
+          walk(j);
+          if (list.length) return { source: 'api', voices: list.map((v) => ({ code: String(v.voice_code || v.code), label: String(v.voice_name || v.name || v.voice_code || v.code) })) };
+        } catch { /* next */ }
+      }
+    }
+    const g = (x: string) => (x === 'nam' ? 'nam' : 'nữ'), r = (x: string) => ({ bac: 'Bắc', nam: 'Nam', quocte: 'quốc tế' } as Record<string, string>)[x] || x;
+    return { source: 'docs', voices: EVERAI_VOICES.map((v) => ({ code: v.code, label: `${v.name} · ${g(v.gender)} ${r(v.region)} · ${v.use.toLowerCase()}` })) };
+  }
+  if (provider === 'free') return { source: 'docs', voices: ['free-female', 'free-male', 'vi-VN-Wavenet-A', 'vi-VN-Wavenet-B', 'vi-VN-Wavenet-C', 'vi-VN-Wavenet-D'].map((code) => ({ code, label: `${code} · ${genderOf(code) === 'nam' ? 'nam' : 'nữ'}` })) };
+  throw new HttpError(400, 'Nhà cung cấp không hợp lệ.');
 }

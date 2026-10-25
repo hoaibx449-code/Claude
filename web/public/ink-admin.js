@@ -47,15 +47,48 @@ export async function showInkAdmin({ h, api, body, toast, fail }) {
   const tick = (v, set, label) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!v, onchange: (e) => set(e.target.checked) }), label);
   const key = (ok, name) => h('span', { class: 'chip' + (ok ? ' ok' : '') }, (ok ? '✓ ' : '✗ ') + name);
 
-  const voices = h('div', { class: 'ink-voices' });
-  const paintVoices = () => voices.replaceChildren(...s.voice.list.map((v, i) => h('div', { class: 'row' },
+  // voices: each one reads a real sentence before users can pick it (tested here, or automatically within minutes)
+  const checks = data.checks || {}, voices = h('div', { class: 'ink-voices' });
+  const pill = (ok, text) => h('span', { class: 'chip' + (ok ? ' ok' : ok === false ? ' bad' : '') }, text);
+  const stateOf = (v) => { const c = checks[v.provider + ':' + v.code]; return !c ? pill(null, 'Chưa kiểm tra · người dùng chưa thấy') : c.ok ? pill(true, '✓ Đọc được') : pill(false, '✗ ' + (c.error || 'lỗi') + ' · người dùng không thấy'); };
+  const test = (v, cell) => async () => {
+    cell.replaceChildren(pill(null, 'Đang đọc thử…'));
+    try {
+      const r = await api('/api/admin/ink/voices/test', { method: 'POST', body: { provider: v.provider, code: v.code } });
+      checks[v.provider + ':' + v.code] = { ok: r.ok, error: r.error, at: Date.now() };
+      cell.replaceChildren(r.ok ? pill(true, `✓ Đọc được (${(r.ms / 1000).toFixed(1)} giây)`) : pill(false, '✗ ' + r.error));
+      if (r.audio) try { new Audio('data:audio/mpeg;base64,' + r.audio).play(); } catch { /* no sound */ }
+      return r.ok;
+    } catch (e) { cell.replaceChildren(pill(false, '✗ ' + e.message)); return false; }
+  };
+  const paintVoices = () => voices.replaceChildren(...s.voice.list.map((v, i) => { const cell = h('span', {}, stateOf(v)); return h('div', { class: 'row' },
     tick(v.on, (x) => { v.on = x; }, ''), inp(v.label, (x) => { v.label = x; }, { 'aria-label': 'Tên giọng', placeholder: 'Tên hiển thị' }),
-    h('select', { 'aria-label': 'Nhà cung cấp', onchange: (e) => { v.provider = e.target.value; } }, opts({ microsoft: 'Microsoft (miễn phí)', everai: 'EverAI' }, v.provider)),
-    inp(v.code, (x) => { v.code = x; }, { 'aria-label': 'Mã giọng', placeholder: 'vi-VN-HoaiMyNeural / vi_female_…' }),
+    h('select', { 'aria-label': 'Nhà cung cấp', onchange: (e) => { v.provider = e.target.value; cell.replaceChildren(stateOf(v)); } }, opts({ microsoft: 'Microsoft (miễn phí)', everai: 'EverAI' }, v.provider)),
+    inp(v.code, (x) => { v.code = x; }, { 'aria-label': 'Mã giọng', placeholder: 'vi-VN-HoaiMyNeural / vi_female_…', onchange: () => cell.replaceChildren(stateOf(v)) }),
     h('label', { class: 'check' }, h('input', { type: 'radio', name: 'ink-default-voice', checked: s.voice.default === v.id, onchange: () => { s.voice.default = v.id; } }), 'Mặc định'),
-    h('button', { type: 'button', class: 'ghost small', onclick: () => { s.voice.list.splice(i, 1); paintVoices(); } }, 'Xoá'))),
-    h('button', { type: 'button', class: 'ghost small', onclick: () => { s.voice.list.push({ id: 'giong-' + Date.now().toString(36).slice(-5), label: 'Giọng mới', provider: 'microsoft', code: 'vi-VN-HoaiMyNeural', on: true }); paintVoices(); } }, '+ Thêm giọng'));
+    h('button', { type: 'button', class: 'ghost small', onclick: test(v, cell) }, 'Kiểm tra & nghe'), cell,
+    h('button', { type: 'button', class: 'ghost small', onclick: () => { s.voice.list.splice(i, 1); paintVoices(); } }, 'Xoá')); }));
   paintVoices();
+  // add from the provider's own list (Microsoft: every neural voice; EverAI: its documented codes)
+  const prov = h('select', {}, opts({ microsoft: 'Microsoft', everai: 'EverAI' }, 'microsoft')), find = h('input', { type: 'search', placeholder: 'Lọc: vi-VN, nam, nữ, tên…' });
+  const catalog = h('div', { class: 'ink-voices' }), catNote = h('p', { class: 'muted' }); let items = [];
+  const paintCatalog = () => {
+    const q = find.value.trim().toLowerCase(), have = new Set(s.voice.list.map((v) => v.provider + ':' + v.code));
+    catalog.replaceChildren(...items.filter((x) => !q || (x.code + ' ' + x.label).toLowerCase().includes(q)).slice(0, 80).map((x) => {
+      const cell = h('span', { class: 'muted' }), on = have.has(prov.value + ':' + x.code);
+      return h('div', { class: 'row' }, h('span', {}, x.label, ' ', h('code', {}, x.code)), cell, h('button', { type: 'button', class: 'ghost small', disabled: on, onclick: async (e) => {
+        const v = { id: 'giong-' + Date.now().toString(36).slice(-5), label: x.label.split(' · ').slice(0, 2).join(' · '), provider: prov.value, code: x.code, on: true };
+        e.target.disabled = true; s.voice.list.push(v); paintVoices(); await test(v, cell)(); toast('Đã thêm. Bấm Lưu để giữ danh sách.');
+      } }, on ? 'Đã có' : 'Thêm & kiểm tra'));
+    }));
+  };
+  const loadCatalog = h('button', { type: 'button', class: 'ghost small', onclick: async () => {
+    catNote.textContent = 'Đang tải danh sách…';
+    try { const r = await api('/api/admin/ink/voices/catalog?p=' + prov.value); items = r.voices; catNote.textContent = `${items.length} giọng ${r.source === 'api' ? 'lấy trực tiếp từ nhà cung cấp' : 'theo tài liệu EverAI (EverAI chưa có API danh sách; mã mới thì thêm tay ở trên)'}.`; paintCatalog(); }
+    catch (e) { catNote.textContent = '✗ ' + e.message; }
+  } }, 'Tải danh sách giọng');
+  find.oninput = paintCatalog; prov.onchange = () => { items = []; catalog.replaceChildren(); catNote.textContent = ''; };
+  const addFromCatalog = h('div', {}, h('div', { class: 'row' }, prov, loadCatalog, find), catNote, catalog);
 
   const order = h('select', { onchange: (e) => { s.ai.order = e.target.value.split(','); } }, opts({ 'gemini,openai': 'Gemini trước, OpenAI dự phòng', 'openai,gemini': 'OpenAI trước, Gemini dự phòng' }, s.ai.order.join(',')));
   const save = h('button', { type: 'button', class: 'btn' }, 'Lưu cài đặt');
@@ -113,8 +146,8 @@ export async function showInkAdmin({ h, api, body, toast, fail }) {
       field('Thứ tự ưu tiên', order), tick(s.ai.fallback, (x) => { s.ai.fallback = x; }, 'Khi nhà cung cấp đầu lỗi, chuyển sang nhà cung cấp còn lại'),
       field('Model Gemini (theo thứ tự)', inp(s.ai.gemini, (x) => { s.ai.gemini = x; })),
       field('Model OpenAI (theo thứ tự)', inp(s.ai.openai, (x) => { s.ai.openai = x; }))),
-    card('Giọng đọc', 'Người dùng chọn trong các giọng đang bật. Giọng Microsoft miễn phí; EverAI cần khoá EverAI ở trang API & khoá.',
-      voices, tick(s.voice.fallback, (x) => { s.voice.fallback = x; }, 'Khi giọng chọn lỗi, đọc bằng nhà cung cấp còn lại để video không hỏng')),
+    card('Giọng đọc', 'Người dùng chỉ thấy giọng đang bật và đã đọc thử thành công. Giọng Microsoft miễn phí; EverAI cần khoá EverAI ở trang API & khoá.',
+      voices, addFromCatalog, tick(s.voice.fallback, (x) => { s.voice.fallback = x; }, 'Khi giọng chọn lỗi lúc dựng, đọc bằng nhà cung cấp còn lại để video vẫn xong (người dùng không thấy thông báo; lý do ghi cho quản trị và giọng đó tạm ẩn)')),
     card('Mặc định khi tạo video', null,
       field('Nhịp', h('select', { onchange: (e) => { s.defaults.pace = e.target.value; } }, opts(PACE, s.defaults.pace))),
       field('Độ dài (giây)', inp(s.defaults.seconds, (x) => { s.defaults.seconds = x; }, { type: 'number', min: 20, max: 300 })),

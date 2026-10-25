@@ -171,6 +171,11 @@ export function freeTTS(voiceId?: string): TTS {
   };
 }
 
+/** A voice that cannot even start (no key on this machine, unknown provider): fails with that reason when used. */
+export function failingTTS(name: string, e: unknown): TTS {
+  return { name, async synth() { throw new Error(`máy dựng không dùng được giọng ${name}: ${String((e as Error)?.message || e).slice(0, 160)}`); } };
+}
+
 /** Try the chosen voice; if its key is missing or the service fails, read with the free voice instead. */
 export function withFallback(primary: TTS, voiceId?: string): TTS {
   return {

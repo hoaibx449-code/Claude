@@ -145,13 +145,16 @@ def estimate(lines, audio, total):
     return words
 
 
+errors = []  # why the chosen voice was not used in the last narration (sent to the admin page only)
+
+
 def narrate(lines, folder, log=print):
     """returns (audio file, [(line, start, end)], [(line, word, start, end)], provider used)"""
     os.makedirs(folder, exist_ok=True); out = os.path.join(folder, 'voice.mp3')
     text = ' '.join(l.strip().rstrip('.!?…') + '.' if not re.search(r'[.!?…]$', l.strip()) else l.strip() for l in lines)
     first = os.environ.get('INK_VOICE_PROVIDER', 'everai' if os.environ.get('EVERAI_API_KEY') else 'microsoft')
     order = [first] + ([p for p in ('everai', 'microsoft') if p != first] if os.environ.get('INK_VOICE_FALLBACK', '1') == '1' else [])
-    heard = None; used = None
+    heard = None; used = None; errors.clear()
     for p in order:
         try:
             if p == 'everai':
@@ -161,7 +164,7 @@ def narrate(lines, folder, log=print):
                 _, heard = microsoft_all(text, out); used = 'microsoft'
             break
         except Exception as e:  # noqa: BLE001
-            log(f'  giọng {p} không dùng được ({e}); thử nhà cung cấp tiếp theo')
+            log(f'  giọng {p} không dùng được ({e}); thử nhà cung cấp tiếp theo'); errors.append(f'{p}: {str(e)[:160]}')
     if not used: raise RuntimeError('Không đọc được lời bằng nhà cung cấp giọng nào.')
     total = duration(out)
     if used == 'everai':

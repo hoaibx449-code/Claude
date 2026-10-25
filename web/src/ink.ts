@@ -7,7 +7,8 @@
 // or 'render' (an approved or re-paced storyboard to video: no AI call).
 import { body, HttpError, json, randomId, readBytes, refundQuota, sha256, timingSafeEqual, useQuota, type Env } from './util.ts';
 import { startRunner } from './gcp.ts';
-import { askChain, fillPrompt, speak } from './ink-browser.ts';
+import { askChain, fillPrompt, microsoftVoices, speak } from './ink-browser.ts';
+import { voiceCatalog } from './voices.ts';
 import { decrypt, encrypt, isAdmin, type Config } from './settings.ts';
 import { limitsFor, planOf } from './plans.ts';
 import { serveObject } from './media.ts';
@@ -58,7 +59,7 @@ export function cleanInk(i: any): InkSettings {
   const d = INK_DEFAULTS, a = i?.ai || {}, v = i?.voice || {}, df = i?.defaults || {}, g = i?.github || {}, m = i?.machines || {};
   const morder = [...new Set([...(Array.isArray(m.order) ? m.order : []).filter((x: unknown) => MACHINES.includes(x as MachineKind)), ...MACHINES])] as MachineKind[];
   const order = (Array.isArray(a.order) ? a.order : d.ai.order).filter((x: unknown) => x === 'gemini' || x === 'openai');
-  const list: InkVoice[] = (Array.isArray(v.list) ? v.list : d.voice.list).slice(0, 20).map((x: any, k: number) => ({
+  const list: InkVoice[] = (Array.isArray(v.list) ? v.list : d.voice.list).slice(0, 60).map((x: any, k: number) => ({
     id: /^[a-z0-9-]{2,24}$/.test(x?.id) ? x.id : 'giong-' + (k + 1), label: str(x?.label, 60) || 'Giọng ' + (k + 1),
     provider: x?.provider === 'everai' ? 'everai' : 'microsoft', code: /^[\w-]{3,60}$/.test(x?.code || '') ? x.code : 'vi-VN-HoaiMyNeural', on: x?.on !== false,
   }));
@@ -161,9 +162,60 @@ async function bundleVersion(env: Env) {
   return v ? (await v.text()).trim().slice(0, 40) : '';
 }
 
+/** a machine read with another provider than the chosen voice: that voice failed (hidden, owner told) */
+async function voiceUsed(env: Env, j: any, b: any) {
+  const used = str(b.voice, 40); if (!used) return;
+  const { s } = await settings(env), input = JSON.parse(j.input || '{}'), v = s.voice.list.find((x) => x.id === input.voice);
+  if (v && used !== v.provider) await inkVoiceFailed(env, v, str(b.voiceError, 300) || `máy dựng phải đọc bằng ${used}`);
+}
+
+// ---------------------------------------------------------------- voices: tested before users can pick them
+// Same rule as the main site: a voice is offered only after it read a real sentence; one that fails while making
+// a video is hidden again and the owner is told. Users never see the reason.
+type InkCheck = { ok: boolean; at: number; ms?: number; error?: string; from?: string };
+async function inkChecks(env: Env): Promise<Record<string, InkCheck>> {
+  const r = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:voicechecks'").first<any>();
+  try { return JSON.parse(r?.value || '{}'); } catch { return {}; }
+}
+const vkey = (v: { provider: string; code: string }) => `${v.provider}:${v.code}`;
+async function saveInkCheck(env: Env, v: { provider: string; code: string }, c: InkCheck) {
+  const all = await inkChecks(env); all[vkey(v)] = c;
+  await env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('ink:voicechecks', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(JSON.stringify(all), Date.now()).run();
+}
+async function testInkVoice(env: Env, v: { provider: string; code: string }, from = 'admin') {
+  const t0 = Date.now();
+  try {
+    const r = await speak(env, v, 'Xin chào! Đây là giọng đọc cho video của bạn.', '+0%', false);
+    if (r.audio.length < 1000) throw new Error(`tệp âm thanh rỗng (${r.audio.length} byte)`);
+    await saveInkCheck(env, v, { ok: true, at: Date.now(), ms: Date.now() - t0, from });
+    return { ok: true, ms: Date.now() - t0, audio: r.audio };
+  } catch (e: any) {
+    const error = String(e?.message || e).replace(/^Không đọc được giọng: /, '').slice(0, 300);
+    await saveInkCheck(env, v, { ok: false, at: Date.now(), ms: Date.now() - t0, error, from });
+    return { ok: false, ms: Date.now() - t0, error, audio: null };
+  }
+}
+async function inkVoiceFailed(env: Env, v: { provider: string; code: string; label?: string }, error: string) {
+  const before = (await inkChecks(env))[vkey(v)];
+  await saveInkCheck(env, v, { ok: false, at: Date.now(), error: error.slice(0, 300) || 'phải đọc bằng giọng dự phòng', from: 'render' });
+  if (before?.ok !== false) {
+    const { notifyOwner } = await import('./zalo.ts');
+    const { effectiveEnv } = await import('./settings.ts');
+    await notifyOwner(await effectiveEnv(env), 'support', `Ink Studio: giọng "${v.label || v.code}" vừa lỗi khi dựng video nên đã tạm ẩn khỏi danh sách người dùng. Lý do: ${error.slice(0, 200) || 'không rõ'}. Vào Quản trị → Ink Studio để kiểm tra lại.`).catch(() => {});
+  }
+}
+/** voices users may pick right now */
+async function readyVoices(env: Env, s: InkSettings) {
+  const checks = await inkChecks(env);
+  return s.voice.list.filter((v) => v.on && checks[vkey(v)]?.ok === true);
+}
+
 /** Every minute: jobs whose machine went quiet go back in the queue; a waiting queue wakes GitHub again. */
 export async function inkCron(env: Env) {
   const now = Date.now();
+  // voices nobody has tested yet (just added, or right after this update): two per minute
+  { const { s } = await settings(env), checks = await inkChecks(env);
+    for (const v of s.voice.list.filter((x) => x.on && !checks[vkey(x)]).slice(0, 2)) await testInkVoice(env, v, 'auto'); }
   await env.DB.prepare("UPDATE ink_jobs SET status = 'queued', lease = '', message = 'Đang chờ máy dựng (thử lại)' WHERE status = 'running' AND heartbeat < ?").bind(now - STALE_MS).run();
   const waiting = await env.DB.prepare("SELECT MIN(updated_at) AS t FROM ink_jobs WHERE status = 'queued'").first<any>();
   const running = await env.DB.prepare("SELECT COUNT(*) AS n FROM ink_jobs WHERE status = 'running'").first<any>();
@@ -209,7 +261,8 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
   if (!s.enabled && !(await isAdmin(env, env.config, user))) throw new HttpError(404, 'Ink Studio đang tạm tắt.');
   if (sub === 'config' && method === 'GET') {
     const { plan } = await planOf(env, user.id);
-    return json({ browser: s.machines.on.browser, voices: s.voice.list.filter((v) => v.on).map((v) => ({ id: v.id, label: v.label })), defaults: { ...s.defaults, voice: s.voice.default },
+    const ready = await readyVoices(env, s);
+    return json({ browser: s.machines.on.browser, voices: ready.map((v) => ({ id: v.id, label: v.label })), defaults: { ...s.defaults, voice: ready.some((v) => v.id === s.voice.default) ? s.voice.default : ready[0]?.id || '' },
       maxSeconds: Math.min(300, plan.maxSeconds, env.config.limits.maxSeconds) });
   }
   if (sub === 'browser/bundle' && method === 'GET') {
@@ -239,7 +292,9 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
     if (text.length < (mode === 'script' ? 40 : 4)) throw new HttpError(400, mode === 'script' ? 'Kịch bản quá ngắn.' : 'Hãy nhập chủ đề video.');
     const cap = Math.min(300, plan.maxSeconds, env.config.limits.maxSeconds), seconds = Math.round(num(b.seconds, 20, 300, s.defaults.seconds));
     if (seconds > cap) throw new HttpError(402, `Gói ${plan.name} cho video tối đa ${cap} giây.`);
-    const voice = s.voice.list.find((v) => v.on && v.id === b.voice) || s.voice.list.find((v) => v.id === s.voice.default) || s.voice.list[0];
+    const ready = await readyVoices(env, s);
+    if (!ready.length) throw new HttpError(503, 'Giọng đọc đang được bảo trì, vui lòng thử lại sau ít phút.');
+    const voice = ready.find((v) => v.id === b.voice) || ready.find((v) => v.id === s.voice.default) || ready[0];
     const music = /^[a-f0-9]{24}\.(mp3|m4a|wav)$/.test(b.music || '') ? b.music : '';
     if (music && !(await env.BUCKET.head(`ink-music/${user.id}/${music}`))) throw new HttpError(400, 'Không tìm thấy nhạc đã tải lên.');
     const input = { mode, [mode]: text, seconds, audience: str(b.audience, 200), tone: str(b.tone, 120), notes: str(b.notes, 600),
@@ -329,7 +384,8 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
       const rate = asked != null ? (asked >= 0 ? '+' : '') + asked + '%' : ({ slow: '+0%', normal: '+8%', fast: '+15%', faster: '+25%' } as Record<string, string>)[input.pace] || '+8%';
       const r = await speak(env, v, text, rate, s.voice.fallback);
       let bin = ''; for (let i = 0; i < r.audio.length; i += 0x8000) bin += String.fromCharCode(...r.audio.subarray(i, i + 0x8000));
-      rc.log('ink.voice', { data: { job: j.id, provider: r.provider, chars: text.length } });
+      rc.log('ink.voice', { data: { job: j.id, provider: r.provider, chars: text.length, ...(r.errors.length ? { errors: r.errors } : {}) } });
+      if (r.provider !== v.provider) await inkVoiceFailed(env, v, r.errors.join(' | '));
       return json({ audio: btoa(bin), words: r.words, provider: r.provider });
     }
     if (act === 'browser/plan' && method === 'POST') {
@@ -487,6 +543,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     await env.DB.prepare("UPDATE ink_jobs SET status = 'browser', lease = '', progress = 60, message = 'Sẵn sàng dựng trên máy của bạn', duration = ?, meta = ?, updated_at = ? WHERE id = ?")
       .bind(num(b.duration, 0, 3600, 0), JSON.stringify({ ...meta, voice: str(b.voice, 40), ai: b.ai || meta.ai }), now, j.id).run();
     rc.log('ink.exported', { data: { job: j.id, videoSec: b.duration } });
+    await voiceUsed(env, j, b);
     rc.wait(notify(env, j.user_id, j.id, 'Sẵn sàng dựng trên máy của bạn', `"${j.title}": mở trang video để máy bạn vẽ và xuất video.`));
     return json({ ok: true });
   }
@@ -496,6 +553,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     await env.DB.prepare("UPDATE ink_jobs SET status = 'done', progress = 100, message = 'Đã xong', lease = ?, duration = ?, meta = ?, finished_at = ?, updated_at = ? WHERE id = ?")
       .bind(lease, num(b.duration, 0, 3600, 0), JSON.stringify({ ...meta, voice: str(b.voice, 40), renderSec: num(b.seconds, 0, 99999, 0), ai: b.ai || meta.ai }), now, now, j.id).run();
     rc.log('ink.done', { data: { job: j.id, videoSec: b.duration, renderSec: b.seconds, voice: b.voice, totalSec: Math.round((now - j.created_at) / 1000) } });
+    await voiceUsed(env, j, b);
     rc.wait(notify(env, j.user_id, j.id, 'Video đã xong ✓', `"${j.title}" đã dựng xong. Bấm để xem và tải về.`));
     return json({ ok: true });
   }
@@ -517,6 +575,18 @@ async function notify(env: XEnv, userId: string, id: string, title: string, text
 // ---------------------------------------------------------------- admin
 export async function inkAdmin(req: Request, env: XEnv, sub: string, rc: Rc): Promise<Response | null> {
   if (!sub.startsWith('ink')) return null;
+  if (sub === 'ink/voices/test' && req.method === 'POST') {
+    const b = await body<any>(req, 500), provider = b.provider === 'everai' ? 'everai' : 'microsoft', code = str(b.code, 60);
+    if (!/^[A-Za-z0-9_-]{3,60}$/.test(code)) throw new HttpError(400, 'Mã giọng không hợp lệ.');
+    const r = await testInkVoice(env, { provider, code });
+    rc.log('admin.ink.voice', { ok: r.ok, data: { provider, code, error: r.error } });
+    let audio = ''; if (r.audio) { let bin = ''; for (let i = 0; i < r.audio.length; i += 0x8000) bin += String.fromCharCode(...r.audio.subarray(i, i + 0x8000)); audio = btoa(bin); }
+    return json({ ok: r.ok, ms: r.ms, error: r.error, audio });
+  }
+  if (sub === 'ink/voices/catalog' && req.method === 'GET') {
+    const p = new URL(req.url).searchParams.get('p');
+    return json(p === 'everai' ? await voiceCatalog(env, 'everai') : { source: 'api', voices: await microsoftVoices() });
+  }
   if (sub === 'ink' && req.method === 'GET') {
     const { s, token } = await settings(env);
     const jobs = (await env.DB.prepare(`SELECT j.id, j.title, j.status, j.stage, j.progress, j.message, j.error, j.duration, j.created_at, j.finished_at, u.email
@@ -526,7 +596,7 @@ export async function inkAdmin(req: Request, env: XEnv, sub: string, rc: Rc): Pr
     const seen = await machinesSeen(env), list = await servers(env);
     const machines = { seen: Object.entries(seen).map(([name, v]) => ({ name, ...v, online: Date.now() - v.at < 90_000 })).sort((a, b) => b.at - a.at),
       servers: list.map(({ id, name, created }) => ({ id, name, created })), cloud: !!(env.GCP_TRIGGER_KEY && env.GCP_PROJECT && env.GCP_REGION), version: await bundleVersion(env) };
-    return json({ machines, wakeError: err?.value || '', settings: s, token: !!token, keys: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY, everai: !!(env as any).EVERAI_API_KEY }, lastDispatch: Number(last?.value) || 0, jobs });
+    return json({ machines, wakeError: err?.value || '', settings: s, checks: await inkChecks(env), token: !!token, keys: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY, everai: !!(env as any).EVERAI_API_KEY }, lastDispatch: Number(last?.value) || 0, jobs });
   }
   if (sub === 'ink' && req.method === 'PUT') {
     const b = await body<any>(req, 30_000), s = cleanInk(b.settings || {}), now = Date.now();

@@ -117,7 +117,7 @@ async function runJob(job: { id: string; lease: string; spec: ProjectSpec }) {
 async function loadKeys() {
   try {
     const { env } = (await (await call('/api/runner/config')).json()) as { env: Record<string, string> };
-    for (const [k, v] of Object.entries(env || {})) if (/^[A-Z_]+_API_KEY$/.test(k) && v) process.env[k] = v;
+    for (const [k, v] of Object.entries(env || {})) if ((/^[A-Z_]+_API_KEY$/.test(k) || k === 'VOICE_FALLBACK') && v) process.env[k] = v;
   } catch (e: any) { console.error('Không đọc được cài đặt:', e.message); }
 }
 

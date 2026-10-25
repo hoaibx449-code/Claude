@@ -19,7 +19,7 @@ import { startRunner } from './gcp.ts';
 import { inkCron, inkRunner, inkSetup, inkUser } from './ink.ts';
 import { cleanSpec, LOOKS, STYLES } from './spec.ts';
 import { LOOK_BRIEF } from './ai.ts';
-import { clearVoiceFallback, recordRunnerCaps, recordVoiceFallback, voicePreview, voicesWithStatus, voiceUpload, browserVoice } from './voices.ts';
+import { clearVoiceFallback, recordRunnerCaps, recordVoiceFallback, voicePreview, voicesWithStatus, voiceUpload, browserVoice, voiceFailed, voiceFallbackAllowed, checkUntestedVoices } from './voices.ts';
 import { composeLook, composeScene, splitScript } from './compose.ts';
 import { doodlePanels } from './doodles.ts';
 import { chargeDoc, closeDocProject, creditRoutes, giveBackDocImage, openDocProject, refundDoc, useDocImage } from './credits.ts';
@@ -87,6 +87,7 @@ export default {
     if(new Date(e.scheduledTime).getUTCMinutes()===0)ctx.waitUntil(cleanupSolutionFiles(xenvZ).catch(err=>console.error('solutionFileCleanup',err)));
     ctx.waitUntil(tickFeed(xenvZ).catch(err=>console.error('imageFeed',err)));
     ctx.waitUntil(inkCron(xenvZ).catch(err=>console.error('inkCron',err)));
+    ctx.waitUntil(checkUntestedVoices(xenvZ).catch(err=>console.error('voiceChecks',err)));
     // Zalo without a webhook: every minute, ask for new messages (see pollZalo)
     if (xenvZ.config.zalo.enabled && (xenvZ as any).ZALO_BOT_TOKEN && (await receiveMode(xenvZ)) === 'poll') {
       const prc: Rc = { userId: null, visitor: null, ip: '', ua: null, channel: 'zalo', quiet: true,
@@ -740,7 +741,7 @@ export async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Prom
   const now = Date.now();
 
   // voice keys entered on the admin page (sent only to the render machine, over HTTPS, with its token)
-  if (sub === 'config' && req.method === 'GET') return json({ env: await runnerSecrets(env) });
+  if (sub === 'config' && req.method === 'GET') return json({ env: { ...(await runnerSecrets(env)), VOICE_FALLBACK: (await voiceFallbackAllowed(env)) ? '1' : '0' } });
   if (sub === 'claim' && req.method === 'POST') {
     const cb = await body<any>(req, 1_000);
     const name = String(cb.runner || 'runner').slice(0, 60);
@@ -804,8 +805,8 @@ export async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Prom
     const r = await body<any>(req, 5_000).catch(() => ({}));
     const spec = JSON.parse(job.spec), provider = String(r.voice || spec.voice?.provider || '');
     // a chosen voice that could not be used was read by its stand-in: tell the admin page
-    if (provider.includes('→')) await recordVoiceFallback(env, provider, String(r.voiceError || ''));
-    // the voice read for real again: it is no longer shown as failing
+    // the chosen voice could not be used: it leaves the users' list until the admin tests it again (owner is told)
+    if (provider.includes('→')) { await recordVoiceFallback(env, provider, String(r.voiceError || '')); if (spec.voice?.voiceId) await voiceFailed(env, spec.voice.provider || provider.split('→')[0], spec.voice.voiceId, String(r.voiceError || '')); }
     else if (provider === 'everai') await clearVoiceFallback(env);
     const chars = Number(r.chars) || spec.scenes.reduce((n: number, sc: any) => n + sc.lines.join(' ').length, 0);
     rc.log('render.done', { projectId: job.project_id, ms: (Number(r.seconds) || 0) * 1000, cost: r.cachedVoice ? 0 : voiceCost(env.config, provider, chars),
@@ -814,7 +815,14 @@ export async function runner(req: Request, env: XEnv, sub: string, rc: Rc): Prom
     return json({ ok: true });
   }
   if (m[2] === 'fail') {
-    const error = String((await body(req, 5_000)).error || 'Dựng video thất bại.').slice(0, 300);
+    let error = String((await body(req, 5_000)).error || 'Dựng video thất bại.').slice(0, 300);
+    // a voice that failed (no fallback allowed): the reason goes to the admin, the user gets a calm message
+    const spec = JSON.parse(job.spec || '{}');
+    if (/máy dựng không dùng được giọng|EverAI|Google đọc lỗi|ElevenLabs|giọng/i.test(error) && spec.voice?.voiceId) {
+      await voiceFailed(env, spec.voice.provider || '', spec.voice.voiceId, error);
+      rc.log('voice.fail', { ok: false, projectId: job.project_id, data: { job: job.id, voice: spec.voice.voiceId, error } });
+      error = 'Giọng đọc đã chọn đang tạm bảo trì. Lượt dựng đã được hoàn lại; vui lòng chọn giọng khác rồi dựng lại.';
+    }
     const changed = await env.DB.prepare("UPDATE jobs SET status = 'failed', error = ?, finished_at = ? WHERE id = ? AND status = 'running' AND runner = ?").bind(error, now, job.id, lease).run();
     if (!changed.meta.changes) throw new HttpError(409, 'Lượt dựng đã hết hạn.');
     await refundQuota(env, job.user_id, 'render');

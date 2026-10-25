@@ -10,7 +10,7 @@ import { setPeeps, hasPeeps } from '../engine/act/peeps.ts';
 import { buildTimeline } from '../engine/timeline.ts';
 import { cuesOf, logicalSize, prepare, renderFrame, SANS } from '../engine/render.ts';
 import type { HandMeta, ProjectSpec, Timeline } from '../engine/types.ts';
-import { audioDuration, fitVoice, mockTTS, pickTTS, withFallback, type VoiceResult } from './tts.ts';
+import { audioDuration, failingTTS, fitVoice, mockTTS, pickTTS, withFallback, type VoiceResult } from './tts.ts';
 import { moodOf, writeMusic, type Mood } from './music.ts';
 import { cachedImage, pickImages } from './images.ts';
 import { writeSfxTrack } from './sfx.ts';
@@ -103,8 +103,11 @@ export async function renderProject(o: RenderOptions) {
       for (let i = 0; i < project.scenes.length; i++) voice.push(await mockTTS.synth(project.scenes[i].lines, join(work, `scene${i}`)));
       tts = { name: 'none' };
     } else {
-      // a paid voice that fails (no key, quota, outage) is replaced by the free voice instead of failing the video
-      const engine = name && name !== 'mock' && name !== 'free' ? withFallback(await pickTTS(name, project.voice).catch(() => pickTTS('free', project.voice)), project.voice?.voiceId) : await pickTTS(name, project.voice);
+      // a paid voice that fails (no key, quota, outage) is replaced by a similar free voice when the admin allows it
+      // (VOICE_FALLBACK, Quản trị → Giọng đọc); the reason always reaches the admin page, never the viewer
+      const paid = !!name && name !== 'mock' && name !== 'free';
+      const primary = paid ? await pickTTS(name, project.voice).catch((e) => failingTTS(name!, e)) : await pickTTS(name, project.voice);
+      const engine = paid && process.env.VOICE_FALLBACK !== '0' ? withFallback(primary, project.voice?.voiceId) : primary;
       for (let i = 0; i < project.scenes.length; i++) {
         await o.onStage?.('voice', `Chuẩn bị lời đọc: cảnh ${i + 1}/${project.scenes.length}`);
         o.signal?.throwIfAborted();
