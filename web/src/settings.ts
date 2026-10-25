@@ -110,6 +110,8 @@ export interface SiteConfig {
   menu: { hidden: string[]; order: string[] };
   /** the logo: an uploaded picture, or one of the drawn icons on a chosen background */
   logo: { image: string; icon: string; bg: string };
+  /** the icon of the installed app / pinned page, drawn by the admin page from the logo and colours when settings are saved */
+  appIcon: { i192: string; i512: string; sig: string };
   /** the help chat in the bottom right corner */
   helpBot: { enabled: boolean; name: string; welcome: string; knowledge: string; perDay: number };
 }
@@ -200,8 +202,10 @@ export const RATIO_KEYS = ['9:16', '16:9'] as const;
 
 /** Every piece of interface text the admin can rename. */
 export const DEFAULT_TEXTS: Record<string, string> = {
-  loginTitle: 'Video bàn tay vẽ, từ một câu chủ đề',
-  loginText: 'AI viết kịch bản, bạn chỉnh từng câu, xem trước bàn tay vẽ ngay trên trang, rồi nhận video MP4 có giọng đọc và phụ đề.',
+  loginTitle: 'Chào mừng bạn',
+  loginText: 'Một tài khoản cho mọi công cụ AI trên trang: tạo video, khám phá prompt, tải tài nguyên và theo dõi mọi thứ bạn làm.',
+  /** points listed on the sign-in panel, separated by | */
+  loginPoints: 'Lưu lại mọi thứ bạn tạo, mở lại bất cứ lúc nào | Nhận thông báo qua Zalo hoặc ngay trên máy | Đăng nhập nhanh bằng Google, không cần mật khẩu',
   homeTitle: 'Xưởng video của bạn',
   newVideo: 'Tạo video mới',
   source: 'Cách tạo', topic: 'Chủ đề', topicHint: 'Ví dụ: Vì sao lương mãi không tăng dù làm việc chăm chỉ?',
@@ -313,7 +317,7 @@ export function defaultConfig(env: Env): Config {
     notice: '',
     templates: DEFAULT_TEMPLATES,
     beta: { enabled: true, label: 'Beta', note: 'Đang thử nghiệm: tính năng và giao diện có thể thay đổi. Góp ý giúp chúng tôi làm video hay hơn.' },
-    site: { loadingText:'Đang kết nối đội AI…', heroTitle: 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút', heroText: '', heroMedia: '', heroPoster: '', tutorial: '', showcase: [], theme: 'aurora', colors: { primary: '', second: '' }, menu: { hidden: [], order: [] }, logo: { image: '', icon: 'pen', bg: 'brand' }, social: {},
+    site: { loadingText:'Đang kết nối đội AI…', heroTitle: 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút', heroText: '', heroMedia: '', heroPoster: '', tutorial: '', showcase: [], theme: 'aurora', colors: { primary: '', second: '' }, menu: { hidden: [], order: [] }, logo: { image: '', icon: 'pen', bg: 'brand' }, appIcon: { i192: '', i512: '', sig: '' }, social: {},
       helpBot: { enabled: true, name: 'Trợ lý', welcome: 'Chào bạn 👋 Mình là trợ lý AI của trang. Bạn cần hướng dẫn tạo video hay có thắc mắc gì?', knowledge: '', perDay: 30 } },
     budget: { dailyVnd: 200_000, monthlyVnd: 3_000_000, warnPct: 80, perVideoVnd: 15_000 },
     // one documentary ≈ 10 AI pictures + voice ≈ 11.000đ cost; 1 credit = 1 video, packs priced with margin
@@ -378,7 +382,13 @@ export function cleanConfig(input: any, base: Config): Config {
       if (i.visibility) v = SOURCE_KEYS.filter((k) => !['hidden', 'dev'].includes(i.visibility['source:' + k]));
       return v.length ? v : ['mine-free'];
     })(),
-    texts: labels(i.texts, Object.keys(DEFAULT_TEXTS), base.texts, 240),
+    texts: (() => {
+      const t = labels(i.texts, Object.keys(DEFAULT_TEXTS), base.texts, 240);
+      // sign-in texts still at the old video-only defaults move to the site-wide ones
+      if (/^Video bàn tay vẽ, từ một câu chủ đề$/.test(t.loginTitle || '')) t.loginTitle = DEFAULT_TEXTS.loginTitle;
+      if (/^AI viết kịch bản, bạn chỉnh từng câu/.test(t.loginText || '')) t.loginText = DEFAULT_TEXTS.loginText;
+      return t;
+    })(),
     enabledStyles: en.filter((k) => !(i.visibility?.['style:' + k] === 'hidden' || i.visibility?.['style:' + k] === 'dev')).length ? en.filter((k) => !(i.visibility?.['style:' + k] === 'hidden' || i.visibility?.['style:' + k] === 'dev')) : en,
     defaults: {
       source: pick(d.source, SOURCE_KEYS, base.defaults.source), subtitles: typeof d.subtitles === 'boolean' ? d.subtitles : base.defaults.subtitles,
@@ -516,6 +526,8 @@ export function cleanConfig(input: any, base: Config): Config {
           return { primary: hex(c.primary, dc.primary), second: hex(c.second, dc.second) }; })(),
         menu: (() => { const m = x.menu || {}, keys = MENU_KEYS as readonly string[], list = (v: unknown) => [...new Set((Array.isArray(v) ? v : []).filter((k: unknown): k is string => typeof k === 'string' && keys.includes(k)))];
           return { hidden: list(m.hidden ?? d.menu.hidden), order: list(m.order ?? d.menu.order) }; })(),
+        appIcon: (() => { const a = x.appIcon || {}, da = d.appIcon || { i192: '', i512: '', sig: '' }, png = (v: unknown, dv: string) => (v === undefined ? dv : /^site:[a-f0-9]{24}\.png$/.test(String(v)) ? String(v) : '');
+          return { i192: png(a.i192, da.i192), i512: png(a.i512, da.i512), sig: str(a.sig ?? da.sig, 200, '') }; })(),
         logo: (() => { const l = x.logo || {}, dl = d.logo, bg = String(l.bg ?? dl.bg);
           return { image: l.image === undefined ? dl.image : ((img) => /\.(mp4|webm)$/i.test(img) ? '' : img)(media(l.image)), icon: pick(l.icon, LOGO_ICONS, dl.icon), bg: (LOGO_BGS as readonly string[]).includes(bg) || /^#[0-9a-f]{6}$/i.test(bg) ? bg : dl.bg }; })(),
         social: Object.fromEntries(SOCIAL_KEYS.map((k) => [k, String(x.social?.[k] ?? '').trim()]).filter(([, v]) => /^https:\/\/[^\s"'<>]{4,300}$/.test(v))),

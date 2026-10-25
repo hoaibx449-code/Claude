@@ -202,12 +202,17 @@ function paintLogo(el, logo, brand) {
   if (logo.icon === 'letter') { el.append(h('b', { class: 'logo-letter' }, (brand || 'F').trim().charAt(0).toUpperCase())); return; }
   el.insertAdjacentHTML('beforeend', `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${LOGO_ICONS[logo.icon] || LOGO_ICONS.pen}</svg>`);
 }
+/** The drawn logo as SVG: icon (or first letter) on the logo background. full = square edge to edge (app icons). */
+function logoSvg(logo, brand, full = false) {
+  const k = siteColors(ui.site), [a, b] = LOGO_FILL[logo.bg] || (logo.bg === 'night' ? ['#1e1b4b', k.primary] : /^#/.test(logo.bg || '') ? [logo.bg, logo.bg] : [k.primary, k.second]);
+  const mark = logo.icon === 'letter' ? `<text x="12" y="16.5" text-anchor="middle" font-family="Arial" font-weight="800" font-size="12" fill="#fff">${(brand || 'F').trim().charAt(0).toUpperCase().replace(/[<&]/g, '')}</text>` : `<g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${LOGO_ICONS[logo.icon] || LOGO_ICONS.pen}</g>`;
+  // app icons are cut to a circle or rounded square by the phone: the mark stays inside the middle 60%
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="24" height="24" rx="${full ? 0 : 6}" fill="url(#g)"/><g transform="${full ? 'translate(5.4 5.4) scale(.55)' : 'translate(3 3) scale(.75)'}">${mark}</g></svg>`;
+}
 function logoFavicon(logo, brand) {
   let link = document.querySelector('link[rel="icon"]'); if (!link) { link = h('link', { rel: 'icon' }); document.head.append(link); }
   if (!logo) return; if (logo.image) { link.href = siteUrl(logo.image); return; }
-  const k = siteColors(ui.site), [a, b] = LOGO_FILL[logo.bg] || (logo.bg === 'night' ? ['#1e1b4b', k.primary] : /^#/.test(logo.bg || '') ? [logo.bg, logo.bg] : [k.primary, k.second]);
-  const mark = logo.icon === 'letter' ? `<text x="12" y="16.5" text-anchor="middle" font-family="Arial" font-weight="800" font-size="12" fill="#fff">${(brand || 'F').trim().charAt(0).toUpperCase().replace(/[<&]/g, '')}</text>` : `<g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${LOGO_ICONS[logo.icon] || LOGO_ICONS.pen}</g>`;
-  link.href = 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="24" height="24" rx="6" fill="url(#g)"/><g transform="translate(3 3) scale(.75)">${mark}</g></svg>`);
+  link.href = 'data:image/svg+xml,' + encodeURIComponent(logoSvg(logo, brand));
 }
 // one list decides which pages the menus show, everywhere: header, side bar, phone tab bar and footer
 const menuShows = (route) => !(ui.site?.menu?.hidden || []).includes(route) && !(route === 'goi' && V('feature:plans') !== 'on') && !(route === 'cong-dong' && V('feature:community') === 'hidden');
@@ -887,9 +892,11 @@ function openLogin(reason, after) {
   const bg = h('div', { class: 'sheet-bg', onclick: (e) => { if (e.target === bg) close(); } },
     h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Đăng nhập' },
       h('div', { class: 'side' },
-        h('span', { class: 'brand', style: 'color:#fff' }, h('span', { class: 'logo', style: 'background:rgba(255,255,255,.2)' }, '✎'), ui.brand.name + ' ' + (ui.brand.accent || '')),
-        h('h2', { style: 'color:#fff' }, reason === 'create' ? 'Còn một bước để nhận video' : 'Chào mừng bạn'),
-        h('ul', {}, h('li', {}, 'Lưu và sửa video bất cứ lúc nào'), h('li', {}, 'Giọng đọc tiếng Việt, khớp nhịp từng câu'), h('li', {}, 'Tải MP4 hoặc nhận qua Zalo'), h('li', {}, 'Miễn phí mỗi ngày, không cần thẻ')),
+        // the site's own logo and words (Quản trị → Nhãn & chữ: loginTitle, loginText, loginPoints)
+        h('span', { class: 'brand', style: 'color:#fff' }, (() => { const l = h('span', { class: 'logo' }); paintLogo(l, ui.site?.logo, ui.brand.name); return l; })(), [ui.brand.name, ui.brand.accent].filter(Boolean).join(' ')),
+        h('h2', { style: 'color:#fff' }, reason === 'create' ? 'Còn một bước để nhận video' : T('loginTitle') || 'Chào mừng bạn'),
+        T('loginText') ? h('p', { style: 'color:rgba(255,255,255,.92)' }, T('loginText')) : null,
+        h('ul', {}, ...String(T('loginPoints') || '').split('|').map((x) => x.trim()).filter(Boolean).slice(0, 5).map((x) => h('li', {}, x))),
         h('p', { class: 'mini' }, 'Kết nối mã hoá HTTPS. Phiên đăng nhập lưu bằng cookie bảo mật, không lưu mật khẩu.')),
       h('div', { class: 'main', style: 'position:relative' },
         h('button', { type: 'button', class: 'ghost small close', 'aria-label': 'Đóng', onclick: close }, '✕'),

@@ -1,8 +1,8 @@
 // Makes the site installable and fast. The page and its scripts come from the network first
 // (with a short timeout, then the cached copy), so a new version shows up at once; heavy static
 // files (fonts, hand, icons, demo videos) are served from the cache and refreshed in the background.
-const SHELL = 'nv-shell-v117-ink', STATIC = 'nv-static-v117-ink';
-const SHELL_FILES = ['/studio-background.css?v=59','/navigation.js?v=54','/', '/app.css?v=62', '/compact-ui.css', '/polish.css', '/theme.css?v=86', '/hunter.css?v=39','/video-library.css?v=38','/video-previews.js?v=38', '/interaction.css?v=34','/admin-layout.css?v=54','/checkout.css?v=35', '/helpchat.js?v=52', '/app.js?v=105', '/faciup-live.js?v=103', '/faciup-live.css?v=103', '/home-gallery.js', '/voice-picker.js', '/prompt-hunter.js', '/creative-panel.js', '/ui-select.js?v=57', '/admin.js?v=86', '/ink.css?v=2', '/banks.js', '/engine.js', '/whiteboard-addon.js', '/illustrated-addon.js', '/icons/icon.svg'];
+const SHELL = 'nv-shell-v118-brand', STATIC = 'nv-static-v118-brand';
+const SHELL_FILES = ['/studio-background.css?v=59','/navigation.js?v=54','/', '/app.css?v=63', '/compact-ui.css', '/polish.css', '/theme.css?v=87', '/hunter.css?v=39','/video-library.css?v=38','/video-previews.js?v=38', '/interaction.css?v=34','/admin-layout.css?v=54','/checkout.css?v=35', '/helpchat.js?v=52', '/app.js?v=106', '/faciup-live.js?v=104', '/faciup-live.css?v=104', '/home-gallery.js', '/voice-picker.js', '/prompt-hunter.js', '/creative-panel.js', '/ui-select.js?v=57', '/admin.js?v=87', '/ink.css?v=3', '/banks.js', '/engine.js', '/whiteboard-addon.js', '/illustrated-addon.js', '/icons/app.svg'];
 
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== SHELL && k !== STATIC).map((k) => caches.delete(k))))); self.clients.claim(); });
@@ -30,7 +30,7 @@ self.addEventListener('fetch', (e) => {
 // a video is ready: the push carries nothing, so ask the site what to show
 self.addEventListener('push', (e) => {
   e.waitUntil(fetch('/api/push/latest', { credentials: 'include', headers: { 'x-nv': '1' } }).then((r) => r.json()).catch(() => ({}))
-    .then(({ note }) => self.registration.showNotification(note?.title || 'Nét Vẽ', { body: note?.body || 'Có cập nhật về video của bạn.', icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', tag: 'nv-video', renotify: true, data: { url: note?.url || '/' } })));
+    .then(({ note }) => self.registration.showNotification(note?.title || 'Thông báo', { body: note?.body || 'Có cập nhật về video của bạn.', icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', tag: 'nv-video', renotify: true, data: { url: note?.url || '/' } })));
 });
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();

@@ -253,6 +253,8 @@ async function adminSettings(body, tab) {
   const saveBtn = h('button', { type: 'button', 'data-ev': 'admin-save', onclick: async () => {
     saveBtn.disabled = true; saveBtn.textContent = 'Đang lưu…';
     try {
+      // the pinned-page / installed-app icon follows the logo and colours: drawn again when they changed
+      await makeAppIcons(c).catch((e) => toast('Chưa tạo được icon ứng dụng: ' + e.message));
       const saved = await api('/api/admin/settings', { method: 'PUT', body: { config: c, secrets: secretInput } });
       me = await api('/api/me'); applyUI(me.ui);
       // webhook mode is registered with Zalo on save: say whether it took
@@ -669,6 +671,27 @@ function visTab(c) {
 }
 
 /** Bounded upload with visible progress; never leave the admin waiting on a silent fetch. */
+/** PNG icons (192 and 512 px) for the home screen and the installed app, from the logo and the site's colours. */
+async function makeAppIcons(c) {
+  const logo = c.site?.logo; if (!logo) return;
+  const sig = JSON.stringify([logo, c.site.theme, c.site.colors, c.brand?.name]);
+  if (c.site.appIcon?.sig === sig && c.site.appIcon.i192 && c.site.appIcon.i512) return;
+  const before = ui.site; ui.site = c.site; // the colours being saved, not the ones in use
+  let svg; try { svg = logoSvg(logo, c.brand?.name, true); } finally { ui.site = before; }
+  const load = (src) => new Promise((ok, bad) => { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => ok(im); im.onerror = () => bad(new Error('không đọc được ảnh logo')); im.src = src; });
+  const pic = await load(logo.image ? siteUrl(logo.image) : 'data:image/svg+xml,' + encodeURIComponent(svg));
+  const draw = async (n) => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = n; const g = cv.getContext('2d');
+    if (logo.image) { // an uploaded logo: whole picture inside the safe middle, on white
+      g.fillStyle = '#fff'; g.fillRect(0, 0, n, n);
+      const k = Math.min(n * 0.7 / pic.naturalWidth, n * 0.7 / pic.naturalHeight), w = pic.naturalWidth * k, hh = pic.naturalHeight * k;
+      g.drawImage(pic, (n - w) / 2, (n - hh) / 2, w, hh);
+    } else g.drawImage(pic, 0, 0, n, n);
+    const blob = await new Promise((ok) => cv.toBlob(ok, 'image/png'));
+    return (await uploadSiteFile(new File([blob], `app-icon-${n}.png`, { type: 'image/png' }))).ref;
+  };
+  c.site.appIcon = { i192: await draw(192), i512: await draw(512), sig };
+}
 function uploadSiteFile(file, progress = () => {}) {
   if (!file.size || file.size > 60 * 1024 * 1024) return Promise.reject(new Error('Tệp cần nhỏ hơn 60 MB.'));
   const inferred = {mp4:'video/mp4',webm:'video/webm',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',mp3:'audio/mpeg',m4a:'audio/mp4'}[file.name.split('.').pop().toLowerCase()];

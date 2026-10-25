@@ -1,3 +1,4 @@
+import { appManifest, appSvg, brandName, faviconUrl, touchIconUrl } from './brand-assets.ts';
 import {publicNavigation,initialPageContent,PUBLIC_PAGES,isAppPage,pageMetadata,pageSitemap} from './page-routes.ts';
 import {councilWebhook,tickCouncil} from './council.ts';
 import {hunterPublic} from './hunter.ts';
@@ -154,6 +155,12 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
       const page=await solutionPage(req,env);if(page)return page;
       throw new HttpError(404,'Không tìm thấy trang.');
     }
+    // the installed app's name, colours and icon follow the site's settings (not the files shipped with the code)
+    if(path==='/manifest.webmanifest'||path==='/icons/app.svg'){
+      const {config}=await load(rawEnv);
+      return path==='/icons/app.svg'?new Response(appSvg(config),{headers:{'content-type':'image/svg+xml','cache-control':'public, max-age=300'}})
+       :new Response(JSON.stringify(appManifest(config)),{headers:{'content-type':'application/manifest+json; charset=utf-8','cache-control':'public, max-age=300'}});
+    }
     const appPage=isAppPage(path);
     const asset=await rawEnv.ASSETS.fetch(appPage?new Request(new URL('/',url),req):req);
     if(asset.headers.get('content-type')?.includes('text/html')){
@@ -167,6 +174,12 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
         return new HTMLRewriter()
           .on('html',{element(el){el.setAttribute('data-theme',colors.theme);if(colors.style)el.setAttribute('style',colors.style);}})
           .on('meta[name="theme-color"]',{element(el){el.setAttribute('content',colors.primary);}})
+          .on('meta[name="apple-mobile-web-app-title"]',{element(el){el.setAttribute('content',config.config.brand.name||brandName(config.config));}})
+          .on('link[rel="icon"]',{element(el){el.setAttribute('href',faviconUrl(config.config));el.removeAttribute('type');}})
+          .on('link[rel="apple-touch-icon"]',{element(el){el.setAttribute('href',touchIconUrl(config.config));}})
+          // the brand in the header and side bar from the first paint (no flash of an old name)
+          .on('#brandName,#sideBrand',{element(el){el.setInnerContent(config.config.brand.name);}})
+          .on('#brandAccent,#sideAccent',{element(el){el.setInnerContent(config.config.brand.accent||'');}})
           .on('title',{element(el){el.setInnerContent(meta.title);}})
           .on('meta[name="description"],meta[property="og:description"]',{element(el){el.setAttribute('content',meta.description);}})
           .on('meta[property="og:title"]',{element(el){el.setAttribute('content',meta.title);}})
