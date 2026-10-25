@@ -251,7 +251,8 @@ async function own(env: Env, user: User, id: string) {
 async function enqueue(env: XEnv, rc: Rc, user: User, input: any, stage: 'plan' | 'render', storyboard: any = null, parent: string | null = null, title = '') {
   const active = await env.DB.prepare("SELECT COUNT(*) AS n FROM ink_jobs WHERE user_id = ? AND (status IN ('queued','running') OR (status = 'browser' AND updated_at > ?))").bind(user.id, Date.now() - 6 * 3600_000).first<any>();
   if (active.n >= MAX_ACTIVE) throw new HttpError(429, 'Bạn đang có video chờ dựng. Đợi xong rồi tạo tiếp nhé.');
-  await useQuota(env, user.id, 'render', (await limitsFor(env, user.id)).render);
+  // the site's admins test freely; everyone else has the plan's videos a day
+  if (!(await isAdmin(env, env.config, user))) await useQuota(env, user.id, 'render', (await limitsFor(env, user.id)).render);
   const id = randomId(12), now = Date.now();
   // made in the user's browser: no machine is woken, the page does everything (status 'browser')
   const browser = input.browser === true, status = browser ? 'browser' : 'queued', message = browser ? 'Sẵn sàng dựng trên máy của bạn' : 'Đang chờ máy dựng';
@@ -477,7 +478,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
   }
   if (act === 'retry' && method === 'POST') {
     if (j.status !== 'failed') throw new HttpError(409, 'Chỉ thử lại được video bị lỗi.');
-    await useQuota(env, user.id, 'render', (await limitsFor(env, user.id)).render);
+    if (!(await isAdmin(env, env.config, user))) await useQuota(env, user.id, 'render', (await limitsFor(env, user.id)).render);
     await env.DB.prepare("UPDATE ink_jobs SET status = 'queued', error = '', progress = 0, message = 'Đang chờ máy dựng', updated_at = ? WHERE id = ?").bind(Date.now(), j.id).run();
     rc.wait(dispatch(env));
     return json({ ok: true });
