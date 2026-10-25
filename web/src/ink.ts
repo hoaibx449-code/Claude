@@ -14,6 +14,7 @@ import { limitsFor, planOf } from './plans.ts';
 import { serveObject } from './media.ts';
 import { pushUser } from './push.ts';
 import type { User } from './auth.ts';
+import { zaloInk } from './zalo.ts';
 
 type XEnv = Env & { config: Config };
 type Rc = { userId: string | null; quiet: boolean; log(type: string, extra?: any): void; wait(p: Promise<unknown>): void };
@@ -261,6 +262,46 @@ async function enqueue(env: XEnv, rc: Rc, user: User, input: any, stage: 'plan' 
   return id;
 }
 
+/** A new video from a topic or a script: the web page and Zalo both come here (same checks, same queue). */
+export async function createInk(env: XEnv, rc: Rc, user: User, b: any, extra: Record<string, unknown> = {}) {
+  const { s } = await settings(env), { plan } = await planOf(env, user.id);
+  if (!s.enabled && !(await isAdmin(env, env.config, user))) throw new HttpError(404, 'Ink Studio đang tạm tắt.');
+  const mode = b.mode === 'script' ? 'script' : 'topic', text = mode === 'script' ? str(String(b.script || '').replace(/\r/g, ''), 12_000) : str(b.topic, 500);
+  if (text.length < (mode === 'script' ? 40 : 4)) throw new HttpError(400, mode === 'script' ? 'Kịch bản quá ngắn.' : 'Hãy nhập chủ đề video.');
+  const cap = Math.min(300, plan.maxSeconds, env.config.limits.maxSeconds), seconds = Math.round(num(b.seconds, 20, 300, Math.min(s.defaults.seconds, cap)));
+  if (seconds > cap) throw new HttpError(402, `Gói ${plan.name} cho video tối đa ${cap} giây.`);
+  const ready = await readyVoices(env, s);
+  if (!ready.length) throw new HttpError(503, 'Giọng đọc đang được bảo trì, vui lòng thử lại sau ít phút.');
+  const voice = ready.find((v) => v.id === b.voice) || ready.find((v) => v.id === s.voice.default) || ready[0];
+  const music = /^[a-f0-9]{24}\.(mp3|m4a|wav)$/.test(b.music || '') ? b.music : '';
+  if (music && !(await env.BUCKET.head(`ink-music/${user.id}/${music}`))) throw new HttpError(400, 'Không tìm thấy nhạc đã tải lên.');
+  const input = { mode, [mode]: text, seconds, audience: str(b.audience, 200), tone: str(b.tone, 120), notes: str(b.notes, 600),
+    pace: pick(b.pace, PACES, s.defaults.pace as any), voice: voice.id, mood: pick(b.mood, MOODS, s.defaults.mood as any), music,
+    musicVolume: num(b.musicVolume, 0, 0.6, s.defaults.musicVolume), captions: b.captions !== false, review: typeof b.review === 'boolean' ? b.review : s.defaults.review,
+    // drawn on the user's own device: a machine writes the script, voice and drawing plan, the browser draws
+    // 'cine': real footage (HBX engine, render machines only); 'ink': hand-drawn
+    format: b.format === 'cine' ? 'cine' : 'ink',
+    browser: b.browser === true && s.machines.on.browser && b.format !== 'cine', ...extra };
+  if (input.format === 'cine' && !(env as any).PIXABAY_API_KEY) throw new HttpError(503, 'Kiểu Điện ảnh đang được chuẩn bị, vui lòng chọn Vẽ tay.');
+  return enqueue(env, rc, user, input, 'plan', null, typeof b.parent === 'string' ? b.parent : null);
+}
+/** Voices a video can be read with right now (tested, switched on). */
+export async function inkVoices(env: Env) { const { s } = await settings(env); return (await readyVoices(env, s)).map((v) => ({ id: v.id, label: v.label })); }
+/** The reviewed storyboard goes on to be made into the video. */
+export async function approveInk(env: Env, rc: Rc, id: string) {
+  const r = await env.DB.prepare("UPDATE ink_jobs SET status = 'queued', stage = 'render', message = 'Đang chờ máy dựng', updated_at = ? WHERE id = ? AND status = 'review'").bind(Date.now(), id).run();
+  if (!r.meta.changes) return false;
+  rc.wait(dispatch(env));
+  return true;
+}
+/** A storyboard nobody will make: removed, and the video it counted against the day's allowance is given back. */
+export async function dropInk(env: Env, j: { id: string; user_id: string; status: string }) {
+  const files = (await env.BUCKET.list({ prefix: `ink/${j.user_id}/${j.id}/` })).objects.map((o) => o.key);
+  if (files.length) await env.BUCKET.delete(files);
+  await env.DB.prepare('DELETE FROM ink_jobs WHERE id = ?').bind(j.id).run();
+  if (j.status === 'queued' || j.status === 'review') await refundQuota(env, j.user_id, 'render');
+}
+
 export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path: string): Promise<Response | null> {
   if (!path.startsWith('/api/ink/')) return null;
   const { s } = await settings(env), method = req.method, sub = path.slice('/api/ink/'.length);
@@ -292,27 +333,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
     const rows = (await env.DB.prepare('SELECT * FROM ink_jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT 60').bind(user.id).all<any>()).results;
     return json({ jobs: rows.map(view) });
   }
-  if (sub === 'jobs' && method === 'POST') {
-    const b = await body<any>(req, 40_000), { plan } = await planOf(env, user.id);
-    const mode = b.mode === 'script' ? 'script' : 'topic', text = mode === 'script' ? str(String(b.script || '').replace(/\r/g, ''), 12_000) : str(b.topic, 500);
-    if (text.length < (mode === 'script' ? 40 : 4)) throw new HttpError(400, mode === 'script' ? 'Kịch bản quá ngắn.' : 'Hãy nhập chủ đề video.');
-    const cap = Math.min(300, plan.maxSeconds, env.config.limits.maxSeconds), seconds = Math.round(num(b.seconds, 20, 300, s.defaults.seconds));
-    if (seconds > cap) throw new HttpError(402, `Gói ${plan.name} cho video tối đa ${cap} giây.`);
-    const ready = await readyVoices(env, s);
-    if (!ready.length) throw new HttpError(503, 'Giọng đọc đang được bảo trì, vui lòng thử lại sau ít phút.');
-    const voice = ready.find((v) => v.id === b.voice) || ready.find((v) => v.id === s.voice.default) || ready[0];
-    const music = /^[a-f0-9]{24}\.(mp3|m4a|wav)$/.test(b.music || '') ? b.music : '';
-    if (music && !(await env.BUCKET.head(`ink-music/${user.id}/${music}`))) throw new HttpError(400, 'Không tìm thấy nhạc đã tải lên.');
-    const input = { mode, [mode]: text, seconds, audience: str(b.audience, 200), tone: str(b.tone, 120), notes: str(b.notes, 600),
-      pace: pick(b.pace, PACES, s.defaults.pace as any), voice: voice.id, mood: pick(b.mood, MOODS, s.defaults.mood as any), music,
-      musicVolume: num(b.musicVolume, 0, 0.6, s.defaults.musicVolume), captions: b.captions !== false, review: typeof b.review === 'boolean' ? b.review : s.defaults.review,
-      // drawn on the user's own device: a machine writes the script, voice and drawing plan, the browser draws
-      // 'cine': real footage (HBX engine, render machines only); 'ink': hand-drawn
-      format: b.format === 'cine' ? 'cine' : 'ink',
-      browser: b.browser === true && s.machines.on.browser && b.format !== 'cine' };
-    if (input.format === 'cine' && !(env as any).PIXABAY_API_KEY) throw new HttpError(503, 'Kiểu Điện ảnh đang được chuẩn bị, vui lòng chọn Vẽ tay.');
-    return json({ id: await enqueue(env, rc, user, input, 'plan') });
-  }
+  if (sub === 'jobs' && method === 'POST') return json({ id: await createInk(env, rc, user, await body<any>(req, 40_000)) });
   const m = sub.match(/^jobs\/([a-f0-9]{24})(?:\/(file\/[\w.]+|approve|repace|retry|storyboard|handoff|browser\/video|browser\/done|browser\/progress|browser\/error|browser\/ai|browser\/voice|browser\/plan|browser\/music|browser\/file\/(?:cover|thumb)\.jpg))?$/);
   if (!m) throw new HttpError(404, 'Không tìm thấy.');
   const j = await own(env, user, m[1]), act = m[2] || '';
@@ -331,10 +352,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
   }
   if (!act && method === 'DELETE') {
     if (j.status === 'running') throw new HttpError(409, 'Video đang dựng, đợi xong rồi xoá.');
-    const files = (await env.BUCKET.list({ prefix: `ink/${user.id}/${j.id}/` })).objects.map((o) => o.key);
-    if (files.length) await env.BUCKET.delete(files);
-    await env.DB.prepare('DELETE FROM ink_jobs WHERE id = ?').bind(j.id).run();
-    if (j.status === 'queued') await refundQuota(env, user.id, 'render');
+    await dropInk(env, j);
     return json({ ok: true });
   }
   if (act === 'storyboard' && method === 'GET') {
@@ -350,9 +368,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
     return serveObject(env, req, key(j, name), FILES[name], { 'cache-control': 'private, max-age=600', ...(dl ? { 'content-disposition': `attachment; filename="faciup-${j.id.slice(0, 8)}.${name.split('.')[1]}"` } : {}) });
   }
   if (act === 'approve' && method === 'POST') {
-    if (j.status !== 'review') throw new HttpError(409, 'Phân cảnh này không chờ duyệt.');
-    await env.DB.prepare("UPDATE ink_jobs SET status = 'queued', stage = 'render', message = 'Đang chờ máy dựng', updated_at = ? WHERE id = ? AND status = 'review'").bind(Date.now(), j.id).run();
-    rc.wait(dispatch(env));
+    if (j.status !== 'review' || !(await approveInk(env, rc, j.id))) throw new HttpError(409, 'Phân cảnh này không chờ duyệt.');
     return json({ ok: true });
   }
   if (act === 'repace' && method === 'POST') {
@@ -448,6 +464,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
       await env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('ink:footage', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(JSON.stringify(all), now).run();
     }
     rc.log('ink.done', { data: { job: j.id, machine: 'browser', renderSec: num(b.seconds, 0, 99999, 0), device: str(b.device, 80), size: head.size } });
+      rc.wait(zaloInk(env, rc, j, 'done'));
       return json({ ok: true });
     }
     if (act === 'handoff' && method === 'POST') {
@@ -550,7 +567,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     const review = input.review === true && !input.browser; // in the browser the storyboard is shown before drawing anyway
     await env.DB.prepare(`UPDATE ink_jobs SET storyboard = ?, title = ?, meta = ?, stage = 'render', status = ?, lease = ?, progress = ?, message = ?, updated_at = ? WHERE id = ?`)
       .bind(JSON.stringify(sb), title, JSON.stringify(next), review ? 'review' : 'running', review ? '' : lease, 40, review ? 'Phân cảnh xong, chờ bạn duyệt' : 'Phân cảnh xong, đang dựng', now, j.id).run();
-    if (review) rc.wait(notify(env, j.user_id, j.id, 'Phân cảnh đã sẵn sàng', `"${title}": xem phân cảnh và bấm Dựng video.`));
+    if (review) { rc.wait(notify(env, j.user_id, j.id, 'Phân cảnh đã sẵn sàng', `"${title}": xem phân cảnh và bấm Dựng video.`)); rc.wait(zaloInk(env, rc, { ...j, title }, 'review', sb)); }
     return json({ render: !review });
   }
   if (act === 'exported' && req.method === 'POST') {
@@ -572,6 +589,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     rc.log('ink.done', { data: { job: j.id, videoSec: b.duration, renderSec: b.seconds, voice: b.voice, totalSec: Math.round((now - j.created_at) / 1000) } });
     await voiceUsed(env, j, b);
     rc.wait(notify(env, j.user_id, j.id, 'Video đã xong ✓', `"${j.title}" đã dựng xong. Bấm để xem và tải về.`));
+    rc.wait(zaloInk(env, rc, { ...j, duration: num(b.duration, 0, 3600, 0) }, 'done'));
     return json({ ok: true });
   }
   if (act === 'fail' && req.method === 'POST') {
@@ -580,6 +598,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     await refundQuota(env, j.user_id, 'render');
     rc.log('ink.fail', { ok: false, data: { job: j.id, stage: j.stage, error } });
     rc.wait(notify(env, j.user_id, j.id, 'Video chưa dựng được', `"${j.title}": ${error.slice(0, 120)}`));
+    rc.wait(zaloInk(env, rc, j, 'failed', error));
     return json({ ok: true });
   }
   throw new HttpError(405, 'Không hỗ trợ.');

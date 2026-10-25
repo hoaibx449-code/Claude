@@ -20,7 +20,9 @@ import { budgetState } from './budget.ts';
 import { aiCost, logEvent } from './log.ts';
 import { pushUser } from './push.ts';
 import { createOrder, planOf } from './plans.ts';
-import { createProject, queueRender, type Rc, type XEnv } from './worker.ts';
+import { type Rc, type XEnv } from './worker.ts';
+import { approveInk, createInk, dropInk, inkVoices } from './ink.ts';
+import { serveObject } from './media.ts';
 
 const API = 'https://bot-api.zaloplatforms.com/bot';
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -91,7 +93,7 @@ export function parseCommand(text: string) {
 }
 /** The 6-character code among the words after KETNOI / CHUWEB ("KETNOI ma ABC123" works too). */
 const pickCode = (words: string[]) => { const w = words.map((x) => x.toUpperCase().replace(/[^A-Z0-9]/g, '')); return w.find((x) => /^[A-Z0-9]{6}$/.test(x)) || w[0] || ''; };
-const COMMANDS = ['GIUP', 'HUONGDAN', 'HELP', 'START', 'MENU', '?', 'HD', 'XINCHAO', 'CHAO', 'HI', 'HELLO', 'TT', 'TRANGTHAI', 'DS', 'DANHSACH', 'KHUNG',
+const COMMANDS = ['OK', 'DUYET', 'SUA', 'HUY', 'GIUP', 'HUONGDAN', 'HELP', 'START', 'MENU', '?', 'HD', 'XINCHAO', 'CHAO', 'HI', 'HELLO', 'TT', 'TRANGTHAI', 'DS', 'DANHSACH', 'KHUNG',
   'PROMPT', 'DINHDANG', 'DD', 'PHONGCACH', 'PC', 'GIONG', 'TAT', 'BAT', 'HUYKETNOI', 'MAU', 'TAO', 'KB', 'KICHBAN', 'KETNOI', 'CHUWEB', 'GIA', 'MUA', 'NV'];
 
 /**
@@ -101,10 +103,8 @@ const COMMANDS = ['GIUP', 'HUONGDAN', 'HELP', 'START', 'MENU', '?', 'HD', 'XINCH
 export function needsAI(env: XEnv, text: string) {
   const { cmd, arg } = parseCommand(text);
   if(cmd==='PROMPT')return arg.length>=20||fold(arg).trim().toUpperCase()==='ANH';
-  if (!anyTextAI(env)) return false;
-  if (cmd === 'TAO') return !!arg && env.config.enabledSources.includes('topic');
-  const script = cmd === 'KB' || cmd === 'KICHBAN' || (!COMMANDS.includes(cmd) && String(text || '').trim().length >= 120);
-  return script;
+  // a video (TAO, KB, a long script) is only put in the render queue: answered at once, the machine writes and draws it
+  return false;
 }
 
 async function send(env: XEnv, chatId: string, text: string, messageId?: string) {
@@ -308,7 +308,7 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   }
   // messages a day per person, as the admin set it (Quản trị → Zalo); each message counts once, the owner never
 
-  if (firstTry && !owner && z.perDay > 0) {
+  if (firstTry && !owner && z.perDay > 0 && !messageId.endsWith('-tao')) {
     try { await useQuota(env, 'z:' + chatId, 'zalo', z.perDay); }
     catch { rc.log('zalo.limit', { ok: false, data: { chat: chatId, limit: z.perDay } }); return reply(`Hôm nay bạn đã nhắn ${z.perDay} tin, mình xin phép trả lời tiếp vào ngày mai nhé. Việc gấp bạn gọi nhân viên giúp mình.`); }
   }
@@ -406,6 +406,8 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   if (!user) {
     // nothing to show or undo yet: answer without signing them up
     if (cmd === 'HUYKETNOI') return reply('Zalo này chưa kết nối tài khoản nào.');
+    if (cmd === 'OK' || cmd === 'DUYET') return ask();
+    if (cmd === 'SUA' || cmd === 'HUY') return reply('Không có phân cảnh nào đang chờ bạn duyệt. Gửi TAO + chủ đề để làm video.');
     if (['TT', 'TRANGTHAI', 'DS', 'DANHSACH'].includes(cmd)) return reply('Zalo này chưa có video nào. Gửi KB + kịch bản để AI thiết kế video.');
     if (cmd === 'GIA') return reply(await quote(env, { chatId }));
     if (cmd === 'NV') return quickAnswer(env, rc, { ...ctx(), text: 'gặp nhân viên ' + arg });
@@ -420,35 +422,28 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
   switch (cmd) {
     case 'TT': case 'TRANGTHAI': return reply(await statusText(env,user));
     case 'DS': case 'DANHSACH': {
-      const ps = (await env.DB.prepare('SELECT title, updated_at FROM projects WHERE user_id = ? ORDER BY updated_at DESC LIMIT 5').bind(user.id).all<any>()).results;
+      const ps = (await env.DB.prepare('SELECT title, updated_at FROM (SELECT title, updated_at FROM ink_jobs WHERE user_id = ? UNION ALL SELECT title, updated_at FROM projects WHERE user_id = ?) ORDER BY updated_at DESC LIMIT 5').bind(user.id, user.id).all<any>()).results;
       return reply(ps.length ? 'Video gần đây:\n' + ps.map((p, i) => `${i + 1}. ${p.title}`).join('\n') + `\nSửa chi tiết trên web: ${origin(env)}` : 'Chưa có video nào.');
     }
-    case 'KHUNG': {
-      const v = fold(rest.join(' ')).toLowerCase();
-      if (!/ngang|doc|16|9/.test(v)) return reply(`Khung hiện tại: ${prefs.ratio === '16:9' ? 'ngang 16:9' : 'dọc 9:16'}.\nGõ KHUNG DOC (TikTok, Reels) hoặc KHUNG NGANG (YouTube).`);
-      // "9:16" is tall even though it contains 16
-      prefs.ratio = /ngang|16\s*[:x/]\s*9|^16$/.test(v) ? '16:9' : '9:16';
-      await savePrefs(prefs);
-      return reply(`Đã chọn khung ${prefs.ratio === '16:9' ? 'ngang 16:9 (YouTube)' : 'dọc 9:16 (TikTok, Reels)'}.`);
-    }
+    case 'KHUNG': return reply('Video tạo qua Zalo luôn là khung dọc 9:16 (TikTok, Reels, Shorts).');
     case 'DINHDANG': case 'DD': case 'PHONGCACH': case 'PC': {
       // the formats the admin lets people pick in Zalo (Quản trị → Zalo → Định dạng video qua Zalo)
-      const c = env.config, looks = zaloWays(c), def = c.zalo.formats.default;
-      if (looks.length < 2) return reply(`Video qua Zalo được dựng theo định dạng: ${wayName(c, wayFor(c, prefs))}.`);
+      const c = env.config, looks = zaloWays(c, env), def = c.zalo.formats.default;
+      if (looks.length < 2) return reply(`Video qua Zalo được dựng theo kiểu: ${wayName(c, wayFor(c, prefs, env))} (${wayNote(c, wayFor(c, prefs, env))}).`);
       const n = Number(rest[0]);
-      if (!rest.length) return reply(`Chọn định dạng video (gõ DINHDANG + số):\n0. ${wayName(c, def)} (mặc định)\n` + looks.map((k, i) => `${i + 1}. ${wayName(c, k)} — ${wayNote(c, k)}`).join('\n') + `\nĐang dùng: ${wayName(c, wayFor(c, prefs))}`);
+      if (!rest.length) return reply(`Chọn định dạng video (gõ DINHDANG + số):\n0. ${wayName(c, def)} (mặc định)\n` + looks.map((k, i) => `${i + 1}. ${wayName(c, k)} — ${wayNote(c, k)}`).join('\n') + `\nĐang dùng: ${wayName(c, wayFor(c, prefs, env))}`);
       const want = fold(rest.join(' ')).toLowerCase();
       const pick = n === 0 && /^0$/.test(rest[0]) ? undefined : looks[n - 1] || looks.find((k) => fold(wayName(c, k)).toLowerCase().includes(want));
       if (n !== 0 && !pick) return reply('Không có định dạng đó. Gõ DINHDANG để xem danh sách.');
       prefs.look = pick; await savePrefs(prefs);
-      return reply('Đã chọn định dạng: ' + wayName(c, wayFor(c, prefs)));
+      return reply('Đã chọn kiểu video: ' + wayName(c, wayFor(c, prefs, env)));
     }
     case 'GIONG': {
-      const voices = env.config.voices.filter((v) => vis(env.config, 'voice:' + v.code) === 'on');
+      const voices = await inkVoices(env);
       const n = Number(rest[0]);
-      if (!n) return reply('Chọn giọng đọc (gõ GIONG + số):\n' + voices.map((v, i) => `${i + 1}. ${v.label}`).join('\n'));
+      if (!n) return reply('Chọn giọng đọc (gõ GIONG + số):\n' + voices.map((v, i) => `${i + 1}. ${v.label}${v.id === prefs.inkVoice ? ' (đang dùng)' : ''}`).join('\n'));
       if (!voices[n - 1]) return reply('Không có giọng số ' + n);
-      prefs.voice = voices[n - 1].code; await savePrefs(prefs);
+      prefs.inkVoice = voices[n - 1].id; await savePrefs(prefs);
       return reply('Đã chọn giọng: ' + voices[n - 1].label);
     }
     case 'GIA': return reply(await quote(env, { chatId }, (await planOf(env, user.id)).plan.id));
@@ -466,18 +461,40 @@ async function handleMessage(env: XEnv, rc: Rc, chatId: string, text: string, na
       await env.DB.prepare('DELETE FROM zalo_links WHERE chat_id = ?').bind(chatId).run();
       rc.log('zalo.unlink', { data: { chat: chatId } });
       return reply('Đã bỏ liên kết Zalo.');
-    case 'MAU': return reply('Đã bỏ kịch bản mẫu. Gửi TAO + chủ đề hoặc KB + kịch bản để AI thiết kế video riêng.');
+    case 'MAU': return reply('Gửi TAO + chủ đề (ví dụ: TAO vì sao lương mãi không tăng) hoặc KB + kịch bản của bạn, mình làm video riêng cho bạn.');
+  }
+  // the storyboard sent for review: make it, change it, or drop it
+  if (['OK', 'DUYET', 'SUA', 'HUY'].includes(cmd)) {
+    const j = await env.DB.prepare("SELECT id, user_id, status, title, input FROM ink_jobs WHERE user_id = ? AND status = 'review' ORDER BY updated_at DESC LIMIT 1").bind(user.id).first<any>();
+    // "ok" with nothing waiting is just a word in a conversation
+    if (!j) return cmd === 'SUA' || cmd === 'HUY' ? reply('Không có phân cảnh nào đang chờ bạn duyệt. Gõ TT để xem video của bạn.') : ask();
+    if (cmd === 'OK' || cmd === 'DUYET') {
+      if (!(await approveInk(env, rc, j.id))) return reply('Phân cảnh này đã được xử lý rồi. Gõ TT để xem tiến độ.');
+      rc.log('zalo.ink.approve', { data: { job: j.id } });
+      return reply(`Đã duyệt. "${j.title}" đang vào máy dựng, xong mình gửi video ngay ở đây.`);
+    }
+    if (cmd === 'HUY') { await dropInk(env, j); rc.log('zalo.ink.drop', { data: { job: j.id } }); return reply(`Đã bỏ phân cảnh "${j.title}". Lượt tạo video đã được hoàn lại.`); }
+    const input = JSON.parse(j.input || '{}');
+    if (arg.length < 4) return reply('Gửi: SUA + điều bạn muốn đổi. Ví dụ: SUA mở đầu bằng một câu hỏi, thêm ví dụ về tiền điện');
+    if (input.mode === 'script') return reply('Video này làm từ kịch bản của bạn: hãy sửa kịch bản rồi gửi lại KB + kịch bản mới, mình làm phân cảnh mới. Gõ HUY để bỏ phân cảnh cũ.');
+    try {
+      const notes = [input.notes, 'Người xem yêu cầu sửa: ' + arg].filter(Boolean).join('\n').slice(-600);
+      const id = await createInk(env, rc, user, { ...input, notes, parent: j.id }, { zalo: chatId });
+      await dropInk(env, j);
+      rc.log('zalo.ink.revise', { data: { job: j.id, next: id } });
+      return reply('Đã nhận, mình làm lại phân cảnh theo ý bạn. Có bản mới mình gửi ngay để bạn duyệt.');
+    } catch (e: any) { return reply('Chưa làm lại được phân cảnh: ' + e.message); }
   }
   if (cmd === 'TAO') {
     if (!arg) return reply('Gửi: TAO + chủ đề. Ví dụ: TAO vì sao lương mãi không tăng');
     if (!env.config.enabledSources.includes('topic') || !anyTextAI(env)) return reply(t.noAI);
-    return makeVideo(env, rc, user, chatId, 'topic', arg, prefs, !link, messageId);
+    return makeVideo(env, rc, user, chatId, 'topic', arg, prefs, messageId);
   }
   if (cmd === 'KB' || cmd === 'KICHBAN' || longScript) {
     const script = cmd === 'KB' || cmd === 'KICHBAN' ? arg : raw;
-    if (script.length < 20) return reply('Gửi: KB + kịch bản của bạn (ít nhất một câu).');
-    const src = 'mine-ai';
-    return makeVideo(env, rc, user, chatId, src, script, prefs, !link, messageId);
+    if (script.length < 40) return reply('Gửi: KB + kịch bản của bạn (ít nhất vài câu, từ 40 ký tự).');
+    if (!anyTextAI(env)) return reply(t.noAI);
+    return makeVideo(env, rc, user, chatId, 'script', script, prefs, messageId);
   }
   return ask();
 }
@@ -681,41 +698,36 @@ async function quickAnswer(env: XEnv, rc: Rc, x: AskCtx, why = '') {
 }
 async function statusText(env: XEnv, user: User | null) {
   if (!user) return 'Bạn chưa có video nào. Gửi TAO + chủ đề để làm video đầu tiên nhé.';
-  const jobs = (await env.DB.prepare("SELECT j.id, j.status, j.progress, j.error, p.title FROM jobs j JOIN projects p ON p.id = j.project_id WHERE j.user_id = ? ORDER BY j.created_at DESC LIMIT 3").bind(user.id).all<any>()).results;
-  if (!jobs.length) {
-    const drafts=(await env.DB.prepare("SELECT DISTINCT p.id,p.title,p.updated_at FROM projects p JOIN zalo_messages m ON m.project_id=p.id WHERE p.user_id=? AND NOT EXISTS(SELECT 1 FROM jobs j WHERE j.project_id=p.id) ORDER BY p.updated_at DESC LIMIT 3").bind(user.id).all<any>()).results;
-    if(drafts.length)return 'Chưa có tác vụ dựng MP4. Các bản nháp đã chuẩn bị qua Zalo:\n'+drafts.map(p=>`• ${p.title}: chưa dựng\n${origin(env)}/p/${p.id}`).join('\n')+'\nMở dự án trên web để dựng video.';
-    return 'Chưa có tác vụ dựng video nào trong hệ thống. Yêu cầu thiết kế có thể đang chờ AI xử lý hoặc đã lỗi; chưa thể khẳng định đang dựng MP4.';
-  }
-  const names: Record<string, string> = { queued: 'đang chờ dựng', running: 'đang dựng', done: 'đã xong', failed: 'bị lỗi' };
-  const lines = await Promise.all(jobs.map(async (j) => `• ${j.title}: ${names[j.status] || j.status}${j.status === 'running' ? ` ${j.progress}%` : ''}${j.status === 'done' ? '\n  ' + (await shareLink(env, origin(env), j.id)) : ''}${j.status==='failed'&&j.error?' ('+j.error+')':''}`));
+  const web = await siteUrl(env);
+  const ink = (await env.DB.prepare('SELECT id, status, progress, error, message, title, created_at FROM ink_jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT 3').bind(user.id).all<any>()).results;
+  const old = (await env.DB.prepare('SELECT j.id, j.status, j.progress, j.error, p.title, j.created_at FROM jobs j JOIN projects p ON p.id = j.project_id WHERE j.user_id = ? ORDER BY j.created_at DESC LIMIT 3').bind(user.id).all<any>()).results;
+  const all = [...ink.map((j) => ({ ...j, ink: true })), ...old.map((j) => ({ ...j, ink: false }))].sort((x, y) => y.created_at - x.created_at).slice(0, 3);
+  if (!all.length) return 'Bạn chưa có video nào. Gửi TAO + chủ đề để làm video đầu tiên nhé.';
+  const names: Record<string, string> = { queued: 'đang chờ máy dựng', running: 'đang dựng', review: 'phân cảnh chờ bạn duyệt (OK để dựng, SUA … để sửa)', browser: 'chờ dựng trên trình duyệt (mở web)', done: 'đã xong', failed: 'bị lỗi' };
+  const lines = await Promise.all(all.map(async (j) => {
+    const link = j.status === 'done' ? '\n  ' + (j.ink ? await inkShareLink(env, web, j.id) : await shareLink(env, web, j.id)) : '';
+    return `• ${j.title}: ${names[j.status] || j.status}${j.status === 'running' ? ` ${j.progress}%` : ''}${link}${j.status === 'failed' && j.error ? ' (' + j.error + ')' : ''}`;
+  }));
   return lines.join('\n');
 }
 
 // ---------------------------------------------------------------- video formats in Zalo
-const CLASSIC: Record<string, [string, string, string]> = {
-  auto: ['Tự động đa dạng', 'mỗi video một cách vẽ hợp với nội dung', ''],
-  'classic-sketch': ['Whiteboard', 'AI thiết kế cảnh theo nội dung', 'sketch'],
-  'classic-diagram': ['Biểu đồ vẽ tay', 'biểu đồ, số liệu được tay vẽ từng nét', 'diagram'],
-  classic: ['Tranh doodle', 'mỗi câu một bức tranh vẽ tay lớn', 'doodle'],
+// Videos made in Zalo come from the same engine as the web page's "Tạo video": drawn by hand, or real footage.
+const WAYS: Record<string, [string, string]> = {
+  ink: ['Vẽ tay', 'bàn tay vẽ từng ý trên bảng trắng'],
+  cine: ['Điện ảnh', 'cảnh quay thật, máy quay chuyển động theo lời kể'],
 };
-export const wayName = (c: Config, k: string) => (k === 'web' ? 'Mặc định của web' : CLASSIC[k]?.[0] || c.labels.looks[k] || k);
-const wayNote = (c: Config, k: string) => CLASSIC[k]?.[1] || c.labels.lookNotes[k] || '';
-/** A way still switched on for the site (an admin may have hidden a format or a kind of picture). */
-const wayOn = (c: Config, k: string) => ['auto','classic-sketch','kinetic'].includes(k) && (k === 'auto' ? true : CLASSIC[k] ? vis(c, 'visual:' + CLASSIC[k][2]) === 'on' : vis(c, 'look:' + k) === 'on');
+export const wayName = (_c: Config, k: string) => WAYS[k]?.[0] || k;
+const wayNote = (_c: Config, k: string) => WAYS[k]?.[1] || '';
+/** The real-footage kind needs its footage library (a Pixabay key). */
+const wayOn = (env: XEnv | null, k: string) => !!WAYS[k] && (k !== 'cine' || !env || !!(env as any).PIXABAY_API_KEY);
 /** The formats people may pick in Zalo, in the admin's order. */
-export function zaloWays(c: Config) { return c.zalo.formats.allowed.filter((k) => ZALO_WAYS.includes(k as any) && wayOn(c, k)); }
-/** What createProject needs for a way: a format, "auto", or the classic board with its kind of picture. */
-function wayOptions(k: string): { look?: string; visual?: string } {
-  if (k === 'auto') return { look: 'auto' };
-  if (CLASSIC[k]) return { look: 'classic-sketch', visual: 'sketch' };
-  return k === 'kinetic' ? { look: k } : { look: 'classic-sketch', visual: 'sketch' };
-}
+export function zaloWays(c: Config, env: XEnv | null = null) { return c.zalo.formats.allowed.filter((k) => ZALO_WAYS.includes(k as any) && wayOn(env, k)); }
 /** The way for this person's next video: their own pick if still allowed, otherwise the admin's default. */
-function wayFor(c: Config, prefs: any) {
-  const ways = zaloWays(c), d = c.zalo.formats.default;
+function wayFor(c: Config, prefs: any, env: XEnv | null = null) {
+  const ways = zaloWays(c, env), d = c.zalo.formats.default;
   if (prefs?.look && ways.includes(prefs.look) && ways.length > 1) return prefs.look;
-  return d === 'web' || wayOn(c, d) ? d : 'web';
+  return wayOn(env, d) ? d : 'ink';
 }
 
 const money = (n: number) => n.toLocaleString('vi-VN') + 'đ';
@@ -728,7 +740,7 @@ function siteFacts(env: XEnv) {
   const web = origin(env);
   return [`Tên dịch vụ: ${brand}. ${c.brand.tagline}`, `Trang web: ${web}. Bảng giá: ${web}/goi. Điều khoản: ${web}/dieu-khoan. Hoàn tiền: ${web}/hoan-tien.`,
     `Các gói:\n${plans}`, c.payment.enabled ? 'Thanh toán: chuyển khoản qua mã VietQR, ngay trong Zalo (hệ thống gửi mã khi khách đồng ý mua) hoặc trên web mục Bảng giá; gói tự kích hoạt sau 1-2 phút khi tiền về. Không nhận thẻ.' : 'Hiện chưa mở thanh toán trực tuyến.',
-    `Định dạng video: ${looks}.`, `Định dạng khi tạo qua Zalo: ${zaloWays(c).length > 1 ? zaloWays(c).map((k) => wayName(c, k)).join(', ') + ' (gõ DINHDANG để chọn)' : wayName(c, c.zalo.formats.default)}; mặc định ${wayName(c, c.zalo.formats.default)}.`, 'Video MP4 1080p, khung dọc 9:16 hoặc ngang 16:9, giọng đọc tiếng Việt, phụ đề. Xem trước ngay trên web, dựng xong trong vài phút, link xem/tải gửi về Zalo.',
+    `Định dạng video: ${looks}.`, `Kiểu video khi tạo qua Zalo: ${zaloWays(c, env).length > 1 ? zaloWays(c, env).map((k) => `${wayName(c, k)} (${wayNote(c, k)})`).join(', ') + ' (gõ DINHDANG để chọn)' : wayName(c, wayFor(c, {}, env))}; mặc định ${wayName(c, wayFor(c, {}, env))}.`, `Video MP4 1080p khung dọc 9:16, giọng đọc tiếng Việt, phụ đề.${c.zalo.review ? ' Qua Zalo: AI gửi phân cảnh để khách duyệt (OK để dựng, SUA … để sửa), rồi' : ' Qua Zalo:'} dựng xong trong vài phút, ảnh bìa và link xem/tải gửi về Zalo.`,
     `Mã gói để chốt đơn: ${forSale(c).map((p) => `${p.id} = ${p.name}`).join('; ') || 'không có gói trả phí'}. Khách đồng ý mua là nhận ngay mã QR chuyển khoản trong Zalo, không cần lên web.`,
     'Trong Zalo khách chỉ cần nói tự nhiên: nhắn chủ đề để làm video, dán kịch bản để dựng đúng lời, hỏi giá, hỏi video tới đâu. (Lệnh tắt như TAO, KB, GIA, TT vẫn dùng được nhưng không cần nhắc.)', c.legal.email && !/example\.(com|org)$/i.test(c.legal.email) ? `Email hỗ trợ: ${c.legal.email}` : ''].filter(Boolean).join('\n');
 }
@@ -765,7 +777,7 @@ async function assistantReply(env: XEnv, rc: Rc, x: AskCtx) {
   try { if (!owner && x.firstTry !== false) await useQuota(env, 'z:' + x.chatId, 'chat', a.perDay); }
   catch { rc.log('zalo.limit', { ok: false, data: { chat: x.chatId, kind: 'ai', limit: a.perDay } }); return quickAnswer(env, rc, x, `khách đã dùng hết ${a.perDay} câu AI hôm nay (Quản trị → Zalo → Số câu AI trả lời)`); }
   if ((await budgetState(env)).over) return quickAnswer(env, rc, x, 'hết ngân sách AI');
-  const ways = zaloWays(c);
+  const ways = zaloWays(c, env);
   if (x.patient) await typing(env, x.chatId); // still preparing: keep "đang nhập…" on screen
   const sys = [
     `Bạn là ${a.name}, nhân viên tư vấn bán hàng và chăm sóc khách hàng của dịch vụ dưới đây, đang nhắn tin với khách qua Zalo.`,
@@ -813,10 +825,9 @@ async function assistantReply(env: XEnv, rc: Rc, x: AskCtx) {
   const profile = { ...x.lead.profile };
   if (ex.profile && typeof ex.profile === 'object') for (const [k, v] of Object.entries(ex.profile).slice(0, 12)) if (/^[a-zA-Z]{2,20}$/.test(k) && typeof v === 'string' && v.trim()) profile[k] = v.trim().slice(0, 80);
   const prefs = { ...(profile.prefs || {}) };
-  if (ex.ratio === '9:16' || ex.ratio === '16:9') prefs.ratio = ex.ratio;
   if (ex.voice === 'nam' || ex.voice === 'nu') {
-    const want = ex.voice === 'nam' ? /\bnam\b/i : /\bnữ\b/i, v = c.voices.filter((v) => vis(c, 'voice:' + v.code) === 'on').find((v) => want.test(v.label));
-    if (v) prefs.voice = v.code;
+    const want = ex.voice === 'nam' ? /\bnam\b/i : /\bnữ\b/i, v = (await inkVoices(env)).find((v) => want.test(v.label));
+    if (v) prefs.inkVoice = v.id;
   }
   if (typeof ex.look === 'string' && ways.includes(ex.look)) prefs.look = ex.look;
   profile.prefs = prefs;
@@ -833,8 +844,8 @@ async function assistantReply(env: XEnv, rc: Rc, x: AskCtx) {
       .bind(x.messageId+'-tao',x.chatId,x.name,'TAO '+ans.topic,now,now).run();
     await saveLead(env,x.chatId,{stage:x.lead.stage==='new'||x.lead.stage==='interested'?'trying':x.lead.stage});
     rc.log('zalo.assistant.video',{data:{chat:x.chatId,topic:ans.topic.slice(0,120)}});
-    const manual=c.rendering.mode==='browser'||!c.zalo.autoRender;
-    return x.reply(manual?'Đã ghi nhận yêu cầu vào hàng chờ thiết kế. Hiện chưa dựng MP4: hệ thống đang dùng chế độ mở web để dựng. Khi bản nháp sẵn sàng, mình sẽ gửi liên kết để bạn mở và xuất video.':'Đã ghi nhận yêu cầu vào hàng chờ thiết kế. Chưa có tác vụ dựng MP4; mình sẽ báo khi thiết kế xong và tác vụ dựng được tạo.');
+    // made now, like a TAO the person typed (it answers with what really happened: queued, or why not)
+    return processMessage(env, rc, x.messageId + '-tao');
   }
   const text = ans.reply.trim();
   const full = options.length ? text + '\n' + options.map((o, i) => `${i + 1}. ${o.label}`).join('\n') : text;
@@ -850,31 +861,93 @@ async function assistantReply(env: XEnv, rc: Rc, x: AskCtx) {
 
 }
 
-async function makeVideo(env: XEnv, rc: Rc, user: User, chatId: string, source: string, text: string, prefs: any, guest: boolean, messageId: string) {
-  const t = env.config.zalo.templates;
+/** A video from Zalo: the same engine and queue as the web page's "Tạo video" (hand-drawn or real footage). */
+async function makeVideo(env: XEnv, rc: Rc, user: User, chatId: string, mode: 'topic' | 'script', text: string, prefs: any, messageId: string) {
+  const c = env.config, way = wayFor(c, prefs, env);
   try {
     if (await env.DB.prepare('SELECT 1 FROM blocked_users WHERE user_id = ?').bind(user.id).first()) return send(env, chatId, 'Tài khoản đang bị khóa. Vui lòng liên hệ chủ web.', messageId);
-    const checkpoint = await env.DB.prepare('SELECT project_id, job_id FROM zalo_messages WHERE id = ?').bind(messageId).first<any>();
+    // a message retried by the minute job never makes a second video
+    const checkpoint = await env.DB.prepare('SELECT job_id FROM zalo_messages WHERE id = ?').bind(messageId).first<any>();
     if (checkpoint?.job_id) return send(env, chatId, 'Video này đã vào hàng chờ. Gõ TT để xem tiến độ.', messageId);
-    // one "received" per message, even when it is retried or was already acknowledged by the webhook
-    if (!(await env.DB.prepare('SELECT 1 FROM zalo_outbox WHERE message_id = ? LIMIT 1').bind(messageId).first())) await send(env, chatId, 'Đã nhận, mình đang chuẩn bị kịch bản và hình…', messageId);
-    const existing = checkpoint?.project_id ? await env.DB.prepare('SELECT id, spec FROM projects WHERE id = ? AND user_id = ?').bind(checkpoint.project_id, user.id).first<any>() : null;
-    const p = existing ? { id: existing.id, spec: JSON.parse(existing.spec), note: '' } : await createProject(env, rc, user, { source, topic: text, ratio: prefs.ratio, style: prefs.style || 'auto', voiceId: prefs.voice, channel: '', visual: 'sketch', ...wayOptions(wayFor(env.config, prefs)) });
-    await env.DB.prepare('UPDATE zalo_messages SET project_id = ? WHERE id = ?').bind(p.id, messageId).run();
-    if (env.config.rendering.mode === 'browser' || !env.config.zalo.autoRender) return send(env, chatId, `Bản nháp "${p.spec.title}" đã sẵn sàng (${p.spec.scenes.length} cảnh), chưa xuất MP4. Bạn cần mở web, bấm dựng video và giữ tab mở đến khi hoàn tất: ${origin(env)}/p/${p.id}`, messageId);
-    const queued = await env.DB.prepare("SELECT id FROM jobs WHERE project_id = ? AND user_id = ? AND status IN ('queued','running','done') ORDER BY created_at DESC LIMIT 1").bind(p.id, user.id).first<any>();
-    const job = queued || await queueRender(env, rc, user, p.id, p.spec);
-    await env.DB.prepare('UPDATE zalo_messages SET job_id = ? WHERE id = ?').bind(job.id, messageId).run();
-    await send(env,chatId,`Video "${p.spec.title}" đã có tác vụ trong hàng chờ dựng. Mã tác vụ: ${job.id}. Gõ TT để xem trạng thái thực tế; khi máy dựng hoàn tất, mình sẽ gửi liên kết.`+(guest?'':`\nMở dự án: ${origin(env)}/p/${p.id}`)+(p.note?'\n'+p.note:''),messageId);
+    const id = await createInk(env, rc, user, { mode, [mode]: text, format: way, voice: prefs.inkVoice, review: c.zalo.review, browser: false }, { zalo: chatId });
+    await env.DB.prepare('UPDATE zalo_messages SET job_id = ? WHERE id = ?').bind('ink:' + id, messageId).run();
+    rc.log('zalo.ink.create', { data: { job: id, mode, format: way, review: c.zalo.review } });
+    const what = mode === 'topic' ? `video "${text.slice(0, 80)}"` : 'video từ kịch bản của bạn';
+    return send(env, chatId, c.zalo.review
+      ? `Đã nhận ${what} (kiểu ${wayName(c, way)}). AI đang viết kịch bản và phân cảnh, xong mình gửi để bạn duyệt trước khi dựng (thường 1-3 phút).`
+      : `Đã nhận ${what} (kiểu ${wayName(c, way)}). Máy đang viết kịch bản và dựng, xong mình gửi video ngay ở đây (thường vài phút). Gõ TT để xem tiến độ.`, messageId);
   } catch (e: any) {
     rc.log('zalo.create', { ok: false, data: { error: e.message } });
     await env.DB.prepare('UPDATE zalo_messages SET error = ? WHERE id = ?').bind(String(e.message || 'Lỗi tạo video').slice(0, 300), messageId).run();
-    // AI outages are told plainly, without model names or HTTP codes
     const busy = !(e instanceof HttpError) || e.status >= 500;
     // a limit of the plan (videos a day, length): offer the plan that lifts it
     const up = !busy && (e.status === 429 || e.status === 402) ? await upsellText(env, user).catch(() => '') : '';
-    await send(env, chatId, 'Chưa tạo được video: ' + (busy ? 'AI chưa thiết kế được video. Vui lòng kiểm tra kết nối AI hoặc thử lại sau; hệ thống không dựng theo mẫu thay thế.' : e.message) + (up ? '\n' + up : ''), messageId);
+    return send(env, chatId, 'Chưa tạo được video: ' + (busy ? (e instanceof HttpError ? e.message : 'hệ thống đang bận, bạn thử lại sau ít phút nhé.') : e.message) + (up ? '\n' + up : ''), messageId);
   }
+}
+
+// ---------------------------------------------------------------- Ink videos back in Zalo
+/** Signed no-login link to a finished Ink video (and its cover), valid for a few days. */
+export async function inkShareLink(env: Env, origin: string, id: string, file = '') {
+  const exp = Date.now() + SHARE_DAYS * 86_400_000;
+  const sig = (await hmacHex(env.RUNNER_TOKEN || '', `share:ink:${id}:${exp}`)).slice(0, 32);
+  return `${origin}/api/share/ink/${id}${file ? '/' + file : ''}?e=${exp}&s=${sig}`;
+}
+/** GET /api/share/ink/<id>[/cover.jpg]: the video plays (or the cover shows) without logging in. */
+export async function shareInk(env: XEnv, rc: Rc, req: Request, id: string, file: string) {
+  const url = new URL(req.url), exp = Number(url.searchParams.get('e'));
+  if (!exp || exp < Date.now() || !timingSafeEqual((await hmacHex(env.RUNNER_TOKEN || '', `share:ink:${id}:${exp}`)).slice(0, 32), url.searchParams.get('s') || '')) throw new HttpError(403, 'Link đã hết hạn. Gõ TT trong Zalo để lấy link mới.');
+  const j = await env.DB.prepare("SELECT user_id, meta FROM ink_jobs WHERE id = ? AND status = 'done'").bind(id).first<any>();
+  if (!j) throw new HttpError(404, 'Video không còn.');
+  if (file) {
+    const files: string[] = JSON.parse(j.meta || '{}').files || [], pic = ['cover.jpg', 'thumb.jpg'].find((f) => files.includes(f));
+    rc.quiet = true;
+    return serveObject(env, req, `ink/${j.user_id}/${id}/${pic || 'cover.jpg'}`, 'image/jpeg', { 'cache-control': 'public, max-age=86400' });
+  }
+  rc.userId = j.user_id;
+  rc.log('video.download', { data: { job: id, kind: 'share', ink: true } });
+  return serveObject(env, req, `ink/${j.user_id}/${id}/video.mp4`, 'video/mp4', { 'content-disposition': `inline; filename="video-${id.slice(0, 8)}.mp4"`, 'cache-control': 'private, max-age=3600' });
+}
+const sceneList = (sb: any) => (Array.isArray(sb?.scenes) ? sb.scenes : []).map((x: any, i: number) => `${i + 1}. ${String(x.say || '').replace(/\s+/g, ' ').trim()}`);
+/**
+ * An Ink video reached a step the person waits for: the storyboard to review (videos asked for in Zalo),
+ * the finished video, or a failure. Linked Zalo users hear about every video unless they turned it off (TAT).
+ */
+export async function zaloInk(env: XEnv, rc: { log(type: string, extra?: any): void }, j: any, kind: 'review' | 'done' | 'failed', extra: any = null) {
+  try {
+    const z = env.config.zalo, token = (env as any).ZALO_BOT_TOKEN;
+    if (!z.enabled || !token) return;
+    const input = JSON.parse(j.input || '{}');
+    if (kind === 'failed') await notifyOwner(env, 'failed', `Video lỗi: "${j.title}" (${j.user_id}): ${extra}`);
+    const link = await env.DB.prepare('SELECT chat_id, notify FROM zalo_links WHERE user_id = ?').bind(j.user_id).first<any>();
+    if (!link) return;
+    // the review is part of making a video asked for here: always sent; news of a video only when wanted
+    if (kind === 'review') {
+      if (input.zalo !== link.chat_id) return;
+      const lines = sceneList(extra), head = `📝 Phân cảnh "${j.title}" (${lines.length} cảnh):`;
+      const tail = '\nTrả lời:\n• OK để dựng video\n• SUA + điều muốn đổi (ví dụ: SUA thêm ví dụ thực tế)\n• HUY để bỏ';
+      // long storyboards go in several messages (Zalo takes about 2000 characters each)
+      const parts: string[] = []; let cur = head;
+      for (const l of lines) { const line = l.length > 400 ? l.slice(0, 397) + '…' : l; if ((cur + '\n' + line).length > 1700) { parts.push(cur); cur = line; } else cur += '\n' + line; }
+      parts.push(cur + tail);
+      for (const p of parts) await send(env, link.chat_id, p);
+      rc.log('zalo.ink.review', { data: { job: j.id, scenes: lines.length, parts: parts.length } });
+      return;
+    }
+    if (!link.notify) return;
+    const web = await siteUrl(env);
+    if (kind === 'failed') { await send(env, link.chat_id, fill(z.templates.failed, { tieuDe: j.title, loi: String(extra || '').slice(0, 200) })); return; }
+    const files: string[] = JSON.parse(j.meta || '{}').files || [];
+    const share = await inkShareLink(env, web, j.id);
+    const text = fill(z.templates.done, { tieuDe: j.title, link: share, hanNgay: SHARE_DAYS, giay: Math.round(j.duration) || '?' });
+    if (files.includes('cover.jpg') || files.includes('thumb.jpg') || (await env.BUCKET.head(`ink/${j.user_id}/${j.id}/cover.jpg`))) {
+      const p = await zaloApi(token, 'sendPhoto', { chat_id: link.chat_id, photo: await inkShareLink(env, web, j.id, 'cover.jpg'), caption: text.slice(0, 1900) }, 10_000);
+      rc.log('zalo.notify', { ok: p.ok, data: { job: j.id, ink: true, photo: true, error: p.ok ? undefined : p.error } });
+      if (p.ok) return;
+    }
+    const r = await send(env, link.chat_id, text);
+    rc.log('zalo.notify', { ok: r.ok, data: { job: j.id, ink: true, error: r.ok ? undefined : r.error } });
+  } catch (e: any) { rc.log('zalo.notify', { ok: false, data: { job: j?.id, ink: true, error: String(e.message || e).slice(0, 200) } }); }
 }
 
 /** A Zalo-only account for people who never opened the web page. */

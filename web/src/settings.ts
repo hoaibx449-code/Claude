@@ -24,8 +24,8 @@ export const KIND_KEYS = ['sketch', 'bars', 'flow', 'compare', 'steps', 'number'
 export const MODE_KEYS = ['hand', 'motion', 'math', 'kinetic'] as const;
 /** Video formats (src/engine/looks.ts). */
 export const LOOK_KEYS = ['director', 'act', 'whiteboard', 'illustrated', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
-/** Ways a video made in Zalo can be drawn (the documentary needs pictures drawn on the web, so it is not one). */
-export const ZALO_WAYS = ['auto', 'classic-sketch', 'classic-diagram', 'classic', 'act', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz'] as const;
+/** Kinds of video made in Zalo: the web page's engine, hand-drawn ('ink') or real footage ('cine'). */
+export const ZALO_WAYS = ['ink', 'cine'] as const;
 export const GOOGLE_MODES = ['auto', 'popup', 'redirect'] as const;
 export const VISUAL_KEYS = ['doodle', 'sketch', 'diagram', 'mix', 'images'] as const;
 export const SOURCE_KEYS = ['topic', 'mine-ai', 'mine-free'] as const;
@@ -100,18 +100,46 @@ export interface SiteConfig {
   /** short how-to video shown next to the three steps */
   tutorial: string;
   showcase: SiteMedia[];
-  /** colour theme of the whole site */
+  /** colour theme of the whole site ('custom' = the colours below) */
   theme: string;
+  /** the admin's own colours for the 'custom' theme: main colour, and a second one for gradients ('' = worked out from the main one) */
+  colors: { primary: string; second: string };
   /** links to the brand's social channels, shown on the home page and in the footer */
   social: Partial<Record<(typeof SOCIAL_KEYS)[number], string>>;
   /** which pages the menus show (header, side bar, phone tab bar, footer all follow this one list) and in what order */
   menu: { hidden: string[]; order: string[] };
   /** the logo: an uploaded picture, or one of the drawn icons on a chosen background */
   logo: { image: string; icon: string; bg: string };
+  /** the icon of the installed app / pinned page, drawn by the admin page from the logo and colours when settings are saved */
+  appIcon: { i192: string; i512: string; sig: string };
   /** the help chat in the bottom right corner */
   helpBot: { enabled: boolean; name: string; welcome: string; knowledge: string; perDay: number };
 }
-export const THEMES = ['aurora', 'ocean', 'sunset', 'forest', 'classic'] as const;
+export const THEMES = ['aurora', 'ocean', 'sunset', 'forest', 'classic', 'custom'] as const;
+/** main and second colour of each ready-made theme (browser bar, installed app, favicon) */
+const THEME_COLORS: Record<string, [string, string]> = { aurora: ['#7c3aed', '#ff7a00'], ocean: ['#0e7490', '#f97316'], sunset: ['#c2410c', '#7c3aed'], forest: ['#047857', '#d97706'], classic: ['#1f5eff', '#ffb020'] };
+const HEX = /^#[0-9a-f]{6}$/i;
+/** the colour turned round the colour wheel (a second colour that goes with the first) */
+export function shiftHue(hex: string, deg: number) {
+  const n = parseInt(hex.slice(1), 16), r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  let h = 0; const sat = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
+  if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h = ((h * 60 + deg) % 360 + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * sat, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+  const [R, G, B] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return '#' + [R, G, B].map((v) => Math.round((v + m) * 255).toString(16).padStart(2, '0')).join('');
+}
+/** The site's colours: theme name, main and second colour, and the CSS variables a 'custom' theme needs on <html>. */
+export function siteColors(site: { theme?: string; colors?: { primary?: string; second?: string } }) {
+  const c = site.colors || {};
+  if (site.theme === 'custom' && HEX.test(c.primary || '')) {
+    const c1 = c.primary!.toLowerCase(), c2 = HEX.test(c.second || '') ? c.second!.toLowerCase() : shiftHue(c1, 40);
+    return { theme: 'custom', primary: c1, second: c2, style: `--c1:${c1};--c2:${c2}` };
+  }
+  const theme = site.theme && THEME_COLORS[site.theme] ? site.theme : 'aurora', [c1, c2] = THEME_COLORS[theme];
+  return { theme, primary: c1, second: c2, style: '' };
+}
 export const MENU_KEYS = ['home', 'gioi-thieu', 'tao', 'mau', 'cong-dong', 'kham-pha', 'faciup-live', 'prompt-hunter', 'video', 'goi', 'tro-giup'] as const;
 export const LOGO_ICONS = ['pen', 'robot', 'spark', 'play', 'brush', 'star', 'letter'] as const;
 export const LOGO_BGS = ['brand', 'sunset', 'ocean', 'forest', 'night'] as const;
@@ -135,12 +163,13 @@ export interface ZaloConfig {
   /** How a script sent by chat is illustrated: free rules or AI. */
   scriptSource: 'mine-free' | 'mine-ai';
   autoRender: boolean; ocrEnabled: boolean;
+  /** the storyboard is sent in Zalo first; the person answers OK (make it), SUA … (change it) or HUY */
+  review: boolean;
   ownerChat: string;
   notifyOwner: { signup: boolean; failed: boolean; order: boolean; daily: boolean };
   templates: Record<string, string>;
   /** video formats for videos made in Zalo: the one used when the person picked none, and the ones
-   *  they may pick with DINHDANG ('web' = the site's default, 'auto' = varied by content, 'classic-*'
-   *  = hand-drawn boards, else a format key). Fewer than two allowed = no choice, the default is used. */
+   *  they may pick with DINHDANG (ZALO_WAYS). Fewer than two allowed = no choice, the default is used. */
   formats: { default: string; allowed: string[] };
   /** the bot answers free questions like a member of staff (AI), besides commands and notices */
   assistant: {
@@ -173,8 +202,10 @@ export const RATIO_KEYS = ['9:16', '16:9'] as const;
 
 /** Every piece of interface text the admin can rename. */
 export const DEFAULT_TEXTS: Record<string, string> = {
-  loginTitle: 'Video bàn tay vẽ, từ một câu chủ đề',
-  loginText: 'AI viết kịch bản, bạn chỉnh từng câu, xem trước bàn tay vẽ ngay trên trang, rồi nhận video MP4 có giọng đọc và phụ đề.',
+  loginTitle: 'Chào mừng bạn',
+  loginText: 'Một tài khoản cho mọi công cụ AI trên trang: tạo video, khám phá prompt, tải tài nguyên và theo dõi mọi thứ bạn làm.',
+  /** points listed on the sign-in panel, separated by | */
+  loginPoints: 'Lưu lại mọi thứ bạn tạo, mở lại bất cứ lúc nào | Nhận thông báo qua Zalo hoặc ngay trên máy | Đăng nhập nhanh bằng Google, không cần mật khẩu',
   homeTitle: 'Xưởng video của bạn',
   newVideo: 'Tạo video mới',
   source: 'Cách tạo', topic: 'Chủ đề', topicHint: 'Ví dụ: Vì sao lương mãi không tăng dù làm việc chăm chỉ?',
@@ -257,12 +288,12 @@ export function defaultConfig(env: Env): Config {
     zalo: {
       enabled: false, botLink: '', receive: 'webhook', keepWebhook: true, perDay: 300, stickers: { welcome: '', thanks: '' },
       followup: { enabled: false, hours: 20, text: 'Chào {ten}, hôm trước bạn có hỏi về gói {goi} bên mình. Bạn còn phân vân điều gì không, mình giải đáp ngay nhé? Nếu muốn làm thử trước, bạn chỉ cần nhắn chủ đề video là mình làm luôn 😊' },
-      allowGuests: true, scriptSource: 'mine-free', autoRender: true, ocrEnabled: true, ownerChat: '',
+      allowGuests: true, scriptSource: 'mine-free', autoRender: true, ocrEnabled: true, review: true, ownerChat: '',
       notifyOwner: { signup: true, failed: true, order: true, daily: false },
-      formats: { default: 'web', allowed: [...ZALO_WAYS] },
+      formats: { default: 'ink', allowed: [...ZALO_WAYS] },
       assistant: { enabled: true, name: 'Trợ lý', persona: 'Thân thiện, ngắn gọn, xưng "mình", gọi khách là "bạn". Trả lời đúng trọng tâm, tối đa 5 câu.', knowledge: '', makeVideos: true, handoff: true, perDay: 150, ai: 'auto' },
       templates: {
-        help: 'Chào {ten}! Gửi cho mình:\n• KB + kịch bản của bạn → mình dựng video\n• TAO + chủ đề → AI viết kịch bản rồi dựng\n• TT → xem video đang dựng\n• DS → video gần đây\n• KHUNG DOC hoặc KHUNG NGANG → đổi khung hình\n• DINHDANG → chọn định dạng video\n• GIONG → chọn giọng đọc\n• TAT / BAT → tắt/bật thông báo\n• HUYKETNOI → bỏ liên kết',
+        help: 'Chào {ten}! Gửi cho mình:\n• TAO + chủ đề → AI viết kịch bản rồi làm video\n• KB + kịch bản của bạn → làm video đúng lời bạn viết\n• OK / SUA … / HUY → duyệt, sửa hoặc bỏ phân cảnh mình gửi\n• TT → xem video đang làm\n• DS → video gần đây\n• DINHDANG → chọn kiểu video (vẽ tay, điện ảnh)\n• GIONG → chọn giọng đọc\n• TAT / BAT → tắt/bật thông báo\n• HUYKETNOI → bỏ liên kết',
         linked: 'Đã kết nối Zalo với tài khoản {email}. Video dựng xong sẽ được gửi về đây. Gõ HUONGDAN để xem lệnh.',
         queued: 'Đã nhận! Video "{tieuDe}" ({canh} cảnh, {dang}) đang được dựng, khoảng vài phút. Mình sẽ gửi link khi xong.{suaWeb}',
         done: '🎬 Video "{tieuDe}" đã xong ({giay} giây).\nXem / tải: {link}\n(Link có hạn {hanNgay} ngày)',
@@ -286,7 +317,7 @@ export function defaultConfig(env: Env): Config {
     notice: '',
     templates: DEFAULT_TEMPLATES,
     beta: { enabled: true, label: 'Beta', note: 'Đang thử nghiệm: tính năng và giao diện có thể thay đổi. Góp ý giúp chúng tôi làm video hay hơn.' },
-    site: { loadingText:'Đang kết nối đội AI…', heroTitle: 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút', heroText: '', heroMedia: '', heroPoster: '', tutorial: '', showcase: [], theme: 'aurora', menu: { hidden: [], order: [] }, logo: { image: '', icon: 'pen', bg: 'brand' }, social: {},
+    site: { loadingText:'Đang kết nối đội AI…', heroTitle: 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút', heroText: '', heroMedia: '', heroPoster: '', tutorial: '', showcase: [], theme: 'aurora', colors: { primary: '', second: '' }, menu: { hidden: [], order: [] }, logo: { image: '', icon: 'pen', bg: 'brand' }, appIcon: { i192: '', i512: '', sig: '' }, social: {},
       helpBot: { enabled: true, name: 'Trợ lý', welcome: 'Chào bạn 👋 Mình là trợ lý AI của trang. Bạn cần hướng dẫn tạo video hay có thắc mắc gì?', knowledge: '', perDay: 30 } },
     budget: { dailyVnd: 200_000, monthlyVnd: 3_000_000, warnPct: 80, perVideoVnd: 15_000 },
     // one documentary ≈ 10 AI pictures + voice ≈ 11.000đ cost; 1 credit = 1 video, packs priced with margin
@@ -351,7 +382,13 @@ export function cleanConfig(input: any, base: Config): Config {
       if (i.visibility) v = SOURCE_KEYS.filter((k) => !['hidden', 'dev'].includes(i.visibility['source:' + k]));
       return v.length ? v : ['mine-free'];
     })(),
-    texts: labels(i.texts, Object.keys(DEFAULT_TEXTS), base.texts, 240),
+    texts: (() => {
+      const t = labels(i.texts, Object.keys(DEFAULT_TEXTS), base.texts, 240);
+      // sign-in texts still at the old video-only defaults move to the site-wide ones
+      if (/^Video bàn tay vẽ, từ một câu chủ đề$/.test(t.loginTitle || '')) t.loginTitle = DEFAULT_TEXTS.loginTitle;
+      if (/^AI viết kịch bản, bạn chỉnh từng câu/.test(t.loginText || '')) t.loginText = DEFAULT_TEXTS.loginText;
+      return t;
+    })(),
     enabledStyles: en.filter((k) => !(i.visibility?.['style:' + k] === 'hidden' || i.visibility?.['style:' + k] === 'dev')).length ? en.filter((k) => !(i.visibility?.['style:' + k] === 'hidden' || i.visibility?.['style:' + k] === 'dev')) : en,
     defaults: {
       source: pick(d.source, SOURCE_KEYS, base.defaults.source), subtitles: typeof d.subtitles === 'boolean' ? d.subtitles : base.defaults.subtitles,
@@ -421,12 +458,14 @@ export function cleanConfig(input: any, base: Config): Config {
         followup: { enabled: z.followup?.enabled === true, hours: int(z.followup?.hours, 4, 168, b.followup.hours), text: str(z.followup?.text, 600, b.followup.text) || b.followup.text }, botLink: /^https:\/\/[^\s"<>]{4,200}$/.test(z.botLink || '') ? z.botLink : z.botLink === '' ? '' : b.botLink,
         allowGuests: typeof z.allowGuests === 'boolean' ? z.allowGuests : b.allowGuests, scriptSource: z.scriptSource === 'mine-ai' ? 'mine-ai' : 'mine-free',
         ocrEnabled: typeof z.ocrEnabled==='boolean'?z.ocrEnabled:b.ocrEnabled,
-        autoRender: typeof z.autoRender === 'boolean' ? z.autoRender : b.autoRender, ownerChat: /^[\w.-]{1,80}$/.test(z.ownerChat || '') ? z.ownerChat : z.ownerChat === '' ? '' : b.ownerChat,
+        autoRender: typeof z.autoRender === 'boolean' ? z.autoRender : b.autoRender, review: typeof z.review === 'boolean' ? z.review : b.review, ownerChat: /^[\w.-]{1,80}$/.test(z.ownerChat || '') ? z.ownerChat : z.ownerChat === '' ? '' : b.ownerChat,
         notifyOwner: { signup: z.notifyOwner?.signup ?? b.notifyOwner.signup, failed: z.notifyOwner?.failed ?? b.notifyOwner.failed, order: z.notifyOwner?.order ?? b.notifyOwner.order, daily: z.notifyOwner?.daily ?? b.notifyOwner.daily },
         templates: tpl,
         formats: (() => {
           const f = z.formats || {}, d = b.formats, ok = (k: unknown) => typeof k === 'string' && ZALO_WAYS.includes(k as any);
-          return { default: f.default === 'web' || ok(f.default) ? f.default : d.default, allowed: Array.isArray(f.allowed) ? [...new Set(f.allowed.filter(ok))] as string[] : d.allowed };
+          // a list saved before videos in Zalo came from the Ink engine (old format keys) means "all of them"
+          const legacy = Array.isArray(f.allowed) && f.allowed.some((k: unknown) => !ok(k));
+          return { default: ok(f.default) ? f.default : d.default, allowed: Array.isArray(f.allowed) && !legacy ? [...new Set(f.allowed.filter(ok))] as string[] : d.allowed };
         })(),
         assistant: (() => {
           const a = z.assistant || {}, d = b.assistant;
@@ -483,8 +522,12 @@ export function cleanConfig(input: any, base: Config): Config {
           .map((m: any) => ({ title: str(m?.title, 60, ''), caption: str(m?.caption, 120, ''), video: media(m?.video), poster: media(m?.poster) }))
           .filter((m: SiteMedia) => m.video || m.poster),
         theme: pick(x.theme, THEMES, d.theme),
+        colors: (() => { const c = x.colors || {}, dc = d.colors || { primary: '', second: '' }, hex = (v: unknown, dv: string) => (v === '' ? '' : HEX.test(String(v ?? '')) ? String(v).toLowerCase() : dv);
+          return { primary: hex(c.primary, dc.primary), second: hex(c.second, dc.second) }; })(),
         menu: (() => { const m = x.menu || {}, keys = MENU_KEYS as readonly string[], list = (v: unknown) => [...new Set((Array.isArray(v) ? v : []).filter((k: unknown): k is string => typeof k === 'string' && keys.includes(k)))];
           return { hidden: list(m.hidden ?? d.menu.hidden), order: list(m.order ?? d.menu.order) }; })(),
+        appIcon: (() => { const a = x.appIcon || {}, da = d.appIcon || { i192: '', i512: '', sig: '' }, png = (v: unknown, dv: string) => (v === undefined ? dv : /^site:[a-f0-9]{24}\.png$/.test(String(v)) ? String(v) : '');
+          return { i192: png(a.i192, da.i192), i512: png(a.i512, da.i512), sig: str(a.sig ?? da.sig, 200, '') }; })(),
         logo: (() => { const l = x.logo || {}, dl = d.logo, bg = String(l.bg ?? dl.bg);
           return { image: l.image === undefined ? dl.image : ((img) => /\.(mp4|webm)$/i.test(img) ? '' : img)(media(l.image)), icon: pick(l.icon, LOGO_ICONS, dl.icon), bg: (LOGO_BGS as readonly string[]).includes(bg) || /^#[0-9a-f]{6}$/i.test(bg) ? bg : dl.bg }; })(),
         social: Object.fromEntries(SOCIAL_KEYS.map((k) => [k, String(x.social?.[k] ?? '').trim()]).filter(([, v]) => /^https:\/\/[^\s"'<>]{4,300}$/.test(v))),

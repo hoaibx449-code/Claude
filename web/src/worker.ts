@@ -1,3 +1,4 @@
+import { appManifest, appSvg, brandName, faviconUrl, touchIconUrl } from './brand-assets.ts';
 import {publicNavigation,initialPageContent,PUBLIC_PAGES,isAppPage,pageMetadata,pageSitemap} from './page-routes.ts';
 import {councilWebhook,tickCouncil} from './council.ts';
 import {hunterPublic} from './hunter.ts';
@@ -27,11 +28,11 @@ import { detectIntent, FORMATS, FORMAT_NAMES, FORMAT_STYLE, NICHES, NICHE_NAMES,
 import { fillLegal } from './legal.ts';
 import { aiCost, clientIp, imageCost, logEvent, routeName, summarize, voiceCost, type LogEntry } from './log.ts';
 import { notifications } from './notifications.ts';
-import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, vis } from './settings.ts';
+import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, siteColors, vis } from './settings.ts';
 import { adminRoutes } from './admin.ts';
 import { helpChat } from './help.ts';
 import { budgetState, fitVoiceToBudget, requireBudget } from './budget.ts';
-import { checkShare, followUps, keepWebhook, notifyJob, rememberOrigin, resumeZalo, shareLink, zaloUser, zaloWebhook, pollZalo, receiveMode } from './zalo.ts';
+import { shareInk, checkShare, followUps, keepWebhook, notifyJob, rememberOrigin, resumeZalo, shareLink, zaloUser, zaloWebhook, pollZalo, receiveMode } from './zalo.ts';
 import { pushPublicKey, pushUser, validEndpoint } from './push.ts';
 import { checkAllowed, checkSource, expireOrders, limitsFor, planOf, planRoutes, sepayWebhook } from './plans.ts';
 import { affiliateScene, communityPublic, deleteVideo, introFor, serveObject, shareToCommunity, siteType, storedVideoKey, upload, videoKey } from './media.ts';
@@ -154,6 +155,12 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
       const page=await solutionPage(req,env);if(page)return page;
       throw new HttpError(404,'Không tìm thấy trang.');
     }
+    // the installed app's name, colours and icon follow the site's settings (not the files shipped with the code)
+    if(path==='/manifest.webmanifest'||path==='/icons/app.svg'){
+      const {config}=await load(rawEnv);
+      return path==='/icons/app.svg'?new Response(appSvg(config),{headers:{'content-type':'image/svg+xml','cache-control':'public, max-age=300'}})
+       :new Response(JSON.stringify(appManifest(config)),{headers:{'content-type':'application/manifest+json; charset=utf-8','cache-control':'public, max-age=300'}});
+    }
     const appPage=isAppPage(path);
     const asset=await rawEnv.ASSETS.fetch(appPage?new Request(new URL('/',url),req):req);
     if(asset.headers.get('content-type')?.includes('text/html')){
@@ -163,7 +170,16 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
         headers.delete('content-length');headers.delete('etag');headers.set('cache-control','no-cache');
         const meta=pageMetadata(path,config.config.brand.name+' '+config.config.brand.accent,url.origin,url.search);
         const initial=await initialPageContent(path,config.config,rawEnv);
+        const colors=siteColors(config.config.site);
         return new HTMLRewriter()
+          .on('html',{element(el){el.setAttribute('data-theme',colors.theme);if(colors.style)el.setAttribute('style',colors.style);}})
+          .on('meta[name="theme-color"]',{element(el){el.setAttribute('content',colors.primary);}})
+          .on('meta[name="apple-mobile-web-app-title"]',{element(el){el.setAttribute('content',config.config.brand.name||brandName(config.config));}})
+          .on('link[rel="icon"]',{element(el){el.setAttribute('href',faviconUrl(config.config));el.removeAttribute('type');}})
+          .on('link[rel="apple-touch-icon"]',{element(el){el.setAttribute('href',touchIconUrl(config.config));}})
+          // the brand in the header and side bar from the first paint (no flash of an old name)
+          .on('#brandName,#sideBrand',{element(el){el.setInnerContent(config.config.brand.name);}})
+          .on('#brandAccent,#sideAccent',{element(el){el.setInnerContent(config.config.brand.accent||'');}})
           .on('title',{element(el){el.setInnerContent(meta.title);}})
           .on('meta[name="description"],meta[property="og:description"]',{element(el){el.setAttribute('content',meta.description);}})
           .on('meta[property="og:title"]',{element(el){el.setAttribute('content',meta.title);}})
@@ -206,6 +222,8 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
   if (site && (method === 'GET' || method === 'HEAD')) { rc.quiet = true; return serveObject(env, req, `site/${site[1]}.${site[2]}`, siteType(site[2]), { 'cache-control': 'public, max-age=31536000, immutable' }); }
   // listen to a voice before choosing it (public; samples are cached)
   if (path === '/api/voices/preview' && method === 'GET') return voicePreview(req, env, rc);
+  const si = path.match(/^\/api\/share\/ink\/([a-f0-9]{24})(?:\/(cover\.jpg))?$/);
+  if (si && (method === 'GET' || method === 'HEAD')) return shareInk(env, rc, req, si[1], si[2] || '');
   const sh = path.match(/^\/api\/share\/([a-f0-9]{24})$/);
   if (sh && method === 'GET') return shareVideo(env, rc, sh[1], url);
   // the cover picture of a shared video (sent as a photo in Zalo), signed like the video link

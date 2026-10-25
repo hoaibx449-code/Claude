@@ -86,6 +86,27 @@ const routing = (on) => { clearTimeout(routingTimer); document.body.classList.to
 const show = (...nodes) => { routing(false); view.replaceChildren(...nodes.flat().filter((n) => n != null && n !== false)); view.classList.remove('enter'); void view.offsetWidth; view.classList.add('enter'); };
 /** Placeholder blocks shown while a page loads, so nothing feels frozen. */
 const skeleton = (n = 3, cls = 'sk-card') => h('div', { class: 'sk-grid' }, Array.from({ length: n }, () => h('div', { class: 'sk ' + cls })));
+/**
+ * Every button whose click waits for something (a save, a test, a request) shows it at once: a spinner in the
+ * button, no second click while it runs, and a short flash when it is done or a shake when it failed.
+ * Buttons that already show their own waiting state (busy() below, or that disable themselves) are left alone.
+ */
+function waitFeedback(el, fn) {
+  return function (e) {
+    const r = fn.call(this, e);
+    if (!r || typeof r.then !== 'function' || !el.isConnected || el.classList.contains('busy')) return r;
+    const spin = h('i', { class: 'spin', 'aria-hidden': 'true' });
+    el.classList.add('auto-busy'); el.setAttribute('aria-busy', 'true'); el.prepend(spin);
+    const end = (ok) => {
+      spin.remove(); el.classList.remove('auto-busy'); el.removeAttribute('aria-busy');
+      if (!el.isConnected) return;
+      el.classList.remove('ui-done', 'ui-failed'); void el.offsetWidth; el.classList.add(ok ? 'ui-done' : 'ui-failed');
+      setTimeout(() => el.classList.remove('ui-done', 'ui-failed'), 900);
+    };
+    r.then(() => end(true), () => end(false));
+    return r;
+  };
+}
 /** Button feedback while waiting: spinner + text, restored afterwards. */
 async function busy(btn, text, fn) {
   if (!btn) return fn();
@@ -110,7 +131,8 @@ function h(tag, attrs, ...kids) {
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v == null || v === false) continue;
     if (k === 'href' && /^\/?#\//.test(v)) { el.setAttribute(k, cleanRoute(v)); continue; }
-    if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    if (k === 'onclick' && (tag === 'button' || /\bbtn\b/.test(attrs.class || ''))) el.addEventListener('click', waitFeedback(el, v));
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
     else if (k === 'value') el.value = v;
     else if (k === 'style') el.style.cssText = v; // CSSOM: allowed by the CSP, unlike style attributes
     else el.setAttribute(k, v === true ? '' : v);
@@ -166,8 +188,35 @@ function options(list, selected) {
 const LOGO_ICONS = { pen: '<path d="M15.5 4.5l4 4L9 19H5v-4z"/><path d="M13 7l4 4"/>', robot: '<rect x="5" y="8" width="14" height="11" rx="4"/><path d="M12 4v4"/><circle cx="12" cy="3.5" r="1.2"/><path d="M9.5 13h.01M14.5 13h.01"/>',
   spark: '<path d="M12 3l2.2 6.3L20.5 12l-6.3 2.2L12 20.5l-2.2-6.3L3.5 12l6.3-2.7z"/>', play: '<path d="M8 5.5v13l11-6.5z"/>', brush: '<path d="M18 3l3 3-9 9-3-3z"/><path d="M9 12c-3 0-5 2-5 5 0 1.5-1 2.5-2 3 4 1 9 0 9-5"/>',
   star: '<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.8z"/>' };
-const LOGO_BG = { brand: 'linear-gradient(135deg,#7c3aed,#c026d3 45%,#ff2d75 70%,#ff7a00)', sunset: 'linear-gradient(135deg,#ff7a00,#ff2d75)', ocean: 'linear-gradient(135deg,#06b6d4,#2563eb)', forest: 'linear-gradient(135deg,#22c55e,#0d9488)', night: 'linear-gradient(135deg,#1e1b4b,#7c3aed)' };
-const LOGO_FILL = { brand: ['#7c3aed', '#ff7a00'], sunset: ['#ff7a00', '#ff2d75'], ocean: ['#06b6d4', '#2563eb'], forest: ['#22c55e', '#0d9488'], night: ['#1e1b4b', '#7c3aed'] };
+// "brand" and "night" follow the site's colours (Quản trị → Giao diện)
+const LOGO_BG = { brand: 'var(--grad)', sunset: 'linear-gradient(135deg,#ff7a00,#ff2d75)', ocean: 'linear-gradient(135deg,#06b6d4,#2563eb)', forest: 'linear-gradient(135deg,#22c55e,#0d9488)', night: 'linear-gradient(135deg,#1e1b4b,var(--accent))' };
+const LOGO_FILL = { sunset: ['#ff7a00', '#ff2d75'], ocean: ['#06b6d4', '#2563eb'], forest: ['#22c55e', '#0d9488'] };
+// main and second colour of each ready-made theme; "custom" uses the admin's own (the second one worked out when left empty)
+const THEME_COLORS = { aurora: ['#7c3aed', '#ff7a00'], ocean: ['#0e7490', '#f97316'], sunset: ['#c2410c', '#7c3aed'], forest: ['#047857', '#d97706'], classic: ['#1f5eff', '#ffb020'] };
+function shiftHue(hex, deg) {
+  const n = parseInt(hex.slice(1), 16), r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min, sat = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
+  let hh = !d ? 0 : max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  hh = ((hh * 60 + deg) % 360 + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * sat, x = c * (1 - Math.abs(((hh / 60) % 2) - 1)), m = l - c / 2;
+  const rgb = hh < 60 ? [c, x, 0] : hh < 120 ? [x, c, 0] : hh < 180 ? [0, c, x] : hh < 240 ? [0, x, c] : hh < 300 ? [x, 0, c] : [c, 0, x];
+  return '#' + rgb.map((v) => Math.round((v + m) * 255).toString(16).padStart(2, '0')).join('');
+}
+function siteColors(site) {
+  const c = site?.colors || {}, hex = /^#[0-9a-f]{6}$/i;
+  if (site?.theme === 'custom' && hex.test(c.primary || '')) return { theme: 'custom', primary: c.primary, second: hex.test(c.second || '') ? c.second : shiftHue(c.primary, 40) };
+  const theme = THEME_COLORS[site?.theme] ? site.theme : 'aurora';
+  return { theme, primary: THEME_COLORS[theme][0], second: THEME_COLORS[theme][1] };
+}
+/** the colour theme on the whole page (also used by the admin's live preview) */
+function applyColors(site) {
+  const k = siteColors(site), root = document.documentElement;
+  root.dataset.theme = k.theme;
+  if (k.theme === 'custom') { root.style.setProperty('--c1', k.primary); root.style.setProperty('--c2', k.second); } else { root.style.removeProperty('--c1'); root.style.removeProperty('--c2'); }
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', k.primary);
+  return k;
+}
+window.nvApplyColors = applyColors;
 function paintLogo(el, logo, brand) {
   logo ||= { icon: 'pen', bg: 'brand' }; el.replaceChildren(); el.classList.toggle('has-image', !!logo.image);
   if (logo.image) { el.style.background = 'none'; el.append(h('img', { src: siteUrl(logo.image), alt: '' })); return; }
@@ -175,12 +224,17 @@ function paintLogo(el, logo, brand) {
   if (logo.icon === 'letter') { el.append(h('b', { class: 'logo-letter' }, (brand || 'F').trim().charAt(0).toUpperCase())); return; }
   el.insertAdjacentHTML('beforeend', `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${LOGO_ICONS[logo.icon] || LOGO_ICONS.pen}</svg>`);
 }
+/** The drawn logo as SVG: icon (or first letter) on the logo background. full = square edge to edge (app icons). */
+function logoSvg(logo, brand, full = false) {
+  const k = siteColors(ui.site), [a, b] = LOGO_FILL[logo.bg] || (logo.bg === 'night' ? ['#1e1b4b', k.primary] : /^#/.test(logo.bg || '') ? [logo.bg, logo.bg] : [k.primary, k.second]);
+  const mark = logo.icon === 'letter' ? `<text x="12" y="16.5" text-anchor="middle" font-family="Arial" font-weight="800" font-size="12" fill="#fff">${(brand || 'F').trim().charAt(0).toUpperCase().replace(/[<&]/g, '')}</text>` : `<g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${LOGO_ICONS[logo.icon] || LOGO_ICONS.pen}</g>`;
+  // app icons are cut to a circle or rounded square by the phone: the mark stays inside the middle 60%
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="24" height="24" rx="${full ? 0 : 6}" fill="url(#g)"/><g transform="${full ? 'translate(5.4 5.4) scale(.55)' : 'translate(3 3) scale(.75)'}">${mark}</g></svg>`;
+}
 function logoFavicon(logo, brand) {
   let link = document.querySelector('link[rel="icon"]'); if (!link) { link = h('link', { rel: 'icon' }); document.head.append(link); }
   if (!logo) return; if (logo.image) { link.href = siteUrl(logo.image); return; }
-  const [a, b] = LOGO_FILL[logo.bg] || [logo.bg || '#7c3aed', logo.bg || '#ff7a00'];
-  const mark = logo.icon === 'letter' ? `<text x="12" y="16.5" text-anchor="middle" font-family="Arial" font-weight="800" font-size="12" fill="#fff">${(brand || 'F').trim().charAt(0).toUpperCase().replace(/[<&]/g, '')}</text>` : `<g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${LOGO_ICONS[logo.icon] || LOGO_ICONS.pen}</g>`;
-  link.href = 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="24" height="24" rx="6" fill="url(#g)"/><g transform="translate(3 3) scale(.75)">${mark}</g></svg>`);
+  link.href = 'data:image/svg+xml,' + encodeURIComponent(logoSvg(logo, brand));
 }
 // one list decides which pages the menus show, everywhere: header, side bar, phone tab bar and footer
 const menuShows = (route) => !(ui.site?.menu?.hidden || []).includes(route) && !(route === 'goi' && V('feature:plans') !== 'on') && !(route === 'cong-dong' && V('feature:community') === 'hidden');
@@ -213,9 +267,9 @@ function applyUI(next) {
   document.getElementById('logout').textContent = T('logout');
   document.getElementById('adminLink').textContent = T('admin');
   applyMenu();
+  applyColors(ui.site);
   for (const el of document.querySelectorAll('.brand .logo')) paintLogo(el, ui.site?.logo, ui.brand.name);
   logoFavicon(ui.site?.logo, ui.brand.name);
-  document.documentElement.dataset.theme = ui.site?.theme || 'aurora';
   const loading=document.getElementById('loadingText');if(loading)loading.textContent=ui.site?.loadingText||'Đang kết nối đội AI…';
   window.nvHelpChat?.();
   for(const bb of document.querySelectorAll('[data-beta]')){bb.hidden=!ui.beta;bb.textContent=ui.beta?.label||'Beta';bb.title=ui.beta?.note||'Phiên bản thử nghiệm';}
@@ -860,9 +914,11 @@ function openLogin(reason, after) {
   const bg = h('div', { class: 'sheet-bg', onclick: (e) => { if (e.target === bg) close(); } },
     h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Đăng nhập' },
       h('div', { class: 'side' },
-        h('span', { class: 'brand', style: 'color:#fff' }, h('span', { class: 'logo', style: 'background:rgba(255,255,255,.2)' }, '✎'), ui.brand.name + ' ' + (ui.brand.accent || '')),
-        h('h2', { style: 'color:#fff' }, reason === 'create' ? 'Còn một bước để nhận video' : 'Chào mừng bạn'),
-        h('ul', {}, h('li', {}, 'Lưu và sửa video bất cứ lúc nào'), h('li', {}, 'Giọng đọc tiếng Việt, khớp nhịp từng câu'), h('li', {}, 'Tải MP4 hoặc nhận qua Zalo'), h('li', {}, 'Miễn phí mỗi ngày, không cần thẻ')),
+        // the site's own logo and words (Quản trị → Nhãn & chữ: loginTitle, loginText, loginPoints)
+        h('span', { class: 'brand', style: 'color:#fff' }, (() => { const l = h('span', { class: 'logo' }); paintLogo(l, ui.site?.logo, ui.brand.name); return l; })(), [ui.brand.name, ui.brand.accent].filter(Boolean).join(' ')),
+        h('h2', { style: 'color:#fff' }, reason === 'create' ? 'Còn một bước để nhận video' : T('loginTitle') || 'Chào mừng bạn'),
+        T('loginText') ? h('p', { style: 'color:rgba(255,255,255,.92)' }, T('loginText')) : null,
+        h('ul', {}, ...String(T('loginPoints') || '').split('|').map((x) => x.trim()).filter(Boolean).slice(0, 5).map((x) => h('li', {}, x))),
         h('p', { class: 'mini' }, 'Kết nối mã hoá HTTPS. Phiên đăng nhập lưu bằng cookie bảo mật, không lưu mật khẩu.')),
       h('div', { class: 'main', style: 'position:relative' },
         h('button', { type: 'button', class: 'ghost small close', 'aria-label': 'Đóng', onclick: close }, '✕'),
@@ -897,7 +953,8 @@ function consentAgain() {
   document.body.append(bg);
 }
 function cookieNotice() {
-  if (store.get('nv_cookie')) return;
+  // the trial version shows no cookie banner
+  if (ui.beta || store.get('nv_cookie')) return;
   const box = h('div', { class: 'cookie' }, h('span', {}, 'Chúng tôi chỉ dùng cookie cần thiết cho đăng nhập và thống kê ẩn danh. ', h('a', { href: '#/bao-mat' }, 'Tìm hiểu')),
     h('button', { type: 'button', class: 'small', onclick: () => { store.set('nv_cookie', '1'); box.remove(); } }, 'Đồng ý'));
   document.body.append(box);
@@ -905,24 +962,27 @@ function cookieNotice() {
 
 // ---------- legal
 let legalCache = null;
+const LEGAL_TITLES = { terms: 'Điều khoản sử dụng', privacy: 'Chính sách bảo mật', refund: 'Chính sách hoàn tiền' };
+/** During Beta the legal pages only say the site is a trial version (no full legal text until the official launch). */
+const BETA_LEGAL = 'Đây là phiên bản đang thử nghiệm. Điều khoản sử dụng và chính sách bảo mật đầy đủ sẽ được công bố khi trang web chính thức ra mắt.';
 async function showLegal(which) {
   viewed('legal', { which });
+  if (ui.beta) {
+    show(h('div', { class: 'doc' }, h('div', { class: 'card' }, h('h1', {}, LEGAL_TITLES[which]),
+      h('div', { class: 'legal-beta' }, h('b', {}, (ui.beta.label || 'Beta') + ' · phiên bản thử nghiệm'), h('p', {}, BETA_LEGAL)))), footer());
+    return;
+  }
   const l = (legalCache ||= await api('/api/legal'));
-  const beta = !!ui.beta, titles = { terms: 'Điều khoản sử dụng', privacy: 'Chính sách bảo mật', refund: 'Chính sách hoàn tiền' };
-  // during Beta everything is free: the sections and lines about prices, payment and refunds do not apply
-  const money = /thanh toán|hoàn tiền|hoàn lại tiền|gói cước|gói trả phí|bảng giá|chuyển khoản|sepay|vietqr|hoá đơn|hóa đơn|credit/i;
   const blocks = [];
-  let list = null, skip = false;
-  for (const raw of (beta && which === 'refund' ? '' : l[which]).split('\n')) {
+  let list = null;
+  for (const raw of l[which].split('\n')) {
     const line = raw.trim();
     if (!line) { list = null; continue; }
-    if (line.startsWith('## ')) { list = null; skip = beta && money.test(line); if (!skip) blocks.push(h('h2', {}, line.slice(3))); continue; }
-    if (skip || (beta && money.test(line))) continue;
+    if (line.startsWith('## ')) { list = null; blocks.push(h('h2', {}, line.slice(3))); continue; }
     if (line.startsWith('- ')) { if (!list) { list = h('ul'); blocks.push(list); } list.append(h('li', {}, line.slice(2))); }
     else { list = null; blocks.push(h('p', {}, line)); }
   }
-  const note = beta ? h('div', { class: 'legal-beta' }, h('b', {}, (ui.beta.label || 'Beta') + ' · phiên bản thử nghiệm'), h('p', {}, which === 'refund' ? 'Trong giai đoạn thử nghiệm, mọi tính năng đều miễn phí và không có giao dịch thanh toán nào, nên chưa áp dụng chính sách hoàn tiền.' : 'Trang web đang chạy thử nghiệm và miễn phí. Nội dung dưới đây áp dụng cho giai đoạn này và có thể được cập nhật khi chính thức ra mắt.')) : null;
-  show(h('div', { class: 'doc' }, h('div', { class: 'card' }, h('h1', {}, titles[which] + (beta ? ' (bản Beta)' : '')), h('p', { class: 'muted' }, `Phiên bản ${l.version} · ${l.company}${l.taxId ? ' · MST ' + l.taxId : ''}`), note, ...blocks)), footer());
+  show(h('div', { class: 'doc' }, h('div', { class: 'card' }, h('h1', {}, LEGAL_TITLES[which]), h('p', { class: 'muted' }, `Phiên bản ${l.version} · ${l.company}${l.taxId ? ' · MST ' + l.taxId : ''}`), ...blocks)), footer());
 }
 
 // ---------- create (guests may fill everything; sign-in is asked only when the video is made)

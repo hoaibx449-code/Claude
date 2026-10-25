@@ -253,6 +253,8 @@ async function adminSettings(body, tab) {
   const saveBtn = h('button', { type: 'button', 'data-ev': 'admin-save', onclick: async () => {
     saveBtn.disabled = true; saveBtn.textContent = 'Đang lưu…';
     try {
+      // the pinned-page / installed-app icon follows the logo and colours: drawn again when they changed
+      await makeAppIcons(c).catch((e) => toast('Chưa tạo được icon ứng dụng: ' + e.message));
       const saved = await api('/api/admin/settings', { method: 'PUT', body: { config: c, secrets: secretInput } });
       me = await api('/api/me'); applyUI(me.ui);
       // webhook mode is registered with Zalo on save: say whether it took
@@ -545,25 +547,22 @@ function musicCard(c) {
     list, h('button', { type: 'button', class: 'ghost small', onclick: () => { c.music.push({ id: 'nhac-' + Date.now().toString(36).slice(-5), title: '', file: '' }); draw(); } }, '+ Thêm bản nhạc'));
 }
 
-/** Video formats for videos made in Zalo: one default, and which ones people may pick with DINHDANG. */
+/** Kinds of video made in Zalo (the web page's engine): one default, and which ones people may pick with DINHDANG. */
 function zaloFormatsCard(c, z) {
-  const WAYS = ['auto', 'classic-sketch', 'classic-diagram', 'classic', 'act', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz'];
-  const CL = { web: 'Mặc định của web', auto: 'Tự động đa dạng', 'classic-sketch': 'Sketchnote theo lời', 'classic-diagram': 'Biểu đồ vẽ tay', classic: 'Tranh doodle' };
-  const name = (k) => CL[k] || c.labels.looks?.[k] || k;
-  const off = (k) => (k in CL ? (k === 'auto' ? false : (c.visibility['visual:' + ({ 'classic-sketch': 'sketch', 'classic-diagram': 'diagram', classic: 'doodle' })[k]] || 'on') !== 'on') : (c.visibility['look:' + k] || 'on') !== 'on');
-  z.formats ||= { default: 'web', allowed: [...WAYS] };
+  const WAYS = ['ink', 'cine'], CL = { ink: 'Vẽ tay (bàn tay vẽ trên bảng trắng)', cine: 'Điện ảnh (cảnh quay thật, cần khoá Pixabay)' };
+  z.formats ||= { default: 'ink', allowed: [...WAYS] };
+  if (!WAYS.includes(z.formats.default)) z.formats.default = 'ink';
+  z.formats.allowed = (z.formats.allowed || []).filter((k) => WAYS.includes(k));
   const note = h('p', { class: 'muted' });
-  const paintNote = () => { const n = z.formats.allowed.filter((k) => !off(k)).length; note.textContent = n >= 2 ? `Người dùng gõ DINHDANG để chọn 1 trong ${n} định dạng đã tick; chưa chọn thì dùng định dạng mặc định.` : 'Tick ít hơn 2 định dạng: mọi video qua Zalo dùng định dạng mặc định, người dùng không chọn được.'; };
-  const boxes = WAYS.map((k) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: z.formats.allowed.includes(k), disabled: off(k), onchange: (e) => {
-    z.formats.allowed = e.target.checked ? [...new Set([...z.formats.allowed, k])].sort((a, b) => WAYS.indexOf(a) - WAYS.indexOf(b)) : z.formats.allowed.filter((x) => x !== k); paintNote();
-  } }), name(k) + (off(k) ? ' (đang tắt ở Định dạng & hiển thị)' : '')));
+  const paintNote = () => { note.textContent = z.formats.allowed.length >= 2 ? 'Người dùng gõ DINHDANG để chọn kiểu; chưa chọn thì dùng kiểu mặc định.' : 'Tick ít hơn 2 kiểu: mọi video qua Zalo dùng kiểu mặc định, người dùng không chọn được.'; };
+  const boxes = WAYS.map((k) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: z.formats.allowed.includes(k), onchange: (e) => {
+    z.formats.allowed = e.target.checked ? WAYS.filter((x) => x === k || z.formats.allowed.includes(x)) : z.formats.allowed.filter((x) => x !== k); paintNote();
+  } }), CL[k]));
   paintNote();
-  return card('Định dạng video qua Zalo', 'Chọn định dạng mặc định cho video tạo qua Zalo, và tick các định dạng người dùng được chọn bằng lệnh DINHDANG. Phim tài liệu AI cần vẽ ảnh trên web nên không có ở đây.',
-    h('label', {}, 'Định dạng mặc định', select([['web', CL.web], ...WAYS.map((k) => [k, name(k)])], z.formats.default || 'web', (v) => { z.formats.default = v; })),
+  return card('Kiểu video qua Zalo', 'Video tạo qua Zalo dùng cùng máy dựng với trang Tạo video trên web. Chọn kiểu mặc định và các kiểu người dùng được chọn bằng lệnh DINHDANG.',
+    h('label', {}, 'Kiểu mặc định', select(WAYS.map((k) => [k, CL[k]]), z.formats.default, (v) => { z.formats.default = v; })),
     h('span', { class: 'plabel' }, 'Người dùng được chọn'),
     h('div', { class: 'grid' }, ...boxes),
-    h('div', { class: 'row' }, h('button', { type: 'button', class: 'ghost small', onclick: (e) => { z.formats.allowed = []; e.target.closest('.card').querySelectorAll('input[type=checkbox]').forEach((x) => { x.checked = false; }); paintNote(); } }, 'Chỉ dùng mặc định (bỏ tick hết)'),
-      h('button', { type: 'button', class: 'ghost small', onclick: (e) => { z.formats.allowed = WAYS.filter((k) => !off(k)); e.target.closest('.card').querySelectorAll('input[type=checkbox]').forEach((x) => { if (!x.disabled) x.checked = true; }); paintNote(); } }, 'Cho chọn tất cả')),
     note);
 }
 /** Ask the bot anything as a customer would and see how it answered: the AI (which model) or the prepared answers, and why. */
@@ -595,7 +594,7 @@ function zaloTab(c, secrets, secretInput, zcheck, inbox) {
     payment: 'Bán hàng · Khi khách chốt: thông tin chuyển khoản ({ma} {tenGoi} {soTien} {nganHang} {stk} {chuTk} {kichHoat})', paid: 'Bán hàng · Khi đã nhận tiền ({soTien} {ma} {tenGoi} {han})',
     upsell: 'Bán hàng · Mời nâng cấp khi hết lượt / video quá dài ({goiGoiY} {giaGoiY} {loiIch} {soGoiY})' };
   const owners=h('section',{class:'card'},h('p',{class:'muted'},'Đang tải danh sách chủ web…'));
-  import('/zalo-owners.js?v=44').then(m=>m.showOwners({h,api,root:owners,fail,toast})).catch(fail);
+  import('/zalo-owners.js?v=45').then(m=>m.showOwners({h,api,root:owners,fail,toast})).catch(fail);
   return [owners,
     card('Đọc prompt từ ảnh (OCR)','Gửi ảnh trực tiếp qua Zalo. Bot dùng AI theo thứ tự đã cấu hình để chép chữ, không thực thi prompt. Gửi PROMPT ANH sau khi kiểm tra để đăng/gửi duyệt. Kết quả tạm giữ 7 ngày; tối đa 8 MB mỗi ảnh và 20 ảnh/ngày/người dùng.',check(c.zalo.ocrEnabled,v=>{c.zalo.ocrEnabled=v;},'Cho phép đọc chữ trong ảnh')),
     card('Cách nhận tin nhắn', 'Webhook trực tiếp: Zalo gọi thẳng về web, trả lời ngay (khuyên dùng). Hỏi định kỳ: web tự hỏi Zalo mỗi phút, không cần webhook, trả lời chậm hơn. Bot chỉ có một webhook: hệ thống nào khác dùng chung token bot (Apps Script, n8n, bản chạy thử) sẽ giành mất webhook — hãy gỡ token khỏi nơi đó.',
@@ -619,8 +618,7 @@ function zaloTab(c, secrets, secretInput, zcheck, inbox) {
     card('Cài đặt Zalo', null, h('div', { class: 'grid' },
       check(z.enabled, (v) => { z.enabled = v; }, 'Bật tạo video qua Zalo'),
       check(z.allowGuests, (v) => { z.allowGuests = v; }, 'Cho người chưa có tài khoản web dùng ngay'),
-      check(z.autoRender, (v) => { z.autoRender = v; }, 'Tự dựng video ngay (không chờ sửa trên web)'),
-      h('label', {}, 'Kịch bản gửi qua Zalo được minh hoạ bằng', select([['mine-free', 'Luật tự động (miễn phí)'], ['mine-ai', 'AI (tốn lượt)']], z.scriptSource, (v) => { z.scriptSource = v; })),
+      check(z.review, (v) => { z.review = v; }, 'Gửi phân cảnh qua Zalo để người dùng duyệt (OK / SUA / HUY) trước khi dựng'),
       h('label', {}, 'Đường dẫn tư vấn Zalo (https://zalo.me/…)', input(z.botLink, (v) => { z.botLink = v.trim(); }))),
       h('h3', {}, 'Báo cho chủ web qua Zalo'),
       h('div', { class: 'grid' },
@@ -673,6 +671,27 @@ function visTab(c) {
 }
 
 /** Bounded upload with visible progress; never leave the admin waiting on a silent fetch. */
+/** PNG icons (192 and 512 px) for the home screen and the installed app, from the logo and the site's colours. */
+async function makeAppIcons(c) {
+  const logo = c.site?.logo; if (!logo) return;
+  const sig = JSON.stringify([logo, c.site.theme, c.site.colors, c.brand?.name]);
+  if (c.site.appIcon?.sig === sig && c.site.appIcon.i192 && c.site.appIcon.i512) return;
+  const before = ui.site; ui.site = c.site; // the colours being saved, not the ones in use
+  let svg; try { svg = logoSvg(logo, c.brand?.name, true); } finally { ui.site = before; }
+  const load = (src) => new Promise((ok, bad) => { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => ok(im); im.onerror = () => bad(new Error('không đọc được ảnh logo')); im.src = src; });
+  const pic = await load(logo.image ? siteUrl(logo.image) : 'data:image/svg+xml,' + encodeURIComponent(svg));
+  const draw = async (n) => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = n; const g = cv.getContext('2d');
+    if (logo.image) { // an uploaded logo: whole picture inside the safe middle, on white
+      g.fillStyle = '#fff'; g.fillRect(0, 0, n, n);
+      const k = Math.min(n * 0.7 / pic.naturalWidth, n * 0.7 / pic.naturalHeight), w = pic.naturalWidth * k, hh = pic.naturalHeight * k;
+      g.drawImage(pic, (n - w) / 2, (n - hh) / 2, w, hh);
+    } else g.drawImage(pic, 0, 0, n, n);
+    const blob = await new Promise((ok) => cv.toBlob(ok, 'image/png'));
+    return (await uploadSiteFile(new File([blob], `app-icon-${n}.png`, { type: 'image/png' }))).ref;
+  };
+  c.site.appIcon = { i192: await draw(192), i512: await draw(512), sig };
+}
 function uploadSiteFile(file, progress = () => {}) {
   if (!file.size || file.size > 60 * 1024 * 1024) return Promise.reject(new Error('Tệp cần nhỏ hơn 60 MB.'));
   const inferred = {mp4:'video/mp4',webm:'video/webm',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',mp3:'audio/mpeg',m4a:'audio/mp4'}[file.name.split('.').pop().toLowerCase()];
@@ -791,7 +810,7 @@ function contentTab(c) {
   const paintLogoChoices = () => logoChoices.replaceChildren(
     h('div', { class: 'chips' }, h('span', { class: 'muted' }, 'Biểu tượng:'), ...[['pen', 'Cây bút'], ['robot', 'Robot'], ['spark', 'Tia sáng'], ['play', 'Nút phát'], ['brush', 'Cọ vẽ'], ['star', 'Ngôi sao'], ['letter', 'Chữ cái đầu']].map(([k, n]) => h('button', { type: 'button', class: 'chip' + (c.site.logo.icon === k && !c.site.logo.image ? ' on' : ''), onclick: () => { c.site.logo.icon = k; c.site.logo.image = ''; paintLogoPreview(); } }, n))),
     h('div', { class: 'chips' }, h('span', { class: 'muted' }, 'Nền:'), ...[['brand', 'Tím cam'], ['sunset', 'Hoàng hôn'], ['ocean', 'Đại dương'], ['forest', 'Rừng xanh'], ['night', 'Đêm tím']].map(([k, n]) => { const b = h('button', { type: 'button', class: 'chip logo-bg' + (c.site.logo.bg === k ? ' on' : ''), onclick: () => { c.site.logo.bg = k; paintLogoPreview(); } }, h('i', {}), n); b.firstChild.style.background = LOGO_BG[k]; return b; }),
-      h('label', { class: 'chip logo-bg' + (/^#/.test(c.site.logo.bg) ? ' on' : '') }, 'Màu riêng ', h('input', { type: 'color', value: /^#/.test(c.site.logo.bg) ? c.site.logo.bg : '#7c3aed', oninput: (e) => { c.site.logo.bg = e.target.value; paintLogo(logoPreview, c.site.logo, c.brand.name); } }))));
+      h('label', { class: 'chip logo-bg' + (/^#/.test(c.site.logo.bg) ? ' on' : '') }, 'Màu riêng ', h('input', { type: 'color', value: /^#/.test(c.site.logo.bg) ? c.site.logo.bg : (c.site.colors?.primary || '#7c3aed'), oninput: (e) => { c.site.logo.bg = e.target.value; paintLogo(logoPreview, c.site.logo, c.brand.name); } }))));
   paintLogoPreview();
   const tplList = h('div', { class: 'scenes' });
   const drawTpls = () => tplList.replaceChildren(...c.templates.map((t, i) => h('div', { class: 'scene' },
@@ -802,14 +821,26 @@ function contentTab(c) {
   c.site.social ||= {}; c.site.helpBot ||= { enabled: true, name: 'Trợ lý', welcome: '', knowledge: '', perDay: 30 };
   const THEMES = [['aurora', 'Tím cam năng lượng (mặc định)', 'linear-gradient(120deg,#6d28d9,#a21caf,#f43f5e,#f97316)'], ['ocean', 'Đại dương', 'linear-gradient(120deg,#0891b2,#0e7490,#1d4ed8)'],
     ['sunset', 'Hoàng hôn', 'linear-gradient(120deg,#f97316,#e11d48,#9333ea)'], ['forest', 'Rừng xanh', 'linear-gradient(120deg,#059669,#047857,#d97706)'], ['classic', 'Cổ điển (nền trắng)', 'linear-gradient(120deg,#2f6bff,#1748d6)']];
+  c.site.colors ||= { primary: '', second: '' };
+  const col = c.site.colors, preview = () => window.nvApplyColors?.(c.site);
+  // the admin's own colours: pick one main colour, the second one (gradients, highlights) follows unless chosen too
+  const autoColor = () => shiftHue(col.primary || '#7c3aed', 40);
+  const mainPick = h('input', { type: 'color', value: col.primary || '#7c3aed', oninput: (e) => { col.primary = e.target.value; c.site.theme = 'custom'; if (!col.second) secondPick.value = autoColor(); preview(); paintThemes(); } });
+  const secondPick = h('input', { type: 'color', value: col.second || autoColor(), disabled: !col.second, oninput: (e) => { col.second = e.target.value; preview(); paintThemes(); } });
+  const autoSecond = check(!col.second, (v) => { col.second = v ? '' : secondPick.value; if (v) secondPick.value = autoColor(); secondPick.disabled = v; preview(); paintThemes(); }, 'Màu phụ tự chọn theo màu chính');
+  const customBox = h('div', { class: 'grid' }, h('label', {}, 'Màu chủ đạo', mainPick), h('label', {}, 'Màu phụ (gradient, điểm nhấn)', secondPick), autoSecond);
   const themeRow = h('div', { class: 'theme-pick' });
-  const paintThemes = () => themeRow.replaceChildren(...THEMES.map(([k, name, g]) => h('button', { type: 'button', class: (c.site.theme || 'aurora') === k ? 'on' : '', 'aria-pressed': String((c.site.theme || 'aurora') === k),
-    onclick: () => { c.site.theme = k; document.documentElement.dataset.theme = k; paintThemes(); } }, h('i', { style: 'background:' + g }), name)));
+  const paintThemes = () => {
+    const on = c.site.theme || 'aurora', mine = col.primary ? `linear-gradient(120deg,${col.primary},${col.second || col.primary})` : 'conic-gradient(#ef4444,#f59e0b,#22c55e,#06b6d4,#6366f1,#d946ef,#ef4444)';
+    themeRow.replaceChildren(...[...THEMES, ['custom', 'Tự chọn màu', mine]].map(([k, name, g]) => h('button', { type: 'button', class: on === k ? 'on' : '', 'aria-pressed': String(on === k),
+      onclick: () => { c.site.theme = k; if (k === 'custom' && !col.primary) col.primary = mainPick.value; preview(); paintThemes(); } }, h('i', { style: 'background:' + g }), name)));
+    customBox.hidden = on !== 'custom';
+  };
   paintThemes();
   const SOCIAL_NAMES = [['facebook', 'Facebook'], ['youtube', 'YouTube'], ['tiktok', 'TikTok'], ['instagram', 'Instagram'], ['zalo', 'Zalo OA'], ['threads', 'Threads'], ['x', 'X (Twitter)'], ['linkedin', 'LinkedIn']];
   const hb = c.site.helpBot;
   return [
-    card('Giao diện', 'Bộ màu cho toàn trang. Bấm để xem trước ngay, rồi Lưu cài đặt để áp dụng cho mọi người.', themeRow,h('label',{},'Dòng chữ khi mở trang',input(c.site.loadingText||'Đang mở xưởng vẽ…',v=>{c.site.loadingText=v;},{maxlength:120,placeholder:'Đang mở xưởng vẽ…'}))),
+    card('Giao diện', 'Bộ màu cho toàn trang: chọn một bộ có sẵn hoặc "Tự chọn màu". Nút, gradient, biểu tượng, thanh trình duyệt và icon khi ghim màn hình đều đổi theo. Bấm để xem trước ngay, rồi Lưu cài đặt để áp dụng cho mọi người.', themeRow, customBox,h('label',{},'Dòng chữ khi mở trang',input(c.site.loadingText||'Đang mở xưởng vẽ…',v=>{c.site.loadingText=v;},{maxlength:120,placeholder:'Đang mở xưởng vẽ…'}))),
     card('Mạng xã hội', 'Dán đường dẫn đầy đủ (https://…). Kênh nào có link sẽ hiện biểu tượng ở trang chủ và chân trang; để trống = ẩn.', h('div', { class: 'grid' },
       SOCIAL_NAMES.map(([k, name]) => h('label', {}, name, input(c.site.social[k], (v) => { c.site.social[k] = v.trim(); }, { type: 'url', placeholder: 'https://' }))))),
     card('Trợ lý hỗ trợ', 'Khung chat ở góc phải: AI hướng dẫn sử dụng và giải đáp thắc mắc. Dùng AI theo "Thứ tự AI"; khi AI lỗi sẽ trả lời theo câu hỏi thường gặp.',
