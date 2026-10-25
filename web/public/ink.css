@@ -41,3 +41,14 @@
 }
 .ink-side .card { align-content: start; }
 .ink-side .row { justify-content: flex-start; }
+.ink-machines { display: grid; gap: 10px; padding: 0; list-style: none; margin: 0; }
+.ink-machine { display: grid; grid-template-columns: 1fr auto auto; gap: 6px 12px; align-items: center; border: 1px solid var(--line, #e5e5e5); border-radius: 12px; padding: 12px; }
+.ink-machine small { grid-column: 1 / -1; }
+.ink-machine.off { opacity: .6; }
+.ink-move { display: flex; gap: 4px; }
+.ink-online { display: grid; gap: 6px; }
+.ink-cmd { white-space: pre-wrap; word-break: break-all; background: #111827; color: #e5e7eb; padding: 12px; border-radius: 10px; font-size: .85rem; }
+.ink-guides details { border-top: 1px solid var(--line, #eee); padding: 10px 0; }
+.ink-guides summary { cursor: pointer; font-weight: 600; }
+.ink-guides ol { display: grid; gap: 6px; padding-left: 20px; }
+.chip.ok { border-color: #16a34a; color: #15803d; }

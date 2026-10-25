@@ -72,6 +72,20 @@ catch (e) { console.log('Cảnh báo: chưa áp dụng được schema D1 lần 
 execFileSync('node', [join(web, 'build.mjs')], { stdio: 'inherit' });
 console.log(await retry('deploy', () => wrangler(['deploy', '-c', cfgFile])));
 
+// 5b. the Ink render machine for servers of the admin's own: its code and the one-line installer, kept in R2
+// (servers download it with their connection code and update themselves when the version changes)
+try {
+  const root = join(web, '..', 'ink'), tmp = join(web, '.ink-bundle.tgz'), version = (process.env.GITHUB_SHA || String(Date.now())).slice(0, 12);
+  execFileSync('tar', ['-czf', tmp, '--exclude=__pycache__', '-C', root, 'ink', 'assets', 'requirements.txt']);
+  const vf = join(web, '.ink-version.txt'); writeFileSync(vf, version);
+  wrangler(['r2', 'object', 'put', `${NAME}/ink-runner/bundle.tar.gz`, '--file', tmp, '--content-type', 'application/gzip', '--remote', '-c', cfgFile]);
+  wrangler(['r2', 'object', 'put', `${NAME}/ink-runner/version.txt`, '--file', vf, '--content-type', 'text/plain', '--remote', '-c', cfgFile]);
+  rmSync(vf, { force: true });
+  wrangler(['r2', 'object', 'put', `${NAME}/ink-runner/setup.sh`, '--file', join(root, 'server', 'setup.sh'), '--content-type', 'text/x-shellscript', '--remote', '-c', cfgFile]);
+  rmSync(tmp, { force: true });
+  console.log('Đã đưa máy dựng Ink lên kho, bản ' + version);
+} catch (e) { console.log('Cảnh báo: chưa đưa được máy dựng Ink lên kho: ' + String(e.message || e).slice(0, 300)); }
+
 // 6. secrets (only the ones provided)
 const secrets = Object.fromEntries(['GOOGLE_CLIENT_ID', 'ADMIN_EMAIL', 'RUNNER_TOKEN', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GCP_TRIGGER_KEY', 'GCP_PROJECT', 'GCP_REGION', 'GCP_JOB']
   .filter((k) => process.env[k]).map((k) => [k, process.env[k]]));

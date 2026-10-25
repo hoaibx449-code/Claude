@@ -109,12 +109,33 @@ def put(jid, lease, out, name, timeout=120):
         call(f'jobs/{jid}/file/{name}', method='PUT', body=f.read(), ctype=types[name.rsplit('.', 1)[1]], lease=lease, timeout=timeout)
 
 
+def where():
+    """which kind of machine this is: GitHub Actions, a Cloud Run job, or an always-on server"""
+    if os.environ.get('GITHUB_ACTIONS'): return 'github'
+    if os.environ.get('CLOUD_RUN_JOB'): return 'cloudrun'
+    return 'server'
+
+
 def main():
+    """--loop: an always-on server (polls the site every few seconds, restarts itself when the site has newer code);
+    otherwise take every queued job and stop (GitHub Actions, Cloud Run jobs)."""
     if not API or not TOKEN: sys.exit('Cần NV_API_URL và RUNNER_TOKEN')
-    once = '--once' in sys.argv; ok = True; started = idle = time.time()
-    while time.time() - started < 5.5 * 3600:  # GitHub stops a job at 6 hours
-        got = call('claim', {'runner': 'github-' + socket.gethostname()[:40]}); job = got.get('job')
+    once, loop = '--once' in sys.argv, '--loop' in sys.argv
+    kind = where(); host = socket.gethostname()[:40]
+    name = os.environ.get('INK_RUNNER_NAME') or f'{kind}-{host}'
+    mine = os.environ.get('INK_VERSION', '')  # set by the server's update script
+    ok = True; started = idle = time.time(); fails = 0
+    while loop or time.time() - started < 5.5 * 3600:  # GitHub stops a job at 6 hours
+        try: got = call('claim', {'runner': name, 'kind': kind, 'host': host, 'version': mine}); fails = 0
+        except Exception as e:  # noqa: BLE001
+            if not loop: raise
+            fails += 1; print('Chưa kết nối được trang:', e, flush=True); time.sleep(min(300, 10 * fails)); continue
+        job = got.get('job')
         if not job:
+            if loop:
+                # newer code on the site: exit so the service restarts and updates (only when idle)
+                if mine and got.get('version') and got['version'] != mine: print('Có bản máy dựng mới, khởi động lại để cập nhật.', flush=True); sys.exit(0)
+                time.sleep(8); continue
             # someone is reviewing a storyboard: wait (up to 20 minutes) so the video starts the moment they approve
             if got.get('review') and time.time() - idle < 20 * 60: time.sleep(15); continue
             break

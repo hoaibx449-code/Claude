@@ -1,9 +1,12 @@
-// Ink Studio: hand-drawn videos made by the Ink engine (ink/ in this repo) on GitHub Actions.
-// The site keeps the queue (ink_jobs) and the files (R2 ink/<user>/<job>/...); a GitHub workflow is woken
-// with the dispatch API, takes the jobs (/api/ink-runner/*, RUNNER_TOKEN) and sends the results back.
+// Ink Studio: hand-drawn videos made by the Ink engine (ink/ in this repo).
+// The site keeps the queue (ink_jobs) and the files (R2 ink/<user>/<job>/...). One render machine (ink/ink/site.py)
+// runs wherever the admin chooses, in the order chosen: a server of their own (VPS, cloud VM, a home PC: always
+// on, it polls), Google Cloud Run Jobs (started on demand), GitHub Actions (started with the dispatch API).
+// Machines take jobs from /api/ink-runner/* with RUNNER_TOKEN or a per-server connection code.
 // A job is 'plan' (script, storyboard, cover, then the video unless the user reviews the storyboard first)
 // or 'render' (an approved or re-paced storyboard to video: no AI call).
-import { body, HttpError, json, randomId, readBytes, refundQuota, timingSafeEqual, useQuota, type Env } from './util.ts';
+import { body, HttpError, json, randomId, readBytes, refundQuota, sha256, timingSafeEqual, useQuota, type Env } from './util.ts';
+import { startRunner } from './gcp.ts';
 import { decrypt, encrypt, isAdmin, type Config } from './settings.ts';
 import { limitsFor, planOf } from './plans.ts';
 import { serveObject } from './media.ts';
@@ -26,7 +29,11 @@ export interface InkSettings {
   voice: { fallback: boolean; default: string; list: InkVoice[] };
   defaults: { pace: string; seconds: number; mood: string; musicVolume: number; captions: boolean; review: boolean };
   github: { repo: string; workflow: string; ref: string };
+  /** where videos are made, first choice first; a machine that cannot be reached hands over to the next */
+  machines: { order: MachineKind[]; on: Record<MachineKind, boolean>; cloudJob: string };
 }
+export const MACHINES = ['server', 'cloudrun', 'github', 'browser'] as const;
+export type MachineKind = (typeof MACHINES)[number];
 export const INK_DEFAULTS: InkSettings = {
   enabled: true,
   ai: { order: ['gemini', 'openai'], fallback: true, gemini: 'gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-flash-latest', openai: 'gpt-4.1-mini,gpt-4o-mini' },
@@ -38,6 +45,7 @@ export const INK_DEFAULTS: InkSettings = {
   ] },
   defaults: { pace: 'normal', seconds: 60, mood: 'auto', musicVolume: 0.2, captions: true, review: false },
   github: { repo: 'hoaibx449-code/Claude', workflow: 'ink-runner.yml', ref: 'claude/ai-hand-drawing-video-platform-9na7xi' },
+  machines: { order: ['server', 'cloudrun', 'github', 'browser'], on: { server: true, cloudrun: true, github: true, browser: false }, cloudJob: 'faciup-ink-runner' },
 };
 
 const str = (v: unknown, max: number, d = '') => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max) : d);
@@ -46,7 +54,8 @@ const num = (v: unknown, lo: number, hi: number, d: number) => (Number.isFinite(
 const models = (v: unknown, d: string) => { const s = str(v, 300).split(',').map((x) => x.trim()).filter((x) => /^[\w.\-:]{2,60}$/.test(x)); return s.length ? s.join(',') : d; };
 
 export function cleanInk(i: any): InkSettings {
-  const d = INK_DEFAULTS, a = i?.ai || {}, v = i?.voice || {}, df = i?.defaults || {}, g = i?.github || {};
+  const d = INK_DEFAULTS, a = i?.ai || {}, v = i?.voice || {}, df = i?.defaults || {}, g = i?.github || {}, m = i?.machines || {};
+  const morder = [...new Set([...(Array.isArray(m.order) ? m.order : []).filter((x: unknown) => MACHINES.includes(x as MachineKind)), ...MACHINES])] as MachineKind[];
   const order = (Array.isArray(a.order) ? a.order : d.ai.order).filter((x: unknown) => x === 'gemini' || x === 'openai');
   const list: InkVoice[] = (Array.isArray(v.list) ? v.list : d.voice.list).slice(0, 20).map((x: any, k: number) => ({
     id: /^[a-z0-9-]{2,24}$/.test(x?.id) ? x.id : 'giong-' + (k + 1), label: str(x?.label, 60) || 'Giọng ' + (k + 1),
@@ -58,6 +67,8 @@ export function cleanInk(i: any): InkSettings {
     voice: { fallback: v.fallback !== false, default: list.some((x) => x.id === v.default && x.on) ? v.default : (list.find((x) => x.on) || list[0])?.id || 'hoaimy', list: list.length ? list : d.voice.list },
     defaults: { pace: pick(df.pace, PACES, 'normal'), seconds: num(df.seconds, 20, 300, 60), mood: pick(df.mood, MOODS, 'auto'), musicVolume: num(df.musicVolume, 0, 0.6, 0.2), captions: df.captions !== false, review: df.review === true },
     github: { repo: /^[\w.-]{1,40}\/[\w.-]{1,100}$/.test(g.repo || '') ? g.repo : d.github.repo, workflow: /^[\w.-]{1,60}\.ya?ml$/.test(g.workflow || '') ? g.workflow : d.github.workflow, ref: /^[\w./-]{1,120}$/.test(g.ref || '') ? g.ref : d.github.ref },
+    machines: { order: morder, on: Object.fromEntries(MACHINES.map((k) => [k, k === 'browser' ? false : typeof m.on?.[k] === 'boolean' ? m.on[k] : d.machines.on[k]])) as Record<MachineKind, boolean>,
+      cloudJob: /^[a-z][a-z0-9-]{2,62}$/.test(m.cloudJob || '') ? m.cloudJob : d.machines.cloudJob },
   };
 }
 
@@ -83,17 +94,69 @@ export async function dispatch(env: Env, force = false) {
   return r;
 }
 async function wake(env: Env, force: boolean) {
+  const { s } = await settings(env), errors: string[] = [];
+  for (const kind of s.machines.order) {
+    if (!s.machines.on[kind]) continue;
+    const r = kind === 'server' ? await serverAwake(env) : kind === 'cloudrun' ? await startCloud(env, s, force) : kind === 'github' ? await startGithub(env, force) : 'chưa hỗ trợ';
+    if (r === 'ok') return 'ok';
+    errors.push(`${MACHINE_NAMES[kind]}: ${r}`);
+  }
+  return errors.join(' · ') || 'Chưa bật máy dựng nào (Quản trị → Ink Studio → Máy dựng).';
+}
+export const MACHINE_NAMES: Record<MachineKind, string> = { server: 'Máy chủ riêng', cloudrun: 'Google Cloud Run', github: 'GitHub Actions', browser: 'Trình duyệt' };
+
+/** A server of the admin's own polls every few seconds: it only has to be online. */
+async function serverAwake(env: Env) {
+  const seen = await machinesSeen(env);
+  return Object.values(seen).some((x) => x.kind === 'server' && Date.now() - x.at < 90_000) ? 'ok' : 'không có máy chủ nào đang online';
+}
+async function startCloud(env: Env, s: InkSettings, force: boolean) {
+  if (!env.GCP_TRIGGER_KEY || !env.GCP_PROJECT || !env.GCP_REGION) return 'chưa nối Google Cloud';
+  if (!force && (await recently(env, 'ink:cloud'))) return 'ok';
+  const ok = await startRunner({ ...env, GCP_JOB: s.machines.cloudJob }).catch(() => false);
+  if (!ok) return `không chạy được job ${s.machines.cloudJob} (đã triển khai lên Google Cloud chưa?)`;
+  await mark(env, 'ink:cloud'); return 'ok';
+}
+async function startGithub(env: Env, force: boolean) {
   const { s, token } = await settings(env);
-  if (!token) return 'Chưa có GitHub token (Quản trị → Ink Studio).';
-  const last = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:dispatch'").first<any>();
-  if (!force && last && Date.now() - Number(last.value) < 90_000) return 'ok';
+  if (!token) return 'chưa có GitHub token';
+  if (!force && (await recently(env, 'ink:dispatch'))) return 'ok';
   const res = await fetch(`https://api.github.com/repos/${s.github.repo}/actions/workflows/${s.github.workflow}/dispatches`, {
     method: 'POST', body: JSON.stringify({ ref: s.github.ref }),
     headers: { authorization: 'Bearer ' + token, accept: 'application/vnd.github+json', 'user-agent': 'faciup-ink', 'x-github-api-version': '2022-11-28', 'content-type': 'application/json' },
   });
   if (!res.ok) return `GitHub từ chối (HTTP ${res.status}): ${(await res.text()).slice(0, 160)}`;
-  await env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('ink:dispatch', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(String(Date.now()), Date.now()).run();
-  return 'ok';
+  await mark(env, 'ink:dispatch'); return 'ok';
+}
+const recently = async (env: Env, k: string) => { const r = await env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind(k).first<any>(); return !!r && Date.now() - Number(r.value) < 90_000; };
+const mark = (env: Env, k: string) => env.DB.prepare('INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at').bind(k, String(Date.now()), Date.now()).run();
+
+// ---------------------------------------------------------------- machines
+/** Servers the admin connected: each has its own code (only its hash is kept), shown once. */
+interface Server { id: string; name: string; hash: string; created: number }
+async function servers(env: Env): Promise<Server[]> {
+  const r = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:servers'").first<any>();
+  try { return r ? JSON.parse(r.value) : []; } catch { return []; }
+}
+const saveServers = (env: Env, list: Server[]) => env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('ink:servers', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(JSON.stringify(list), Date.now()).run();
+type Seen = Record<string, { kind: string; at: number; version: string; host: string }>;
+async function machinesSeen(env: Env): Promise<Seen> {
+  const r = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:seen'").first<any>();
+  try { return r ? JSON.parse(r.value) : {}; } catch { return {}; }
+}
+/** who may take jobs: the site's RUNNER_TOKEN, or a server's connection code */
+async function runnerAuth(env: Env, req: Request): Promise<string | null> {
+  const auth = req.headers.get('authorization') || '';
+  if (env.RUNNER_TOKEN && env.RUNNER_TOKEN.length >= 32 && timingSafeEqual(auth, `Bearer ${env.RUNNER_TOKEN}`)) return 'token';
+  const code = auth.match(/^Bearer (ink_[a-f0-9]{48})$/)?.[1];
+  if (!code) return null;
+  const h = await sha256(code), s = (await servers(env)).find((x) => timingSafeEqual(x.hash, h));
+  return s ? 'server:' + s.id : null;
+}
+/** the newest machine code the site has (set at deploy), so servers update themselves */
+async function bundleVersion(env: Env) {
+  const v = await env.BUCKET.get('ink-runner/version.txt');
+  return v ? (await v.text()).trim().slice(0, 40) : '';
 }
 
 /** Every minute: jobs whose machine went quiet go back in the queue; a waiting queue wakes GitHub again. */
@@ -104,8 +167,8 @@ export async function inkCron(env: Env) {
   const running = await env.DB.prepare("SELECT COUNT(*) AS n FROM ink_jobs WHERE status = 'running'").first<any>();
   // nothing is being made and something waits for more than 3 minutes: the last wake-up was lost
   if (waiting?.t && !running?.n && now - waiting.t > 3 * 60_000) {
-    const last = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:dispatch'").first<any>();
-    if (!last || now - Number(last.value) > 5 * 60_000) await dispatch(env, true);
+    const last = await env.DB.prepare("SELECT MAX(CAST(value AS INTEGER)) AS t FROM settings WHERE key IN ('ink:dispatch', 'ink:cloud', 'ink:cron')").first<any>();
+    if (!last?.t || now - Number(last.t) > 5 * 60_000) { await mark(env, 'ink:cron'); await dispatch(env, true); }
   }
 }
 
@@ -228,11 +291,25 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
 
 // ---------------------------------------------------------------- the render machine
 export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): Promise<Response> {
-  const auth = req.headers.get('authorization') || '';
-  if (!env.RUNNER_TOKEN || env.RUNNER_TOKEN.length < 32 || !timingSafeEqual(auth, `Bearer ${env.RUNNER_TOKEN}`)) throw new HttpError(401, 'Không có quyền.');
+  const who = await runnerAuth(env, req);
+  if (!who) throw new HttpError(401, 'Không có quyền.');
   const now = Date.now();
+  // the newest machine code, for servers that keep themselves up to date (needs a connection code too)
+  if (sub === 'bundle' && req.method === 'GET') {
+    const obj = await env.BUCKET.get('ink-runner/bundle.tar.gz');
+    if (!obj) throw new HttpError(404, 'Trang chưa có gói máy dựng (triển khai lại web).');
+    return new Response(obj.body, { headers: { 'content-type': 'application/gzip', 'x-ink-version': await bundleVersion(env) } });
+  }
   if (sub === 'claim' && req.method === 'POST') {
-    await body(req, 1_000).catch(() => ({}));
+    const cb = await body<any>(req, 1_000).catch(() => ({} as any));
+    // remember who is online (at most once a minute per machine: a polling server must not fill the database)
+    const name = str(cb.runner, 60) || who, kind = pick(cb.kind, ['server', 'cloudrun', 'github'] as const, who.startsWith('server:') ? 'server' : 'github');
+    const seen = await machinesSeen(env);
+    if (!seen[name] || now - seen[name].at > 60_000) {
+      for (const [k, v] of Object.entries(seen)) if (now - v.at > 7 * 86_400_000) delete seen[k];
+      seen[name] = { kind, at: now, version: str(cb.version, 40), host: str(cb.host, 60) };
+      await env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('ink:seen', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(JSON.stringify(seen), now).run();
+    }
     await env.DB.prepare("UPDATE ink_jobs SET status = 'queued', lease = '' WHERE status = 'running' AND heartbeat < ?").bind(now - STALE_MS).run();
     const lease = 'lease-' + randomId(16);
     const j = await env.DB.prepare(`UPDATE ink_jobs SET status = 'running', lease = ?, heartbeat = ?, progress = 1, message = 'Máy dựng đã nhận việc', updated_at = ?
@@ -241,7 +318,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
       rc.quiet = true;
       // storyboards a user is looking at right now: the machine waits for them instead of leaving
       const r = await env.DB.prepare("SELECT COUNT(*) AS n FROM ink_jobs WHERE status = 'review' AND updated_at > ?").bind(now - 30 * 60_000).first<any>();
-      return json({ job: null, review: r?.n || 0 });
+      return json({ job: null, review: r?.n || 0, version: kind === 'server' ? await bundleVersion(env) : '' });
     }
     rc.userId = j.user_id;
     const { s } = await settings(env), input = JSON.parse(j.input);
@@ -327,7 +404,10 @@ export async function inkAdmin(req: Request, env: XEnv, sub: string, rc: Rc): Pr
       FROM ink_jobs j LEFT JOIN users u ON u.id = j.user_id ORDER BY j.created_at DESC LIMIT 40`).all<any>()).results;
     const last = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:dispatch'").first<any>();
     const err = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:wake_error'").first<any>();
-    return json({ wakeError: err?.value || '', settings: s, token: !!token, keys: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY, everai: !!(env as any).EVERAI_API_KEY }, lastDispatch: Number(last?.value) || 0, jobs });
+    const seen = await machinesSeen(env), list = await servers(env);
+    const machines = { seen: Object.entries(seen).map(([name, v]) => ({ name, ...v, online: Date.now() - v.at < 90_000 })).sort((a, b) => b.at - a.at),
+      servers: list.map(({ id, name, created }) => ({ id, name, created })), cloud: !!(env.GCP_TRIGGER_KEY && env.GCP_PROJECT && env.GCP_REGION), version: await bundleVersion(env) };
+    return json({ machines, wakeError: err?.value || '', settings: s, token: !!token, keys: { gemini: !!env.GEMINI_API_KEY, openai: !!env.OPENAI_API_KEY, everai: !!(env as any).EVERAI_API_KEY }, lastDispatch: Number(last?.value) || 0, jobs });
   }
   if (sub === 'ink' && req.method === 'PUT') {
     const b = await body<any>(req, 30_000), s = cleanInk(b.settings || {}), now = Date.now();
@@ -342,6 +422,21 @@ export async function inkAdmin(req: Request, env: XEnv, sub: string, rc: Rc): Pr
     rc.log('admin.settings', { data: { section: 'ink' } });
     return json({ settings: s });
   }
+  if (sub === 'ink/servers' && req.method === 'POST') {
+    const b = await body<any>(req, 2_000), list = await servers(env);
+    if (list.length >= 20) throw new HttpError(400, 'Tối đa 20 máy chủ.');
+    const code = 'ink_' + randomId(24), server = { id: randomId(6), name: str(b.name, 40) || 'Máy chủ ' + (list.length + 1), hash: await sha256(code), created: Date.now() };
+    await saveServers(env, [...list, server]);
+    rc.log('admin.settings', { data: { section: 'ink-server', add: server.name } });
+    const origin = new URL(req.url).origin;
+    return json({ id: server.id, code, command: `curl -fsSL ${origin}/api/ink-setup.sh | sudo bash -s -- ${code}` });
+  }
+  const del = sub.match(/^ink\/servers\/([a-f0-9]{12})$/);
+  if (del && req.method === 'DELETE') {
+    await saveServers(env, (await servers(env)).filter((x) => x.id !== del[1]));
+    rc.log('admin.settings', { data: { section: 'ink-server', remove: del[1] } });
+    return json({ ok: true });
+  }
   if (sub === 'ink/dispatch' && req.method === 'POST') {
     memo = null;
     const r = await dispatch(env, true);
@@ -349,4 +444,12 @@ export async function inkAdmin(req: Request, env: XEnv, sub: string, rc: Rc): Pr
     return json({ ok: true });
   }
   return null;
+}
+
+/** The one-line install for a server of the admin's own (public: it holds no secret, the code is typed by the admin). */
+export async function inkSetup(req: Request, env: Env): Promise<Response> {
+  const obj = await env.BUCKET.get('ink-runner/setup.sh');
+  if (!obj) throw new HttpError(404, 'Chưa có bộ cài (triển khai lại web).');
+  const text = (await obj.text()).replace(/__SITE__/g, new URL(req.url).origin);
+  return new Response(text, { headers: { 'content-type': 'text/x-shellscript; charset=utf-8', 'cache-control': 'no-store' } });
 }

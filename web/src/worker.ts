@@ -16,7 +16,7 @@ import { drawImage, type ImageProvider, type TextProvider, writeScript, reviewDi
 import {claimIllustrated,startIllustrated,assertIllustrated,voiceCache as illustratedVoiceCache} from '../../addons/faciup-illustrated/web.ts';
 import {claimWhiteboard,startWhiteboard,assertWhiteboard,voiceCache} from '../../addons/faciup-whiteboard/web.ts';
 import { startRunner } from './gcp.ts';
-import { inkCron, inkRunner, inkUser } from './ink.ts';
+import { inkCron, inkRunner, inkSetup, inkUser } from './ink.ts';
 import { cleanSpec, LOOKS, STYLES } from './spec.ts';
 import { LOOK_BRIEF } from './ai.ts';
 import { clearVoiceFallback, recordRunnerCaps, recordVoiceFallback, voicePreview, voicesWithStatus, voiceUpload, browserVoice } from './voices.ts';
@@ -191,6 +191,7 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
   if(path.startsWith('/api/illustrated-runner/')){const sub=path.slice('/api/illustrated-runner/'.length);const v=sub.match(/^voice\/([a-f0-9]{24})\/(\d+)$/);if(v)return illustratedVoiceCache(req,env,v[1],Number(v[2]));return sub==='claim'?claimIllustrated(req,env,rc):runner(req,env,sub,rc);}
   if(path.startsWith('/api/whiteboard-runner/')) {const sub=path.slice('/api/whiteboard-runner/'.length);const v=sub.match(/^voice\/([a-f0-9]{24})\/(\d+)$/);if(v)return voiceCache(req,env,v[1],Number(v[2]));return sub==='claim'?claimWhiteboard(req,env,rc):runner(req,env,sub,rc);}
   if (path.startsWith('/api/runner/')) return runner(req, env, path.slice('/api/runner/'.length), rc);
+  if (path === '/api/ink-setup.sh' && method === 'GET') return inkSetup(req, env);
   if (path.startsWith('/api/ink-runner/')) return inkRunner(req, env, path.slice('/api/ink-runner/'.length), rc);
 
   // called by other services (verified inside), and the no-login share link for finished videos

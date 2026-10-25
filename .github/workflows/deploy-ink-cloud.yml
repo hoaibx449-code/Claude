@@ -1,0 +1,77 @@
+name: Ink Studio — triển khai lên Google Cloud
+
+# Đưa máy dựng Ink lên Google Cloud Run Jobs (dùng lại tài khoản Google Cloud của dự án: secret GCP_SA_KEY).
+# Trang web bật job này khi có video chờ (khoá "chỉ được bật máy dựng" GCP_TRIGGER_KEY đã có từ trước).
+# Tự chạy lại khi mã máy dựng (ink/) thay đổi; chạy thủ công bao nhiêu lần cũng được.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/ai-hand-drawing-video-platform-9na7xi]
+    paths: ['ink/ink/**', 'ink/assets/**', 'ink/requirements.txt', 'ink/Dockerfile', '.github/workflows/deploy-ink-cloud.yml']
+
+permissions:
+  contents: read
+
+concurrency: deploy-ink-cloud
+
+env:
+  REGION: asia-southeast1
+  REPO: net-ve
+  JOB: faciup-ink-runner
+  TRIGGER_SA: nv-trigger
+  RUNTIME_SA: nv-render
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Kiểm tra đã nối Google Cloud chưa
+        id: gcp
+        env:
+          KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then echo "Chưa có secret GCP_SA_KEY: bỏ qua (xem hướng dẫn ở Quản trị → Ink Studio → Máy dựng)."; echo "skip=1" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/checkout@v4
+        if: steps.gcp.outputs.skip != '1'
+      - uses: google-github-actions/auth@v2
+        if: steps.gcp.outputs.skip != '1'
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+        if: steps.gcp.outputs.skip != '1'
+      - name: Build và đẩy container
+        if: steps.gcp.outputs.skip != '1'
+        run: |
+          gcloud config set project "$GCP_PROJECT"
+          gcloud services enable run.googleapis.com artifactregistry.googleapis.com >/dev/null
+          gcloud artifacts repositories describe "$REPO" --location "$REGION" >/dev/null 2>&1 \
+            || gcloud artifacts repositories create "$REPO" --repository-format=docker --location "$REGION"
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" -q
+          IMAGE="$REGION-docker.pkg.dev/$GCP_PROJECT/$REPO/ink-runner:$GITHUB_SHA"
+          docker build -t "$IMAGE" ink
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - name: Tạo / cập nhật job máy dựng
+        if: steps.gcp.outputs.skip != '1'
+        env:
+          NV_API_URL: ${{ secrets.NV_API_URL }}
+          RUNNER_TOKEN: ${{ secrets.RUNNER_TOKEN }}
+        run: |
+          test -n "$NV_API_URL" || { echo "Thiếu secret NV_API_URL"; exit 1; }
+          RUNTIME_ID="$RUNTIME_SA@$GCP_PROJECT.iam.gserviceaccount.com"
+          gcloud iam service-accounts describe "$RUNTIME_ID" >/dev/null 2>&1 \
+            || gcloud iam service-accounts create "$RUNTIME_SA" --display-name "Net Ve: isolated render runtime"
+          umask 077
+          python3 -c 'import json,os;json.dump({k:os.environ[k] for k in ("NV_API_URL","RUNNER_TOKEN") if os.environ.get(k)},open("ink-env.json","w"))'
+          gcloud run jobs deploy "$JOB" --image "$IMAGE" --region "$REGION" --service-account "$RUNTIME_ID" \
+            --tasks 1 --max-retries 0 --task-timeout 3600 --cpu 2 --memory 4Gi --env-vars-file ink-env.json
+          rm -f ink-env.json
+          # the site's existing "may only start render jobs" account may start this job too (its key is not changed)
+          SA="$TRIGGER_SA@$GCP_PROJECT.iam.gserviceaccount.com"
+          if gcloud iam service-accounts describe "$SA" >/dev/null 2>&1; then
+            gcloud run jobs add-iam-policy-binding "$JOB" --region "$REGION" --member "serviceAccount:$SA" --role roles/run.invoker >/dev/null
+            echo "Xong: trang web bật được job $JOB."
+          else
+            echo "Chưa có tài khoản $TRIGGER_SA: chạy workflow \"Triển khai máy dựng\" một lần để nối Google Cloud với trang web."
+          fi
