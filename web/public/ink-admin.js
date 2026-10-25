@@ -25,6 +25,7 @@ const GUIDES = [
     'Tải mã nguồn repo về máy chủ, rồi: docker build -t faciup-ink ink',
     'Chạy: docker run -d --restart always --name faciup-ink -e NV_API_URL=ĐỊA_CHỈ_TRANG -e RUNNER_TOKEN=MÃ_KẾT_NỐI faciup-ink python -m ink.site --loop']],
   ['Google Cloud Run (không cần máy chủ luôn bật)', [
+    'Điều kiện: dự án Google Cloud phải bật thanh toán. Vào console.cloud.google.com → Billing → Link a billing account (thêm thẻ). Cloud Run có gói miễn phí hằng tháng, video 1 phút dùng khoảng 8 phút CPU nên vài trăm video/tháng thường không mất phí.',
     'Dự án đã nối sẵn Google Cloud (secret GCP_SA_KEY trên GitHub). Vào GitHub → tab Actions → "Ink Studio — triển khai lên Google Cloud" → Run workflow. Khi mã máy dựng thay đổi, workflow này tự chạy lại.',
     'Xong là trang web tự bật Cloud Run mỗi khi có video chờ, dựng xong tự tắt. Bật mục Google Cloud Run trong danh sách máy dựng ở trên.']],
   ['Theo dõi, cập nhật, gỡ bỏ máy chủ', [

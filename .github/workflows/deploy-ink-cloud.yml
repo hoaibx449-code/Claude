@@ -44,7 +44,16 @@ jobs:
         if: steps.gcp.outputs.skip != '1'
         run: |
           gcloud config set project "$GCP_PROJECT"
-          gcloud services enable run.googleapis.com artifactregistry.googleapis.com >/dev/null
+          if ! out=$(gcloud services enable run.googleapis.com artifactregistry.googleapis.com 2>&1); then
+            if echo "$out" | grep -q BILLING; then
+              msg="Dự án Google Cloud $GCP_PROJECT chưa bật thanh toán (billing). Vào console.cloud.google.com → Billing → liên kết tài khoản thanh toán cho dự án, rồi chạy lại workflow này."
+              echo "::warning::$msg"
+              # on a code push this is a known setup step, not a failure of the change
+              [ "$GITHUB_EVENT_NAME" = push ] && { echo "skip=1" >> "$GITHUB_ENV"; exit 0; }
+            fi
+            echo "$out"; exit 1
+          fi
+          [ "${skip:-}" = 1 ] && exit 0
           gcloud artifacts repositories describe "$REPO" --location "$REGION" >/dev/null 2>&1 \
             || gcloud artifacts repositories create "$REPO" --repository-format=docker --location "$REGION"
           gcloud auth configure-docker "$REGION-docker.pkg.dev" -q
@@ -53,7 +62,7 @@ jobs:
           docker push "$IMAGE"
           echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
       - name: Tạo / cập nhật job máy dựng
-        if: steps.gcp.outputs.skip != '1'
+        if: steps.gcp.outputs.skip != '1' && env.skip != '1'
         env:
           NV_API_URL: ${{ secrets.NV_API_URL }}
           RUNNER_TOKEN: ${{ secrets.RUNNER_TOKEN }}
