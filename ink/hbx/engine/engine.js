@@ -70,7 +70,7 @@
       <div class="label" data-in=".05" data-a="left">${esc(s.label || '')}</div>
       <div class="kicker" style="top:${470 - n * 45}px" data-in=".15" data-a="pop">${esc(s.kicker || 'CÂU HỎI')}</div>
       <div class="big" style="top:${530 - n * 45}px" data-in=".3" data-a="title">${rich(s.text)}</div>
-      <div style="position:absolute;left:180px;right:180px;top:${545 - n * 45 + n * 86}px;height:7px;background:var(--warn);border-radius:4px;transform-origin:center" data-in=".7" data-a="grow"></div>`
+      <div class="qline" style="position:absolute;left:180px;right:180px;top:${530 - n * 45}px;height:7px;background:var(--warn);border-radius:4px;transform-origin:center" data-in=".7" data-a="grow"></div>`
     };
   };
 
@@ -317,6 +317,7 @@
       el.className = 'scene'; el.dataset.tone = s.tone || 'a';
       el.innerHTML = `<div class="cam">${deco(i + (sb.seed || 1))}<div class="pill"><i></i>${esc(sb.brand || '')}</div>${def.html}</div>`;
       root.appendChild(el);
+      (EXT.decorate || []).forEach(f => f(s, el, { i, start: acc }));   // kho kỹ thuật dựng (fx.js): đồ hoạ phủ, hiệu ứng, tốc độ
       const o = { s, el, cam: el.querySelector('.cam'), camKind: s.camera || def.cam, start: acc, dur: s.dur, focus: def.focus, items: [...el.querySelectorAll('[data-in]')] };
       o.items.forEach(x => { x._base = x.style.transform || ''; x._in = parseFloat(x.dataset.in); x._d = parseFloat(x.dataset.d || .55); });
       el.querySelectorAll('[data-a2=type]').forEach(x => { x._html = x.innerHTML; });
@@ -327,9 +328,13 @@
     buildWords(); buildEvents();
     const prog = document.getElementById('prog'); for (let i = 0; i < 12; i++) prog.appendChild(document.createElement('div'));
     const imgs = [...document.querySelectorAll('.photo')].map(p => (p.style.backgroundImage.match(/url\("?(.*?)"?\)/) || [])[1]).filter(Boolean);
-    return Promise.all([document.fonts.ready, ...imgs.map(u => new Promise(r => { const im = new Image(); im.onload = im.onerror = r; im.src = u; }))]).then(() => EXT.fit && EXT.fit(root));
+    return Promise.all([document.fonts.ready, ...imgs.map(u => new Promise(r => { const im = new Image(); im.onload = im.onerror = r; im.src = u; }))]).then(() => { placeLines(root); return EXT.fit && EXT.fit(root); });
   }
 
+  // gạch dưới câu hỏi: đặt theo chiều cao THẬT của chữ sau khi tự xuống dòng (không đoán theo số dòng)
+  function placeLines(root) {
+    root.querySelectorAll('.qline').forEach(l => { const b = l.previousElementSibling; if (b) l.style.top = (b.offsetTop + b.offsetHeight + 18) + 'px'; });
+  }
   // Phụ đề: dùng mốc từ giọng đọc (sb.words) nếu có, không thì chia theo độ dài từ
   /* ---------- Phụ đề: ngắt cụm theo NGHĨA ----------
      Ưu tiên: (1) dấu "|" do kịch bản đánh dấu, (2) dấu câu, (3) tự chia đôi cụm dài
@@ -501,6 +506,7 @@
     // tone cho lớp phủ chung theo cảnh hiện tại
     const tone = SC[tr ? (tr.p < .5 ? SC.indexOf(tr.A) : SC.indexOf(tr.B)) : cur].el.dataset.tone;
     ['sub', 'prog', 'sticker'].forEach(id => document.getElementById(id).dataset.tone = tone);
+    document.getElementById('sub').dataset.bg = SC[tr ? (tr.p < .5 ? SC.indexOf(tr.A) : SC.indexOf(tr.B)) : cur].s.subTone || 'dark';
     // phụ đề karaoke
     const sub = document.getElementById('sub');
     let wi = -1; for (let i = 0; i < WORDS.length; i++) if (WORDS[i].t <= T) wi = i;
@@ -525,7 +531,10 @@
       if (v.dataset.t0 === undefined) return;
       const t0 = +v.dataset.t0, d = +v.dataset.d; if (T < t0 - .6 || T > t0 + d + .6) return;
       const n = +v.dataset.n, fps = +v.dataset.fps, rate = Math.max(.5, Math.min(1, n / fps / Math.max(d, .1)));
-      const k = Math.max(0, Math.min(n - 1, Math.floor((T - t0) * rate * fps)));
+      // tốc độ theo đạo diễn: slow (chậm 0,5x), fast (nhanh 1,6x), ramp (nhanh rồi chậm), freeze (dừng hình từ mốc)
+      const lt = T - t0, sp = v.dataset.speed, fat = +v.dataset.fat || d / 2;
+      const tt = sp === 'slow' ? lt * .5 : sp === 'fast' ? lt * 1.6 : sp === 'ramp' ? (lt < fat ? lt * 1.8 : fat * 1.8 + (lt - fat) * .4) : sp === 'freeze' ? Math.min(lt, fat) : lt * rate;
+      const k = Math.max(0, Math.min(n - 1, Math.floor(tt * fps)));
       const u = `${v.dataset.dir}/f${String(k + 1).padStart(4, '0')}.jpg`;
       if (v._u !== u) { v._u = u; v.src = u; pend.push(v.decode().catch(() => {})); }
     });

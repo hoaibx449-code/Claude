@@ -141,8 +141,27 @@ def main():
             b.close()
         return
 
-    with sync_playwright() as pw:
-        b, pg = open_page(pw, sb); total = pg.evaluate('HBX.TOTAL'); events = pg.evaluate('HBX.EVENTS'); b.close()
+    # QC trước khi dựng: chữ tràn khung / đồ hoạ đè phụ đề → gỡ đúng kỹ thuật gây lỗi ở cảnh đó rồi soát lại (tối đa 3 vòng)
+    for rnd in range(3):
+        with sync_playwright() as pw:
+            b, pg = open_page(pw, sb); total = pg.evaluate('HBX.TOTAL'); events = pg.evaluate('HBX.EVENTS')
+            qc = pg.evaluate('window.HBX_QC ? HBX_QC() : []'); b.close()
+        for q in qc[:8]: print(f"  QC cảnh {q['scene']} ({q['at']}s): {q['what']} [{q['el']}]", flush=True)
+        fixed = False
+        for q in qc:
+            s = sb['scenes'][q['scene'] - 1]; f = s.get('fx') or {}
+            if q['what'] == 'đồ hoạ đè phụ đề' and f.get('overlay'):
+                kind = next((c for c in str(q['el']).split() if c.startswith('fx-')), '')[3:]
+                keep = [o for o in f['overlay'] if not kind or not o.get('kind', '').startswith(kind[:4])]
+                if len(keep) < len(f['overlay']): f['overlay'] = keep; fixed = True
+            elif q['what'] == 'tràn khung ngang' and f.get('camera'):
+                f.pop('camera'); fixed = True
+            elif q['what'] == 'tràn khung ngang' and q['el'] in ('title', 'big', 'ctitle', 'fit'):
+                s['titleFit'] = True
+        if not qc or not fixed: break
+        print(f'  QC: đã gỡ kỹ thuật gây lỗi, soát lại (vòng {rnd + 2})', flush=True)
+    (sbp.parent / 'qc.json').write_text(json.dumps(qc, ensure_ascii=False))
+    print(f'  QC: {len(qc)} vấn đề bố cục còn lại' if qc else '  QC: bố cục sạch', flush=True)
     import time; T0 = time.time()
     n = int(round(total * FPS)); tmp = Path(tempfile.mkdtemp(prefix='hbxr_'))
     ps = [Process(target=worker, args=(sb, list(range(k, n, a.workers)), tmp)) for k in range(a.workers)]

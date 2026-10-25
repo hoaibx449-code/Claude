@@ -97,7 +97,8 @@
       f = Math.max(0, f);
       cam.style.transform = `translate3d(${Math.sin(lt * .7) * 20}px,-40px,${f * 700 - 120 + lt * 10}px) rotateY(${Math.sin(lt * .5) * 4}deg)`;
       floor.style.backgroundPosition = `0 ${(f * 175) % 120}px`;
-      M.forEach((m, k) => { const p = P(0, +m.dataset.at, .5); m.style.opacity = p * clamp(1 - (f - k) * 2.2); m.querySelector('.g3yr').style.transform = `translateY(${(1 - E.out3(p)) * 60}px) scale(${.6 + .4 * E.back(p)})`; });
+      // a milestone stays until the next one is in view (no empty frames between them)
+      M.forEach((m, k) => { const p = P(0, +m.dataset.at, .5), nx = M[k + 1] ? P(0, +M[k + 1].dataset.at, .5) : 0; m.style.opacity = p * (k === M.length - 1 ? 1 : clamp(1 - nx * .85)); m.querySelector('.g3yr').style.transform = `translateY(${(1 - E.out3(p)) * 60}px) scale(${.6 + .4 * E.back(p)})`; });
     } else if (t === 'g_cards') {
       const C = [...o.el.querySelectorAll('.g3card')];
       cam.style.transform = `translate3d(0,0,${lt * 14}px)`;

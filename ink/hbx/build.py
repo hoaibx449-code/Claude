@@ -59,6 +59,28 @@ def images(sbp, plan_p, plan):
     return sb
 
 
+def sub_tones(sbp):
+    """how bright the picture is right behind the captions, per scene ('light' | 'dark'): the captions pick dark or
+    light letters so they always stand out (cine). Photos/clips are measured; graphic scenes follow their tone."""
+    from PIL import Image, ImageStat
+    sb = json.loads(Path(sbp).read_text()); scheme = (sb.get('style') or {}).get('scheme', 'dark')
+    for s in sb['scenes']:
+        bg = s.get('bg') if isinstance(s.get('bg'), dict) else None
+        src = None
+        if bg and isinstance(bg.get('frames'), dict): src = Path(sbp).parent / bg['frames']['dir'] / 'f0001.jpg'
+        elif bg and bg.get('src') and not str(bg['src']).startswith(('http', 'data:')): src = Path(sbp).parent / str(bg['src']).replace('file://', '')
+        if src and src.exists():
+            im = Image.open(src).convert('L'); w, h = im.size
+            cw = min(w, int(h * 9 / 16)); x0 = int((w - cw) * float((bg.get('focus') or {}).get('x', .5)))
+            band = im.crop((x0, int(h * .44), x0 + cw, int(h * .62)))
+            m = ImageStat.Stat(band).mean[0]
+            s['subTone'] = 'light' if m > 168 else 'dark' if m < 105 else 'mid'   # mid: nền lưng chừng → nền mờ sau chữ
+        elif s.get('type') != 'shot':
+            t = s.get('tone', 'a')
+            s['subTone'] = 'light' if t == 'c' or (scheme == 'light' and t == 'a') else 'dark'
+    Path(sbp).write_text(json.dumps(sb, ensure_ascii=False, indent=1))
+
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument('mode', choices=['preview', 'render'])
     ap.add_argument('--plan', required=True); ap.add_argument('--work', default='work')
@@ -76,7 +98,7 @@ def main():
 
     if a.mode == 'preview':
         sb = sb_from_plan(plan); sbp.write_text(json.dumps(sb, ensure_ascii=False, indent=1))
-        sb = images(sbp, a.plan, plan)
+        sb = images(sbp, a.plan, plan); sub_tones(sbp); sb = json.loads(sbp.read_text())
         ts, acc = [], 0.0
         for s in sb['scenes']: ts.append(round(acc + min(s['dur'] * .7, s['dur'] - .3), 2)); acc += s['dur']
         pv = work / 'pv'; run(sys.executable, HERE / 'render.py', sbp, pv, '--preview', ','.join(map(str, ts)))
@@ -103,6 +125,7 @@ def main():
     run(*args)
     images(sbp, a.plan, plan)
     if json.loads(Path(sbp).read_text()).get('theme') == 'cine': run(sys.executable, HERE / 'depth25.py', '--bake', sbp)   # nướng máy quay 2.5D/video
+    sub_tones(sbp)
     run(sys.executable, HERE / 'render.py', sbp, a.out, '--workers', a.workers, *(['--cover', a.cover] if a.cover else []))
 
 

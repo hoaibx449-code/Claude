@@ -15,11 +15,17 @@ HBX = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
 THEMES = {'ai', 'tech', 'science', 'finance', 'security', 'tips', 'life', 'health', 'society', 'education', 'environment', 'development', 'economy', 'business', 'crypto', 'scam', 'warning', 'howto', 'review'}
 MOODS = ('tech', 'finance', 'alert', 'bright', 'calm')
 CAMS = ['push', 'dolly', 'zoom', 'fpv', 'truckL', 'truckR', 'rise', 'orbit']
-TRANS = ['through', 'cut', 'dissolve', 'whip', 'zoom', 'flash', 'slideup', 'glitch', 'stripes']
+TRANS = ['through', 'cut', 'dissolve', 'whip', 'zoom', 'flash', 'slideup', 'glitch', 'stripes', 'blur', 'spin', 'stretch', 'rgb', 'lightleak', 'filmburn',
+         'dipblack', 'dipwhite', 'pushup', 'slide', 'iris', 'wipe', 'smash', 'fpv']
+# the technique library (hbx/engine/fx.js): fake camera, overlays, picture effects, footage speed — chosen per scene
+FX_CAM = ['punchIn', 'punchOut', 'snapZoom', 'crashZoom', 'kenBurns', 'handheld', 'shake', 'pullOut', 'tiltUp', 'tiltDown', 'panL', 'panR', 'dutch', 'breathe']
+FX_OVER = ['arrow', 'circle', 'box', 'underline', 'scribble', 'spotlight', 'impact', 'keyword', 'lowerthird', 'counter', 'progress', 'typewriter', 'stamp', 'sticker', 'bracket', 'flash']
+FX_EFF = ['vignette', 'grain', 'glow', 'chroma', 'lightleak', 'halftone', 'bw', 'warm', 'cool', 'blurIn', 'filmburn', 'dim', 'duotone']
+FX_SPEED = ['slow', 'ramp', 'freeze', 'fast']
 # every way of telling a line in pictures the engine knows, and which "family" it belongs to (variety rules)
 FAMILY = {'shot': 'footage', 'callouts': 'footage', 'compare': 'compare', 'warning': 'footage', 'c_photo': 'footage',
           'big_number': 'number', 'c_number': 'number', 'g_blocks': 'number', 'c_ring': 'number', 'c_bar': 'number', 'chart': 'chart', 'c_dots': 'number',
-          'c_equation': 'flow', 'g_flow': 'flow', 'b_grid': 'flow', 'timeline': 'time', 'g_timeline': 'time',
+          'c_equation': 'flow', 'g_flow': 'flow', 'b_grid': 'flow', 'timeline': 'time',
           'checklist': 'list', 'c_list': 'list', 'g_cards': 'list', 'question': 'text', 'c_word': 'text', 'c_headline': 'text', 'outro': 'text'}
 FOOTAGE = {'shot', 'callouts', 'compare', 'warning', 'c_photo'}
 
@@ -86,6 +92,8 @@ def build(o, lines, fp, clips):
     for s in o.get('scenes') or []:
         try: k = int(s.get('line'))
         except (TypeError, ValueError, AttributeError): continue
+        if isinstance(s, dict) and s.get('type') == 'g_timeline':  # the flat timeline instead (no empty frames)
+            s = dict(s, type='timeline', items=[{'when': str(i.get('year') or i.get('when') or ''), 'text': i.get('text', '')} for i in s.get('items') or [] if isinstance(i, dict)])
         if 0 <= k < len(lines) and k not in got and s.get('type') in FAMILY: got[k] = dict(s)
     if len(got) < len(lines) * .8: raise ValueError(f'thiếu cảnh cho {len(lines) - len(got)} câu')
     scenes, videos, qs, tone_i = [], 0, {}, 0
@@ -111,6 +119,22 @@ def build(o, lines, fp, clips):
         elif t != 'shot':
             s['tone'] = fp['tones'][tone_i % 3]; tone_i += 1
         if s.get('trans') not in TRANS: s.pop('trans', None)
+        # J-cut: the next picture arrives before its words; L-cut: the picture stays a little after the words moved on
+        s['lead'] = {'J': .55, 'L': .02}.get(str(s.pop('cut', '')).upper()[:1], .18)
+        fx = s.get('fx') if isinstance(s.get('fx'), dict) else {}
+        fx = {'camera': fx.get('camera') if fx.get('camera') in FX_CAM else None, 'effect': fx.get('effect') if fx.get('effect') in FX_EFF else None,
+              'speed': fx.get('speed') if fx.get('speed') in FX_SPEED and t == 'shot' and (s.get('bg') or {}).get('video') else None,
+              'cue': fx.get('cue') if isinstance(fx.get('cue'), str) and fx['cue'].lower() in say.lower() else None,
+              'overlay': [o for o in (fx.get('overlay') if isinstance(fx.get('overlay'), list) else [fx.get('overlay')] if isinstance(fx.get('overlay'), dict) else [])
+                          if isinstance(o, dict) and o.get('kind') in FX_OVER][:2]}
+        for o in fx['overlay']:
+            if o.get('cue') and str(o['cue']).lower() not in say.lower(): o.pop('cue')
+            for c in ('x', 'y'):
+                try: o[c] = max(0.05, min(0.95, float(o[c])))
+                except (KeyError, TypeError, ValueError): o.pop(c, None)
+        fx = {k: v for k, v in fx.items() if v}
+        if fx: s['fx'] = fx
+        else: s.pop('fx', None)
         low = say.lower()
         for key in ('items', 'nodes', 'pins', 'tiles'):
             for it in s.get(key) or []:
@@ -134,6 +158,18 @@ def variety(scenes, min_types):
     foot = sum(t in FOOTAGE for t in types) / max(1, n)
     if foot < .3: out.append(f'cảnh quay thật chỉ {foot:.0%}, cần 35–60% để video sống động')
     if foot > .7: out.append(f'cảnh quay thật tới {foot:.0%}: đổi vài câu có số liệu/liệt kê/cơ chế sang đồ hoạ')
+    tr = [s.get('trans') for s in scenes[1:]]
+    if any(tr[i] and tr[i] == tr[i - 1] == tr[i - 2] for i in range(2, len(tr))): out.append('3 lần chuyển cảnh liền nhau cùng một kiểu')
+    if len({t for t in tr if t}) < min(6, max(3, n // 5)): out.append(f'chỉ dùng {len({t for t in tr if t})} kiểu chuyển cảnh, cần đa dạng hơn (cut, whip, smash, iris, lightleak…)')
+    fxc = [(s.get('fx') or {}).get('camera') for s in scenes]
+    if any(fxc[i] and fxc[i] == fxc[i - 1] for i in range(1, n)): out.append('2 cảnh liền cùng một kỹ thuật máy quay giả (punchIn, snapZoom…)')
+    with_fx = sum(bool(s.get('fx')) for s in scenes) / max(1, n)
+    if with_fx < .5: out.append(f'chỉ {with_fx:.0%} cảnh có công thức dựng (fx): cần ≥ 60% cảnh có máy quay giả/đồ hoạ phủ/hiệu ứng')
+    ov = [o['kind'] for s in scenes for o in (s.get('fx') or {}).get('overlay', [])]
+    for k in set(ov):
+        if ov.count(k) > max(2, n // 6): out.append(f'đồ hoạ phủ "{k}" lặp {ov.count(k)} lần')
+    eff = [(s.get('fx') or {}).get('effect') for s in scenes]
+    if any(eff[i] and eff[i] == eff[i - 1] for i in range(1, n)): out.append('2 cảnh liền cùng một hiệu ứng hình')
     cams = [s.get('cam') for s in scenes if s['type'] == 'shot']
     if any(cams[i] == cams[i - 1] == cams[i - 2] for i in range(2, len(cams))): out.append('3 cảnh quay liền cùng một chuyển động máy')
     return out
@@ -146,7 +182,9 @@ def _brief(scenes):
         bits += [str((s.get('bg') or s.get('image') or {}).get('q', ''))] if (s.get('bg') or s.get('image')) else []
         for k in ('items', 'nodes', 'tiles', 'pins'):
             bits += [str(it.get('text') or it.get('label') or it.get('title') or it) for it in (s.get(k) or [])[:4] if isinstance(it, dict)]
-        return '; '.join(b for b in bits if b and b != 'None')[:160]
+        f = s.get('fx') or {}
+        bits += [f'[dựng: {f.get("camera") or "-"}/{",".join(o["kind"] for o in f.get("overlay", [])) or "-"}/{f.get("effect") or "-"}/{s.get("trans") or "-"}]']
+        return '; '.join(b for b in bits if b and b != 'None')[:200]
     return '\n'.join(f'{i + 1} · {s["type"]} · "{s["say"]}" · {what(s)}' for i, s in enumerate(scenes))
 
 

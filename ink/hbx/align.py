@@ -92,7 +92,9 @@ def main():
             ws.append((w, T(pos)) if n else (w, None)); pos += len(n)
         spoken.append(ws)
     starts[0] = 0.0
-    bounds = [max(0, s - LEAD) if i else 0 for i, s in enumerate(starts)] + [vdur + OUTRO]
+    # cảnh đổi trước lời một chút (LEAD); s.lead riêng của cảnh: J-cut (> 0,4: hình đến trước), L-cut (< 0: hình ở lại sau lời)
+    bounds = [max(0, s - float(scenes[i].get('lead', LEAD))) if i else 0 for i, s in enumerate(starts)] + [vdur + OUTRO]
+    for i in range(1, len(bounds) - 1): bounds[i] = min(max(bounds[i], bounds[i - 1] + .8), bounds[i + 1] - .8) if bounds[i + 1] - bounds[i - 1] > 1.6 else bounds[i]
     for i, s in enumerate(scenes): s['dur'] = round(bounds[i + 1] - bounds[i], 3)
 
     # phụ đề: khớp từ hiển thị ↔ từ đọc (số viết chữ vs số viết số sẽ được nội suy)
@@ -105,16 +107,19 @@ def main():
         for blk in SequenceMatcher(None, a, b, autojunk=False).get_matching_blocks():
             for d in range(blk.size):
                 if a[blk.a + d]: tmap[blk.a + d] = sp[blk.b + d][1]
-        s0, s1 = bounds[k] + .05, bounds[k + 1] - .1
+        # chữ không khớp được nội suy trong khoảng LỜI của câu (không theo ranh giới hình, vốn lệch khi J-cut)
+        s0 = starts[k] + .02 if k else .05; s1 = (starts[k + 1] if k + 1 < len(starts) else vdur) - .1
         idx = [i for i, w in enumerate(disp) if w != '|']
         for j, i in enumerate(idx):  # nội suy các từ không khớp
             if tmap[i] is None:
                 prev = next((tmap[x] for x in reversed(idx[:j]) if tmap[x] is not None), s0)
                 nxt = next((tmap[x] for x in idx[j + 1:] if tmap[x] is not None), s1)
                 tmap[i] = prev + (nxt - prev) * .5 if prev < nxt else prev
+        # mỗi câu mở một cụm phụ đề mới: chữ cuối câu trước không dính vào cụm của câu sau
+        if k and words and words[-1]['w'] != '|': words.append({'w': '|', 't': words[-1]['t']})
         for i, w in enumerate(disp):
-            # kẹp trong cảnh của nó: chữ cuối câu không "lọt" sang cảnh sau (phụ đề dính chữ câu trước)
-            words.append({'w': w, 't': round(min(bounds[k + 1] - .08, max(bounds[k], tmap[i] if tmap[i] is not None else s0)), 3)})
+            # đúng lúc giọng đọc (không kẹp vào ranh giới cảnh: với J-cut hình đổi trước lời, phụ đề vẫn theo lời)
+            words.append({'w': w, 't': round(min(vdur, tmap[i] if tmap[i] is not None else s0), 3)})
 
     # cue → at (giây tính từ đầu cảnh)
     def walk(o, k):

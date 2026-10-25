@@ -44,7 +44,22 @@ Icon (tên Lucide): sun, cloud, eye, zap, atom, droplet, flame, wind, brain, hea
 5. `cue` = cụm từ có NGUYÊN VĂN trong lời đọc của câu đó (để chi tiết bật ra đúng lúc giọng đọc tới).
 6. Quay phim cho cảnh thật: `q` là từ khoá tiếng Anh CỤ THỂ có chủ thể + bối cảnh + màu/ánh sáng ("blue eye iris macro", "white cumulus clouds blue sky timelapse"), đúng nơi chốn (chuyện Việt Nam không dùng phố nước ngoài dễ nhận ra); `"video": true` cho cảnh rộng/chuyển động (aerial, drone, timelapse, walking, traffic, waves) — tối đa {clips} cảnh video; ảnh tĩnh cho cảnh cần đúng màu/chi tiết. Không lặp cùng một `q`.
 7. `cam` theo cảm xúc: push (cảm xúc, câu hỏi, kết) · dolly (dẫn dắt) · zoom (soi chi tiết, bước ngoặt) · fpv (cảnh rộng, chuyển chặng, ≤ 3 lần) · truckL/truckR (dãy vật, so sánh) · rise (mở bức tranh lớn) · orbit (giới thiệu). Không 3 cảnh liền cùng cam.
-8. `trans` giữa các cảnh theo nhịp: through (lao tiếp) · cut (ngắt mạnh, bước ngoặt) · dissolve (lặng) · whip/zoom/flash/slideup/glitch/stripes (nhấn nhịp) — đổi theo ý, không lặp một kiểu quá 3 lần liền.
+8. `trans` (chuyển cảnh, chọn theo Ý của chỗ nối): cut (hard cut, mặc định cho mạch liền) · smash (smash cut: tương phản mạnh, bước ngoặt) · through (lao tiếp vào chặng mới) · whip (whip pan, đổi đề tài nhanh) · zoom (đi sâu vào chi tiết) · iris (mở ra phát hiện) · wipe/slide/pushup (sang ý kế tiếp, liệt kê) · dissolve (lặng, thời gian trôi) · dipblack (kết chương, khoảng thở) · dipwhite/flash (lóe sáng, khoảnh khắc "à ra thế") · lightleak/filmburn (hoài niệm, cảm xúc) · blur/spin/stretch (chuyển động mạnh) · glitch/rgb (công nghệ, sai lệch, cảnh báo). Dùng nhiều kiểu khác nhau, không lặp một kiểu quá 2 lần liền.
+10. `cut` (cách cắt theo giọng, tuỳ chọn): "J" (hình cảnh sau đến TRƯỚC lời ~0,5s — dẫn mắt người xem), "L" (cắt đúng lúc lời câu mới bắt đầu, giữ hình cảnh trước tới phút chót — để thấm), mặc định là cắt theo chữ.
+
+## Công thức dựng cho từng cảnh (`fx`) — dùng cho ≥ 60% số cảnh, mỗi cảnh một công thức có chủ đích
+`fx`: {{"camera": "...", "cue": "cụm từ trong lời đọc (lúc xảy ra cú máy)", "overlay": [{{"kind": "...", "text": "...", "x": 0.5, "y": 0.3, "cue": "..."}}], "effect": "...", "speed": "..."}}
+- `camera` (máy quay giả): punchIn (cắt cận dứt khoát ở từ khoá) · punchOut (đang cận bật ra toàn) · snapZoom (giật zoom nhanh vào con số/từ đắt) · crashZoom (zoom sốc + rung, cú bất ngờ) · kenBurns (trôi chậm qua ảnh, kể chuyện) · handheld (rung tay nhẹ, phóng sự/chân thật) · shake (rung mạnh ở va chạm/cảnh báo) · pullOut (lùi ra mở bức tranh lớn) · tiltUp/tiltDown (lia dọc: từ chi tiết lên tổng thể) · panL/panR (lia ngang dọc dãy vật) · dutch (nghiêng máy: bất an, sai lầm) · breathe (thở nhẹ, cảnh lặng).
+- `overlay` (đồ hoạ phủ, ≤ 2/cảnh, bám đúng chữ trong câu): arrow (mũi tên chỉ + nhãn) · circle (khoanh vật) · box (khung ngắm góc) · underline · scribble (nét bút dạ) · spotlight (làm tối xung quanh, soi một điểm) · impact (chữ nổ to — 1–3 chữ đắt nhất) · keyword (từ khoá bật lên) · lowerthird (nhãn dưới: tên, nguồn, địa điểm) · counter (đếm bước "2/5") · progress (thanh mức) · typewriter (dòng chữ gõ dần) · stamp (con dấu: SAI, ĐÚNG, SỰ THẬT) · sticker (ghi chú dán) · bracket (khung nhấn) · flash (lóe sáng). Toạ độ x, y từ 0 đến 1; KHÔNG đặt y trong 0,62–0,9 (vùng phụ đề).
+- `effect` (hiệu ứng hình cả cảnh): vignette · grain · glow · chroma · lightleak · halftone · bw (ký ức, quá khứ) · warm · cool · blurIn (hiện ra từ mờ) · filmburn · dim · duotone (đồ hoạ nghệ thuật).
+- `speed` (chỉ cảnh video thật): slow (slow motion cảm xúc) · ramp (speed ramp: nhanh rồi chậm lại ở khoảnh khắc) · freeze (dừng hình ở `cue` + tiếng nhấn) · fast (tua nhanh, time-lapse).
+- Không 2 cảnh liền cùng `camera` hay cùng `effect`; một kiểu `overlay` tối đa 2–3 lần cả video.
+
+## Nhịp & giữ chân
+- Cứ 15–20 giây có một "làm mới thị giác" (pattern interrupt): đổi hẳn kiểu cảnh + crashZoom/smash/impact/stamp/flash.
+- Setup → pause → payoff: câu chuẩn bị dùng cảnh lặng (breathe/kenBurns), câu "à ra thế" dùng cú mạnh (snapZoom/impact/dipwhite).
+- Nhịp biến thiên: đoạn dồn dập (cắt nhanh, đồ hoạ liên tiếp) xen đoạn thở (cảnh rộng, dissolve).
+- Cấu trúc theo nội dung: ngộ nhận → sự thật, vấn đề → giải pháp, câu hỏi → điều tra → câu trả lời, sai → đúng, trước → sau, đếm ngược… — để hình kể theo đúng cấu trúc đó.
 9. `sub`: phụ đề cùng nội dung với lời đọc nhưng số viết bằng số ("26,4%"), chữ thường như câu bình thường (KHÔNG in hoa cả câu), chia cụm nghĩa bằng `|` (≤ 38 ký tự/cụm, không kết thúc bằng hư từ), KHÔNG dấu chấm cuối, đánh dấu 1 cụm đắt nhất bằng `*…*`.
 
 ## Ảnh bìa, phong cách, mô tả
@@ -55,4 +70,4 @@ Icon (tên Lucide): sun, cloud, eye, zap, atom, droplet, flame, wind, brain, hea
 - `sticker` (tuỳ chọn) hứa trước cú bẻ hướng: {{"text": "…", "line": số thứ tự câu}}.
 
 Chỉ trả JSON:
-{{"title": "...", "theme": "...", "mood": "...", "style": {{...}}, "cover": {{...}}, "sticker": {{...}}, "caption": "...", "hashtags": ["#..."], "scenes": [{{"line": 0, "type": "shot", "sub": "...", "bg": {{"q": "...", "video": true}}, "cam": "push", "trans": "through", "title": ["...", "..."]}}, {{"line": 1, "type": "big_number", "sub": "...", "kicker": "...", "value": 750, "suffix": " nm", "caption": "...", "trans": "cut"}}]}}
+{{"title": "...", "theme": "...", "mood": "...", "style": {{...}}, "cover": {{...}}, "sticker": {{...}}, "caption": "...", "hashtags": ["#..."], "scenes": [{{"line": 0, "type": "shot", "sub": "...", "bg": {{"q": "...", "video": true}}, "cam": "push", "title": ["...", "..."], "fx": {{"camera": "snapZoom", "cue": "...", "overlay": [{{"kind": "impact", "text": "...", "cue": "..."}}], "effect": "vignette", "speed": "ramp"}}}}, {{"line": 1, "type": "big_number", "sub": "...", "kicker": "...", "value": 750, "suffix": " nm", "caption": "...", "trans": "smash", "cut": "J", "fx": {{"camera": "crashZoom", "overlay": [{{"kind": "stamp", "text": "SỰ THẬT", "x": 0.5, "y": 0.2}}]}}}}]}}
