@@ -6,7 +6,7 @@
   --grad-soft: linear-gradient(135deg, #f5f3ff 0%, #fff7ed 100%);
   --paper: #fcfbff; --card: #ffffff; --ink: #17122b; --muted: #5f587a; --line: #e9e4f5;
   --accent: #7c3aed; --accent-ink: #ffffff; --marker: #fdba74; --bad: #dc2626; --good: #059669;
-  --shadow: 0 10px 30px -12px rgba(76, 29, 149, .25); --shadow-lg: 0 30px 60px -20px rgba(76, 29, 149, .35);
+  --shadow: 0 10px 30px -12px color-mix(in srgb,var(--blue-2) 25%,transparent); --shadow-lg: 0 30px 60px -20px color-mix(in srgb,var(--blue-2) 35%,transparent);
   --font: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
   --hand: "Pangolin", "Comic Sans MS", cursive;
   --radius: 16px; --tabbar: 64px;

@@ -824,9 +824,10 @@ function contentTab(c) {
   c.site.colors ||= { primary: '', second: '' };
   const col = c.site.colors, preview = () => window.nvApplyColors?.(c.site);
   // the admin's own colours: pick one main colour, the second one (gradients, highlights) follows unless chosen too
-  const mainPick = h('input', { type: 'color', value: col.primary || '#7c3aed', oninput: (e) => { col.primary = e.target.value; c.site.theme = 'custom'; preview(); paintThemes(); } });
-  const secondPick = h('input', { type: 'color', value: col.second || '#ff7a00', disabled: !col.second, oninput: (e) => { col.second = e.target.value; preview(); paintThemes(); } });
-  const autoSecond = check(!col.second, (v) => { col.second = v ? '' : secondPick.value; secondPick.disabled = v; preview(); paintThemes(); }, 'Màu phụ tự chọn theo màu chính');
+  const autoColor = () => shiftHue(col.primary || '#7c3aed', 40);
+  const mainPick = h('input', { type: 'color', value: col.primary || '#7c3aed', oninput: (e) => { col.primary = e.target.value; c.site.theme = 'custom'; if (!col.second) secondPick.value = autoColor(); preview(); paintThemes(); } });
+  const secondPick = h('input', { type: 'color', value: col.second || autoColor(), disabled: !col.second, oninput: (e) => { col.second = e.target.value; preview(); paintThemes(); } });
+  const autoSecond = check(!col.second, (v) => { col.second = v ? '' : secondPick.value; if (v) secondPick.value = autoColor(); secondPick.disabled = v; preview(); paintThemes(); }, 'Màu phụ tự chọn theo màu chính');
   const customBox = h('div', { class: 'grid' }, h('label', {}, 'Màu chủ đạo', mainPick), h('label', {}, 'Màu phụ (gradient, điểm nhấn)', secondPick), autoSecond);
   const themeRow = h('div', { class: 'theme-pick' });
   const paintThemes = () => {

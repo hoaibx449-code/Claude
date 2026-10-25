@@ -5,7 +5,7 @@
 .fl-title{display:flex;align-items:center;justify-content:center;gap:18px;width:min(1240px,calc(100% - 190px))}
 .fl-title>div{flex:none;display:flex;align-items:baseline;gap:10px;white-space:nowrap}
 .fl-toolbar h1{margin:0;font-size:1.45rem;font-weight:800;letter-spacing:.02em;line-height:1.2;background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 50%,var(--accent-2)) 45%,var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 3px 10px color-mix(in srgb,var(--accent) 35%,transparent))}
-.fl-toolbar p{margin:0;font-size:1.45rem;font-weight:800;letter-spacing:.02em;line-height:1.2;color:#4c1d95}
+.fl-toolbar p{margin:0;font-size:1.45rem;font-weight:800;letter-spacing:.02em;line-height:1.2;color:var(--blue-2)}
 .fl-toolbar p::before{content:'';display:inline-block;width:3px;height:.95em;margin:0 16px 0 6px;border-radius:3px;vertical-align:-.1em;background:linear-gradient(var(--accent),var(--accent-2));box-shadow:0 0 10px color-mix(in srgb,var(--accent) 80%,transparent)}
 .fl-onair{align-self:center;display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:99px;font-size:.6rem;font-weight:800;letter-spacing:.16em;color:#fff;background:linear-gradient(90deg,#ef4444,#f97316);box-shadow:0 4px 12px -4px rgba(239,68,68,.7)}
 .fl-onair i{width:6px;height:6px;border-radius:50%;background:#fff;animation:fl-blink 1.2s infinite}

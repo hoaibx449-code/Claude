@@ -200,7 +200,7 @@ body[data-page="admin"] .helpchat-btn, body[data-page="admin"] .helpchat { displ
 html[data-theme="aurora"] .appside { border-right: 1px solid var(--side-line) !important; }
 
 /* account menu behind the avatar: opens at once, numbers fill in */
-#userMenu.menu { width: min(320px, calc(100vw - 24px)); padding: 0; gap: 0; overflow: hidden; border-radius: 18px; border: 1px solid var(--line); box-shadow: 0 24px 60px -18px rgba(76, 29, 149, .35), 0 4px 12px rgba(0, 0, 0, .04); transform-origin: top right; animation: menu-in .18s cubic-bezier(.2, .9, .3, 1.2); }
+#userMenu.menu { width: min(320px, calc(100vw - 24px)); padding: 0; gap: 0; overflow: hidden; border-radius: 18px; border: 1px solid var(--line); box-shadow: 0 24px 60px -18px color-mix(in srgb,var(--blue-2) 35%,transparent), 0 4px 12px rgba(0, 0, 0, .04); transform-origin: top right; animation: menu-in .18s cubic-bezier(.2, .9, .3, 1.2); }
 @keyframes menu-in { from { opacity: 0; transform: translateY(-6px) scale(.96); } }
 #userMenu .mhead { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; align-items: center; padding: 16px; background: var(--grad-soft); position: relative; }
 #userMenu .mhead .avatar.big { grid-row: span 2; width: 44px; height: 44px; font-size: 1.1rem; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--grad); box-shadow: 0 8px 18px -8px var(--glow); }
