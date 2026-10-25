@@ -34,11 +34,26 @@ Cảnh quay thật (cần nền thật):
 - `c_word {{text}}` — một chữ lớn cắt mạnh ở bước ngoặt ("NHƯNG…", "SAI!").
 - `c_headline {{over, text, tag?}}` — một tuyên bố/khẳng định quan trọng.
 - `outro {{kicker, text, cta}}` — câu chốt + câu hỏi/câu đố cuối.
+Infographic (không cần nền thật; `kicker` là nhãn nhỏ phía trên tiêu đề):
+- `i_donut {{title, value, label}}` hoặc `{{title, parts [{{label, value}}]}}` — tỉ lệ phần trăm, cơ cấu thành phần.
+- `i_gauge {{title, value 0–100, unit, label, low, high}}` — mức độ, rủi ro, chỉ số.
+- `i_rank {{title, items [{{label, value}}], unit}}` — xếp hạng.
+- `i_scale {{title, items [{{label, value}}], unit}}` — so sánh độ lớn chênh lệch rất nhiều.
+- `i_funnel {{title, items [{{label, value}}]}}` — sàng lọc, hao hụt qua từng chặng.
+- `i_pyramid {{title, items [{{label}}]}}` — thứ bậc (phần tử đầu là đỉnh).
+- `i_cycle {{title, items [{{label}}], center?}}` — vòng tuần hoàn, quy trình lặp.
+- `i_ipo {{title, input, process, output}}` — nguyên nhân/đầu vào → cơ chế → kết quả.
+- `i_venn {{title, a, b, both}}` — hai thứ có điểm chung.
+- `i_matrix {{title, x [trái, phải], y [dưới, trên], items [{{label, q 1–4}}]}}` — phân loại theo 2 tiêu chí.
+- `i_proscons {{title, pros [..], cons [..]}}` — ưu/nhược, nên/không nên.
+- `i_beforeafter {{title, before {{label, text, image {{q}}}}, after {{...}}}}` — trước/sau, sai/đúng (thanh trượt quét).
+- `i_table {{title, cols [..], rows [[tên hàng, ô1, ô2]]}}` — bảng so sánh (ô "✓"/"✗").
+- `i_steps {{title, items [{{text, cue}}]}}` — các bước làm theo thứ tự.
 Icon (tên Lucide): sun, cloud, eye, zap, atom, droplet, flame, wind, brain, heart, moon, star, thermometer, waves, leaf, bot, cpu, shield-check, clock, chart-line, users, target, layers, banknote, wallet, house, car, smartphone, globe, search, lightbulb, alert-triangle, check, x.
 
 ## Luật đạo diễn (bắt buộc)
 1. Mỗi câu đúng MỘT cảnh, theo đúng thứ tự (trường `line` = số thứ tự câu). Không đổi lời.
-2. Chọn kiểu vì Ý của câu: có con số → đồ hoạ số; so sánh → compare/chart/c_bar; quy trình/nguyên nhân → g_flow/b_grid/c_equation; thời gian → timeline; liệt kê → c_list/g_cards/checklist; bước ngoặt → c_word/question; cảm xúc, nơi chốn, hành động → shot; chỉ chi tiết → callouts hoặc shot có pins.
+2. Chọn kiểu vì Ý của câu: có con số → đồ hoạ số/i_donut/i_gauge/i_rank/i_scale; so sánh → compare/i_table/i_venn/i_beforeafter/i_proscons/chart/c_bar; quy trình/nguyên nhân → g_flow/i_ipo/i_cycle/i_funnel/b_grid/c_equation; thứ bậc/phân loại → i_pyramid/i_matrix; thời gian → timeline; liệt kê/các bước → i_steps/c_list/g_cards/checklist; bước ngoặt → c_word/question; cảm xúc, nơi chốn, hành động → shot; chỉ chi tiết → callouts hoặc shot có pins.
 3. ĐA DẠNG: không 2 cảnh liền nhau cùng kiểu; một kiểu không quá 35% số cảnh; dùng ít nhất {min_types} kiểu khác nhau; cảnh quay thật (shot/callouts/compare/warning/c_photo) chiếm 35–60% để video vẫn sống động.
 4. Mọi chữ trên hình phải ĐÚNG với lời đọc của câu đó, ngắn (tiêu đề ≤ 6 chữ, mỗi ý ≤ 8 chữ), số liệu chỉ lấy từ chính câu đọc hoặc kiến thức chắc chắn đúng. Không bịa số để có biểu đồ: không có số thì đừng chọn biểu đồ.
 5. `cue` = cụm từ có NGUYÊN VĂN trong lời đọc của câu đó (để chi tiết bật ra đúng lúc giọng đọc tới).

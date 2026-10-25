@@ -50,7 +50,7 @@ def images(sbp, plan_p, plan):
     # ghi pid + credit ngược vào plan để Pha B tải lại đúng ảnh
     def imgs(scenes):
         for s in scenes:
-            for o in [s.get('image'), s.get('bg')] + [i.get('image') for i in s.get('items', []) if isinstance(i, dict)] + [(s.get(k) or {}).get('image') for k in ('a', 'b')]:
+            for o in [s.get('image'), s.get('bg')] + [i.get('image') for i in s.get('items', []) if isinstance(i, dict)] + [(s.get(k) if isinstance(s.get(k), dict) else {}).get('image') for k in ('a', 'b', 'before', 'after')]:
                 yield o
     for a, b in zip(imgs(plan['storyboard']['scenes']), imgs(sb['scenes'])):
         if isinstance(a, dict) and isinstance(b, dict) and b.get('pid'):

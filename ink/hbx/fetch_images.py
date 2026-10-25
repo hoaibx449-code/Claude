@@ -84,8 +84,8 @@ def main(sbp):
         if isinstance(s.get('bg'), dict): slots.append((s['bg'], True))   # cine: toàn cảnh dọc
         for it in s.get('items', []):
             if isinstance(it, dict) and isinstance(it.get('image'), dict): slots.append((it['image'], False))
-        for k in ('a', 'b'):
-            if isinstance(s.get(k), dict) and isinstance(s[k].get('image'), dict): slots.append((s[k]['image'], False))
+        for k in ('a', 'b', 'before', 'after'):
+            if isinstance(s.get(k), dict) and isinstance(s[k].get('image'), dict): slots.append((s[k]['image'], k in ('before', 'after')))
     import re
     # cùng từ khoá (q + video) xuất hiện nhiều cảnh = CỐ Ý dùng lại cùng 1 cảnh quay (khác góc máy/đoạn) → chỉ tìm 1 lần
     groups, lead = {}, []

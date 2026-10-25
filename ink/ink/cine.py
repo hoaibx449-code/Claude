@@ -26,7 +26,10 @@ FX_SPEED = ['slow', 'ramp', 'freeze', 'fast']
 FAMILY = {'shot': 'footage', 'callouts': 'footage', 'compare': 'compare', 'warning': 'footage', 'c_photo': 'footage',
           'big_number': 'number', 'c_number': 'number', 'g_blocks': 'number', 'c_ring': 'number', 'c_bar': 'number', 'chart': 'chart', 'c_dots': 'number',
           'c_equation': 'flow', 'g_flow': 'flow', 'b_grid': 'flow', 'timeline': 'time',
-          'checklist': 'list', 'c_list': 'list', 'g_cards': 'list', 'question': 'text', 'c_word': 'text', 'c_headline': 'text', 'outro': 'text'}
+          'checklist': 'list', 'c_list': 'list', 'g_cards': 'list', 'question': 'text', 'c_word': 'text', 'c_headline': 'text', 'outro': 'text',
+          # infographics (hbx/engine/infographics.js)
+          'i_donut': 'number', 'i_gauge': 'number', 'i_rank': 'chart', 'i_scale': 'chart', 'i_funnel': 'flow', 'i_pyramid': 'flow', 'i_cycle': 'flow',
+          'i_ipo': 'flow', 'i_venn': 'compare', 'i_matrix': 'compare', 'i_proscons': 'compare', 'i_beforeafter': 'compare', 'i_table': 'compare', 'i_steps': 'list'}
 FOOTAGE = {'shot', 'callouts', 'compare', 'warning', 'c_photo'}
 
 # ---------------------------------------------------------------- the video's own fingerprint
@@ -171,11 +174,11 @@ def build(o, lines, fp, clips):
         t = s['type']
         for key in ('bg', 'image'):
             if key in s: s[key] = _img(s[key])
-        for side in ('a', 'b'):
+        for side in ('a', 'b', 'before', 'after'):
             if isinstance(s.get(side), dict): s[side]['image'] = _img(s[side].get('image'))
         if t == 'shot' and not s.get('bg'): raise ValueError(f'câu {k}: shot thiếu bg.q')
         if t in ('callouts', 'warning', 'c_photo') and not s.get('image'): raise ValueError(f'câu {k}: {t} thiếu image.q')
-        for img in [s.get('bg'), s.get('image')] + [(s.get(x) or {}).get('image') for x in ('a', 'b')]:
+        for img in [s.get('bg'), s.get('image')] + [(s.get(x) if isinstance(s.get(x), dict) else {}).get('image') for x in ('a', 'b', 'before', 'after')]:
             if not img: continue
             n = qs.get(img['q'], 0); qs[img['q']] = n + 1
             if n: img['q'] = img['q'] + ' ' + ['close up', 'wide view', 'detail', 'aerial', 'at sunset'][n % 5]

@@ -1,0 +1,67 @@
+/* ===== INFOGRAPHIC (infographics.js): nội dung trong vùng 300–900px, màu theo tông cảnh ===== */
+.ig-title{top:150px}
+.ig{position:absolute;left:50px;right:50px;top:330px;height:600px;font-family:var(--c-body,var(--font-b));color:var(--ink)}
+.ig-donut{position:absolute;left:50%;top:0;width:470px;margin-left:-235px}
+.ig-donut-c{position:absolute;left:0;right:0;top:150px;text-align:center}
+.ig-donut-c b{display:block;font:800 120px/1 var(--c-font,var(--font-h));color:var(--ink)}.ig-donut-c small{font-weight:700;font-size:28px;opacity:.85}
+.ig-legend{position:absolute;left:0;right:0;top:490px;display:flex;flex-wrap:wrap;gap:10px 22px;justify-content:center}
+.ig-leg{display:flex;align-items:center;gap:8px;font-weight:700;font-size:24px}.ig-leg i{width:18px;height:18px;border-radius:5px}.ig-leg b{color:var(--ink2)}
+.ig-rank{position:absolute;left:0;right:0;height:88px;display:flex;align-items:center;gap:14px}
+.ig-rk{flex:none;width:58px;height:58px;border-radius:50%;background:var(--acc);color:var(--c-acc-ink,#111);display:flex;align-items:center;justify-content:center;font:800 30px var(--c-font,var(--font-h))}
+.ig-rbar{position:relative;flex:1;height:70px;border-radius:14px;background:rgba(127,127,127,.14);overflow:hidden}
+.ig-rbar i{position:absolute;left:0;top:0;bottom:0;border-radius:14px;transform-origin:left}
+.ig-rbar span{position:absolute;left:18px;top:50%;transform:translateY(-50%);font-weight:800;font-size:26px;color:var(--ink);text-shadow:0 1px 6px rgba(0,0,0,.25)}
+.ig-rbar b{position:absolute;right:16px;top:50%;transform:translateY(-50%);font:800 30px var(--c-font,var(--font-h))}
+.ig-fun{position:absolute;left:50%;height:112px;margin-left:0;transform:translateX(-50%);border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.35)}
+.ig-fun{translate:-50% 0;transform:none}
+.ig-fun b{font-weight:800;font-size:30px}.ig-fun small{font-weight:700;font-size:22px;opacity:.9}
+.ig-pyr{position:absolute;left:0;right:0;display:flex;align-items:center;justify-content:center;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.4)}
+.ig-pyr b{font-weight:800;font-size:1em;max-width:46%;text-align:center}
+.ig-vc{position:absolute;top:60px;width:390px;height:390px;border-radius:50%;display:flex;padding:0 60px;align-items:center;mix-blend-mode:normal}
+.ig-va{left:0;background:color-mix(in srgb,var(--acc) 55%,transparent);justify-content:flex-start}
+.ig-vb{right:0;background:color-mix(in srgb,var(--acc2) 55%,transparent);justify-content:flex-end;text-align:right}
+.ig-vc b{font-weight:800;font-size:28px;max-width:150px}
+.ig-vboth{position:absolute;left:50%;top:255px;translate:-50% 0;width:170px;text-align:center;font-weight:800;font-size:24px;color:var(--ink);background:var(--bg,rgba(0,0,0,.4));padding:8px;border-radius:12px}
+.ig-mx{position:absolute;inset:20px 10px 30px 40px;border-radius:16px;background:rgba(127,127,127,.08)}
+.ig-mx>i:nth-of-type(1){position:absolute;left:50%;top:0;bottom:0;width:4px;background:var(--ink);opacity:.5}
+.ig-mx>i:nth-of-type(2){position:absolute;top:50%;left:0;right:0;height:4px;background:var(--ink);opacity:.5}
+.ig-mx span{position:absolute;font-weight:800;font-size:20px;opacity:.75;text-transform:uppercase;letter-spacing:1px}
+.ig-mx-x0{left:8px;bottom:-30px}.ig-mx-x1{right:8px;bottom:-30px}.ig-mx-y0{left:-34px;bottom:8px;writing-mode:vertical-rl;rotate:180deg}.ig-mx-y1{left:-34px;top:8px;writing-mode:vertical-rl;rotate:180deg}
+.ig-mx-dot{position:absolute;translate:-50% -50%;padding:10px 16px;border-radius:30px;background:var(--acc);color:var(--c-acc-ink,#111);font-weight:800;font-size:22px;white-space:nowrap}
+.ig-cyc{position:absolute;left:50%;top:-30px;width:640px;margin-left:-320px}
+.ig-cn{position:absolute;translate:-50% -50%;margin-left:-0px;width:180px;text-align:center;padding:14px 10px;border-radius:16px;background:var(--card,#fff);color:var(--card-ink,#111);font-weight:800;font-size:22px;box-shadow:0 10px 24px rgba(0,0,0,.25)}
+.ig-cyc~.ig-cn{left:calc(var(--l,0px))}
+.ig-cn em{display:block;font-style:normal;font:800 30px var(--c-font,var(--font-h));color:var(--acc)}
+.ig-cc{position:absolute;left:50%;top:290px;translate:-50% 0;width:200px;text-align:center;font:800 30px/1.1 var(--c-font,var(--font-h))}
+.ig-pc{position:absolute;top:0;width:296px;height:580px;border-radius:20px;padding:22px 20px;background:var(--card,#fff);color:var(--card-ink,#111);box-shadow:0 14px 34px rgba(0,0,0,.25)}
+.ig-pro{left:0;border-top:10px solid #2bb673}.ig-con{right:0;border-top:10px solid #e8432e}
+.ig-pc h4{margin:0 0 14px;font:800 30px var(--c-font,var(--font-h))}
+.ig-pc p{display:flex;gap:10px;margin:0 0 14px;font-weight:700;font-size:23px;line-height:1.25}
+.ig-pc i{flex:none;font-style:normal;font-weight:900}.ig-pro i{color:#2bb673}.ig-con i{color:#e8432e}
+.ig-baw{position:absolute;inset:0 0 20px;border-radius:22px;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,.35)}
+.ig-ba{position:absolute;inset:0;background:color-mix(in srgb,var(--acc2) 40%,#222)}
+.ig-af{background:color-mix(in srgb,var(--acc) 50%,#222);clip-path:inset(0 0 0 100%)}
+.ig-ba .photo{position:absolute;inset:0}
+.ig-ba-t{position:absolute;left:24px;right:24px;bottom:24px;padding:16px 20px;border-radius:14px;background:rgba(0,0,0,.55);color:#fff}
+.ig-ba-t small{display:block;font-weight:800;letter-spacing:2px;font-size:18px;opacity:.85}.ig-ba-t b{font-weight:800;font-size:30px;line-height:1.2}
+.ig-bar{position:absolute;top:0;bottom:0;width:8px;margin-left:-4px;left:100%;background:#fff;box-shadow:0 0 20px rgba(0,0,0,.5)}
+.ig-tb{position:absolute;left:0;right:0;top:10px;border-collapse:separate;border-spacing:0 8px;font-size:24px}
+.ig-tb th{font:800 24px var(--c-font,var(--font-h));padding:8px;color:var(--ink2);text-transform:uppercase}
+.ig-tb td{background:rgba(127,127,127,.14);padding:16px 10px;text-align:center;font-weight:700}
+.ig-tb td.rh{text-align:left;padding-left:18px;border-radius:12px 0 0 12px}.ig-tb td:last-child{border-radius:0 12px 12px 0}
+.ig-tb .ok{color:#2bb673;font-size:34px}.ig-tb .no{color:#e8432e;font-size:34px}
+.ig-ipo{position:absolute;left:60px;right:60px;height:150px;border-radius:20px;background:var(--card,#fff);color:var(--card-ink,#111);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;box-shadow:0 14px 30px rgba(0,0,0,.25);padding:0 20px}
+.ig-ipo.mid{background:var(--acc);color:var(--c-acc-ink,#111)}.ig-ipo.out{border:5px solid var(--acc2)}
+.ig-ipo small{font-weight:800;letter-spacing:2px;font-size:18px;opacity:.75}.ig-ipo b{font-weight:800;font-size:32px;line-height:1.15}
+.ig-arr{position:absolute;left:50%;width:10px;height:70px;margin-left:-5px;background:var(--acc2);transform-origin:top;border-radius:5px}
+.ig-arr:after{content:"";position:absolute;left:-11px;bottom:-14px;border:16px solid transparent;border-top-color:var(--acc2);border-bottom:0}
+.ig-gauge{position:absolute;left:0;right:0;top:10px;width:100%}
+.ig-needle{transform-origin:300px 300px}
+.ig-gv{position:absolute;left:0;right:0;top:350px;text-align:center}.ig-gv b{display:block;font:800 96px/1 var(--c-font,var(--font-h))}.ig-gv small{font-weight:700;font-size:28px}
+.ig-glo,.ig-ghi{position:absolute;top:300px;font-weight:800;font-size:20px;opacity:.75}.ig-glo{left:10px}.ig-ghi{right:10px}
+.ig-sc{position:absolute;bottom:200px;border-radius:50%;box-shadow:0 14px 30px rgba(0,0,0,.25)}
+.ig-scl{position:absolute;top:420px;translate:-50% 0;width:160px;text-align:center;font-weight:700;font-size:22px}.ig-scl b{display:block;font:800 34px var(--c-font,var(--font-h))}
+.ig-step{position:absolute;left:0;right:0;height:104px;display:flex;align-items:center;gap:18px;padding:0 22px;border-radius:18px;background:var(--card,#fff);color:var(--card-ink,#111);box-shadow:0 10px 24px rgba(0,0,0,.22)}
+.ig-step em{flex:none;width:62px;height:62px;border-radius:50%;background:var(--acc);color:var(--c-acc-ink,#111);font:800 32px var(--c-font,var(--font-h));font-style:normal;display:flex;align-items:center;justify-content:center}
+.ig-step span{font-weight:800;font-size:28px;line-height:1.2}.ig-step span em{all:unset;color:var(--acc)}
+.ig-kick{top:120px}

@@ -33,7 +33,7 @@ def resolve_images(sb, base):
         fix(s.get('image')); fix(s.get('bg'))
         for it in s.get('items', []):
             if isinstance(it, dict): fix(it.get('image'))
-        for k in ('a', 'b'):
+        for k in ('a', 'b', 'before', 'after'):
             if isinstance(s.get(k), dict): fix(s[k].get('image'))
     return sb
 
