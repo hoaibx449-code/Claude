@@ -8,7 +8,7 @@ import { DEFAULT_TEMPLATES, type Template } from './templates.ts';
 import { DOODLE_NAMES } from './doodles.ts';
 import { DEFAULT_PRIVACY, DEFAULT_REFUND, DEFAULT_TERMS, LEGAL_VERSION, type LegalConfig } from './legal.ts';
 
-export const SECRET_NAMES = ['OPENAI_API_KEY', 'GEMINI_API_KEY', 'OLLAMA_API_KEY', 'EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'ELEVENLABS_API_KEY', 'ZALO_BOT_TOKEN', 'SEPAY_API_KEY'] as const;
+export const SECRET_NAMES = ['OPENAI_API_KEY', 'GEMINI_API_KEY', 'OLLAMA_API_KEY', 'EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'ELEVENLABS_API_KEY', 'ZALO_BOT_TOKEN', 'SEPAY_API_KEY', 'PIXABAY_API_KEY'] as const;
 export type SecretName = (typeof SECRET_NAMES)[number];
 /** Keys the render machine needs (voices); the Worker uses the AI ones itself. */
 const RUNNER_SECRETS: SecretName[] = ['EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'ELEVENLABS_API_KEY'];

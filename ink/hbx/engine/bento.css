@@ -1,0 +1,47 @@
+/* ===== FORMAT: BENTO EDITORIAL ===== */
+@import url("../node_modules/@fontsource/barlow-condensed/600.css");
+@import url("../node_modules/@fontsource/barlow-condensed/700.css");
+@import url("../node_modules/@fontsource/lora/600.css");
+@import url("../node_modules/@fontsource/lora/500-italic.css");
+body[data-theme=bento]{--paper:#f3ede2;--tile:#e8e0d1;--tile-ink:#2b241d;--muted:#8b7e6c;--hot:#b4432e;--hot-ink:#fbf3e8;--hl:#f0915f;--sub-bg:#2a231e;--sub-ink:#f6ede0;--hl-ink:#f0915f}
+body[data-theme=bento] [data-tone]{--bg:var(--paper);--ink:#231d17;--ink2:var(--hot);--acc:var(--hot);--acc2:var(--hot);--line:rgba(0,0,0,.06)}
+body[data-theme=bento] .scene{background:transparent}
+body[data-theme=bento] #stage{position:absolute;inset:0;background:var(--paper)}
+body[data-theme=bento] .pill,body[data-theme=bento] .deco{display:none}
+body[data-theme=bento] .grain{opacity:.07}
+body[data-theme=bento] #sub{left:0;right:0;margin:0 auto;top:1020px;width:fit-content;max-width:600px;min-height:0;padding:13px 24px;border-radius:12px;font-size:28px;font-weight:700;line-height:1.35;box-shadow:0 8px 20px rgba(0,0,0,.16);border:0}
+body[data-theme=bento] #sub span{padding:0 1px}
+body[data-theme=bento] #sub span.on{background:transparent;color:var(--hl)}
+body[data-theme=bento] #sub span.k{color:var(--hl)}
+body[data-theme=bento] #prog{top:1222px;left:40px;right:40px;gap:0}
+body[data-theme=bento] #prog div{height:2px;border-radius:0;background:rgba(0,0,0,.1)}
+body[data-theme=bento] #prog div.f{background:var(--hot)}
+
+.btop{position:absolute;left:40px;right:40px;top:56px;display:flex;justify-content:space-between;font-weight:800;font-size:13px;letter-spacing:1.6px;color:#3a3129;padding-bottom:10px;border-bottom:1.5px solid #3a3129;text-transform:uppercase}
+.btop b{color:var(--hot);margin-right:6px}
+.bfoot{position:absolute;left:40px;right:40px;top:1194px;display:flex;justify-content:space-between;font-weight:700;font-size:11px;letter-spacing:1.4px;color:var(--muted);text-transform:uppercase}
+
+/* nội dung chảy theo cột — không đặt toạ độ tay */
+.bcontent{position:absolute;left:40px;right:40px;top:100px;bottom:290px;display:flex;flex-direction:column}
+.bsec{font-weight:800;font-size:13.5px;letter-spacing:1.3px;color:var(--hot);text-transform:uppercase}
+.bhead{margin-top:12px;color:#211b15;text-wrap:balance}
+.bhead.cond{font-family:"Barlow Condensed";font-weight:700;font-size:68px;line-height:1.1;text-transform:uppercase;letter-spacing:-.3px}
+.bhead.serif{font-family:Lora;font-weight:600;font-size:54px;line-height:1.18;letter-spacing:-1px}
+.bgrid{margin-top:28px;display:grid;grid-template-columns:repeat(6,1fr);grid-auto-rows:132px;gap:12px;grid-auto-flow:dense}
+.bnote{margin-top:20px;position:relative;font-family:Lora;font-style:italic;font-weight:500;font-size:21px;color:#4a4036;padding-left:26px}
+.bnote:before{content:"";position:absolute;left:3px;top:-4px;width:13px;height:19px;border-left:1.5px solid #4a4036;border-bottom:1.5px solid #4a4036}
+
+.tile{position:relative;background:var(--tile);color:var(--tile-ink);border-radius:12px;overflow:hidden}
+.tile .hotfill{position:absolute;inset:0;background:var(--hot);transform-origin:left;transform:scaleX(0)}
+.tile .tin{position:absolute;inset:0;padding:16px 20px 18px;display:flex;flex-direction:column}
+.tile .trow{display:flex;justify-content:space-between;align-items:flex-start}
+.tile .n{font-size:12px;font-weight:800;letter-spacing:1.2px;opacity:.55;padding-top:2px}
+.tile .ic{width:30px;height:30px;opacity:.6}
+.tile .ic svg{width:100%;height:100%;stroke-width:1.6}
+.tile .tb{margin-top:auto}
+.tile .t{font-family:"Be Vietnam Pro";font-weight:700;line-height:1.16;letter-spacing:-.3px;overflow-wrap:normal;word-break:keep-all;text-wrap:balance}
+.tile .t.tbig{font-family:"Barlow Condensed";font-weight:700;text-transform:uppercase;letter-spacing:0;line-height:1.08}
+.tile .d{font-size:16.5px;font-weight:600;opacity:.74;margin-top:6px;line-height:1.32;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-wrap:pretty}
+.tile.hot{color:var(--hot-ink)}
+.tile.hot .ic,.tile.hot .n{opacity:.85}
+body[data-theme=bento] #sub{column-gap:8px}

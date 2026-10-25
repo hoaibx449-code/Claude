@@ -262,7 +262,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
   if (sub === 'config' && method === 'GET') {
     const { plan } = await planOf(env, user.id);
     const ready = await readyVoices(env, s);
-    return json({ browser: s.machines.on.browser, voices: ready.map((v) => ({ id: v.id, label: v.label })), defaults: { ...s.defaults, voice: ready.some((v) => v.id === s.voice.default) ? s.voice.default : ready[0]?.id || '' },
+    return json({ browser: s.machines.on.browser, cine: !!(env as any).PIXABAY_API_KEY, voices: ready.map((v) => ({ id: v.id, label: v.label })), defaults: { ...s.defaults, voice: ready.some((v) => v.id === s.voice.default) ? s.voice.default : ready[0]?.id || '' },
       maxSeconds: Math.min(300, plan.maxSeconds, env.config.limits.maxSeconds) });
   }
   if (sub === 'browser/bundle' && method === 'GET') {
@@ -301,7 +301,10 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
       pace: pick(b.pace, PACES, s.defaults.pace as any), voice: voice.id, mood: pick(b.mood, MOODS, s.defaults.mood as any), music,
       musicVolume: num(b.musicVolume, 0, 0.6, s.defaults.musicVolume), captions: b.captions !== false, review: typeof b.review === 'boolean' ? b.review : s.defaults.review,
       // drawn on the user's own device: a machine writes the script, voice and drawing plan, the browser draws
-      browser: b.browser === true && s.machines.on.browser };
+      // 'cine': real footage (HBX engine, render machines only); 'ink': hand-drawn
+      format: b.format === 'cine' ? 'cine' : 'ink',
+      browser: b.browser === true && s.machines.on.browser && b.format !== 'cine' };
+    if (input.format === 'cine' && !(env as any).PIXABAY_API_KEY) throw new HttpError(503, 'Kiểu Điện ảnh đang được chuẩn bị, vui lòng chọn Vẽ tay.');
     return json({ id: await enqueue(env, rc, user, input, 'plan') });
   }
   const m = sub.match(/^jobs\/([a-f0-9]{24})(?:\/(file\/[\w.]+|approve|repace|retry|storyboard|handoff|browser\/video|browser\/done|browser\/progress|browser\/error|browser\/ai|browser\/voice|browser\/plan|browser\/music|browser\/file\/(?:cover|thumb)\.jpg))?$/);
@@ -493,6 +496,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
       config: { env: {
         INK_AI_ORDER: s.ai.order.join(','), INK_AI_FALLBACK: s.ai.fallback ? '1' : '0', INK_GEMINI_MODELS: s.ai.gemini, INK_OPENAI_MODELS: s.ai.openai,
         GEMINI_API_KEY: env.GEMINI_API_KEY || '', OPENAI_API_KEY: env.OPENAI_API_KEY || '', EVERAI_API_KEY: (env as any).EVERAI_API_KEY || '',
+        ...(input.format === 'cine' ? { PIXABAY_API_KEY: (env as any).PIXABAY_API_KEY || '' } : {}),
         INK_VOICE_PROVIDER: voice.provider, INK_VOICE_FALLBACK: s.voice.fallback ? '1' : '0',
         ...(voice.provider === 'microsoft' ? { INK_MS_VOICE: voice.code } : { EVERAI_VOICE_CODE: voice.code }),
       } } } });

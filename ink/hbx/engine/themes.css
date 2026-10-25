@@ -1,0 +1,134 @@
+@import url("../node_modules/@fontsource/be-vietnam-pro/500.css");
+@import url("../node_modules/@fontsource/be-vietnam-pro/700.css");
+@import url("../node_modules/@fontsource/be-vietnam-pro/800.css");
+@import url("../node_modules/@fontsource/be-vietnam-pro/900.css");
+@import url("../node_modules/@fontsource/jetbrains-mono/500.css");
+@import url("../node_modules/@fontsource/jetbrains-mono/800.css");
+@import url("../node_modules/@fontsource/space-grotesk/700.css");
+@import url("../node_modules/@fontsource/playfair-display/800.css");
+@import url("../node_modules/@fontsource/playfair-display/900.css");
+
+/* ===== THEME TOKENS =====
+   Mỗi theme có 3 tone (a/b/c) để đạo diễn luân phiên sáng/tối. */
+body{--font-h:"Be Vietnam Pro";--font-b:"Be Vietnam Pro";--font-m:"JetBrains Mono";--radius:28px;--title-w:900;--title-case:uppercase;--title-size:56px;--warn:#f2c21b;--warn-ink:#3a2a00;--danger:#e2413b;--up:#21c36b;--down:#e2413b}
+
+/* --- LIFE / SỨC KHỎE: xanh lá kem, mềm mại --- */
+body[data-theme=life] [data-tone=a]{--bg:radial-gradient(120% 70% at 50% 35%,#fbfdf3,#eef5d9 60%,#e1edc2);--ink:#0d3b1f;--ink2:#0f7a3a;--acc:#0f7a3a;--acc2:#8fd61f;--line:rgba(60,140,40,.18)}
+body[data-theme=life] [data-tone=b]{--bg:radial-gradient(110% 70% at 50% 40%,#1c9a48,#0d6a32 55%,#07461f);--ink:#fff;--ink2:#c8ef5a;--acc:#c8ef5a;--acc2:#8fd61f;--line:rgba(255,255,255,.18)}
+body[data-theme=life] [data-tone=c]{--bg:radial-gradient(110% 70% at 50% 40%,#c9f05a,#8ccf22 55%,#3d9a1f);--ink:#0b3a1c;--ink2:#0b5d2e;--acc:#0b5d2e;--acc2:#fff;--line:rgba(255,255,255,.3)}
+body[data-theme=life]{--card:#fff;--card-ink:#0d3b1f;--hl:#0f7a3a;--hl-ink:#fff;--sub-bg:#fff;--sub-ink:#0d3b1f;--pill-bg:#fff;--pill-ink:#0d3b1f;--brand-dot:linear-gradient(135deg,#8fd61f,#0f7a3a)}
+
+/* --- TECH / AI: đen xanh neon, mono, lưới điểm, glitch --- */
+body[data-theme=tech]{--font-h:"Space Grotesk";--title-w:700;--radius:18px;--card:#0f1626;--card-ink:#e8f6ff;--hl:#22e1ff;--hl-ink:#04121c;--sub-bg:rgba(8,14,26,.88);--sub-ink:#e8f6ff;--pill-bg:rgba(34,225,255,.12);--pill-ink:#9ff2ff;--brand-dot:linear-gradient(135deg,#22e1ff,#a64dff)}
+body[data-theme=tech] [data-tone=a]{--bg:radial-gradient(90% 60% at 50% 30%,#13213d,#070b16 70%);--ink:#eaf7ff;--ink2:#22e1ff;--acc:#22e1ff;--acc2:#a64dff;--line:rgba(34,225,255,.14)}
+body[data-theme=tech] [data-tone=b]{--bg:radial-gradient(90% 60% at 50% 45%,#2a1450,#0b0716 72%);--ink:#f4ecff;--ink2:#c69bff;--acc:#a64dff;--acc2:#22e1ff;--line:rgba(166,77,255,.16)}
+body[data-theme=tech] [data-tone=c]{--bg:linear-gradient(170deg,#e9f4ff,#cfe4f7);--ink:#07142a;--ink2:#0a7bd6;--acc:#0a7bd6;--acc2:#a64dff;--line:rgba(10,123,214,.15);--card:#fff;--card-ink:#07142a}
+
+/* --- FINANCE / TÀI CHÍNH: navy + vàng kim, serif sang --- */
+body[data-theme=finance]{--font-h:"Playfair Display";--title-case:none;--title-size:60px;--radius:20px;--card:#fffaf0;--card-ink:#0d1b3a;--hl:#e7b641;--hl-ink:#1a1405;--sub-bg:rgba(10,20,45,.92);--sub-ink:#fff;--pill-bg:rgba(231,182,65,.15);--pill-ink:#f3d58a;--brand-dot:linear-gradient(135deg,#f7dc8a,#b8841c)}
+body[data-theme=finance] [data-tone=a]{--bg:radial-gradient(100% 70% at 50% 30%,#1c3466,#0a1530 70%);--ink:#fff;--ink2:#e7b641;--acc:#e7b641;--acc2:#5aa2ff;--line:rgba(231,182,65,.16)}
+body[data-theme=finance] [data-tone=b]{--bg:linear-gradient(175deg,#fbf6ea,#efe4c8);--ink:#0d1b3a;--ink2:#a87612;--acc:#a87612;--acc2:#1c3466;--line:rgba(168,118,18,.18);--pill-ink:#7a5408}
+body[data-theme=finance] [data-tone=c]{--bg:radial-gradient(100% 70% at 50% 40%,#0f3d3a,#062220 72%);--ink:#fff;--ink2:#7fe0b8;--acc:#e7b641;--acc2:#7fe0b8;--line:rgba(127,224,184,.15)}
+
+/* --- TIPS / THỦ THUẬT: sáng, cam năng động, bo tròn --- */
+body[data-theme=tips]{--radius:34px;--card:#fff;--card-ink:#1e1b2e;--hl:#ff7a1a;--hl-ink:#fff;--sub-bg:#1e1b2e;--sub-ink:#fff;--pill-bg:#1e1b2e;--pill-ink:#fff;--brand-dot:linear-gradient(135deg,#ffb36b,#ff5a1a)}
+body[data-theme=tips] [data-tone=a]{--bg:linear-gradient(170deg,#fff7ee,#ffe6cf);--ink:#1e1b2e;--ink2:#ff6a00;--acc:#ff6a00;--acc2:#3b5bff;--line:rgba(255,106,0,.16)}
+body[data-theme=tips] [data-tone=b]{--bg:radial-gradient(100% 70% at 50% 40%,#3b4bff,#1d23a8 75%);--ink:#fff;--ink2:#ffd25a;--acc:#ffd25a;--acc2:#ff7a1a;--line:rgba(255,255,255,.16)}
+body[data-theme=tips] [data-tone=c]{--bg:radial-gradient(100% 70% at 50% 40%,#ff9a3c,#ff6a00 70%);--ink:#fff;--ink2:#1e1b2e;--acc:#1e1b2e;--acc2:#fff;--line:rgba(255,255,255,.25)}
+
+/* ===== BASE ===== */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:720px;height:1280px;overflow:hidden;background:#000;font-family:var(--font-b),sans-serif}
+.scene{position:absolute;inset:0;overflow:hidden;visibility:hidden;background:var(--bg);color:var(--ink)}
+.cam{position:absolute;inset:0;transform-origin:50% 45%}
+.deco{position:absolute;inset:0;pointer-events:none}
+.arc{position:absolute;border:2px dashed var(--line);border-radius:50%}
+body[data-theme=tech] .deco{background-image:radial-gradient(var(--line) 1.6px,transparent 1.6px);background-size:28px 28px}
+body[data-theme=tech] .deco:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 2px,transparent 2px 4px)}
+body[data-theme=finance] .deco{background:linear-gradient(transparent 0 0)}
+body[data-theme=tips] .deco{background-image:radial-gradient(var(--line) 3px,transparent 3px);background-size:46px 46px;background-position:12px 12px}
+.grain{position:absolute;inset:-50%;opacity:.05;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");pointer-events:none}
+
+.pill{position:absolute;left:40px;top:44px;background:var(--pill-bg);color:var(--pill-ink);border-radius:40px;padding:11px 20px 11px 14px;font-weight:800;font-size:16px;display:flex;gap:10px;align-items:center;letter-spacing:.6px;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+body[data-theme=tech] .pill{border:1.5px solid rgba(34,225,255,.45);font-family:var(--font-m);box-shadow:0 0 18px rgba(34,225,255,.2)}
+.pill i{width:20px;height:20px;border-radius:50%;background:var(--brand-dot);display:inline-block}
+.label{position:absolute;left:42px;top:138px;font-size:16px;font-weight:800;letter-spacing:2.4px;color:var(--ink2);text-transform:uppercase}
+body[data-theme=tech] .label{font-family:var(--font-m);letter-spacing:1px}
+body[data-theme=tech] .label:before{content:"> "}
+.title{position:absolute;left:40px;right:40px;top:168px;font-family:var(--font-h);font-size:var(--title-size);line-height:1.06;font-weight:var(--title-w);text-transform:var(--title-case);letter-spacing:-.5px;color:var(--ink)}
+.title b{display:block;color:var(--ink2);font-weight:inherit}
+body[data-theme=finance] .title b{font-style:italic}
+.uline{position:absolute;left:42px;height:6px;width:72px;background:var(--acc);border-radius:3px;transform-origin:left center}
+body[data-theme=finance] .uline{height:3px;width:120px;background:linear-gradient(90deg,#f7dc8a,#b8841c)}
+
+.card{position:absolute;left:36px;right:36px;border-radius:var(--radius);background:var(--card);box-shadow:0 18px 44px rgba(0,0,0,.28);overflow:hidden;border:5px solid var(--card)}
+body[data-theme=tech] .card{border:1.5px solid rgba(34,225,255,.5);box-shadow:0 0 0 1px rgba(34,225,255,.15),0 0 40px rgba(34,225,255,.18)}
+body[data-theme=finance] .card{border:2px solid #e7b641}
+.photo{position:absolute;inset:0;background-size:cover;background-position:center;transform-origin:50% 50%}
+.photo.vid{overflow:hidden;background:#000}.photo.vid img.vf{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.photo.ph{background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:22px;text-align:center;padding:30px;opacity:.85}
+.shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(0,0,0,.55))}
+.tag{position:absolute;left:14px;top:14px;background:rgba(0,0,0,.55);color:#fff;font-weight:800;font-size:13px;letter-spacing:1px;padding:6px 12px;border-radius:7px;backdrop-filter:blur(4px)}
+.credit{position:absolute;right:12px;bottom:10px;color:rgba(255,255,255,.85);font-size:12px;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,.7)}
+.chip{position:absolute;background:var(--card);color:var(--card-ink);font-weight:800;font-size:19px;padding:10px 16px;border-radius:12px;box-shadow:0 6px 16px rgba(0,0,0,.2);border:2px solid var(--acc);white-space:nowrap}
+.kicker{position:absolute;left:50%;transform:translateX(-50%);background:var(--acc);color:var(--hl-ink);font-weight:800;font-size:17px;padding:8px 20px;border-radius:30px;letter-spacing:1.5px;white-space:nowrap;text-transform:uppercase}
+body[data-theme=tech] .kicker{font-family:var(--font-m);border-radius:6px}
+body[data-theme=finance] .kicker{background:transparent;color:var(--acc);border:1.5px solid var(--acc)}
+.big{position:absolute;left:30px;right:30px;text-align:center;font-family:var(--font-h);font-weight:var(--title-w);font-size:82px;line-height:1.02;color:var(--ink);text-transform:var(--title-case);letter-spacing:-1px;text-shadow:0 6px 22px rgba(0,0,0,.18)}
+.big em{font-style:normal;color:var(--ink2)}
+body[data-theme=finance] .big em{font-style:italic}
+
+/* subtitle */
+#sub{position:absolute;left:50px;right:50px;top:968px;min-height:96px;background:var(--sub-bg);border-radius:22px;box-shadow:0 10px 26px rgba(0,0,0,.22);display:flex;flex-wrap:wrap;align-items:center;justify-content:center;text-align:center;padding:14px 20px;font-size:33px;font-weight:700;color:var(--sub-ink);line-height:1.3;z-index:40;column-gap:2px}
+body[data-theme=tech] #sub{border:1.5px solid rgba(34,225,255,.4);border-radius:12px}
+body[data-theme=finance] #sub{border:1.5px solid rgba(231,182,65,.6)}
+#sub span{padding:0 6px;border-radius:8px;display:inline-block}
+#sub span.on{background:var(--hl);color:var(--hl-ink)}
+#sub span.k{color:var(--hl)}
+#sub span.k.on{color:var(--hl-ink)}
+#prog{position:absolute;left:46px;right:46px;top:1196px;display:flex;gap:9px;z-index:40}
+#prog div{flex:1;height:5px;border-radius:3px;background:rgba(127,127,127,.3)}
+#prog div.f{background:var(--hl)}
+#fx{position:absolute;inset:0;z-index:60;pointer-events:none}
+#sticker{position:absolute;right:30px;top:880px;z-index:45;background:var(--warn);color:var(--warn-ink);font-weight:900;font-size:20px;padding:10px 16px;border-radius:12px;transform:rotate(3deg);box-shadow:0 8px 20px rgba(0,0,0,.25);visibility:hidden}
+
+/* components */
+.check{position:absolute;left:70px;right:70px;height:100px;background:var(--card);border-radius:22px;display:flex;align-items:center;gap:20px;padding:0 24px;font-weight:800;font-size:29px;color:var(--card-ink);box-shadow:0 10px 24px rgba(0,0,0,.18)}
+.check i{width:56px;height:56px;border-radius:50%;background:var(--acc);flex:none;position:relative}
+.check i:after{content:"";position:absolute;left:19px;top:9px;width:13px;height:27px;border:solid var(--hl-ink);border-width:0 7px 7px 0;transform:rotate(45deg)}
+body[data-theme=tips] .check i{border-radius:16px;background:var(--hl)}
+body[data-theme=tips] .check i:after{display:none}
+body[data-theme=tips] .check i b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:30px;font-weight:900}
+.warn{position:absolute;background:var(--warn);color:var(--warn-ink);font-weight:900;font-size:25px;padding:12px 20px;border-radius:12px;box-shadow:0 8px 18px rgba(0,0,0,.28);white-space:nowrap}
+.pinlbl{position:absolute;background:var(--card);color:var(--card-ink);font-weight:800;font-size:20px;padding:9px 14px;border-radius:10px;border:2px solid var(--acc);box-shadow:0 6px 16px rgba(0,0,0,.25);white-space:nowrap}
+.news{position:absolute;left:44px;right:44px;background:#fff;color:#111;border-radius:16px;box-shadow:0 24px 50px rgba(0,0,0,.35);padding:30px 30px 34px}
+.news .src{font-family:var(--font-b);font-weight:900;font-size:22px;letter-spacing:.5px;color:#111;display:flex;justify-content:space-between;border-bottom:3px solid #111;padding-bottom:12px;margin-bottom:20px}
+.news .src span{font-weight:600;font-size:17px;color:#666}
+.news .hd{font-family:"Playfair Display",serif;font-weight:800;font-size:40px;line-height:1.18}
+.news mark{background:linear-gradient(transparent 55%,var(--hl) 55%);background-size:0% 100%;background-repeat:no-repeat;color:inherit}
+.vs{position:absolute;left:50%;top:640px;width:96px;height:96px;margin:-48px 0 0 -48px;border-radius:50%;background:var(--acc);color:var(--hl-ink);display:flex;align-items:center;justify-content:center;font-family:var(--font-h);font-weight:900;font-size:36px;box-shadow:0 8px 24px rgba(0,0,0,.35);z-index:5;border:5px solid var(--card)}
+.half{position:absolute;left:36px;right:36px;height:300px;border-radius:var(--radius);overflow:hidden;box-shadow:0 14px 34px rgba(0,0,0,.25)}
+.half .nm{position:absolute;left:20px;bottom:18px;color:#fff;font-family:var(--font-h);font-weight:900;font-size:38px;text-shadow:0 3px 12px rgba(0,0,0,.6)}
+.half .pts{position:absolute;right:18px;bottom:18px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.half .pts div{background:rgba(255,255,255,.92);color:#111;font-weight:800;font-size:18px;padding:6px 12px;border-radius:8px}
+.tl-item{position:absolute;left:120px;right:50px;display:flex;flex-direction:column;gap:4px}
+.tl-item .w{font-family:var(--font-m);font-weight:800;font-size:22px;color:var(--ink2)}
+.tl-item .t{font-weight:800;font-size:30px;color:var(--ink);line-height:1.2}
+.tl-dot{position:absolute;left:72px;width:26px;height:26px;border-radius:50%;background:var(--acc);border:5px solid var(--card)}
+.numwrap{position:absolute;left:0;right:0;text-align:center;font-family:var(--font-h);font-weight:900;color:var(--ink)}
+.delta{position:absolute;left:50%;transform:translateX(-50%);font-weight:900;font-size:30px;padding:8px 18px;border-radius:12px;color:#fff}
+.cap{position:absolute;left:50px;right:50px;text-align:center;font-weight:800;font-size:30px;color:var(--ink);line-height:1.25}
+.fb-cap{position:absolute;left:40px;right:40px;font-family:var(--font-h);font-weight:var(--title-w);font-size:64px;line-height:1.04;color:#fff;text-transform:var(--title-case);text-shadow:0 4px 24px rgba(0,0,0,.55)}
+.fb-cap b{color:var(--hl);display:block;font-weight:inherit}
+.letterbox{position:absolute;left:0;right:0;height:0;background:#000;z-index:3}
+.check i b{display:none}
+body[data-theme=tips] .check i b{display:flex}
+/* màu nhấn trên ảnh tối (fullbleed) — luôn sáng, đủ tương phản */
+body{--fb-hl:#ffd25a}
+body[data-theme=life]{--fb-hl:#c8ef5a}
+body[data-theme=tech]{--fb-hl:#22e1ff}
+body[data-theme=finance]{--fb-hl:#f3d58a}
+.fb-cap b{color:var(--fb-hl)}
+/* chữ hoa tiếng Việt: giãn dòng đủ chỗ cho dấu, cân dòng */
+.title{line-height:1.14}.big{line-height:1.12}.fb-cap{line-height:1.12}
+.title,.big,.fb-cap,.cap,#sub{text-wrap:balance}

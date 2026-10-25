@@ -76,7 +76,7 @@ console.log(await retry('deploy', () => wrangler(['deploy', '-c', cfgFile])));
 // (servers download it with their connection code and update themselves when the version changes)
 try {
   const root = join(web, '..', 'ink'), tmp = join(web, '.ink-bundle.tgz'), version = (process.env.GITHUB_SHA || String(Date.now())).slice(0, 12);
-  execFileSync('tar', ['-czf', tmp, '--exclude=__pycache__', '-C', root, 'ink', 'assets', 'requirements.txt']);
+  execFileSync('tar', ['-czf', tmp, '--exclude=__pycache__', '--exclude=hbx/node_modules', '-C', root, 'ink', 'hbx', 'assets', 'requirements.txt']);
   const vf = join(web, '.ink-version.txt'); writeFileSync(vf, version);
   wrangler(['r2', 'object', 'put', `${NAME}/ink-runner/bundle.tar.gz`, '--file', tmp, '--content-type', 'application/gzip', '--remote', '-c', cfgFile]);
   wrangler(['r2', 'object', 'put', `${NAME}/ink-runner/version.txt`, '--file', vf, '--content-type', 'text/plain', '--remote', '-c', cfgFile]);

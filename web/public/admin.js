@@ -49,6 +49,7 @@ const SECRET_INFO = {
   ELEVENLABS_API_KEY: ['ElevenLabs', 'Giọng ElevenLabs (máy dựng).'],
   ZALO_BOT_TOKEN: ['Zalo Bot token', 'Lấy trong Zalo Bot Creator. Dùng cho tab Zalo.'],
   SEPAY_API_KEY: ['SePay API key', 'Để SePay báo chuyển khoản về web (tab Gói cước).'],
+  PIXABAY_API_KEY: ['Pixabay', 'Ảnh và video thật (miễn phí dùng thương mại) cho kiểu video Điện ảnh của Ink Studio. pixabay.com/api/docs → key.'],
 };
 const EVENT_NAMES = {
   api: 'Gọi API', error: 'Lỗi máy chủ', 'auth.login': 'Đăng nhập', 'auth.logout': 'Đăng xuất', 'project.create': 'Tạo video', 'project.save': 'Lưu chỉnh sửa',
@@ -297,6 +298,7 @@ function connectionsTab(c,secrets,secretInput){return [
  keysCard(secrets,secretInput,['EVERAI_API_KEY','GOOGLE_TTS_API_KEY','ELEVENLABS_API_KEY'],'Giọng đọc: khoá API'),
  keysCard(secrets,secretInput,['ZALO_BOT_TOKEN'],'Zalo: bot token'),
  keysCard(secrets,secretInput,['SEPAY_API_KEY'],'Thanh toán: SePay API'),
+ keysCard(secrets,secretInput,['PIXABAY_API_KEY'],'Ảnh & video thật: Pixabay'),
  connectionsCard(c),
  card('Thông tin kết nối trên máy chủ','Những giá trị này được quản lý trong môi trường triển khai, không hiển thị giá trị bí mật trên web.',
  h('dl',{class:'summary'},h('dt',{},'RUNNER_TOKEN'),h('dd',{},'Xác thực máy dựng và mã hoá khoá API; quản lý trong secrets triển khai.'),h('dt',{},'GOOGLE_CLIENT_ID'),h('dd',{},'Đăng nhập Google; cấu hình trong môi trường triển khai.'),h('dt',{},'Cloudflare token'),h('dd',{},'Dùng để triển khai web, cấu hình trong GitHub Actions secrets.')))

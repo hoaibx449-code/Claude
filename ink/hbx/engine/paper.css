@@ -1,0 +1,47 @@
+/* ===== FORMAT: SÂN KHẤU GIẤY RISO (paper stage) ===== */
+@import url("../node_modules/@fontsource/barlow-condensed/800.css");
+body[data-theme=paper]{--spot:#e8432e;--ink:#1a1816;--paper:#ece3d0;--hl:var(--spot);--hl-ink:#fff7ea;--sub-ink:#1a1816}
+body[data-theme=paper] [data-tone]{--acc:var(--spot);--ink2:var(--spot);--line:rgba(0,0,0,.08)}
+body[data-theme=paper] .scene{background:var(--paper)}
+body[data-theme=paper] .scene[data-tone=dark]{background:#171513}
+body[data-theme=paper] .pill,body[data-theme=paper] .deco{display:none}
+body[data-theme=paper] .grain{opacity:.12}
+/* phụ đề = dải băng giấy dán chéo */
+body[data-theme=paper] #sub{left:0;right:0;margin:0 auto;width:fit-content;max-width:620px;top:1030px;min-height:0;background:#f6efe0;border-radius:2px;padding:12px 22px;font-size:30px;font-weight:800;color:#1a1816;box-shadow:0 6px 0 rgba(0,0,0,.16);border:0;column-gap:8px;rotate:-1.2deg;
+  clip-path:polygon(0 4%,3% 0,12% 6%,22% 1%,35% 5%,48% 0,61% 4%,74% 1%,86% 5%,97% 0,100% 6%,99% 50%,100% 94%,96% 100%,84% 95%,71% 100%,58% 96%,45% 100%,32% 95%,19% 100%,7% 96%,0 100%,1% 50%)}
+body[data-theme=paper] #sub span{padding:0 4px;border-radius:2px}
+body[data-theme=paper] #sub span.on{background:var(--spot);color:#fff7ea}
+body[data-theme=paper] #sub span.k{color:var(--spot)}
+body[data-theme=paper] #sub span.k.on{color:#fff7ea}
+body[data-theme=paper] #prog{top:1226px;gap:4px}
+body[data-theme=paper] #prog div{height:4px;border-radius:0;background:rgba(127,120,110,.35)}
+body[data-theme=paper] #prog div.f{background:var(--spot)}
+
+.pmeta{position:absolute;left:40px;right:40px;top:52px;display:flex;justify-content:space-between;font-family:"JetBrains Mono";font-weight:800;font-size:13px;letter-spacing:1.5px;color:#1a1816;text-transform:uppercase;z-index:5}
+.scene[data-tone=dark] .pmeta{color:#ece3d0}
+.pmeta b{color:var(--spot)}
+.reg{position:absolute;width:26px;height:26px;z-index:5;opacity:.55}
+.reg:before,.reg:after{content:"";position:absolute;background:currentColor}
+.reg:before{left:12px;top:0;width:2px;height:26px}.reg:after{top:12px;left:0;height:2px;width:26px}
+.reg i{position:absolute;inset:6px;border:2px solid currentColor;border-radius:50%}
+.scene[data-tone=dark] .reg{color:#ece3d0}
+
+.pworld{position:absolute;inset:0;perspective:1100px;perspective-origin:50% 42%}
+.pcam{position:absolute;left:360px;top:820px;width:0;height:0;transform-style:preserve-3d}
+.pfloor{position:absolute;left:-1400px;top:0;width:2800px;height:2400px;transform-origin:50% 0;transform:rotateX(90deg);
+  background:radial-gradient(ellipse 40% 30% at 50% 22%,rgba(255,255,255,.35),transparent 70%),repeating-linear-gradient(90deg,rgba(0,0,0,.05) 0 2px,transparent 2px 140px),repeating-linear-gradient(0deg,rgba(0,0,0,.05) 0 2px,transparent 2px 140px)}
+.scene[data-tone=dark] .pfloor{background:radial-gradient(ellipse 30% 22% at 50% 18%,rgba(255,240,220,.16),transparent 70%),repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 2px,transparent 2px 140px),repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0 2px,transparent 2px 140px)}
+.pwall{position:absolute;left:-1400px;top:-2000px;width:2800px;height:2000px;transform:translateZ(-900px);background:linear-gradient(180deg,rgba(0,0,0,.0),rgba(0,0,0,.06))}
+.scene[data-tone=dark] .pwall{background:radial-gradient(ellipse 30% 40% at 50% 85%,rgba(255,230,200,.10),transparent 70%)}
+.pit{position:absolute;left:0;top:0;transform-style:preserve-3d}
+.pit .bb{position:absolute;bottom:0;transform-origin:50% 100%}
+.pit img{display:block;filter:drop-shadow(10px 14px 0 rgba(0,0,0,.18))}
+.scene[data-tone=dark] .pit img{filter:drop-shadow(10px 14px 0 rgba(0,0,0,.5))}
+.pshadow{position:absolute;left:50%;bottom:-18px;height:36px;border-radius:50%;background:radial-gradient(closest-side,rgba(0,0,0,.35),transparent);transform:translateX(-50%)}
+.pword{font-family:"Barlow Condensed";font-weight:800;text-transform:uppercase;white-space:nowrap;line-height:.95;letter-spacing:-1px}
+.pstamp{font-family:"Barlow Condensed";font-weight:800;text-transform:uppercase;white-space:nowrap;color:var(--spot);border:6px solid var(--spot);padding:4px 18px 0;border-radius:6px;letter-spacing:2px;mix-blend-mode:multiply;opacity:.92}
+.scene[data-tone=dark] .pstamp{mix-blend-mode:normal}
+.pnote{background:#f6efe0;color:#1a1816;padding:30px 34px;font-weight:800;font-size:40px;line-height:1.2;text-align:center;box-shadow:12px 16px 0 rgba(0,0,0,.25);
+  clip-path:polygon(0 2%,8% 0,20% 3%,33% 0,47% 2%,60% 0,74% 3%,88% 0,100% 2%,98% 30%,100% 60%,99% 100%,85% 97%,70% 100%,55% 97%,40% 100%,25% 97%,10% 100%,0 98%,2% 60%,0 30%)}
+.pnote em{font-style:normal;color:var(--spot)}
+.ptape{position:absolute;width:110px;height:34px;background:rgba(240,228,200,.75);box-shadow:0 1px 2px rgba(0,0,0,.15)}

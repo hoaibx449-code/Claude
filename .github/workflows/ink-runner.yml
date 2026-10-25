@@ -29,12 +29,17 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
           pip install -q -r ink/requirements.txt
+      - name: Cài trình duyệt và thư viện cho kiểu Điện ảnh
+        run: |
+          python -m playwright install --with-deps chromium
+          cd ink/hbx && npm ci --no-audit --no-fund
       - name: Dùng lại giọng đã đọc
         uses: actions/cache@v4
         with:
           path: |
             ink/.cache
             ~/.cache/huggingface
+            ~/.hbx_models
           key: ink-voice-${{ github.run_id }}
           restore-keys: ink-voice-
       - name: Dựng các video đang chờ

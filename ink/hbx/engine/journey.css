@@ -1,0 +1,49 @@
+/* ===== FORMAT: HÀNH TRÌNH (journey) — thế giới 3D liền mạch, máy quay dẫn mắt người xem ===== */
+body[data-theme=journey]{--font-h:"Be Vietnam Pro";--hl:#ffd23f;--hl-ink:#1a1405;--sub-bg:rgba(8,10,16,.84);--sub-ink:#fff;--pill-bg:rgba(255,255,255,.1);--pill-ink:#fff;--brand-dot:linear-gradient(135deg,#ffd23f,#ff5a36)}
+body[data-theme=journey] [data-tone]{--ink:#fff;--ink2:#ffd23f;--acc:#ffd23f;--acc2:#ff5a36;--line:rgba(255,255,255,.12)}
+body[data-theme=journey] .scene{background:transparent}
+body[data-theme=journey] .deco,body[data-theme=journey] .grain{display:none}
+body[data-theme=journey] .pill{backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.25)}
+body[data-theme=journey] #sub{border:1px solid rgba(255,210,63,.35);backdrop-filter:blur(6px)}
+
+#jworld{position:absolute;inset:0;overflow:hidden;perspective:1100px;perspective-origin:50% 48%;transform-origin:50% 70%;background:#06080d}
+.jsky{position:absolute;inset:0;background:radial-gradient(120% 60% at 50% 30%,#1d2740 0%,#0b0f1a 55%,#05070b 100%)}
+.jcam{position:absolute;left:50%;top:50%;width:0;height:0;transform-style:preserve-3d}
+.jcam *{transform-style:preserve-3d}
+.jfloor{position:absolute;left:0;top:0;transform-origin:0 0;
+  background:
+    radial-gradient(60% 40% at 50% 0%,rgba(255,210,63,.10),transparent 70%),
+    repeating-linear-gradient(90deg,rgba(140,170,255,.13) 0 2px,transparent 2px 240px),
+    repeating-linear-gradient(0deg,rgba(140,170,255,.13) 0 2px,transparent 2px 240px),
+    linear-gradient(#0c1220,#0c1220)}
+.jst{position:absolute;left:0;top:0}
+.jbill{position:absolute;left:0;top:0;width:880px;height:1080px;border-radius:26px;overflow:hidden;border:8px solid rgba(255,255,255,.92);
+  box-shadow:0 0 0 2px rgba(255,210,63,.5),0 60px 120px rgba(0,0,0,.7),0 0 140px rgba(255,210,63,.18);background:#111}
+.jbill .photo{position:absolute;inset:0}
+.jshade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,0) 30%,rgba(0,0,0,.1) 60%,rgba(0,0,0,.55))}
+.jbill .credit{font-size:16px}
+.jbase{position:absolute;left:0;top:0;width:940px;height:260px;transform-origin:0 0;background:radial-gradient(50% 50% at 50% 30%,rgba(255,210,63,.35),transparent 70%)}
+.jo{position:absolute;left:0;top:0;opacity:0}
+.jtitle{width:820px;margin-left:-410px;text-align:center;font-family:var(--font-h);font-weight:900;line-height:1.02;letter-spacing:-1.5px;text-transform:uppercase}
+.jt1,.jt2{font-size:104px;white-space:nowrap}
+.jt1 em,.jt2 em{font-style:normal;color:var(--hl)}
+.jnum{width:900px;margin-left:-450px;text-align:center;font-family:var(--font-h);font-weight:900}
+.jn{font-size:230px;line-height:1;letter-spacing:-6px}
+.jcap{display:inline-block;margin-top:18px;background:#fff;color:#0b0f1a;font-weight:800;font-size:40px;padding:12px 28px;border-radius:16px;box-shadow:0 18px 40px rgba(0,0,0,.45)}
+.jcap em{font-style:normal;color:#d64000}
+.jitem{width:560px;margin-left:-280px;display:flex;gap:18px;align-items:center;background:rgba(255,255,255,.96);color:#0b0f1a;font-weight:800;font-size:40px;line-height:1.15;padding:22px 28px;border-radius:22px;
+  box-shadow:0 30px 60px rgba(0,0,0,.55),0 0 0 3px rgba(255,210,63,.8)}
+.jitem i{flex:none;width:58px;height:58px;border-radius:50%;background:var(--hl);color:#1a1405;font-style:normal;font-weight:900;font-size:32px;display:flex;align-items:center;justify-content:center}
+.jitem em{font-style:normal;color:#d64000}
+.jnote{width:640px;margin-left:-320px;background:rgba(10,14,24,.88);border-left:10px solid var(--hl);color:#fff;font-weight:700;font-size:40px;line-height:1.25;padding:22px 28px;border-radius:10px;box-shadow:0 30px 60px rgba(0,0,0,.5)}
+.jnote em{font-style:normal;color:var(--hl)}
+.jlamp{position:absolute;left:-14px;top:-14px;width:28px;height:28px;border-radius:50%;background:#ffd23f;box-shadow:0 0 40px 18px rgba(255,210,63,.45)}
+/* chữ nhấn: dải dạ quang quét qua + chữ đen đậm, hiện ngay trong không gian */
+.jemph{position:absolute;left:0;top:0;opacity:0;white-space:nowrap;translate:-50% 0}
+.jemph .jbar{position:absolute;left:-18px;right:-18px;top:10%;bottom:4%;background:var(--hl);transform-origin:left center;border-radius:6px;box-shadow:0 20px 50px rgba(0,0,0,.5)}
+.jemph .jtx{position:relative;font-family:var(--font-h);font-weight:900;font-size:76px;color:#14100a;text-transform:uppercase;letter-spacing:-1px;padding:0 6px}
+.jfog{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(6,8,13,.0) 0%,rgba(6,8,13,0) 55%,rgba(6,8,13,.55) 78%,rgba(6,8,13,.9) 100%)}
+.jvig{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 220px 40px rgba(0,0,0,.75)}
+.jlabel{position:absolute;left:40px;top:118px;display:flex;align-items:center;gap:12px;color:#fff;font-weight:800;font-size:18px;letter-spacing:2px;text-transform:uppercase;text-shadow:0 2px 10px rgba(0,0,0,.8)}
+.jlabel b{background:var(--hl);color:#1a1405;font-size:16px;padding:5px 10px;border-radius:6px;letter-spacing:1px}
+.jm{display:none}

@@ -1,0 +1,70 @@
+/* ===== PHONG CÁCH THEO CHỦ ĐỀ (mood) =====
+   build.py suy ra sb.mood từ plan.theme (hoặc plan.mood ghi rõ) → engine đặt body[data-mood].
+   Mỗi mood quy định: màu chủ đạo, màu nhấn, font tiêu đề, kiểu chữ tiêu đề, kiểu dải nhấn, màu trời/sàn.
+   KHÔNG ngẫu nhiên: cùng chủ đề → cùng nhận diện. Bảng đầy đủ: docs/storyboard.md § Phong cách theo chủ đề. */
+@import url("../node_modules/@fontsource/space-grotesk/700.css");
+@import url("../node_modules/@fontsource/playfair-display/800.css");
+@import url("../node_modules/@fontsource/playfair-display/800-italic.css");
+@import url("../node_modules/@fontsource/oswald/700.css");
+@import url("../node_modules/@fontsource/lora/700.css");
+@import url("../node_modules/@fontsource/jetbrains-mono/800.css");
+
+/* tech — AI, công nghệ: lạnh, chính xác, tương lai */
+body[data-mood=tech]{--m-hl:#22d3ee;--m-hl-ink:#03141a;--m-acc2:#a78bfa;--m-side:#0e6f80;--m-side2:#5b4a9a;
+  --m-font:"Space Grotesk";--m-case:uppercase;--m-track:-2px;--m-sky:#14204a;--m-sky2:#070a18;--m-grid:rgba(34,211,238,.16);--m-floor:#081226;--m-glow:rgba(34,211,238,.22)}
+/* finance — tài chính, kinh tế: tin cậy, sang, điềm tĩnh */
+body[data-mood=finance]{--m-hl:#e8b44a;--m-hl-ink:#1a1206;--m-acc2:#f4e3b5;--m-side:#7a5a14;--m-side2:#8f7a4a;
+  --m-font:"Playfair Display";--m-case:none;--m-track:-1px;--m-sky:#14243f;--m-sky2:#070d18;--m-grid:rgba(232,180,74,.11);--m-floor:#0b1527;--m-glow:rgba(232,180,74,.20)}
+/* alert — bảo mật, lừa đảo, cảnh báo: khẩn, gắt */
+body[data-mood=alert]{--m-hl:#ff3b30;--m-hl-ink:#fff;--m-acc2:#ffb020;--m-side:#7a0f0a;--m-side2:#8a5a00;
+  --m-font:"Oswald";--m-case:uppercase;--m-track:0px;--m-sky:#2a0d10;--m-sky2:#0a0405;--m-grid:rgba(255,59,48,.13);--m-floor:#160709;--m-glow:rgba(255,59,48,.22)}
+/* bright — thủ thuật, mẹo, hướng dẫn: vui, rõ, năng lượng */
+body[data-mood=bright]{--m-hl:#ffc21a;--m-hl-ink:#1a1200;--m-acc2:#3b82f6;--m-side:#9a6a00;--m-side2:#1d4fae;
+  --m-font:"Be Vietnam Pro";--m-case:uppercase;--m-track:-1.5px;--m-sky:#1b2a5c;--m-sky2:#0a1130;--m-grid:rgba(120,170,255,.16);--m-floor:#0d1a3f;--m-glow:rgba(255,194,26,.22)}
+/* calm — đời sống, sức khỏe, xã hội, phát triển, môi trường: ấm, nhân văn */
+body[data-mood=calm]{--m-hl:#7bd389;--m-hl-ink:#08210f;--m-acc2:#f2c57c;--m-side:#2f6b3a;--m-side2:#8a6a36;
+  --m-font:"Lora";--m-case:none;--m-track:-.5px;--m-sky:#1d3328;--m-sky2:#0a120e;--m-grid:rgba(123,211,137,.11);--m-floor:#0e1c15;--m-glow:rgba(242,197,124,.20)}
+
+/* phụ đề karaoke: màu nhấn theo chủ đề ở mọi format */
+body[data-mood][data-theme]{--hl:var(--m-hl);--hl-ink:var(--m-hl-ink)}
+body[data-mood][data-theme=bento]{--hot:var(--m-side);--hl:var(--m-hl)}
+
+/* ---- format Hành trình ---- */
+body[data-mood][data-theme=journey]{--font-h:var(--m-font);--brand-dot:linear-gradient(135deg,var(--m-hl),var(--m-acc2))}
+body[data-mood][data-theme=journey] [data-tone]{--ink2:var(--m-hl);--acc:var(--m-hl);--acc2:var(--m-acc2)}
+body[data-mood] .jsky{background:radial-gradient(120% 60% at 50% 30%,var(--m-sky) 0%,var(--m-sky2) 60%,#030407 100%)}
+body[data-mood] .jfloor{background:
+    radial-gradient(60% 40% at 50% 0%,var(--m-glow),transparent 70%),
+    repeating-linear-gradient(90deg,var(--m-grid) 0 2px,transparent 2px 240px),
+    repeating-linear-gradient(0deg,var(--m-grid) 0 2px,transparent 2px 240px),
+    linear-gradient(var(--m-floor),var(--m-floor))}
+body[data-mood] .jbill{box-shadow:0 0 0 2px var(--m-hl),0 60px 120px rgba(0,0,0,.7),0 0 140px var(--m-glow)}
+body[data-mood] .jbase{background:radial-gradient(50% 50% at 50% 30%,var(--m-glow),transparent 70%)}
+body[data-mood] .jlamp{background:var(--m-hl);box-shadow:0 0 40px 18px var(--m-glow)}
+body[data-mood] .jitem{box-shadow:0 30px 60px rgba(0,0,0,.55),0 0 0 3px var(--m-hl)}
+body[data-mood] .jitem i{color:var(--m-hl-ink)}
+body[data-mood] .jlabel b{color:var(--m-hl-ink)}
+body[data-mood] .jtitle,body[data-mood] .jemph .jtx{text-transform:var(--m-case);letter-spacing:var(--m-track)}
+body[data-mood] #sub{border-color:var(--m-hl)}
+body[data-mood] .jemph .jtx{color:var(--m-hl-ink)}
+
+/* kiểu dải nhấn theo chủ đề */
+body[data-mood=tech] .jemph .jbar{border-radius:2px;box-shadow:0 0 0 3px rgba(167,139,250,.9),0 0 40px rgba(34,211,238,.6)}
+body[data-mood=tech] .jemph .jtx{font-family:"JetBrains Mono";font-weight:800;letter-spacing:-2px}
+body[data-mood=finance] .jemph .jbar{top:auto;bottom:-6%;height:28%;border-radius:2px;box-shadow:none}
+body[data-mood=finance] .jemph .jtx{color:#f8f1df;font-style:italic;text-shadow:0 6px 24px rgba(0,0,0,.8)}
+body[data-mood=alert] .jemph .jbar{border-radius:0;outline:6px solid #fff;outline-offset:6px}
+body[data-mood=bright] .jemph .jbar{border-radius:40px;box-shadow:0 14px 0 var(--m-acc2),0 26px 50px rgba(0,0,0,.45)}
+body[data-mood=calm] .jemph .jbar{border-radius:60px;opacity:.92}
+body[data-mood=calm] .jemph .jtx{text-transform:none}
+
+/* ---- format Thẻ 3D: bảng màu thẻ theo chủ đề ---- */
+.pal-t1{--cbg:#0a1230;--cfg:#e9fbff;--cacc:#22d3ee}.pal-t2{--cbg:#22d3ee;--cfg:#03141a;--cacc:#5b21b6}.pal-t3{--cbg:#1b1446;--cfg:#fff;--cacc:#a78bfa}
+.pal-f1{--cbg:#0f1b3d;--cfg:#f8f1df;--cacc:#e8b44a}.pal-f2{--cbg:#f4ecd8;--cfg:#14243f;--cacc:#9a6b12}.pal-f3{--cbg:#13261f;--cfg:#f4ecd8;--cacc:#e8b44a}
+.pal-a1{--cbg:#141414;--cfg:#fff;--cacc:#ff3b30}.pal-a2{--cbg:#ff3b30;--cfg:#fff;--cacc:#1a0000}.pal-a3{--cbg:#ffb020;--cfg:#1a0d00;--cacc:#b3120a}
+.pal-b1{--cbg:#2563eb;--cfg:#fff;--cacc:#ffc21a}.pal-b2{--cbg:#ffc21a;--cfg:#111;--cacc:#2563eb}.pal-b3{--cbg:#fff7e6;--cfg:#111;--cacc:#ff6a1a}
+.pal-c1{--cbg:#e9f3e6;--cfg:#163020;--cacc:#2f8f4a}.pal-c2{--cbg:#2f6b3a;--cfg:#fbf6ea;--cacc:#f2c57c}.pal-c3{--cbg:#f6ead2;--cfg:#2b2116;--cacc:#2f8f4a}
+body[data-mood=finance] .fit{font-family:"Playfair Display";font-weight:800;text-transform:none;letter-spacing:-1px}
+body[data-mood=alert] .fit{font-family:"Oswald";font-weight:700;letter-spacing:0}
+body[data-mood=tech] .fit{font-family:"Space Grotesk";font-weight:700}
+body[data-mood=calm] .fit{font-family:"Lora";font-weight:700;text-transform:none}

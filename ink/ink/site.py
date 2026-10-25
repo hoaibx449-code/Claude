@@ -67,6 +67,8 @@ def run(job):
             if scene[0] % 4 == 0: report()
     out = tempfile.mkdtemp(prefix='ink-' + jid + '-'); t0 = time.time()
     try:
+        if inp.get('format') == 'cine' or (job.get('storyboard') or {}).get('format') == 'cine':
+            return run_cine(job, inp, out, state, report, log, t0)
         if job['stage'] == 'plan':
             sb = make_plan(out, inp.get('topic') if inp.get('mode') != 'script' else None, inp.get('script') if inp.get('mode') == 'script' else None,
                            int(inp.get('seconds') or 60), inp.get('audience', ''), tone=inp.get('tone') or 'tự nhiên, hợp với chủ đề và người xem',
@@ -111,6 +113,31 @@ def run(job):
     finally:
         stop.set(); ai.used.clear()
         subprocess.run(['rm', '-rf', out], check=False)
+
+
+def run_cine(job, inp, out, state, report, log, t0):
+    """the cinematic type (HBX engine): plan + preview, then the voice and the render"""
+    from . import cine
+    jid, lease = job['id'], job['lease']
+    if job['stage'] == 'plan':
+        sb = cine.plan(inp, log=log)
+        state.update(progress=34, message='Đang chọn cảnh quay và dựng bản xem trước'); report()
+        sb = cine.preview(sb, out, log=log)
+        for name in ('overview.png', 'cover.jpg'): put(jid, lease, out, name)
+        nxt = call(f'jobs/{jid}/planned', {'storyboard': sb, 'ai': sb.get('ai') or [f'{p}/{m}' for p, m in ai.used]}, lease=lease)
+        if not nxt.get('render'): return True
+    else:
+        sb = job['storyboard']
+    state.update(progress=45, message='Giọng đọc'); report()
+    total, provider = cine.render(sb, out, inp.get('pace', 'normal'), log=log, seconds=0 if inp.get('mode') == 'script' else int(inp.get('seconds') or 0))
+    state.update(progress=96, message='Lưu video'); report()
+    thumb = os.path.join(out, 'thumb.jpg')
+    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', os.path.join(out, 'cover.jpg'), '-vf', 'scale=360:-2', thumb], check=False)
+    put(jid, lease, out, 'cover.jpg'); put(jid, lease, out, 'video.mp4', timeout=600)
+    if os.path.exists(thumb): put(jid, lease, out, 'thumb.jpg')
+    call(f'jobs/{jid}/done', {'duration': round(total, 1), 'seconds': round(time.time() - t0), 'voice': provider, 'voiceError': ' | '.join(V.errors), 'ai': sb.get('ai') or []}, lease=lease)
+    print(f'Xong {jid} (điện ảnh): {total:.1f} giây video trong {time.time() - t0:.0f} giây', flush=True)
+    return True
 
 
 def put(jid, lease, out, name, timeout=120):

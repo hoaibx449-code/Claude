@@ -13,7 +13,7 @@ command -v apt-get >/dev/null || { echo "Bộ cài này dành cho Ubuntu/Debian.
 say "Cài FFmpeg, Python và công cụ cần thiết"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq ffmpeg python3 python3-venv python3-pip curl ca-certificates tar >/dev/null
+apt-get install -y -qq ffmpeg python3 python3-venv python3-pip curl ca-certificates tar nodejs npm >/dev/null
 
 say "Tạo người dùng riêng cho máy dựng"
 id faciup >/dev/null 2>&1 || useradd --system --create-home --home-dir "$D" --shell /usr/sbin/nologin faciup
@@ -27,6 +27,7 @@ RUNNER_TOKEN=$CODE
 INK_RUNNER_NAME=$NAME
 INK_CACHE=$D/cache/voice
 HF_HOME=$D/cache/huggingface
+PLAYWRIGHT_BROWSERS_PATH=$D/browsers
 ENV
 chown faciup:faciup "$D/runner.env"
 
@@ -43,6 +44,7 @@ if curl -fsS -m 120 -A faciup-ink-setup -H "authorization: Bearer $RUNNER_TOKEN"
     [ -x "$D/venv/bin/python" ] || python3 -m venv "$D/venv"
     "$D/venv/bin/pip" install -q --upgrade pip
     "$D/venv/bin/pip" install -q -r "$D/app.new/requirements.txt"
+    (cd "$D/app.new/hbx" && npm ci --no-audit --no-fund --silent) || echo "Chưa cài được thư viện cho kiểu Điện ảnh"
     rm -rf "$D/app"; mv "$D/app.new" "$D/app"; echo "$v" > "$D/version"
     echo "Đã cập nhật máy dựng lên bản $v"
   fi
@@ -57,6 +59,10 @@ install -d -o faciup -g faciup "$D/cache"
 
 say "Tải máy dựng lần đầu (cài thư viện, khoảng 1–3 phút)"
 sudo -u faciup "$D/update.sh"
+
+say "Cài trình duyệt cho kiểu video Điện ảnh"
+if PLAYWRIGHT_BROWSERS_PATH=$D/browsers "$D/venv/bin/python" -m playwright install --with-deps chromium >/dev/null; then chown -R faciup:faciup "$D/browsers"
+else echo "Chưa cài được trình duyệt: kiểu Điện ảnh sẽ chưa dùng được trên máy này"; fi
 
 say "Tạo dịch vụ chạy nền, tự bật lại khi máy khởi động"
 cat > /etc/systemd/system/faciup-ink.service <<SVC
