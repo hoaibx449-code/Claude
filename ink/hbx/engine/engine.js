@@ -310,6 +310,9 @@
 
   function build(sb) {
     SB = sb; document.body.dataset.theme = sb.theme || 'life';
+    // phụ đề nét mảnh (subStyle "fine"): 1 dòng in hoa giãn chữ, chữ đã đọc chuyển dần sang màu style.subColor
+    if (sb.subStyle === 'fine') { document.body.dataset.sub = 'fine'; document.body.style.setProperty('--sub-color', (sb.style && sb.style.subColor) || '#f5c04a'); }
+    else delete document.body.dataset.sub;
     if (sb.mood) document.body.dataset.mood = sb.mood; else delete document.body.dataset.mood;
     let acc = 0;
     sb.scenes.forEach((s, i) => {
@@ -524,7 +527,14 @@
       const ch = CHUNKS[WORDS[wi].c]; sub.style.opacity = 1;
       const ws = SC[cur].start, pin = E.out3(clamp((T - Math.max(ws, WORDS[ch[0]].t)) / .2));
       sub.style.transform = `translateY(${(1 - pin) * 14}px)`;
-      sub.innerHTML = ch.map(i => `<span class="${i === wi ? 'on' : ''} ${WORDS[i].k ? 'k' : ''}">${esc(WORDS[i].w)}</span>`).join(' ');
+      if (SB.subStyle === 'fine') { // karaoke: chữ đã đọc đổi màu, chữ đang đọc đổi dần từ trái sang phải
+        sub.innerHTML = ch.map(i => {
+          if (i < wi) return `<span class="done">${esc(WORDS[i].w)}</span>`;
+          if (i > wi) return `<span>${esc(WORDS[i].w)}</span>`;
+          const nt = i + 1 < WORDS.length ? WORDS[i + 1].t : WORDS[i].t + .4, q = Math.round(clamp((T - WORDS[i].t) / Math.max(.12, Math.min(.9, nt - WORDS[i].t))) * 100);
+          return `<span class="on" style="--q:${q}%">${esc(WORDS[i].w)}</span>`;
+        }).join(' ');
+      } else sub.innerHTML = ch.map(i => `<span class="${i === wi ? 'on' : ''} ${WORDS[i].k ? 'k' : ''}">${esc(WORDS[i].w)}</span>`).join(' ');
     }
     // thanh tiến trình
     const n = T / TOTAL * 12; [...document.getElementById('prog').children].forEach((d, i) => { d.className = i < Math.floor(n) ? 'f' : ''; d.style.background = i === Math.floor(n) ? `linear-gradient(90deg,var(--hl) ${(n % 1) * 100}%,rgba(127,127,127,.3) 0)` : ''; });

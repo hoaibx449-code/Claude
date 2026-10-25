@@ -256,6 +256,10 @@ async function adminSettings(body, tab) {
       // the pinned-page / installed-app icon follows the logo and colours: drawn again when they changed
       await makeAppIcons(c).catch((e) => toast('Chưa tạo được icon ứng dụng: ' + e.message));
       const saved = await api('/api/admin/settings', { method: 'PUT', body: { config: c, secrets: secretInput } });
+      // say it when the server stored something other than what was typed (plan codes made valid, duplicates numbered)
+      const sent = (c.plans || []).map((p) => String(p.id)), kept = (saved.config?.plans || []).map((p) => p.id);
+      const fixed = sent.filter((id) => !kept.includes(id));
+      if (fixed.length) setTimeout(() => toast('Mã gói đã được chỉnh cho hợp lệ: ' + fixed.join(', ') + ' → ' + kept.filter((id) => !sent.includes(id)).join(', ')), 1800);
       me = await api('/api/me'); applyUI(me.ui);
       // webhook mode is registered with Zalo on save: say whether it took
       toast(saved.zalo ? (saved.zalo.ok ? 'Đã lưu cài đặt. Webhook Zalo đã kết nối: ' + saved.zalo.url : 'Đã lưu cài đặt, nhưng chưa kết nối được webhook Zalo: ' + saved.zalo.error) : 'Đã lưu cài đặt.');
@@ -450,11 +454,23 @@ function aiOrderCard(c) {
   return card('Thứ tự AI', 'AI đầu tiên viết kịch bản, thiết kế cảnh và trả lời chat. Khi lỗi, quá tải hoặc chưa có khoá, hệ thống tự chuyển xuống AI kế tiếp. Vẽ ảnh chọn riêng ở "Mặc định khi tạo video".', list);
 }
 function plansTab(c, secrets, secretInput) {
-  const planCard = (p, i) => h('section', { class: 'card' },
-    h('div', { class: 'row', style: 'justify-content:space-between' }, h('h3', {}, p.name || 'Gói mới'),
-      p.price ? h('button', { type: 'button', class: 'ghost small danger', onclick: () => { c.plans.splice(i, 1); toast('Đã bỏ gói, bấm Lưu để áp dụng.'); } }, 'Bỏ gói') : h('small', { class: 'muted' }, 'Gói miễn phí (bắt buộc có)')),
-    h('div', { class: 'grid' },
-      h('label', {}, 'Mã', input(p.id, (v) => { p.id = v; }, { maxlength: 20 })), h('label', {}, 'Tên', input(p.name, (v) => { p.name = v; }, { maxlength: 40 })),
+  // a plan's code: lower case letters, digits and "-" (typed "Gói VIP" becomes "goi-vip"), unique among the plans
+  const slug = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 20);
+  const list = h('div', { class: 'plan-list' });
+  const draw = () => list.replaceChildren(...c.plans.map(planCard));
+  const planCard = (p) => {
+    const title = h('h3', {}, p.name || 'Gói mới'), idNote = h('small', { class: 'muted' });
+    const idBox = input(p.id, (v) => {
+      const id = slug(v); p.id = id;
+      const dup = c.plans.some((x) => x !== p && x.id === id);
+      idNote.textContent = id.length < 2 ? 'Mã cần ít nhất 2 ký tự (chữ thường, số, dấu -).' : dup ? 'Mã này trùng với gói khác.' : id !== v ? 'Sẽ lưu là: ' + id : '';
+      idNote.className = id.length < 2 || dup ? 'bad' : 'muted';
+    }, { maxlength: 20 });
+    return h('section', { class: 'card' },
+      h('div', { class: 'row', style: 'justify-content:space-between' }, title,
+        p.price ? h('button', { type: 'button', class: 'ghost small danger', onclick: () => { c.plans.splice(c.plans.indexOf(p), 1); draw(); toast('Đã bỏ gói "' + (p.name || p.id) + '". Bấm Lưu cài đặt để áp dụng.'); } }, 'Bỏ gói') : h('small', { class: 'muted' }, 'Gói miễn phí (luôn có)')),
+      h('div', { class: 'grid' },
+        h('label', {}, 'Mã', idBox, idNote), h('label', {}, 'Tên', input(p.name, (v) => { p.name = v; title.textContent = v || 'Gói mới'; }, { maxlength: 40 })),
       h('label', {}, 'Giá (VND)', input(p.price, (v) => { p.price = v; }, { type: 'number', min: 0 })), h('label', {}, 'Số ngày', input(p.days, (v) => { p.days = v; }, { type: 'number', min: 0 })),
       p.price ? h('label', {}, 'Giá cả năm (VND, 0 = không bán theo năm)', input(p.yearPrice || 0, (v) => { p.yearPrice = v; }, { type: 'number', min: 0 })) : null,
       p.price ? h('label', {}, 'Giá gốc gạch ngang (VND, 0 = không hiện)', input(p.listPrice || 0, (v) => { p.listPrice = v; }, { type: 'number', min: 0 })) : null,
@@ -469,6 +485,7 @@ function plansTab(c, secrets, secretInput) {
     h('label', {}, 'Phong cách được dùng (để trống = tất cả)', input(p.styles === 'all' ? '' : p.styles.join(', '), (v) => { p.styles = v.trim() ? v.split(/[\s,]+/).filter(Boolean) : 'all'; }, { placeholder: Object.keys(c.labels.styles).join(', ') })),
     h('label', {}, 'Cách tạo được dùng (để trống = tất cả)', input(p.sources === 'all' ? '' : p.sources.join(', '), (v) => { p.sources = v.trim() ? v.split(/[\s,]+/).filter(Boolean) : 'all'; }, { placeholder: 'topic, mine-ai, mine-free' })),
     h('label', {}, 'Mã giọng được dùng (để trống = tất cả)', input(p.voices === 'all' ? '' : p.voices.join(', '), (v) => { p.voices = v.trim() ? v.split(/[\s,]+/).filter(Boolean) : 'all'; }, { placeholder: 'free-female, vi_female_thuytrang_mb' })));
+  };
   return [
     card('Thanh toán chuyển khoản', 'Người dùng quét mã VietQR; nội dung chuyển khoản là mã đơn. Cài SePay (sepay.vn) gọi webhook bên dưới để đơn tự kích hoạt.',
       h('div', { class: 'grid' },
@@ -483,8 +500,8 @@ function plansTab(c, secrets, secretInput) {
       h('p', { class: 'muted' }, 'Webhook SePay: ', h('code', {}, location.origin + '/api/sepay/webhook'), ' · Kiểu xác thực: API Key.')),
     connectionLink(),
     card('Các gói', 'Giới hạn tính theo ngày. Phong cách/giọng/cách tạo ngoài gói sẽ hiện thông báo nâng cấp đúng gói cần mua.',
-      h('button', { type: 'button', class: 'ghost small', onclick: (e) => { c.plans.push({ id: 'goi' + (c.plans.length + 1), name: 'Gói mới', price: 99000, days: 30, yearPrice: 0, listPrice: 0, visible: true, highlight: false, desc: '', features: [], limits: { script: 10, image: 20, render: 5 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 180, docPerMonth: 0 }); e.target.closest('.card').after(planCard(c.plans[c.plans.length - 1], c.plans.length - 1)); } }, '+ Thêm gói')),
-    ...c.plans.map(planCard),
+      h('button', { type: 'button', class: 'ghost small', onclick: () => { let k = c.plans.length + 1; while (c.plans.some((x) => x.id === 'goi' + k)) k++; c.plans.push({ id: 'goi' + k, name: 'Gói mới', price: 99000, days: 30, yearPrice: 0, listPrice: 0, visible: true, highlight: false, desc: '', features: [], limits: { script: 10, image: 20, render: 5 }, styles: 'all', sources: 'all', voices: 'all', zalo: true, maxSeconds: 180, docPerMonth: 0 }); draw(); list.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'center' }); } }, '+ Thêm gói')),
+    (draw(), list),
     docCard(c),
   ];
 }
@@ -549,7 +566,7 @@ function musicCard(c) {
 
 /** Kinds of video made in Zalo (the web page's engine): one default, and which ones people may pick with DINHDANG. */
 function zaloFormatsCard(c, z) {
-  const WAYS = ['ink', 'cine'], CL = { ink: 'Vẽ tay (bàn tay vẽ trên bảng trắng)', cine: 'Điện ảnh (cảnh quay thật, cần khoá Pixabay)' };
+  const WAYS = ['ink', 'cine', 'money'], CL = { ink: 'Vẽ tay (bàn tay vẽ trên bảng trắng)', cine: 'Điện ảnh (cảnh quay thật, cần khoá Pixabay)', money: 'Đòn Bẩy Tư Duy (tài chính, sự nghiệp; cần khoá Pixabay)' };
   z.formats ||= { default: 'ink', allowed: [...WAYS] };
   if (!WAYS.includes(z.formats.default)) z.formats.default = 'ink';
   z.formats.allowed = (z.formats.allowed || []).filter((k) => WAYS.includes(k));

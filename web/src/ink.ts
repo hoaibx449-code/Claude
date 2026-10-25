@@ -45,6 +45,7 @@ export const INK_DEFAULTS: InkSettings = {
     { id: 'namminh', label: 'Nam Minh (nam, miễn phí)', provider: 'microsoft', code: 'vi-VN-NamMinhNeural', on: true },
     { id: 'thuytrang', label: 'Thùy Trang (nữ, EverAI)', provider: 'everai', code: 'vi_female_thuytrang_mb', on: false },
     { id: 'minhtriet', label: 'Minh Triết (nam, EverAI)', provider: 'everai', code: 'vi_male_minhtriet_mb', on: false },
+    { id: 'vanduy', label: 'Văn Duy (nam trầm, EverAI)', provider: 'everai', code: 'vi_male_vanduy_mb', on: true },
   ] },
   defaults: { pace: 'normal', seconds: 60, mood: 'auto', musicVolume: 0.2, captions: true, review: false },
   github: { repo: 'hoaibx449-code/Claude', workflow: 'ink-runner.yml', ref: 'claude/ai-hand-drawing-video-platform-9na7xi' },
@@ -64,6 +65,8 @@ export function cleanInk(i: any): InkSettings {
     id: /^[a-z0-9-]{2,24}$/.test(x?.id) ? x.id : 'giong-' + (k + 1), label: str(x?.label, 60) || 'Giọng ' + (k + 1),
     provider: x?.provider === 'everai' ? 'everai' : 'microsoft', code: /^[\w-]{3,60}$/.test(x?.code || '') ? x.code : 'vi-VN-HoaiMyNeural', on: x?.on !== false,
   }));
+  // voices added to the defaults later reach settings saved before (the 'Đòn Bẩy Tư Duy' voice)
+  if (list.length) for (const dv of d.voice.list.filter((x) => x.id === 'vanduy')) if (!list.some((x) => x.code === dv.code)) list.push({ ...dv });
   return {
     enabled: i?.enabled !== false,
     ai: { order: [...new Set(order.length ? order : d.ai.order)] as InkSettings['ai']['order'], fallback: a.fallback !== false, gemini: models(a.gemini, d.ai.gemini), openai: models(a.openai, d.ai.openai) },
@@ -269,21 +272,23 @@ export async function createInk(env: XEnv, rc: Rc, user: User, b: any, extra: Re
   if (!s.enabled && !(await isAdmin(env, env.config, user))) throw new HttpError(404, 'Ink Studio đang tạm tắt.');
   const mode = b.mode === 'script' ? 'script' : 'topic', text = mode === 'script' ? str(String(b.script || '').replace(/\r/g, ''), 12_000) : str(b.topic, 500);
   if (text.length < (mode === 'script' ? 40 : 4)) throw new HttpError(400, mode === 'script' ? 'Kịch bản quá ngắn.' : 'Hãy nhập chủ đề video.');
-  const cap = Math.min(300, plan.maxSeconds, env.config.limits.maxSeconds), seconds = Math.round(num(b.seconds, 20, 300, Math.min(s.defaults.seconds, cap)));
+  const format = b.format === 'cine' || b.format === 'money' ? b.format : 'ink';
+  // 'Đòn Bẩy Tư Duy' runs about two minutes unless asked otherwise
+  const cap = Math.min(300, plan.maxSeconds, env.config.limits.maxSeconds), seconds = Math.round(num(b.seconds, 20, 300, Math.min(format === 'money' ? 120 : s.defaults.seconds, cap)));
   if (seconds > cap) throw new HttpError(402, `Gói ${plan.name} cho video tối đa ${cap} giây.`);
   const ready = await readyVoices(env, s);
   if (!ready.length) throw new HttpError(503, 'Giọng đọc đang được bảo trì, vui lòng thử lại sau ít phút.');
-  const voice = ready.find((v) => v.id === b.voice) || ready.find((v) => v.id === s.voice.default) || ready[0];
+  const voice = ready.find((v) => v.id === b.voice) || (format === 'money' ? ready.find((v) => v.id === 'vanduy') : undefined) || ready.find((v) => v.id === s.voice.default) || ready[0];
   const music = /^[a-f0-9]{24}\.(mp3|m4a|wav)$/.test(b.music || '') ? b.music : '';
   if (music && !(await env.BUCKET.head(`ink-music/${user.id}/${music}`))) throw new HttpError(400, 'Không tìm thấy nhạc đã tải lên.');
   const input = { mode, [mode]: text, seconds, audience: str(b.audience, 200), tone: str(b.tone, 120), notes: str(b.notes, 600),
     pace: pick(b.pace, PACES, s.defaults.pace as any), voice: voice.id, mood: pick(b.mood, MOODS, s.defaults.mood as any), music,
     musicVolume: num(b.musicVolume, 0, 0.6, s.defaults.musicVolume), captions: b.captions !== false, review: typeof b.review === 'boolean' ? b.review : s.defaults.review,
     // drawn on the user's own device: a machine writes the script, voice and drawing plan, the browser draws
-    // 'cine': real footage (HBX engine, render machines only); 'ink': hand-drawn
-    format: b.format === 'cine' ? 'cine' : 'ink',
-    browser: b.browser === true && s.machines.on.browser && b.format !== 'cine', ...extra };
-  if (input.format === 'cine' && !(env as any).PIXABAY_API_KEY) throw new HttpError(503, 'Kiểu Điện ảnh đang được chuẩn bị, vui lòng chọn Vẽ tay.');
+    // 'cine': real footage (HBX engine, render machines only); 'money': 'Đòn Bẩy Tư Duy' (researched on the web, same engine); 'ink': hand-drawn
+    format,
+    browser: b.browser === true && s.machines.on.browser && format === 'ink', ...extra };
+  if (format !== 'ink' && !(env as any).PIXABAY_API_KEY) throw new HttpError(503, `Kiểu ${format === 'money' ? 'Đòn Bẩy Tư Duy' : 'Điện ảnh'} đang được chuẩn bị, vui lòng chọn Vẽ tay.`);
   return enqueue(env, rc, user, input, 'plan', null, typeof b.parent === 'string' ? b.parent : null);
 }
 /** Voices a video can be read with right now (tested, switched on). */
@@ -526,7 +531,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
         INK_AI_ORDER: s.ai.order.join(','), INK_AI_FALLBACK: s.ai.fallback ? '1' : '0', INK_GEMINI_MODELS: s.ai.gemini, INK_OPENAI_MODELS: s.ai.openai,
         GEMINI_API_KEY: env.GEMINI_API_KEY || '', OPENAI_API_KEY: env.OPENAI_API_KEY || '', EVERAI_API_KEY: (env as any).EVERAI_API_KEY || '',
         // footage other videos used lately: this one picks different shots (many people, same topic, different videos)
-        ...(input.format === 'cine' ? { PIXABAY_API_KEY: (env as any).PIXABAY_API_KEY || '', HBX_AVOID: (await recentFootage(env)).join(',') } : {}),
+        ...(input.format === 'cine' || input.format === 'money' ? { PIXABAY_API_KEY: (env as any).PIXABAY_API_KEY || '', HBX_AVOID: (await recentFootage(env)).join(',') } : {}),
         INK_VOICE_PROVIDER: voice.provider, INK_VOICE_FALLBACK: s.voice.fallback ? '1' : '0',
         ...(voice.provider === 'microsoft' ? { INK_MS_VOICE: voice.code } : { EVERAI_VOICE_CODE: voice.code }),
       } } } });

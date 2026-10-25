@@ -729,11 +729,12 @@ async function statusText(env: XEnv, user: User | null) {
 const WAYS: Record<string, [string, string]> = {
   ink: ['Vẽ tay', 'bàn tay vẽ từng ý trên bảng trắng'],
   cine: ['Điện ảnh', 'cảnh quay thật, máy quay chuyển động theo lời kể'],
+  money: ['Đòn Bẩy Tư Duy', 'tiền bạc, sự nghiệp, thói quen: một khái niệm có tên, nghiên cứu thật, giọng tiểu luận'],
 };
 export const wayName = (_c: Config, k: string) => WAYS[k]?.[0] || k;
 const wayNote = (_c: Config, k: string) => WAYS[k]?.[1] || '';
 /** The real-footage kind needs its footage library (a Pixabay key). */
-const wayOn = (env: XEnv | null, k: string) => !!WAYS[k] && (k !== 'cine' || !env || !!(env as any).PIXABAY_API_KEY);
+const wayOn = (env: XEnv | null, k: string) => !!WAYS[k] && (k === 'ink' || !env || !!(env as any).PIXABAY_API_KEY);
 /** The formats people may pick in Zalo, in the admin's order. */
 export function zaloWays(c: Config, env: XEnv | null = null) { return c.zalo.formats.allowed.filter((k) => ZALO_WAYS.includes(k as any) && wayOn(env, k)); }
 /** The way for this person's next video: their own pick if still allowed, otherwise the admin's default. */

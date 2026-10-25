@@ -75,7 +75,7 @@ def run(job):
             if scene[0] % 4 == 0: report()
     out = tempfile.mkdtemp(prefix='ink-' + jid + '-'); t0 = time.time()
     try:
-        if inp.get('format') == 'cine' or (job.get('storyboard') or {}).get('format') == 'cine':
+        if inp.get('format') in ('cine', 'money') or (job.get('storyboard') or {}).get('format') == 'cine':
             return run_cine(job, inp, out, state, report, log, t0)
         if job['stage'] == 'plan':
             sb = make_plan(out, inp.get('topic') if inp.get('mode') != 'script' else None, inp.get('script') if inp.get('mode') == 'script' else None,

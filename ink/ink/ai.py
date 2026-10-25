@@ -101,3 +101,48 @@ def ask(system, user, temperature=0.7, check=None, log=print):
                 if attempt == 0 and first.get(provider) == model: continue   # the best model gets a second try
                 break
     raise RuntimeError('Tất cả mô hình AI đều không trả lời được: ' + ' | '.join(errors))
+
+
+# ---------------------------------------------------------------- research on the web (grounded answers with their sources)
+def _gemini_search(model, system, user):
+    url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={os.environ["GEMINI_API_KEY"]}'
+    body = {'systemInstruction': {'parts': [{'text': system}]}, 'contents': [{'role': 'user', 'parts': [{'text': user}]}],
+            'tools': [{'google_search': {}}], 'generationConfig': {'temperature': 0.3}}
+    r = _post(url, body, {}, timeout=120)
+    c = r['candidates'][0]
+    text = ''.join(p.get('text', '') for p in c['content']['parts'])
+    chunks = (c.get('groundingMetadata') or {}).get('groundingChunks') or []
+    return text, [{'title': (g.get('web') or {}).get('title', ''), 'url': (g.get('web') or {}).get('uri', '')} for g in chunks if g.get('web')]
+
+
+def _openai_search(model, system, user):
+    body = {'model': model, 'tools': [{'type': 'web_search'}], 'instructions': system, 'input': user}
+    r = _post('https://api.openai.com/v1/responses', body, {'authorization': 'Bearer ' + os.environ['OPENAI_API_KEY']}, timeout=150)
+    text, sources = '', []
+    for item in r.get('output') or []:
+        for part in item.get('content') or []:
+            if part.get('type') == 'output_text':
+                text += part.get('text', '')
+                sources += [{'title': a.get('title', ''), 'url': a.get('url', '')} for a in part.get('annotations') or [] if a.get('type') == 'url_citation']
+    return text, sources
+
+
+def research(system, user, check=None, log=print):
+    """a JSON answer written from pages found on the web right now, and the pages it came from.
+    Gemini answers with Google Search, OpenAI with its web search; an answer without any source is refused."""
+    errors = []
+    for provider, model in chain():
+        if provider == 'gemini' and 'lite' in model: continue  # the light models search poorly
+        try:
+            text, sources = (_gemini_search if provider == 'gemini' else _openai_search)(model, system, user)
+            obj = parse_json(text)
+            seen, src = set(), []
+            for s in sources:
+                if s['url'] and s['url'] not in seen: seen.add(s['url']); src.append(s)
+            if not src: raise ValueError('không có nguồn web nào')
+            if check: check(obj)
+            used.append((provider, model + '+search')); return obj, src
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError, KeyError, IndexError, json.JSONDecodeError) as e:
+            msg = f'{provider}/{model}: {type(e).__name__}: {str(getattr(e, "code", "") or e)[:160]}'
+            errors.append(msg); log('  tìm nguồn chưa được, thử tiếp: ' + msg)
+    raise RuntimeError('Không tìm được nguồn trên web: ' + ' | '.join(errors))

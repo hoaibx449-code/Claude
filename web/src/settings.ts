@@ -24,8 +24,8 @@ export const KIND_KEYS = ['sketch', 'bars', 'flow', 'compare', 'steps', 'number'
 export const MODE_KEYS = ['hand', 'motion', 'math', 'kinetic'] as const;
 /** Video formats (src/engine/looks.ts). */
 export const LOOK_KEYS = ['director', 'act', 'whiteboard', 'illustrated', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
-/** Kinds of video made in Zalo: the web page's engine, hand-drawn ('ink') or real footage ('cine'). */
-export const ZALO_WAYS = ['ink', 'cine'] as const;
+/** Kinds of video made in Zalo: the web page's engine, hand-drawn ('ink'), real footage ('cine') or the 'Đòn Bẩy Tư Duy' series ('money'). */
+export const ZALO_WAYS = ['ink', 'cine', 'money'] as const;
 export const GOOGLE_MODES = ['auto', 'popup', 'redirect'] as const;
 export const VISUAL_KEYS = ['doodle', 'sketch', 'diagram', 'mix', 'images'] as const;
 export const SOURCE_KEYS = ['topic', 'mine-ai', 'mine-free'] as const;
@@ -330,6 +330,8 @@ export function defaultConfig(env: Env): Config {
 // ---- validation: stored config is always complete and well-formed
 /** multi-line text: keeps line breaks, drops other control characters */
 const lines = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').trim().slice(0, max) : '');
+/** A plan's code from what the admin typed: "Gói VIP" → "goi-vip" (lower case, digits, "-"). */
+const planId = (v: unknown) => { const id = String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 20); return id.length >= 2 ? id : ''; };
 const str = (v: unknown, max: number, def: string) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max) : def);
 const int = (v: unknown, lo: number, hi: number, def: number) => (Number.isFinite(Number(v)) && v !== '' && v !== null ? Math.round(Math.min(hi, Math.max(lo, Number(v)))) : def);
 const pick = (v: unknown, list: readonly string[], def: string) => (list.includes(v as string) ? (v as string) : def);
@@ -464,7 +466,8 @@ export function cleanConfig(input: any, base: Config): Config {
         formats: (() => {
           const f = z.formats || {}, d = b.formats, ok = (k: unknown) => typeof k === 'string' && ZALO_WAYS.includes(k as any);
           // a list saved before videos in Zalo came from the Ink engine (old format keys) means "all of them"
-          const legacy = Array.isArray(f.allowed) && f.allowed.some((k: unknown) => !ok(k));
+          // …and so does the full list from before 'Đòn Bẩy Tư Duy' existed (ink + cine): the new kind is offered too
+          const legacy = Array.isArray(f.allowed) && (f.allowed.some((k: unknown) => !ok(k)) || (f.allowed.length === 2 && f.allowed.includes('ink') && f.allowed.includes('cine')));
           return { default: ok(f.default) ? f.default : d.default, allowed: Array.isArray(f.allowed) && !legacy ? [...new Set(f.allowed.filter(ok))] as string[] : d.allowed };
         })(),
         assistant: (() => {
@@ -479,7 +482,7 @@ export function cleanConfig(input: any, base: Config): Config {
       const list = (Array.isArray(i.plans) ? i.plans : base.plans).slice(0, 12).map((p: any, k: number): Plan => {
         const keys = (v: unknown) => (v === 'all' || !Array.isArray(v) ? 'all' : v.map(String).filter((x) => /^[\w:.-]{1,60}$/.test(x)).slice(0, 80)) as any;
         return {
-          id: /^[a-z0-9-]{2,20}$/.test(p?.id) ? p.id : 'goi' + (k + 1), name: str(p?.name, 40, 'Gói ' + (k + 1)) || 'Gói ' + (k + 1),
+          id: planId(p?.id) || 'goi' + (k + 1), name: str(p?.name, 40, 'Gói ' + (k + 1)) || 'Gói ' + (k + 1),
           price: int(p?.price, 0, 100_000_000, 0), days: int(p?.days, 0, 3650, 30), yearPrice: int(p?.yearPrice, 0, 1_000_000_000, 0), listPrice: int(p?.listPrice, 0, 100_000_000, 0), visible: p?.visible !== false, highlight: !!p?.highlight,
           desc: str(p?.desc, 200, ''), features: (Array.isArray(p?.features) ? p.features : []).map((x: unknown) => str(x, 80, '')).filter(Boolean).slice(0, 10),
           limits: { script: int(p?.limits?.script, 0, 1000, 3), image: int(p?.limits?.image, 0, 5000, 0), render: int(p?.limits?.render, 0, 500, 2) },
@@ -489,8 +492,10 @@ export function cleanConfig(input: any, base: Config): Config {
       });
       // exactly one free plan, always first
       if (!list.some((p: Plan) => p.price === 0)) list.unshift(base.plans[0]);
+      // two plans never share a code: the later one gets a number (a plan is never dropped silently)
       const ids = new Set<string>();
-      return list.filter((p: Plan) => !ids.has(p.id) && ids.add(p.id)).sort((a: Plan, b: Plan) => a.price - b.price);
+      for (const p of list) { let id = p.id, n = 2; while (ids.has(id)) id = `${p.id.slice(0, 17)}-${n++}`; p.id = id; ids.add(id); }
+      return list.sort((a: Plan, b: Plan) => a.price - b.price);
     })(),
     payment: (() => {
       const p = i.payment || {}, b = base.payment;
