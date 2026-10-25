@@ -1,6 +1,7 @@
 Nhiệm vụ: viết lại CÂU MỞ ĐẦU (hook) cho video ngắn. Đây là câu duy nhất quyết định người đang lướt có dừng lại không.
 
 Chủ đề người dùng yêu cầu: {topic}
+Thể loại: {genre}
 Thông điệp cốt lõi: {core}
 Kịch bản hiện tại (câu 0 là hook cũ):
 {script}

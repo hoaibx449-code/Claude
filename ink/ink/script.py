@@ -8,6 +8,7 @@ import json, os, re
 from . import ai
 from .layouts import LAYOUTS
 from .props import PROPS, POSE, FACES
+from .genres import genre_of, genre_text
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WPS = 2.8          # Vietnamese words (syllables) per second for the EverAI voice
@@ -44,20 +45,22 @@ def from_topic(topic, seconds=60, audience='', goal='mang lại giá trị thậ
     log('1/4 Chiến lược nội dung…')
     strategy = ai.ask(system(), prompt('strategy', topic=topic, audience=audience or 'chưa rõ, hãy tự xác định', goal=goal, tone=tone, seconds=seconds, notes=notes or 'không'), 0.8,
                       check=lambda o: o.get('core_message') or (_ for _ in ()).throw(ValueError('thiếu core_message')), log=log)
+    G = genre_text(genre_of(strategy)); strategy['genre'] = G['genre']
+    log(f'   thể loại: {G["genre"]}')
     log('2/4 Dàn ý…')
-    outline = ai.ask(system(), prompt('outline', strategy=json.dumps(strategy, ensure_ascii=False), seconds=seconds, words=target), 0.7,
+    outline = ai.ask(system(), prompt('outline', strategy=json.dumps(strategy, ensure_ascii=False), seconds=seconds, words=target, **G), 0.7,
                      check=lambda o: o.get('beats') or (_ for _ in ()).throw(ValueError('thiếu beats')), log=log)
     feedback = ''; best = None
     for round_ in range(3):
         log('3/4 Viết lời đọc…' if round_ == 0 else f'3/4 Viết lại theo góp ý biên tập (lần {round_})…')
-        script = ai.ask(system(), prompt('write', strategy=json.dumps(strategy, ensure_ascii=False), outline=json.dumps(outline, ensure_ascii=False), seconds=seconds, words=target, feedback=feedback), 0.75, check=_lines_ok, log=log)
-        review, avg, low = _review(strategy, script, seconds, target, log)
+        script = ai.ask(system(), prompt('write', strategy=json.dumps(strategy, ensure_ascii=False), outline=json.dumps(outline, ensure_ascii=False), seconds=seconds, words=target, feedback=feedback, **G), 0.75, check=_lines_ok, log=log)
+        review, avg, low = _review(strategy, script, seconds, target, log, G)
         if best is None or avg > best[2]: best = (script, review, avg)
         if avg >= 8.5 and not low: break
         feedback = 'Biên tập viên yêu cầu sửa những điểm sau (bắt buộc khắc phục):\n- ' + '\n- '.join(review.get('issues', [])[:5])
     script, review, _ = best
     hook = _num(review.get('scores', {}).get('hook'))
-    if hook < 8: script = fix_hook(strategy, script, review, log, topic=topic)
+    if hook < 8: script = fix_hook(strategy, script, review, log, topic=topic, genre=G['genre'])
     script['strategy'] = strategy; script['outline'] = outline; script['review'] = review
     script.setdefault('core_message', strategy.get('core_message', '')); script.setdefault('title', strategy.get('title', ''))
     return script
@@ -68,10 +71,10 @@ def _num(v):
     except (TypeError, ValueError): return 0.0
 
 
-def _review(strategy, script, seconds, target, log):
+def _review(strategy, script, seconds, target, log, G):
     text = '\n'.join(l['say'] for l in script['lines'])
     log('4/4 Biên tập viên chấm kịch bản…')
-    review = ai.ask(system(), prompt('review', core=strategy.get('core_message', ''), seconds=seconds, words=target, count=words(text), script=text), 0.2,
+    review = ai.ask(system(), prompt('review', core=strategy.get('core_message', ''), seconds=seconds, words=target, count=words(text), script=text, **G), 0.2,
                     check=lambda o: o.get('scores') or (_ for _ in ()).throw(ValueError('thiếu scores')), log=log)
     sc = {k: _num(v) for k, v in review.get('scores', {}).items()}
     low = [k for k, v in sc.items() if v < 8]; avg = sum(sc.values()) / max(1, len(sc))
@@ -79,7 +82,7 @@ def _review(strategy, script, seconds, target, log):
     return review, avg, low
 
 
-def fix_hook(strategy, script, review, log, tries=2, topic=''):
+def fix_hook(strategy, script, review, log, tries=2, topic='', genre=''):
     """the hook decides whether anyone watches: write six new ones of different kinds, have a strict viewer
     score them, keep the best; a video whose best hook still scores under 8 is not made"""
     lines = script['lines']; core = strategy.get('core_message', '') if strategy else script.get('core_message', '')
@@ -87,7 +90,7 @@ def fix_hook(strategy, script, review, log, tries=2, topic=''):
     best = (0.0, None)
     for k in range(tries):
         log(f'   viết lại câu mở đầu (lần {k + 1})…')
-        cand = ai.ask(system(), prompt('hook', topic=topic or core, core=core, script='\n'.join(f'{i}. {l["say"]}' for i, l in enumerate(lines)), issues=issues), 0.9,
+        cand = ai.ask(system(), prompt('hook', topic=topic or core, genre=genre or 'chưa rõ', core=core, script='\n'.join(f'{i}. {l["say"]}' for i, l in enumerate(lines)), issues=issues), 0.9,
                       check=lambda o: (isinstance(o.get('hooks'), list) and o['hooks']) or (_ for _ in ()).throw(ValueError('thiếu hooks')), log=log)
         hooks = [' '.join(str(h).split()) for h in cand['hooks'] if str(h).strip() and words(str(h)) <= 12]
         if not hooks: continue
