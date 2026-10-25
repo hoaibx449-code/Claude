@@ -101,4 +101,7 @@ body[data-theme=cine][data-sub=fine] #sub span,body[data-theme=cine][data-sub=fi
   text-shadow:0 1px 2px rgba(0,0,0,.65),0 0 14px rgba(0,0,0,.35)}
 body[data-theme=cine][data-sub=fine] #sub span.done{color:var(--sub-color)!important}
 body[data-theme=cine][data-sub=fine] #sub span.on{color:color-mix(in srgb,var(--sub-color) var(--q),rgba(255,255,255,.86))!important}
-body[data-theme=cine][data-sub=fine] #sub[data-bg=light] span{color:rgba(18,18,18,.85);text-shadow:0 1px 2px rgba(255,255,255,.7)}
+body[data-theme=cine][data-sub=fine] #sub[data-bg=light] span{color:rgba(18,18,18,.85)!important;text-shadow:0 1px 2px rgba(255,255,255,.7)}
+/* on a light picture the read words take a deep version of the colour (a pale one disappears) */
+body[data-theme=cine][data-sub=fine] #sub[data-bg=light] span.done{color:color-mix(in srgb,var(--sub-color) 45%,#000)!important}
+body[data-theme=cine][data-sub=fine] #sub[data-bg=light] span.on{color:color-mix(in srgb,color-mix(in srgb,var(--sub-color) 45%,#000) var(--q),rgba(18,18,18,.85))!important}

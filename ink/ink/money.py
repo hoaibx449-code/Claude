@@ -77,6 +77,7 @@ def finish(sb, sc, inp):
     st = sb['plan']['storyboard']
     st['brand'] = (inp.get('brand') or 'ĐÒN BẨY TƯ DUY').strip()[:40]
     st['subStyle'], st['subWords'] = 'fine', 5
+    st.pop('sticker', None)   # no extra words stuck on the picture: the captions carry the words
     st['style'] = {**st.get('style', {}), 'subColor': mood['subColor'], 'grade': mood['grade']}
     st['world'] = mood['world']
     cover = st.get('cover') or {}
