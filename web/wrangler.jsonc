@@ -17,6 +17,9 @@
   "d1_databases": [
     { "binding": "DB", "database_name": "net-ve-studio", "database_id": "00000000-0000-0000-0000-000000000000" }
   ],
+  // AI requests refused for the visitor's location are repeated from the US (src/relay.ts)
+  "durable_objects": { "bindings": [{ "name": "AI_RELAY", "class_name": "AiRelay" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AiRelay"] }],
   "triggers": { "crons": ["* * * * *"] },
   "r2_buckets": [
     { "binding": "BUCKET", "bucket_name": "net-ve-studio" }

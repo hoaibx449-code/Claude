@@ -6,6 +6,8 @@ export interface Env {
   RUNNER_TOKEN?: string;
   OPENAI_API_KEY?: string;
   GEMINI_API_KEY?: string;
+  /** Durable Object in the US that repeats AI requests refused for the visitor's location (relay.ts) */
+  AI_RELAY?: DurableObjectNamespace;
   /** Ollama (self-hosted or Ollama Cloud): server address, optional key, models */
   OLLAMA_API_KEY?: string;
   OLLAMA_URL?: string;

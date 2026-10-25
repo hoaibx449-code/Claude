@@ -4,6 +4,7 @@ website answers (its keys and prompts never reach the browser). The page draws a
 
 Every function takes and returns JSON text or bytes, so the JavaScript side stays simple."""
 import json
+import os
 import numpy as np
 from . import ai, script as S
 from .cover import cover_parts
@@ -21,6 +22,7 @@ def use_site(ask):
 def plan(inp_json, log=print):
     """script + storyboard for a job's input (topic or the user's own script)"""
     inp = json.loads(inp_json)
+    os.environ['INK_VOICE_PROVIDER'] = inp.get('voiceProvider') or 'microsoft'  # the script is sized to this voice
     if inp.get('mode') == 'script':
         sc = S.from_script(inp.get('script', ''), int(inp.get('seconds') or S.MAX_SECONDS), pace=inp.get('pace', 'normal'), log=log)
     else:

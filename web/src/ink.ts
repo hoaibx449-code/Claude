@@ -249,13 +249,16 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
       browser: b.browser === true && s.machines.on.browser };
     return json({ id: await enqueue(env, rc, user, input, 'plan') });
   }
-  const m = sub.match(/^jobs\/([a-f0-9]{24})(?:\/(file\/[\w.]+|approve|repace|retry|storyboard|handoff|browser\/video|browser\/done|browser\/progress|browser\/ai|browser\/voice|browser\/plan|browser\/music|browser\/file\/(?:cover|thumb)\.jpg))?$/);
+  const m = sub.match(/^jobs\/([a-f0-9]{24})(?:\/(file\/[\w.]+|approve|repace|retry|storyboard|handoff|browser\/video|browser\/done|browser\/progress|browser\/error|browser\/ai|browser\/voice|browser\/plan|browser\/music|browser\/file\/(?:cover|thumb)\.jpg))?$/);
   if (!m) throw new HttpError(404, 'Không tìm thấy.');
   const j = await own(env, user, m[1]), act = m[2] || '';
   if (!act && method === 'GET') {
     rc.quiet = true;
     const v: any = view(j);
-    if (j.status === 'browser') v.input = JSON.parse(j.input || '{}'); // the owner's page makes the video itself
+    if (j.status === 'browser') { // the owner's page makes the video itself; the script is sized to the voice that will read it
+      const input = JSON.parse(j.input || '{}'), voice = s.voice.list.find((x) => x.id === input.voice) || s.voice.list.find((x) => x.id === s.voice.default) || s.voice.list[0];
+      v.input = { ...input, voiceProvider: voice?.provider || 'microsoft' };
+    }
     if (j.status === 'queued' && Date.now() - j.updated_at > 2 * 60_000) {
       const err = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:wake_error'").first<any>();
       if (err?.value) v.message = 'Máy dựng chưa khởi động được. Quản trị viên đã được báo; video sẽ tự chạy khi máy dựng sẵn sàng.';
@@ -306,10 +309,15 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
     if (act === 'browser/ai' && method === 'POST') {
       // the browser sends prompt names and values; the prompts and the keys stay here
       const b = await body<any>(req, 200_000);
+      // every answer is kept with the job: a retry after an error asks again only from the step that failed
+      const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([b.system, b.user, b.temperature, b.attempt]))))].map((x) => x.toString(16).padStart(2, '0')).join('');
+      const kept = await env.BUCKET.get(`ink/${user.id}/${j.id}/ai/${hash}.json`);
+      if (kept) return json({ ...(await kept.json<any>()), cached: true });
       await count('aiCalls', 80);
       const chain = s.ai.order.filter((p, i) => i === 0 || s.ai.fallback).flatMap((p) => (p === 'gemini' ? s.ai.gemini : s.ai.openai).split(',').map((model) => ({ provider: p, model })));
       const r = await askChain(env, chain, fillPrompt(b.system), fillPrompt(b.user), num(b.temperature, 0, 1.5, 0.7), Math.round(num(b.attempt, 0, 10, 0)));
       rc.log('ink.ai', { data: { job: j.id, provider: r.provider, model: r.model, step: str(b.user?.name, 30) } });
+      await env.BUCKET.put(`ink/${user.id}/${j.id}/ai/${hash}.json`, JSON.stringify(r), { httpMetadata: { contentType: 'application/json' } });
       return json(r);
     }
     if (act === 'browser/voice' && method === 'POST') {
@@ -317,7 +325,8 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
       if (text.length < 5) throw new HttpError(400, 'Không có lời đọc.');
       await count('voiceCalls', 6);
       const v = s.voice.list.find((x) => x.id === input.voice) || s.voice.list.find((x) => x.id === s.voice.default) || s.voice.list[0];
-      const rate = ({ slow: '+0%', normal: '+8%', fast: '+15%', faster: '+25%' } as Record<string, string>)[input.pace] || '+8%';
+      const asked = /^[+-]\d{1,2}%$/.test(String(b.rate || '')) ? Math.max(-15, Math.min(50, parseInt(b.rate, 10))) : null;
+      const rate = asked != null ? (asked >= 0 ? '+' : '') + asked + '%' : ({ slow: '+0%', normal: '+8%', fast: '+15%', faster: '+25%' } as Record<string, string>)[input.pace] || '+8%';
       const r = await speak(env, v, text, rate, s.voice.fallback);
       let bin = ''; for (let i = 0; i < r.audio.length; i += 0x8000) bin += String.fromCharCode(...r.audio.subarray(i, i + 0x8000));
       rc.log('ink.voice', { data: { job: j.id, provider: r.provider, chars: text.length } });
@@ -343,10 +352,17 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
       await env.DB.prepare('UPDATE ink_jobs SET meta = ? WHERE id = ?').bind(JSON.stringify({ ...meta, files: [...new Set([...(meta.files || []), bf[1]])] }), j.id).run();
       return json({ ok: true });
     }
+    if (act === 'browser/error' && method === 'POST') {
+      // shown on the admin's "Video gần đây"; cleared when the device makes progress again
+      const b = await body<any>(req, 4_000);
+      await env.DB.prepare('UPDATE ink_jobs SET error = ?, updated_at = ? WHERE id = ?').bind(str(`Trên máy người dùng, bước "${str(b.step, 120)}": ${str(b.error, 600)}`, 800), Date.now(), j.id).run();
+      rc.log('ink.browser_error', { data: { job: j.id, step: str(b.step, 120), error: str(b.error, 300) } });
+      return json({ ok: true });
+    }
     if (act === 'browser/progress' && method === 'POST') {
       rc.quiet = true;
       const b = await body<any>(req, 1_000);
-      await env.DB.prepare('UPDATE ink_jobs SET progress = ?, message = ?, updated_at = ? WHERE id = ?').bind(Math.round(num(b.progress, 60, 99, 60)), str(b.message, 160), Date.now(), j.id).run();
+      await env.DB.prepare('UPDATE ink_jobs SET progress = ?, message = ?, error = NULL, updated_at = ? WHERE id = ?').bind(Math.round(num(b.progress, 60, 99, 60)), str(b.message, 160), Date.now(), j.id).run();
       return json({ ok: true });
     }
     if (act === 'browser/video' && method === 'PUT') {

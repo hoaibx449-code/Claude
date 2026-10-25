@@ -12,6 +12,9 @@ from .genres import genre_of, genre_text
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WPS = 2.8          # Vietnamese words (syllables) per second for the EverAI voice
+# words per second of each voice at its plain speed, pauses between sentences included (measured: Microsoft read
+# 199 words in 58.1 s at +8%); the script is sized to the chosen voice and pace so the video lasts the chosen time
+VOICE_WPS = {'microsoft': 3.18, 'everai': 2.9}
 MAX_SECONDS = 300  # five minutes
 GENERIC_BADGES = {'mẹo hay', 'hot', 'xem ngay', 'bí quyết', 'mới', 'hay', 'cực hay', 'must see', 'tips', 'mẹo', 'quan trọng', 'đừng bỏ lỡ'}
 
@@ -42,8 +45,12 @@ def speed(pace):
     return 1 + int(pace_rate(pace).rstrip('%')) / 100
 
 
+def wps():
+    return VOICE_WPS.get(os.environ.get('INK_VOICE_PROVIDER', ''), VOICE_WPS['everai'] if os.environ.get('EVERAI_API_KEY') else VOICE_WPS['microsoft'])
+
+
 def from_topic(topic, seconds=60, audience='', goal='mang lại giá trị thật cho người xem', tone='tự nhiên, hợp với chủ đề', notes='', pace='normal', log=print):
-    seconds = max(20, min(MAX_SECONDS, int(seconds))); target = int(seconds * WPS * speed(pace) / 1.08)
+    seconds = max(20, min(MAX_SECONDS, int(seconds))); target = round(seconds * wps() * speed(pace))
     log('1/4 Chiến lược nội dung…')
     strategy = ai.ask(system(), prompt('strategy', topic=topic, audience=audience or 'chưa rõ, hãy tự xác định', goal=goal, tone=tone, seconds=seconds, notes=notes or 'không'), 0.8,
                       check=lambda o: o.get('core_message') or (_ for _ in ()).throw(ValueError('thiếu core_message')), log=log)
@@ -63,8 +70,28 @@ def from_topic(topic, seconds=60, audience='', goal='mang lại giá trị thậ
     script, review, _ = best
     hook = _num(review.get('scores', {}).get('hook'))
     if hook < 8: script = fix_hook(strategy, script, review, log, topic=topic, genre=G['genre'])
+    script = fit_length(script, seconds, target, G['genre'], log)
     script['strategy'] = strategy; script['outline'] = outline; script['review'] = review
     script.setdefault('core_message', strategy.get('core_message', '')); script.setdefault('title', strategy.get('title', ''))
+    return script
+
+
+def fit_length(script, seconds, target, genre, log, tries=2):
+    """the AI often writes a third too short: lengthen (or shorten) until the word count is within 90–115% of the
+    target, keeping the hook; the attempt closest to the target wins"""
+    count = lambda sc: sum(words(l['say']) for l in sc['lines'])
+    low, high = round(target * 0.9), round(target * 1.15)
+    for k in range(tries):
+        n = count(script)
+        if low <= n <= high: break
+        log(f'   lời đọc {n} chữ, cần khoảng {target}: ' + ('viết thêm…' if n < low else 'rút gọn…'))
+        try:
+            out = ai.ask(system(), prompt('fit', count=n, words=target, seconds=seconds, low=low, high=high, genre=genre or 'chưa rõ', how='kéo dài' if n < low else 'rút gọn',
+                                          script='\n'.join(f'{i}. {l["say"]}' for i, l in enumerate(script['lines']))), 0.6, check=_lines_ok, log=log)
+        except Exception as e:  # noqa: BLE001 - a script slightly off length is still a video
+            log(f'   không chỉnh được độ dài ({e})'); break
+        lines = out['lines']; lines[0] = script['lines'][0]
+        if abs(count({'lines': lines}) - target) < abs(n - target): script = dict(script, lines=lines)
     return script
 
 
@@ -86,7 +113,7 @@ def _review(strategy, script, seconds, target, log, G):
 
 def fix_hook(strategy, script, review, log, tries=2, topic='', genre=''):
     """the hook decides whether anyone watches: write six new ones of different kinds, have a strict viewer
-    score them, keep the best; a video whose best hook still scores under 8 is not made"""
+    score them, keep the best (even under 8: stopping here would waste every answer so far)"""
     lines = script['lines']; core = strategy.get('core_message', '') if strategy else script.get('core_message', '')
     issues = '; '.join(review.get('issues', [])[:3]) if review else 'hook chưa đủ mạnh'
     best = (0.0, None)
@@ -104,7 +131,9 @@ def fix_hook(strategy, script, review, log, tries=2, topic='', genre=''):
             log(f'   hook tốt nhất {scores[i]:.0f}/10: "{hooks[i]}"')
             if scores[i] > best[0]: best = (scores[i], hooks[i])
         if best[0] >= 8: break
-    if best[0] < 8: raise RuntimeError(f'Câu mở đầu chưa đạt (tốt nhất {best[0]:.0f}/10). Không dựng video kém; hãy chạy lại hoặc làm rõ chủ đề.')
+    # never stop the whole video over the hook (the answers so far cost tokens): keep the best one found
+    if best[1] is None: log('   giữ câu mở đầu cũ (chưa có câu mới hợp lệ)'); return script
+    if best[0] < 8: log(f'   câu mở đầu tốt nhất chỉ {best[0]:.0f}/10, vẫn dùng để không phải làm lại từ đầu')
     lines[0] = dict(lines[0], say=best[1], emphasis=[]); script['hook_score'] = best[0]
     return script
 

@@ -43,12 +43,19 @@ def save_plan(sb, out, brand=''):
         f.write((sb.get('caption') or '') + '\n\n' + ' '.join(sb.get('hashtags') or []) + '\n')
 
 
-def make_video(sb, out, pace='normal', music=None, mood='auto', music_volume=0.20, captions=True, log=print, browser=False):
+def make_video(sb, out, pace='normal', music=None, mood='auto', music_volume=0.20, captions=True, log=print, browser=False, seconds=0):
     """voice, music and the hand-drawn render of a storyboard; returns the video length in seconds.
-    browser=True: instead of the MP4, write draw.json + audio.aac for the user's browser to draw (export.py)"""
+    browser=True: instead of the MP4, write draw.json + audio.aac for the user's browser to draw (export.py)
+    seconds: the length the user chose; a Microsoft voice more than 12% off is read again at an adjusted speed"""
     os.environ['INK_VOICE_RATE'] = pace_rate(pace)
     log(f'Giọng đọc (một mạch, có mốc từng chữ), nhịp {pace}…')
     voice, timing, words, provider = narrate([s['say'] for s in sb['scenes']], os.path.join(out, 'voice'), log=log)
+    if seconds and provider == 'microsoft' and not 0.88 <= timing[-1][2] / seconds <= 1.12:
+        was = int(pace_rate(pace).rstrip('%')); rate = round(max(-15, min(50, ((1 + was / 100) * timing[-1][2] / seconds - 1) * 100)))
+        if rate != was:
+            log(f'  giọng dài {timing[-1][2]:.0f} giây, chọn {seconds}: đọc lại ở tốc độ {rate:+d}%')
+            os.environ['INK_VOICE_RATE'] = f'{rate:+d}%'
+            voice, timing, words, provider = narrate([s['say'] for s in sb['scenes']], os.path.join(out, 'voice'), log=log)
     json.dump({'provider': provider, 'pace': pace, 'timing': timing, 'words': words}, open(os.path.join(out, 'timing.json'), 'w', encoding='utf-8'), ensure_ascii=False)
     if not music and mood != 'none':
         m = sb.get('music') if mood == 'auto' else mood

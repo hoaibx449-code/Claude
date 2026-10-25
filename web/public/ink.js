@@ -175,25 +175,30 @@ export async function showInkWatch(ctx, id) {
 async function browserPanel(ctx, j, refresh) {
   const { h, api, fail, busy } = ctx;
   const mod = await import('/ink-render.js?v=2'), local = !j.files.includes('draw.json'); // no machine made the drawing plan: this device does everything
-  const lm = local ? await import('/ink-local.js?v=1') : null;
+  const lm = local ? await import('/ink-local.js?v=2') : null;
   let sup = await mod.browserSupport(); if (lm) sup = await lm.localSupport(sup);
-  const bar = h('div', { class: 'ink-bar' }, h('i', { style: 'width:0%' })), note = h('p', { class: 'muted' }, sup.ok ? `Máy này sẽ dựng ở ${sup.width}×${sup.height}.` : sup.why);
+  const bar = h('div', { class: 'ink-bar' }, h('i', { style: 'width:0%' })), note = h('p', { class: j.error ? 'error' : 'muted' }, j.error ? 'Lần trước bị dừng. ' + j.error : sup.ok ? `Máy này sẽ dựng ở ${sup.width}×${sup.height}.` : sup.why);
   const done = sup.ok ? await mod.savedScenes(j.id, sup.width) : 0;
   const go = h('button', { type: 'button', class: 'btn', disabled: !sup.ok }, done ? `Dựng tiếp (đã xong ${done} cảnh)` : 'Bắt đầu dựng trên máy này');
   const other = h('button', { type: 'button', class: 'ghost' }, 'Để máy chủ dựng giúp');
   other.onclick = () => busy(other, 'Đang chuyển…', async () => { try { await api(`/api/ink/jobs/${j.id}/handoff`, { method: 'POST' }); refresh(); } catch (e) { fail(e); } });
-  let running = false, sent = 0;
+  let running = false, sent = 0, t0 = 0, said = 0, step = '', stalled = false, tick = 0;
+  const clock = () => { const s = Math.round((Date.now() - t0) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  const show = () => { note.textContent = `${step} · đã chạy ${clock()}`; if (Date.now() - said > 300_000) stalled = true; };
   const setBar = (p, m) => {
-    if (p == null) { if (m) note.textContent = m; return; } // a message from the engine (AI steps)
-    bar.firstChild.style.width = Math.round(p * 100) + '%'; note.textContent = `${m} · ${Math.round(p * 100)}%`;
+    said = Date.now();
+    if (p == null) { if (m) { step = m; show(); } return; } // a message from the engine (AI steps)
+    bar.firstChild.style.width = Math.round(p * 100) + '%'; step = `${m} · ${Math.round(p * 100)}%`; show();
     if (Date.now() - sent > 8000) { sent = Date.now(); api(`/api/ink/jobs/${j.id}/browser/progress`, { method: 'POST', body: { progress: 60 + p * 38, message: 'Đang dựng trên máy người dùng: ' + m } }).catch(() => {}); }
   };
   const leave = (e) => { if (running) { e.preventDefault(); e.returnValue = ''; } };
   go.onclick = async () => {
     running = true; go.disabled = true; other.disabled = true; addEventListener('beforeunload', leave);
+    t0 = said = Date.now(); stalled = false; step = 'Đang bắt đầu'; tick = setInterval(show, 1000);
+    const isCancelled = () => { if (stalled) throw new Error('Không có tiến triển quá 5 phút (bị treo). Bấm Dựng tiếp để làm lại từ bước đang dở.'); return !bar.isConnected; };
     try {
-      const r = lm ? await lm.makeLocally({ job: j.id, sup, onProgress: setBar, isCancelled: () => !bar.isConnected })
-        : await mod.renderInBrowser({ job: j.id, sup, onProgress: setBar, isCancelled: () => !bar.isConnected });
+      const r = lm ? await lm.makeLocally({ job: j.id, sup, onProgress: setBar, isCancelled })
+        : await mod.renderInBrowser({ job: j.id, sup, onProgress: setBar, isCancelled });
       note.textContent = 'Đang tải video lên…';
       await new Promise((ok, no) => {
         const x = new XMLHttpRequest(); x.open('PUT', `/api/ink/jobs/${j.id}/browser/video`); x.setRequestHeader('x-nv', '1'); x.setRequestHeader('content-type', 'video/mp4');
@@ -203,8 +208,11 @@ async function browserPanel(ctx, j, refresh) {
       });
       await api(`/api/ink/jobs/${j.id}/browser/done`, { method: 'POST', body: { seconds: r.seconds, device: navigator.userAgent.slice(0, 80) } });
       await r.clear(); running = false; refresh();
-    } catch (e) { running = false; go.disabled = false; other.disabled = false; go.textContent = 'Dựng tiếp'; fail(e); note.textContent = 'Đã dừng: ' + e.message + ' Phần đã vẽ được giữ trên máy này.'; }
-    finally { removeEventListener('beforeunload', leave); }
+    } catch (e) {
+      running = false; go.disabled = false; other.disabled = false; go.textContent = 'Dựng tiếp'; fail(e);
+      clearInterval(tick); note.textContent = `Đã dừng ở bước "${step}" sau ${clock()}: ${e.message} Phần đã xong được giữ trên máy này.`;
+      api(`/api/ink/jobs/${j.id}/browser/error`, { method: 'POST', body: { step, error: e.message } }).catch(() => {}); // so the admin sees it too
+    } finally { clearInterval(tick); removeEventListener('beforeunload', leave); }
   };
   return h('section', { class: 'card ink-progress' }, h('h2', {}, 'Sẵn sàng dựng trên máy của bạn'),
     h('p', {}, local ? 'Toàn bộ video được làm trên máy bạn: AI viết kịch bản, đọc giọng, vẽ từng khung hình rồi xuất MP4, không cần máy chủ dựng. Giữ trang này mở; màn hình được giữ sáng. Nếu bị gián đoạn, mở lại trang và bấm Dựng tiếp: các bước đã xong không phải làm lại.'

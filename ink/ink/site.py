@@ -83,7 +83,8 @@ def run(job):
             except Exception as e: log(f'  bỏ nhạc riêng ({e}), dùng nhạc tự tạo'); music = None  # noqa: BLE001
         browser = bool(inp.get('browser'))
         total, provider = make_video(sb, out, inp.get('pace', 'normal'), music, inp.get('mood') or 'auto', float(inp.get('musicVolume') or 0.2),
-                                     inp.get('captions', True) is not False, log, browser=browser)
+                                     inp.get('captions', True) is not False, log, browser=browser,
+                                     seconds=0 if inp.get('mode') == 'script' else int(inp.get('seconds') or 0))
         if browser:
             # the user's own device draws the frames: hand over the drawing plan and the sound
             state.update(progress=60, message='Gửi bản vẽ cho trình duyệt'); report()

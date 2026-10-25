@@ -3,6 +3,7 @@ import { designIssues } from './creation-policy.ts';
 import { DIRECTOR_BRIEF, planDirections, directionIssues, cleanDirection } from '../../src/engine/director.ts';
 import {ILLUSTRATED_BRIEF} from '../../addons/faciup-illustrated/schema.ts';
 import { ACT_BRIEF } from './act.ts';
+import { aiFetch } from './relay.ts';
 // Script writing (OpenAI or Gemini, chosen per request) and line-art images.
 // Model output is treated as data: it goes through cleanSpec() before use.
 import { Buffer } from 'node:buffer';
@@ -176,7 +177,7 @@ export function geminiThinking(model: string): Record<string, unknown> {
 }
 /** POST to Gemini; when a model refuses the thinking setting, ask again without it. */
 async function geminiPost(env: Env, model: string, body: any, timeoutMs: number) {
-  const go = (b: any) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+  const go = (b: any) => aiFetch(env, `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST', headers: { 'x-goog-api-key': env.GEMINI_API_KEY!, 'content-type': 'application/json' }, signal: AbortSignal.timeout(timeoutMs), body: JSON.stringify(b) });
   let res = await go(body);
   if (res.status === 400 && body.generationConfig?.thinkingConfig) {
@@ -266,7 +267,7 @@ async function ollamaChat(env: Env, model: string, messages: any[], maxTokens: n
 async function callText(env: Env, provider: TextProvider, model: string, sys: string, user: string, maxTokens = 16384, timeoutMs?: number) {
   if (provider === 'ollama') return ollamaChat(env, model, [{ role: 'system', content: sys }, { role: 'user', content: user }], maxTokens, timeoutMs || (maxTokens < 4000 ? 25_000 : 120_000));
   if (provider === 'openai') {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await aiFetch(env, 'https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, 'content-type': 'application/json' },
       body: JSON.stringify({ model, response_format: { type: 'json_object' }, max_tokens: Math.min(maxTokens, 16000), messages: [{ role: 'system', content: sys }, { role: 'user', content: user }] }),
@@ -423,7 +424,7 @@ export interface FormatProposal { name: string; summary: string; base: string; s
 async function callVision(env: Env, provider: TextProvider, model: string, sys: string, text: string, imgs: { mime: string; data: string }[], opts: {timeout?:number; detail?:'low'|'high'; tokens?:number} = {}) {
   if (provider === 'ollama') return ollamaChat(env, model, [{ role: 'system', content: sys }, { role: 'user', content: text, images: imgs.map((i) => i.data) }], opts.tokens||4096, opts.timeout||120_000);
   if (provider === 'openai') {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await aiFetch(env, 'https://api.openai.com/v1/chat/completions', {
       method: 'POST', headers: { authorization: `Bearer ${env.OPENAI_API_KEY}`, 'content-type': 'application/json' }, signal: AbortSignal.timeout(opts.timeout||90_000),
       body: JSON.stringify({ model, response_format: { type: 'json_object' }, max_completion_tokens: opts.tokens||4096, messages: [{ role: 'system', content: sys },
         { role: 'user', content: [{ type: 'text', text }, ...imgs.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.data}`, detail: opts.detail||'low' } }))] }] }),

@@ -20,11 +20,14 @@ export async function localSupport(sup) {
   return { ok: false, why: 'Máy này chưa có bộ mã hoá âm thanh cho video. Hãy để máy chủ dựng giúp.' };
 }
 
+// a step that says nothing for 4 minutes (an AI answer takes at most ~1.5) is stuck: stop the worker and say so
 function python(onLog) {
-  const w = new Worker('/ink-py.js'); let n = 0; const wait = new Map();
-  w.onmessage = (e) => { const m = e.data; if (m.type === 'log') return onLog(m.data); const p = wait.get(m.id); if (!p) return; wait.delete(m.id); m.ok ? p.ok(m.out) : p.no(new Error(m.error)); };
-  w.onerror = (e) => { for (const p of wait.values()) p.no(new Error('Bộ máy dựng trong trình duyệt bị lỗi: ' + (e.message || 'không rõ'))); wait.clear(); };
-  return { call: (cmd, args = {}) => new Promise((ok, no) => { const id = ++n; wait.set(id, { ok, no }); w.postMessage({ id, cmd, args }); }), stop: () => w.terminate() };
+  const w = new Worker('/ink-py.js'); let n = 0, dog = 0; const wait = new Map();
+  const fail = (msg) => { for (const p of wait.values()) p.no(new Error(msg)); wait.clear(); clearTimeout(dog); };
+  const watch = () => { clearTimeout(dog); if (wait.size) dog = setTimeout(() => { fail('Bộ máy dựng không phản hồi quá 4 phút (bị treo). Bấm Dựng tiếp để làm lại từ bước đang dở.'); w.terminate(); }, 240_000); };
+  w.onmessage = (e) => { const m = e.data; watch(); if (m.type === 'log') return onLog(m.data); const p = wait.get(m.id); if (!p) return; wait.delete(m.id); watch(); m.ok ? p.ok(m.out) : p.no(new Error(m.error)); };
+  w.onerror = (e) => fail('Bộ máy dựng trong trình duyệt bị lỗi: ' + (e.message || 'không rõ'));
+  return { call: (cmd, args = {}) => new Promise((ok, no) => { const id = ++n; wait.set(id, { ok, no }); watch(); w.postMessage({ id, cmd, args }); }), stop: () => { clearTimeout(dog); w.terminate(); } };
 }
 
 const b64bytes = (s) => { const b = atob(s), a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; };
@@ -59,7 +62,20 @@ export async function makeLocally({ job, sup, onProgress = () => {}, isCancelled
       voice = { mp3: b64bytes(r.audio), words: r.words, provider: r.provider };
       await idbPut(K('voice'), voice);
     }
-    const voiceBuf = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(voice.mp3.slice().buffer);
+    let voiceBuf = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(voice.mp3.slice().buffer);
+    // the video must last about the chosen time whatever the pace: off by more than 12% → read once more at an
+    // adjusted speed (Microsoft only; the user's own script is read as written)
+    const want = Number(input.seconds) || 0, off = want ? voiceBuf.duration / want : 1;
+    if (input.mode !== 'script' && voice.provider === 'microsoft' && !voice.adjusted && (off < 0.88 || off > 1.12)) {
+      const was = ({ slow: 0, normal: 8, fast: 15, faster: 25 })[input.pace] ?? 8;
+      const rate = Math.round(Math.max(-15, Math.min(50, ((1 + was / 100) * off - 1) * 100)));
+      if (rate !== was) {
+        step(0.28, `Giọng dài ${Math.round(voiceBuf.duration)} giây, chỉnh tốc độ đọc cho gần ${want} giây…`);
+        const r = await api(`/api/ink/jobs/${job}/browser/voice`, { method: 'POST', body: { text: speakable(lines), rate: (rate >= 0 ? '+' : '') + rate + '%' } }).catch(() => null);
+        if (r) { voice = { mp3: b64bytes(r.audio), words: r.words, provider: r.provider, adjusted: true }; voiceBuf = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(voice.mp3.slice().buffer); }
+      }
+      voice.adjusted = true; await idbPut(K('voice'), voice);
+    }
     const total = voiceBuf.duration;
 
     // 3. timing, drawing plan, music and effects (Python in the worker)

@@ -53,6 +53,8 @@ export interface Rc {
 // requests polled every few seconds: not worth a log row each
 const QUIET = /^GET \/api\/(projects\/:id\/jobs|assets\/|me$|auth\/config)|^(PUT|POST) \/api\/runner\/jobs\/:id\/progress|^POST \/api\/events$/;
 
+export { AiRelay } from './relay.ts';
+
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const t0 = Date.now(), url = new URL(req.url), api = url.pathname.startsWith('/api/');

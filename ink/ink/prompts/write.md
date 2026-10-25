@@ -4,7 +4,7 @@ Chiến lược: {strategy}
 Thể loại: {genre}. Giọng và cấu trúc theo thể loại:
 {structure}
 Dàn ý: {outline}
-Tổng độ dài: khoảng {seconds} giây, tức khoảng {words} chữ (giọng đọc máy khoảng 2,8 chữ mỗi giây). Sai lệch không quá 10%.
+Tổng độ dài: {seconds} giây, tức khoảng {words} chữ (đếm cả mọi câu). BẮT BUỘC sai lệch không quá 10%: video phải dài đúng thời lượng người xem đã chọn, viết thiếu chữ thì video bị ngắn.
 {feedback}
 
 Yêu cầu viết:

@@ -10,10 +10,12 @@ import hook from '../../ink/ink/prompts/hook.md';
 import hookJudge from '../../ink/ink/prompts/hook_judge.md';
 import storyboard from '../../ink/ink/prompts/storyboard.md';
 import adapt from '../../ink/ink/prompts/adapt.md';
+import fit from '../../ink/ink/prompts/fit.md';
 import { HttpError } from './util.ts';
 import { microsoftSpeak } from './ink-voice.ts';
+import { aiFetch, aiError } from './relay.ts';
 
-const PROMPTS: Record<string, string> = { common, strategy, outline, write, review, hook, hook_judge: hookJudge, storyboard, adapt };
+const PROMPTS: Record<string, string> = { common, strategy, outline, write, review, hook, hook_judge: hookJudge, storyboard, adapt, fit };
 
 /** Python's str.format for the prompt templates: {name} is a value, {{ and }} are braces */
 export function fillPrompt(ref: unknown) {
@@ -25,31 +27,37 @@ export function fillPrompt(ref: unknown) {
 }
 
 type Model = { provider: 'gemini' | 'openai'; model: string };
-/** ask the admin's model chain, starting at model `attempt` (a later attempt after a rejected answer moves on) */
+const wait = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
+/** ask the admin's model chain, starting at model `attempt` (a later attempt after a rejected answer moves on).
+ * A busy model (429/503) gets one more try; the whole chain stays inside ~85 s so the page's request never hangs. */
 export async function askChain(env: any, chain: Model[], system: string, user: string, temperature: number, attempt: number) {
   const usable = chain.filter((m) => (m.provider === 'gemini' ? env.GEMINI_API_KEY : env.OPENAI_API_KEY));
   if (!usable.length) throw new HttpError(503, 'Trang chưa có khoá AI (Gemini hoặc OpenAI).');
-  const errors: string[] = [];
-  for (let i = 0; i < usable.length; i++) {
+  const errors: string[] = [], end = Date.now() + 85_000;
+  for (let i = 0; i < usable.length && end - Date.now() > 8_000; i++) {
     const { provider, model } = usable[(attempt + i) % usable.length];
     try {
-      let text = '';
-      if (provider === 'gemini') {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-          method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY }, signal: AbortSignal.timeout(70_000),
-          body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: user }] }], generationConfig: { temperature, responseMimeType: 'application/json' } }) });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const j: any = await res.json(); text = (j.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || '').join('');
-      } else {
-        const res = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + env.OPENAI_API_KEY }, signal: AbortSignal.timeout(70_000),
-          body: JSON.stringify({ model, temperature, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }) });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const j: any = await res.json(); text = j.choices?.[0]?.message?.content || '';
+      for (let tryNo = 0; ; tryNo++) {
+        const signal = AbortSignal.timeout(Math.min(60_000, end - Date.now()));
+        const res = provider === 'gemini'
+          ? await aiFetch(env, `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+            method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY }, signal,
+            body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: user }] }], generationConfig: { temperature, responseMimeType: 'application/json' } }) })
+          : await aiFetch(env, 'https://api.openai.com/v1/chat/completions', {
+            method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + env.OPENAI_API_KEY }, signal,
+            body: JSON.stringify({ model, temperature, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }) });
+        if ((res.status === 429 || res.status === 503) && tryNo === 0 && end - Date.now() > 20_000) { await wait(4000); continue; }
+        if (!res.ok) throw new Error(await aiError(res));
+        const j: any = await res.json();
+        const text = provider === 'gemini' ? (j.candidates?.[0]?.content?.parts || []).filter((p: any) => !p.thought).map((p: any) => p.text || '').join('') : j.choices?.[0]?.message?.content || '';
+        if (text.trim()) return { text, provider, model };
+        throw new Error('câu trả lời rỗng');
       }
-      if (text.trim()) return { text, provider, model };
-      throw new Error('câu trả lời rỗng');
-    } catch (e: any) { errors.push(`${provider}/${model}: ${String(e?.message || e).slice(0, 80)}`); }
+    } catch (e: any) {
+      errors.push(`${provider}/${model}: ${e?.name === 'TimeoutError' ? 'quá thời gian chờ' : String(e?.message || e).slice(0, 160)}`);
+      // a refused key fails the same way for every model of that provider
+      if (/HTTP 40[13]|API key not valid|API_KEY_INVALID/i.test(errors[errors.length - 1])) usable.splice(0, usable.length, ...usable.filter((m) => m.provider !== provider)), i = -1;
+    }
   }
   throw new HttpError(502, 'AI chưa trả lời được: ' + errors.join(' | '));
 }
