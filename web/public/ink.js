@@ -2,7 +2,7 @@
 const PACES = [['slow', 'Chậm'], ['normal', 'Vừa'], ['fast', 'Nhanh'], ['faster', 'Rất nhanh']];
 const PACE_NOTE = { slow: 'Đọc thong thả, vẽ chậm rãi', normal: 'Nhịp video ngắn tiêu chuẩn', fast: 'Dồn dập, đổi cảnh nhanh', faster: 'Rất dồn dập, hợp video dưới 1 phút' };
 const MOODS = [['auto', 'Tự chọn theo nội dung'], ['motivating', 'Truyền động lực'], ['calm', 'Nhẹ nhàng'], ['upbeat', 'Sôi động'], ['emotional', 'Cảm xúc'], ['none', 'Không nhạc'], ['mine', 'Nhạc của tôi…']];
-const WHERE_NOTE = { server: 'Bạn có thể rời trang, video tự dựng xong và báo cho bạn.', browser: 'AI viết kịch bản và đọc giọng trên máy chủ, còn phần vẽ và xuất video chạy ngay trên máy tính/điện thoại của bạn. Cần mở trang trong lúc dựng.' };
+const WHERE_NOTE = { server: 'Bạn có thể rời trang, video tự dựng xong và báo cho bạn.', browser: 'Làm toàn bộ trên máy tính/điện thoại của bạn, không cần máy chủ dựng. Cần mở trang trong lúc dựng (khoảng 2–5 phút cho video 1 phút).' };
 const LENGTHS = [[30, '30 giây'], [60, '1 phút'], [90, '1,5 phút'], [120, '2 phút'], [180, '3 phút'], [300, '5 phút']];
 const STATUS = { queued: 'Đang chờ máy dựng', running: 'Đang dựng', review: 'Chờ bạn duyệt phân cảnh', browser: 'Sẵn sàng dựng trên máy của bạn', done: 'Đã xong', failed: 'Chưa dựng được' };
 const DEFAULTS = { voices: [{ id: 'hoaimy', label: 'Hoài My (nữ)' }, { id: 'namminh', label: 'Nam Minh (nam)' }], defaults: { pace: 'normal', seconds: 60, mood: 'auto', captions: true, review: false, voice: 'hoaimy' }, maxSeconds: 300 };
@@ -174,7 +174,9 @@ export async function showInkWatch(ctx, id) {
 /** status 'browser': the drawing plan is ready; this device draws the frames and uploads the MP4 */
 async function browserPanel(ctx, j, refresh) {
   const { h, api, fail, busy } = ctx;
-  const mod = await import('/ink-render.js?v=1'), sup = await mod.browserSupport();
+  const mod = await import('/ink-render.js?v=2'), local = !j.files.includes('draw.json'); // no machine made the drawing plan: this device does everything
+  const lm = local ? await import('/ink-local.js?v=1') : null;
+  let sup = await mod.browserSupport(); if (lm) sup = await lm.localSupport(sup);
   const bar = h('div', { class: 'ink-bar' }, h('i', { style: 'width:0%' })), note = h('p', { class: 'muted' }, sup.ok ? `Máy này sẽ dựng ở ${sup.width}×${sup.height}.` : sup.why);
   const done = sup.ok ? await mod.savedScenes(j.id, sup.width) : 0;
   const go = h('button', { type: 'button', class: 'btn', disabled: !sup.ok }, done ? `Dựng tiếp (đã xong ${done} cảnh)` : 'Bắt đầu dựng trên máy này');
@@ -182,6 +184,7 @@ async function browserPanel(ctx, j, refresh) {
   other.onclick = () => busy(other, 'Đang chuyển…', async () => { try { await api(`/api/ink/jobs/${j.id}/handoff`, { method: 'POST' }); refresh(); } catch (e) { fail(e); } });
   let running = false, sent = 0;
   const setBar = (p, m) => {
+    if (p == null) { if (m) note.textContent = m; return; } // a message from the engine (AI steps)
     bar.firstChild.style.width = Math.round(p * 100) + '%'; note.textContent = `${m} · ${Math.round(p * 100)}%`;
     if (Date.now() - sent > 8000) { sent = Date.now(); api(`/api/ink/jobs/${j.id}/browser/progress`, { method: 'POST', body: { progress: 60 + p * 38, message: 'Đang dựng trên máy người dùng: ' + m } }).catch(() => {}); }
   };
@@ -189,7 +192,8 @@ async function browserPanel(ctx, j, refresh) {
   go.onclick = async () => {
     running = true; go.disabled = true; other.disabled = true; addEventListener('beforeunload', leave);
     try {
-      const r = await mod.renderInBrowser({ job: j.id, sup, onProgress: setBar, isCancelled: () => !bar.isConnected });
+      const r = lm ? await lm.makeLocally({ job: j.id, sup, onProgress: setBar, isCancelled: () => !bar.isConnected })
+        : await mod.renderInBrowser({ job: j.id, sup, onProgress: setBar, isCancelled: () => !bar.isConnected });
       note.textContent = 'Đang tải video lên…';
       await new Promise((ok, no) => {
         const x = new XMLHttpRequest(); x.open('PUT', `/api/ink/jobs/${j.id}/browser/video`); x.setRequestHeader('x-nv', '1'); x.setRequestHeader('content-type', 'video/mp4');
@@ -203,7 +207,8 @@ async function browserPanel(ctx, j, refresh) {
     finally { removeEventListener('beforeunload', leave); }
   };
   return h('section', { class: 'card ink-progress' }, h('h2', {}, 'Sẵn sàng dựng trên máy của bạn'),
-    h('p', {}, 'Kịch bản, giọng đọc và bản vẽ đã xong. Máy bạn sẽ vẽ từng khung hình rồi xuất MP4. Giữ trang này mở; màn hình được giữ sáng trong lúc dựng. Nếu bị gián đoạn, mở lại trang và bấm Dựng tiếp: các cảnh đã xong không phải vẽ lại.'),
+    h('p', {}, local ? 'Toàn bộ video được làm trên máy bạn: AI viết kịch bản, đọc giọng, vẽ từng khung hình rồi xuất MP4, không cần máy chủ dựng. Giữ trang này mở; màn hình được giữ sáng. Nếu bị gián đoạn, mở lại trang và bấm Dựng tiếp: các bước đã xong không phải làm lại.'
+      : 'Kịch bản, giọng đọc và bản vẽ đã xong. Máy bạn sẽ vẽ từng khung hình rồi xuất MP4. Giữ trang này mở; màn hình được giữ sáng trong lúc dựng. Nếu bị gián đoạn, mở lại trang và bấm Dựng tiếp: các cảnh đã xong không phải vẽ lại.'),
     j.files.includes('overview.png') ? h('details', {}, h('summary', {}, 'Xem bảng phân cảnh'), h('img', { class: 'ink-overview', src: `/api/ink/jobs/${j.id}/file/overview.png`, alt: 'Bảng phân cảnh', loading: 'lazy' })) : null,
     bar, note, h('div', { class: 'row' }, go, other));
 }

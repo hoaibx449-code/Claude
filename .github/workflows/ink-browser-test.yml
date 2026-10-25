@@ -1,0 +1,57 @@
+name: Ink Studio — kiểm thử dựng trên trình duyệt
+
+# Chạy trang web tại chỗ (wrangler dev) và Chrome thật: tạo một video "Dựng trên máy này", để trang tự làm toàn bộ
+# (bộ máy Python trong trình duyệt, AI, giọng đọc, vẽ, mã hoá, tải lên). Kết quả lưu vào ink/samples/browser-<số lần chạy>.
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: 'Chủ đề thử'
+        default: 'Vì sao hoàng hôn lại đỏ?'
+
+permissions:
+  contents: write
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm}
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - run: npm ci
+      - run: npx playwright install chrome
+      - name: Trang web tại chỗ
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        working-directory: web
+        run: |
+          umask 077
+          printf 'DEV_LOGIN=1\nRUNNER_TOKEN=%s\nGEMINI_API_KEY=%s\nOPENAI_API_KEY=%s\n' "$(openssl rand -hex 24)" "$GEMINI_API_KEY" "$OPENAI_API_KEY" > .dev.vars
+          node build.mjs
+          npx wrangler d1 execute net-ve-studio --local --file schema.sql -y > /dev/null
+          tar -czf /tmp/b.tgz --exclude=__pycache__ --exclude=ink/prompts -C ../ink ink assets/fonts
+          npx wrangler r2 object put net-ve-studio/ink-runner/browser.tar.gz --file /tmp/b.tgz --local
+          (npx wrangler dev --local --port 8799 > /tmp/wrangler.log 2>&1 &)
+          for i in $(seq 1 60); do curl -sf http://localhost:8799/api/auth/config >/dev/null && break; sleep 2; done
+      - name: Chrome dựng toàn bộ video
+        env:
+          OUT: ink/samples/browser-${{ github.run_number }}
+          TOPIC: ${{ inputs.topic }}
+        run: node ink/tools/browser_e2e.cjs
+      - name: Kiểm tra video
+        if: always()
+        run: |
+          d=ink/samples/browser-${{ github.run_number }}
+          ffprobe -v error -show_entries stream=codec_name,width,height,duration -of csv $d/video.mp4 || true
+          [ -f $d/video.mp4 ] && ffmpeg -loglevel error -i $d/video.mp4 -vf "fps=1/3,scale=180:-1,tile=6x3" -frames:v 1 $d/contact.png || true
+          tail -40 /tmp/wrangler.log | grep -v "GET /api/ink/jobs/" || true
+      - name: Lưu kết quả vào repo
+        if: always()
+        run: |
+          d=ink/samples/browser-${{ github.run_number }}; [ -d $d ] || exit 0
+          git config user.name "ink-studio[bot]"; git config user.email "ink-studio@users.noreply.github.com"
+          git add -f $d && git commit -m "Ink Studio: kiểm thử trình duyệt ${{ github.run_number }} [skip ci]" && git pull --rebase -q && git push

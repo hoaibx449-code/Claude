@@ -17,10 +17,12 @@ GENERIC_BADGES = {'mẹo hay', 'hot', 'xem ngay', 'bí quyết', 'mới', 'hay',
 
 
 def prompt(name, **kw):
+    if ai.remote: return {'name': name, 'kw': kw}  # filled in by the website (browser mode: prompts stay there)
     return open(os.path.join(HERE, 'prompts', name + '.md'), encoding='utf-8').read().format(**kw)
 
 SYSTEM = None
 def system():
+    if ai.remote: return prompt('common')
     global SYSTEM
     if SYSTEM is None: SYSTEM = prompt('common')
     return SYSTEM

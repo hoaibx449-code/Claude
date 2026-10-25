@@ -252,7 +252,8 @@ def fill(ops):
             nw, nh = max(1, int(round(m.shape[1] * z))), max(1, int(round(m.shape[0] * z)))
             nx, ny = int(round(tx + (a0 - cx) * z)), int(round(ty + (b0 - cy) * z))
             nx = max(0, min(W - nw, nx)); ny = max(0, min(H - nh, ny))
-            op['mask'] = cv2.resize(m, (nw, nh), interpolation=cv2.INTER_LINEAR); op['bb'] = (nx, ny, nx + nw, ny + nh)
+            op['mask'] = cv2.resize(m, (nw, nh), interpolation=cv2.INTER_LINEAR) if cv2 else np.asarray(Image.fromarray(m).resize((nw, nh), Image.BILINEAR))
+            op['bb'] = (nx, ny, nx + nw, ny + nh)
         else:
             p = op['pts'].astype(np.float64).copy(); p[:, 0] = tx + (p[:, 0] - cx) * z; p[:, 1] = ty + (p[:, 1] - cy) * z
             op['pts'] = p; op['w'] = op['w'] * min(z, 1.2)

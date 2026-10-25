@@ -168,6 +168,22 @@ def narrate(lines, folder, log=print):
         log('  dò thời điểm từng chữ (Whisper)…'); heard = whisper_words(out)
     words = align(lines, heard, total) if heard else None
     if not words: log('  không có mốc từng chữ: chia theo khoảng ngắt trong giọng'); words = estimate(lines, out, total)
+    log(f'  giọng {used}: {total:.1f} giây, {len(words)} chữ có mốc thời gian')
+    return out, line_spans(lines, words, total), words, used
+
+
+def plain_estimate(lines, total):
+    """no word timings and no audio tools (browser): share the time by syllables"""
+    n = [len(l.split()) for l in lines]; tot = max(1, sum(n)); words = []; a = 0.0
+    for i, l in enumerate(lines):
+        ws = l.split(); b = a + total * len(ws) / tot
+        for k, w in enumerate(ws): words.append((i, w, a + (b - a) * k / len(ws), a + (b - a) * (k + 1) / len(ws)))
+        a = b
+    return words
+
+
+def line_spans(lines, words, total):
+    """[(line, start, end)]: each line runs until the next one starts, so scenes follow each other with no gap"""
     spans = []
     for i in range(len(lines)):
         ws = [w for w in words if w[0] == i]
@@ -176,5 +192,4 @@ def narrate(lines, folder, log=print):
     starts = [0.0] + [spans[i][0] for i in range(1, len(lines))]
     for i in range(1, len(starts)): starts[i] = max(starts[i], starts[i - 1] + 0.4)
     ends = starts[1:] + [total + 0.35]
-    log(f'  giọng {used}: {total:.1f} giây, {len(words)} chữ có mốc thời gian')
-    return out, list(zip(range(len(lines)), starts, ends)), words, used
+    return list(zip(range(len(lines)), starts, ends))

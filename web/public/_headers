@@ -6,3 +6,8 @@
   Strict-Transport-Security: max-age=31536000
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+# Ink Studio's Python engine (Pyodide, WebAssembly) runs in this worker only; the pages keep the strict policy
+/ink-py.js
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval' 'unsafe-eval'; connect-src 'self' https://cdn.jsdelivr.net; object-src 'none'; base-uri 'none'

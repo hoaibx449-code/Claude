@@ -30,9 +30,9 @@ export async function savedScenes(job, width) { try { return (await idbGet(`${jo
 // ---------------------------------------------------------------- storage of finished scenes (resume)
 const idb = () => new Promise((ok, no) => { const r = indexedDB.open(DB, 1); r.onupgradeneeded = () => r.result.createObjectStore(STORE); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
 async function idbDo(mode, fn) { const db = await idb(); return new Promise((ok, no) => { const tx = db.transaction(STORE, mode), req = fn(tx.objectStore(STORE)); tx.oncomplete = () => { db.close(); ok(req?.result); }; tx.onerror = () => { db.close(); no(tx.error); }; }); }
-const idbGet = (k) => idbDo('readonly', (s) => s.get(k)).catch(() => undefined);
-const idbPut = (k, v) => idbDo('readwrite', (s) => s.put(v, k));
-const idbClear = (prefix) => idbDo('readwrite', (s) => s.delete(IDBKeyRange.bound(prefix, prefix + '￿')));
+export const idbGet = (k) => idbDo('readonly', (s) => s.get(k)).catch(() => undefined);
+export const idbPut = (k, v) => idbDo('readwrite', (s) => s.put(v, k));
+export const idbClear = (prefix) => idbDo('readwrite', (s) => s.delete(IDBKeyRange.bound(prefix, prefix + '￿')));
 
 // ---------------------------------------------------------------- geometry (same as engine.prep / render.plan)
 function prep(op) {
@@ -57,10 +57,17 @@ function plan(ops, P, W) {
   return { items, S: Math.max(s, 1e-6), last: cur, side0: first, sideL: side };
 }
 
-export async function renderInBrowser({ job, sup, onProgress = () => {}, isCancelled = () => false, test = false }) {
+/** draw the video; `data` (drawing plan) and `sound` ({codec, rate, channels, chunks:[{d,t,u}], decoderConfig}) come from
+    the page itself (made in the browser) or, when left out, from the render machine's draw.json and audio.aac */
+export async function renderInBrowser({ job, sup, data = null, sound = null, onProgress = () => {}, isCancelled = () => false }) {
   const t0 = performance.now();
-  const D = await (await fetch(`/api/ink/jobs/${job}/file/draw.json`, { credentials: 'same-origin' })).json();
-  const audio = new Uint8Array(await (await fetch(`/api/ink/jobs/${job}/file/audio.aac`, { credentials: 'same-origin' })).arrayBuffer());
+  const D = data || await (await fetch(`/api/ink/jobs/${job}/file/draw.json`, { credentials: 'same-origin' })).json();
+  if (!sound) {
+    const aac = parseAdts(new Uint8Array(await (await fetch(`/api/ink/jobs/${job}/file/audio.aac`, { credentials: 'same-origin' })).arrayBuffer()));
+    const u = Math.round(1024 * 1e6 / aac.rate);
+    sound = { codec: 'aac', rate: aac.rate, channels: aac.channels, decoderConfig: { codec: 'mp4a.40.2', sampleRate: aac.rate, numberOfChannels: aac.channels, description: aac.asc },
+      chunks: aac.frames.map((d, n) => ({ d, t: n * u, u })) };
+  }
   const { W, H, fps: FPS, params: P } = D, k = sup.width / W, OW = sup.width, OH = sup.height;
   const nFrames = Math.round(D.total * FPS);
   // assets: the hand (baked from render.py's own drawing) and the marker font of the captions
@@ -229,19 +236,37 @@ export async function renderInBrowser({ job, sup, onProgress = () => {}, isCance
 
   // ---- the MP4: saved scenes in order, then the sound frames as they are (ADTS AAC from the render machine)
   onProgress(0.99, 'Đang ghép video và âm thanh');
-  const aac = parseAdts(audio);
   const muxer = new Muxer({ target: new ArrayBufferTarget(), fastStart: 'in-memory', firstTimestampBehavior: 'offset',
-    video: { codec: avc ? 'avc' : 'vp9', width: OW, height: OH, frameRate: FPS }, audio: { codec: 'aac', numberOfChannels: aac.channels, sampleRate: aac.rate } });
+    video: { codec: avc ? 'avc' : 'vp9', width: OW, height: OH, frameRate: FPS }, audio: { codec: sound.codec, numberOfChannels: sound.channels, sampleRate: sound.rate } });
   let firstChunk = true;
   for (let i = 0; i < D.scenes.length; i++) {
     const list = await idbGet(kid + 's' + i);
     if (!list) throw new Error('Thiếu dữ liệu cảnh ' + (i + 1) + '. Bấm Dựng lại.');
     for (const c of list) { muxer.addVideoChunkRaw(c.d, c.k ? 'key' : 'delta', c.t, c.u, firstChunk ? { decoderConfig } : undefined); firstChunk = false; }
   }
-  aac.frames.forEach((fr, n) => muxer.addAudioChunkRaw(fr, 'key', Math.round(n * 1024 * 1e6 / aac.rate), Math.round(1024 * 1e6 / aac.rate), n ? undefined : { decoderConfig: { codec: 'mp4a.40.2', sampleRate: aac.rate, numberOfChannels: aac.channels, description: aac.asc } }));
+  sound.chunks.forEach((c, n) => muxer.addAudioChunkRaw(c.d, 'key', c.t, c.u, n ? undefined : { decoderConfig: sound.decoderConfig }));
   muxer.finalize();
   const mp4 = new Blob([muxer.target.buffer], { type: 'video/mp4' });
   return { mp4, seconds: Math.round((performance.now() - t0) / 1000), clear: () => idbClear(kid) };
+}
+
+/** the cover: the first frame of the video once the hand has finished it (title + drawing), as JPEGs 1080 and 360 wide */
+export async function coverJpeg(D) {
+  const c = document.createElement('canvas'); c.width = D.W; c.height = D.H;
+  const x = c.getContext('2d'); x.fillStyle = D.bg; x.fillRect(0, 0, D.W, D.H); x.lineCap = 'round'; x.lineJoin = 'round';
+  const ops = [...D.cover, ...(D.scenes[0]?.ops || [])];
+  for (const op of ops) {
+    if (op.k === 'text') { const im = new Image(); im.src = op.img; await im.decode(); x.drawImage(im, op.bb[0], op.bb[1]); continue; }
+    const p = op.p, n = p.length / 2;
+    x.beginPath(); x.moveTo(p[0], p[1]); for (let i = 1; i < n; i++) x.lineTo(p[2 * i], p[2 * i + 1]);
+    if (op.k === 'shape' && op.f) { x.closePath(); x.fillStyle = op.f; x.fill(); x.beginPath(); x.moveTo(p[0], p[1]); for (let i = 1; i < n; i++) x.lineTo(p[2 * i], p[2 * i + 1]); }
+    if (n === 1) x.lineTo(p[0] + 0.01, p[1]);
+    x.strokeStyle = op.c; x.lineWidth = Math.max(1, Math.floor(op.w)); x.stroke();
+  }
+  const small = document.createElement('canvas'); small.width = 360; small.height = Math.round(360 * D.H / D.W);
+  small.getContext('2d').drawImage(c, 0, 0, small.width, small.height);
+  const jpg = (cv, q) => new Promise((ok) => cv.toBlob(ok, 'image/jpeg', q));
+  return [await jpg(c, 0.9), await jpg(small, 0.8)];
 }
 
 /** raw AAC frames out of an ADTS stream, and the AudioSpecificConfig the MP4 needs */

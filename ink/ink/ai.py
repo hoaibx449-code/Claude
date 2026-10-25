@@ -55,9 +55,25 @@ def parse_json(text):
     return json.loads(text[a:b + 1] if a >= 0 else text)
 
 
+# In the browser (Pyodide) the keys and the prompts stay on the website: prompt() hands over a reference
+# {name, kw} and `remote(system, user, temperature, attempt)` asks the site, which fills the prompt and walks
+# its own model chain (attempt n starts at the n-th model). It returns (text, provider, model).
+remote = None
+
+
 def ask(system, user, temperature=0.7, check=None, log=print):
     """the first valid JSON answer along the chain; `check(obj)` may raise ValueError to reject an answer"""
     errors = []
+    if remote:
+        for attempt in range(4):
+            try:
+                raw, provider, model = remote(system, user, temperature, attempt)
+                obj = parse_json(raw)
+                if check: check(obj)
+                used.append((provider, model)); return obj
+            except (ValueError, KeyError, IndexError, json.JSONDecodeError) as e:
+                errors.append(f'{type(e).__name__}: {str(e)[:160]}'); log('  AI trả lời chưa đạt, thử tiếp: ' + errors[-1])
+        raise RuntimeError('AI không trả lời được: ' + ' | '.join(errors))
     models = chain()
     if not models: raise RuntimeError('Chưa có khóa AI (OPENAI_API_KEY hoặc GEMINI_API_KEY).')
     for provider, model in models:

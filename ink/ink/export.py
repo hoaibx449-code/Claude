@@ -23,8 +23,8 @@ def op_json(op):
             'f': hexc(op['fill']) if op['k'] == 'shape' and op.get('fill') is not None else None}
 
 
-def export(sb, timing, words, voice, out, cover, music=None, music_volume=0.20, captions=True, pace='normal'):
-    """writes draw.json and audio.aac into folder `out`; cover = (base ops, drawn ops)"""
+def drawing(sb, timing, words, cover, captions=True, pace='normal'):
+    """the drawing plan (what draw.json holds) and the sound events of the pen, slides and pops"""
     td_max, tr = pace_draw(pace)
     scenes, events = [], []
     for i, sc in enumerate(sb['scenes']):
@@ -48,6 +48,12 @@ def export(sb, timing, words, voice, out, cover, music=None, music_volume=0.20, 
     data = {'v': 1, 'W': W, 'H': H, 'fps': FPS, 'total': timing[-1][2], 'bg': hexc(BG), 'ink': hexc(INK), 'acc': hexc(ACC),
             'params': {'T_IN': T_IN, 'T_OUT': T_OUT, 'SWAPC': SWAPC, 'DRAW_SPEED': DRAW_SPEED, 'ARM_END': ARM_END, 'ARM_FADE': ARM_FADE, 'TR': tr, 'CAP_Y': CAP_Y},
             'cover': base, 'scenes': scenes, 'words': [list(w) for w in words] if captions else [], 'captions': caps}
+    return data, events
+
+
+def export(sb, timing, words, voice, out, cover, music=None, music_volume=0.20, captions=True, pace='normal'):
+    """writes draw.json and audio.aac into folder `out`; cover = (base ops, drawn ops)"""
+    data, events = drawing(sb, timing, words, cover, captions, pace)
     with open(os.path.join(out, 'draw.json'), 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
     mix_audio(timing[-1][2], voice, os.path.join(out, 'audio.aac'), music, music_volume, events, adts=True)
     return data['total']

@@ -3,7 +3,9 @@
 Based on the handdrawn-video-package skill. Coordinates are 1080x1920 (x right, y down). A scene is a list of
 "ops" built with Canvas; the hand draws them in order."""
 import math, os
-import numpy as np, cv2
+import numpy as np
+try: import cv2  # the render machines draw with OpenCV; in the browser (Pyodide) only the drawing plan is made
+except ImportError: cv2 = None
 from PIL import Image, ImageDraw, ImageFont
 
 W, H, FPS = 1080, 1920, 30
@@ -164,7 +166,7 @@ def make_hand():
     w = pm.shape[1]; fx = lambda p: np.array([w - 1 - p[0], p[1]])
     left = dict(spr=cv2.flip(pm, 1), tip=fx(tip), A=fx(B), B=fx(A), dA=nz((-0.817, 1)), dB=nz((-0.586, 1)), tex=tex[::-1].copy())
     return {1: right, -1: left}
-HAND = make_hand()
+HAND = make_hand() if cv2 else None
 
 def phi_for(p, side):
     """arm angle from horizontal: the forearm comes up from below at 50-78 degrees, a little flatter near

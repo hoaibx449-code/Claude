@@ -6,6 +6,8 @@
   "main": "src/worker.ts",
   "compatibility_date": "2025-09-01",
   "compatibility_flags": ["nodejs_compat"],
+  // Ink Studio prompts (ink/ink/prompts/*.md) are bundled as text: the browser asks, the Worker fills them in
+  "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
   "assets": {
     "binding": "ASSETS",
     "directory": "./public",

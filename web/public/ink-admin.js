@@ -3,7 +3,7 @@
 const MACHINE = { server: ['Máy chủ riêng', 'VPS, máy ảo cloud hoặc máy tính ở nhà chạy Ubuntu. Luôn bật, nhận video ngay, không giới hạn.'],
   cloudrun: ['Google Cloud Run', 'Dùng tài khoản Google Cloud sẵn có của dự án. Chỉ bật khi có video, trả tiền theo phút (gói miễn phí đủ vài trăm video/tháng).'],
   github: ['GitHub Actions', 'Miễn phí, không cần máy chủ. Hợp để thử nghiệm; điều khoản GitHub không cho dùng làm máy chủ phục vụ khách hàng.'],
-  browser: ['Trình duyệt (máy người dùng)', 'Người dùng được chọn "Dựng trên máy này": máy dựng chỉ viết kịch bản, đọc giọng và xuất bản vẽ (nhanh, nhẹ); phần vẽ khung hình và xuất MP4 chạy trên máy tính/điện thoại của họ. Dùng kèm ít nhất một máy dựng khác.'] };
+  browser: ['Trình duyệt (máy người dùng)', 'Người dùng được chọn "Dựng trên máy này": toàn bộ video (AI viết, vẽ, xuất MP4) làm trên máy tính/điện thoại của họ, không cần máy dựng nào. Trang web chỉ trả lời AI và đọc giọng bằng khoá của bạn.'] };
 const GUIDES = [
   ['Thuê máy chủ (VPS) ở đâu, cấu hình bao nhiêu?', [
     'Cấu hình tối thiểu: 2 nhân CPU, 4 GB RAM, 25 GB ổ cứng, hệ điều hành Ubuntu 22.04 hoặc 24.04. Video 1 phút dựng mất khoảng 3–4 phút.',

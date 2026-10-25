@@ -83,6 +83,10 @@ try {
   rmSync(vf, { force: true });
   wrangler(['r2', 'object', 'put', `${NAME}/ink-runner/setup.sh`, '--file', join(root, 'server', 'setup.sh'), '--content-type', 'text/x-shellscript', '--remote', '-c', cfgFile]);
   rmSync(tmp, { force: true });
+  // the same engine for the user's browser (Pyodide), without the prompts: those stay on the website
+  execFileSync('tar', ['-czf', tmp, '--exclude=__pycache__', '--exclude=ink/prompts', '-C', root, 'ink', 'assets/fonts']);
+  wrangler(['r2', 'object', 'put', `${NAME}/ink-runner/browser.tar.gz`, '--file', tmp, '--content-type', 'application/gzip', '--remote', '-c', cfgFile]);
+  rmSync(tmp, { force: true });
   console.log('Đã đưa máy dựng Ink lên kho, bản ' + version);
 } catch (e) { console.log('Cảnh báo: chưa đưa được máy dựng Ink lên kho: ' + String(e.message || e).slice(0, 300)); }
 
