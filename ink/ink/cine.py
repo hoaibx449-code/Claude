@@ -166,7 +166,7 @@ def merge_lines(lines, wps, lo=4.0, hi=7.5):
     out = []
     for i, l in enumerate(lines):
         sec = S.words(l) / wps
-        if out and i > 1 and out[-1][1] < lo and out[-1][1] + sec <= hi and not TURN_WORDS.match(l) and not out[-1][0].rstrip().endswith('?'):
+        if out and i > 1 and (out[-1][1] < lo or sec < 2) and out[-1][1] + sec <= hi + 1 and not TURN_WORDS.match(l) and not out[-1][0].rstrip().endswith('?'):
             out[-1] = (out[-1][0] + ' ' + l, out[-1][1] + sec)
         else: out.append((l, sec))
     return [l for l, _ in out]
