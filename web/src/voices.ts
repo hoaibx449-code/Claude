@@ -138,7 +138,7 @@ async function googleSample(env: XEnv, name: string, pitch: number, rate: number
   return Uint8Array.from(atob(j.audioContent), (c) => c.charCodeAt(0));
 }
 
-async function everaiSample(key: string, code: string, text = SAMPLE, speed = 1) {
+export async function everaiSample(key: string, code: string, text = SAMPLE, speed = 1) {
   const url = 'https://www.everai.vn/api/v1/tts', headers = { authorization: `Bearer ${key}`, 'content-type': 'application/json' };
   const r = await fetch(url, { method: 'POST', headers, signal: AbortSignal.timeout(20_000),
     body: JSON.stringify({ response_type: 'indirect', input_text: text, voice_code: code, model_id: 'everai-v1.6', audio_type: 'mp3', bitrate: 128, speed_rate: speed, pitch_rate: 1, volume: 100 }) });

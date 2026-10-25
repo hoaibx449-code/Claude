@@ -583,6 +583,42 @@ export async function inkAdmin(req: Request, env: XEnv, sub: string, rc: Rc): Pr
     let audio = ''; if (r.audio) { let bin = ''; for (let i = 0; i < r.audio.length; i += 0x8000) bin += String.fromCharCode(...r.audio.subarray(i, i + 0x8000)); audio = btoa(bin); }
     return json({ ok: r.ok, ms: r.ms, error: r.error, audio });
   }
+  if (sub === 'ink/machines/test' && req.method === 'POST') {
+    // check a machine without giving it work: the token/job/server is reached and the answer explained
+    const b = await body<any>(req, 2_000), { s, token: saved } = await settings(env), t0 = Date.now();
+    const out = (ok: boolean, detail: string, hint = '') => json({ ok, detail, hint, ms: Date.now() - t0 });
+    if (b.kind === 'github') {
+      const token = str(b.token, 300) || saved, repo = str(b.repo, 120) || s.github.repo, wf = str(b.workflow, 120) || s.github.workflow;
+      if (!token) return out(false, 'Chưa có GitHub token.', 'Tạo token fine-grained: Settings → Developer settings → Fine-grained tokens, chọn repo này, quyền Actions: Read and write.');
+      const gh = (path: string) => fetch('https://api.github.com/repos/' + repo + path, { headers: { authorization: 'Bearer ' + token, accept: 'application/vnd.github+json', 'user-agent': 'faciup-ink', 'x-github-api-version': '2022-11-28' }, signal: AbortSignal.timeout(15_000) });
+      const r1 = await gh('');
+      if (r1.status === 401) return out(false, 'GitHub từ chối token (HTTP 401: sai hoặc đã hết hạn).', 'Tạo token mới rồi dán lại.');
+      if (r1.status === 404) return out(false, `Token không thấy repo ${repo} (HTTP 404).`, 'Kiểm tra tên repo, và khi tạo token chọn "Only select repositories" → đúng repo này.');
+      if (!r1.ok) return out(false, `GitHub trả lỗi HTTP ${r1.status}.`);
+      const r2 = await gh('/actions/workflows/' + encodeURIComponent(wf));
+      if (r2.status === 404) return out(false, `Không thấy workflow ${wf} trong repo (HTTP 404).`, 'Kiểm tra tên tệp workflow trong .github/workflows/.');
+      if (r2.status === 403) return out(false, 'Token chưa có quyền Actions (HTTP 403).', 'Sửa token: Repository permissions → Actions: Read and write.');
+      if (!r2.ok) return out(false, `GitHub trả lỗi HTTP ${r2.status} khi đọc workflow.`);
+      const w: any = await r2.json();
+      return out(w.state === 'active', w.state === 'active' ? `Token vào được ${repo} và thấy workflow "${w.name}". Bấm "Bật máy dựng ngay" để chạy thử thật.` : `Workflow đang tắt (${w.state}).`, w.state === 'active' ? '' : 'Bật lại workflow trong tab Actions của repo.');
+    }
+    if (b.kind === 'cloudrun') {
+      if (!env.GCP_TRIGGER_KEY || !env.GCP_PROJECT || !env.GCP_REGION) return out(false, 'Trang chưa nối Google Cloud (thiếu GCP_TRIGGER_KEY / GCP_PROJECT / GCP_REGION).', 'Làm theo hướng dẫn Google Cloud Run bên dưới.');
+      const { accessToken } = await import('./gcp.ts');
+      const job = str(b.job, 60) || s.machines.cloudJob;
+      const r = await fetch(`https://run.googleapis.com/v2/projects/${env.GCP_PROJECT}/locations/${env.GCP_REGION}/jobs/${job}`, { headers: { authorization: 'Bearer ' + (await accessToken(env)) }, signal: AbortSignal.timeout(15_000) }).catch(() => null);
+      if (!r) return out(false, 'Không gọi được Google Cloud.');
+      if (r.ok) return out(true, `Google Cloud thấy job ${job} (${env.GCP_REGION}). Sẵn sàng nhận video.`);
+      const t = await r.text(), msg = t.match(/"message": *"([^"]{0,200})/)?.[1] || '';
+      return out(false, `Google Cloud trả lỗi HTTP ${r.status}${msg ? ': ' + msg : ''}.`, r.status === 404 ? 'Job chưa được triển khai: chạy workflow "Ink Studio — triển khai lên Google Cloud".' : /billing/i.test(t) ? 'Dự án chưa bật thanh toán: Billing → Link a billing account.' : '');
+    }
+    if (b.kind === 'server') {
+      const seen = Object.entries(await machinesSeen(env)).filter(([, v]) => v.kind === 'server');
+      const on = seen.filter(([, v]) => Date.now() - v.at < 90_000);
+      return out(on.length > 0, on.length ? `${on.length} máy chủ đang online: ${on.map(([n]) => n).join(', ')}.` : seen.length ? 'Có máy chủ đã kết nối nhưng hiện không online.' : 'Chưa có máy chủ nào kết nối.', on.length ? '' : 'Trên máy chủ chạy: sudo systemctl status faciup-ink (hoặc cài lại bằng lệnh ở mục Máy chủ riêng).');
+    }
+    return out(true, 'Trình duyệt của người dùng tự dựng, không cần kiểm tra.');
+  }
   if (sub === 'ink/voices/catalog' && req.method === 'GET') {
     const p = new URL(req.url).searchParams.get('p');
     return json(p === 'everai' ? await voiceCatalog(env, 'everai') : { source: 'api', voices: await microsoftVoices() });

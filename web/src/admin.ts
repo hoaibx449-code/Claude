@@ -13,7 +13,8 @@ import { aiCost } from './log.ts';
 import { analyzeSample, checkGateway, clearDown, downState, LOOK_BRIEF, planNotes, textPlan, type TextProvider } from './ai.ts';
 import { setVoiceFallback, testEverAI, testVoice, voiceCatalog, voiceFallbackAllowed, voiceStatus, voicesWithStatus } from './voices.ts';
 import type { User } from './auth.ts';
-import { clearCache, effectiveEnv, isAdmin, save as saveSettings, secretStatus } from './settings.ts';
+import { clearCache, effectiveEnv, isAdmin, save as saveSettings, secretStatus, SECRET_NAMES } from './settings.ts';
+import { testKey } from './key-test.ts';
 import { body, type Env, HttpError, json, today } from './util.ts';
 import type { Rc, XEnv } from './worker.ts';
 import { connectWebhook, zaloAdmin } from './zalo.ts';
@@ -108,6 +109,13 @@ export async function adminRoutes(req: Request, env: XEnv, rawEnv: Env, sub: str
     rc.log('admin.voice.test', { ok: r.ok, data: { provider, code, error: r.error } });
     let audio = ''; if (r.audio) { let bin = ''; for (let i = 0; i < r.audio.length; i += 0x8000) bin += String.fromCharCode(...r.audio.subarray(i, i + 0x8000)); audio = btoa(bin); }
     return json({ ok: r.ok, ms: r.ms, error: r.error, audio });
+  }
+  if (sub === 'keys/test' && method === 'POST') {
+    const b = await body<any>(req, 4_000), name = String(b.name || '');
+    if (!(SECRET_NAMES as readonly string[]).includes(name)) throw new HttpError(400, 'Khoá không hợp lệ.');
+    const r = await testKey(env, name, String(b.value || ''), new URL(req.url).origin);
+    rc.log('admin.key.test', { ok: r.ok, data: { name, typed: !!b.value, detail: r.detail.slice(0, 200) } });
+    return json(r);
   }
   if (sub === 'voices/catalog' && method === 'GET') return json(await voiceCatalog(env, new URL(req.url).searchParams.get('p') || 'everai'));
   if (sub === 'voices/fallback' && method === 'PUT') { const b = await body<any>(req, 100); await setVoiceFallback(env, b.on === true); return json({ ok: true }); }

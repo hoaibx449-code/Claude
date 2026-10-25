@@ -98,12 +98,24 @@ export async function showInkAdmin({ h, api, body, toast, fail }) {
   const when = (t) => (t ? new Date(t).toLocaleString('vi-VN') : '—');
   const M = data.machines || { seen: [], servers: [], cloud: false, version: '' };
   const ready = { server: M.seen.some((x) => x.kind === 'server' && x.online), cloudrun: M.cloud, github: data.token, browser: true };
+  // each machine can be checked on the spot (nothing is started); GitHub uses the token typed below if any
+  const machineTest = (k) => {
+    const out = h('span', { class: 'muted' });
+    return h('span', { class: 'row' }, h('button', { type: 'button', class: 'ghost small', onclick: async () => {
+      out.className = 'muted'; out.textContent = 'Đang kiểm tra…';
+      try {
+        const r = await api('/api/admin/ink/machines/test', { method: 'POST', body: { kind: k, token, repo: s.github.repo, workflow: s.github.workflow, job: s.machines.cloudJob } });
+        out.className = r.ok ? 'ok' : 'bad'; out.textContent = (r.ok ? '✓ ' : '✗ ') + r.detail + (r.hint ? ' → ' + r.hint : '');
+      } catch (e) { out.className = 'bad'; out.textContent = '✗ ' + e.message; }
+    } }, 'Kiểm tra'), out);
+  };
   // where videos are made: tick to use, arrows to set the order (the first that can take the job makes it)
   const machines = h('ol', { class: 'ink-machines' });
   const paintMachines = () => machines.replaceChildren(...s.machines.order.map((k, i) => h('li', { class: 'ink-machine' },
     h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!s.machines.on[k], onchange: (e) => { s.machines.on[k] = e.target.checked; } }), h('strong', {}, MACHINE[k][0])),
     h('span', { class: 'chip' + (ready[k] ? ' ok' : '') }, k === 'browser' ? (s.machines.on.browser ? 'Người dùng được chọn' : 'Đang tắt') : ready[k] ? '✓ Sẵn sàng' : '✗ Chưa thiết lập'),
     h('small', { class: 'muted' }, MACHINE[k][1]),
+    k === 'browser' ? null : machineTest(k),
     h('span', { class: 'ink-move' },
       h('button', { type: 'button', class: 'ghost small', 'aria-label': 'Lên', disabled: i === 0, onclick: () => { const o = s.machines.order; [o[i - 1], o[i]] = [o[i], o[i - 1]]; paintMachines(); } }, '↑'),
       h('button', { type: 'button', class: 'ghost small', 'aria-label': 'Xuống', disabled: i === s.machines.order.length - 1, onclick: () => { const o = s.machines.order; [o[i + 1], o[i]] = [o[i], o[i + 1]]; paintMachines(); } }, '↓')))));
@@ -141,7 +153,7 @@ export async function showInkAdmin({ h, api, body, toast, fail }) {
       field('Repo', inp(s.github.repo, (x) => { s.github.repo = x; }, { placeholder: 'chu-so-huu/ten-repo' })),
       field('Workflow', inp(s.github.workflow, (x) => { s.github.workflow = x; })),
       field('Nhánh chạy', inp(s.github.ref, (x) => { s.github.ref = x; })),
-      field('GitHub token', inp('', (x) => { token = x.trim(); }, { type: 'password', autocomplete: 'off', placeholder: data.token ? 'Đã lưu. Nhập token mới để thay.' : 'github_pat_…' }))),
+      field('GitHub token', inp('', (x) => { token = x.trim(); }, { type: 'password', autocomplete: 'off', placeholder: data.token ? 'Đã lưu. Nhập token mới để thay.' : 'github_pat_…' })), machineTest('github')),
     card('AI viết kịch bản', 'Khoá Gemini và OpenAI lấy ở trang API & khoá. Mỗi nhà cung cấp thử lần lượt các model theo thứ tự bên dưới.',
       field('Thứ tự ưu tiên', order), tick(s.ai.fallback, (x) => { s.ai.fallback = x; }, 'Khi nhà cung cấp đầu lỗi, chuyển sang nhà cung cấp còn lại'),
       field('Model Gemini (theo thứ tự)', inp(s.ai.gemini, (x) => { s.ai.gemini = x; })),

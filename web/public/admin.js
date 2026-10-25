@@ -85,7 +85,7 @@ async function showAdmin() {
   adminJumpList(body, jump);
   setTimeout(() => nav.querySelector('a.on')?.scrollIntoView({ block: 'nearest', inline: 'center' }), 0);
   const pages = { 'giai-phap':async(body)=>{const {showSolutionsAdmin}=await import('/solutions-admin.js?v=55');return showSolutionsAdmin({h,api,body,toast,fail});}, 'anh-zalo':async(body)=>{const {showImageFeed}=await import('/image-feed.js?v=44');return showImageFeed({h,api,body,toast,fail});}, 'prompt-hunter':async(body)=>{const {showHunter}=await import('/prompt-hunter.js');return showHunter({h,api,show:(...nodes)=>body.replaceChildren(...nodes.filter(Boolean)),me,toast,fail,detailDialog,openLogin,footer,admin:true});}, 'may-dung': adminRenders, 'cong-dong': adminCommunity, 'tong-quan': adminOverview, 'nhat-ky': adminLog, 'nguoi-dung': adminUsers, 'don-hang': adminOrders, goi: adminSettings, zalo: adminSettings, 'hien-thi': adminSettings, 'noi-dung': adminSettings, 'cai-dat': adminSettings,'ket-noi':adminSettings,'ai':adminSettings,'chi-phi':adminSettings, 'huan-luyen': adminSettings, 'giong-doc': adminSettings };
-  if(tab==='ink-studio'){const {showInkAdmin}=await import('/ink-admin.js?v=7');return showInkAdmin({h,api,body,toast,fail});}
+  if(tab==='ink-studio'){const {showInkAdmin}=await import('/ink-admin.js?v=8');return showInkAdmin({h,api,body,toast,fail});}
   if(tab==='nhom-ai'){
     const {showCouncil}=await import('/council-admin.js?v=18');
     return showCouncil({h,api,body,toast,fail});
@@ -269,14 +269,26 @@ async function adminSettings(body, tab) {
 
 function keysCard(secrets, secretInput, names, title='Khoá API') {
   const status = { admin: 'Đã nhập ở đây', env: 'Đang dùng khoá cài trên máy chủ', null: 'Chưa có' };
-  return card(title, 'Khoá được mã hoá trước khi lưu và không bao giờ hiện lại. Để trống = giữ nguyên.',
+  return card(title, 'Khoá được mã hoá trước khi lưu và không bao giờ hiện lại. Để trống = giữ nguyên. Dán khoá mới là trang tự kiểm tra ngay (chưa lưu); bấm Kiểm tra để thử khoá đang dùng.',
     ...names.map((name) => {
       const [title, note] = SECRET_INFO[name], st = secrets[name];
       const clear = h('button', { type: 'button', class: 'ghost small', hidden: st !== 'admin', onclick: () => { secretInput[name] = null; clear.textContent = 'Sẽ xoá khi lưu'; clear.disabled = true; } }, 'Xoá khoá');
+      // test the pasted key at once (nothing is saved), or the saved one when the box is empty
+      const result = h('div', { class: 'conn-detail' });
+      let timer = 0;
+      const test = async () => {
+        result.replaceChildren(h('span', { class: 'pill running' }, 'Đang kiểm tra…'));
+        try {
+          const r = await api('/api/admin/keys/test', { method: 'POST', body: { name, value: secretInput[name] || '' } });
+          result.replaceChildren(h('div', { class: r.ok ? 'ok' : 'bad' }, (r.ok ? '✓ ' : '✗ ') + r.detail + (r.ms ? ` (${(r.ms / 1000).toFixed(1)} giây)` : '')), r.hint && !r.ok ? h('div', { class: 'hint' }, '→ ' + r.hint) : null);
+        } catch (e) { result.replaceChildren(h('div', { class: 'bad' }, '✗ ' + e.message)); }
+      };
+      const box = h('input', { type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: st ? '•••••••• (để trống = giữ nguyên)' : 'Dán khoá vào đây', oninput: (e) => {
+        secretInput[name] = e.target.value; clearTimeout(timer); if (e.target.value.trim().length > 12) timer = setTimeout(test, 900);
+      } });
       return h('div', { class: 'keyrow' },
-        h('label', {}, h('span', {}, h('strong', {}, title), ' ', h('span', { class: 'pill ' + (st ? 'done' : 'failed') }, status[st])), h('small', {}, note),
-          h('input', { type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: st ? '•••••••• (để trống = giữ nguyên)' : 'Dán khoá vào đây', oninput: (e) => { secretInput[name] = e.target.value; } })),
-        clear);
+        h('label', {}, h('span', {}, h('strong', {}, title), ' ', h('span', { class: 'pill ' + (st ? 'done' : 'failed') }, status[st])), h('small', {}, note), box),
+        h('div', { class: 'row' }, h('button', { type: 'button', class: 'ghost small', onclick: test }, 'Kiểm tra'), clear), result);
     }));
 }
 
