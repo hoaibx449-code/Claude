@@ -100,8 +100,11 @@ def microsoft_all(text, out):
 def whisper_words(audio):
     try: from faster_whisper import WhisperModel
     except ImportError: return None
+    import numpy as np
     model = WhisperModel(os.environ.get('INK_WHISPER_MODEL', 'small'), device='cpu', compute_type='int8')
-    segs, _ = model.transcribe(audio, language='vi', word_timestamps=True, vad_filter=False, beam_size=1)
+    # decoded by ffmpeg, not by faster-whisper's own PyAV reader (newer PyAV refuses its arguments)
+    pcm = subprocess.run(['ffmpeg', '-v', 'error', '-i', audio, '-ac', '1', '-ar', '16000', '-f', 's16le', '-'], capture_output=True, check=True).stdout
+    segs, _ = model.transcribe(np.frombuffer(pcm, np.int16).astype(np.float32) / 32768, language='vi', word_timestamps=True, vad_filter=False, beam_size=1)
     return [(w.word.strip(), w.start, w.end) for s in segs for w in (s.words or [])]
 
 
