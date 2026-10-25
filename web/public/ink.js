@@ -3,7 +3,8 @@ const PACES = [['slow', 'Chậm'], ['normal', 'Vừa'], ['fast', 'Nhanh'], ['fas
 const PACE_NOTE = { slow: 'Đọc thong thả, vẽ chậm rãi', normal: 'Nhịp video ngắn tiêu chuẩn', fast: 'Dồn dập, đổi cảnh nhanh', faster: 'Rất dồn dập, hợp video dưới 1 phút' };
 const MOODS = [['auto', 'Tự chọn theo nội dung'], ['motivating', 'Truyền động lực'], ['calm', 'Nhẹ nhàng'], ['upbeat', 'Sôi động'], ['emotional', 'Cảm xúc'], ['none', 'Không nhạc'], ['mine', 'Nhạc của tôi…']];
 const WHERE_NOTE = { server: 'Bạn có thể rời trang, video tự dựng xong và báo cho bạn.', browser: 'Làm toàn bộ trên máy tính/điện thoại của bạn, không cần máy chủ dựng. Cần mở trang trong lúc dựng (khoảng 2–5 phút cho video 1 phút).' };
-const FORMAT_NOTE = { ink: 'Bàn tay vẽ từng cảnh trên nền giấy, như video whiteboard.', cine: 'Cảnh quay và ảnh thật lấp kín khung, máy quay chuyển động, chữ và số liệu hiện trong không gian, phụ đề kiểu CapCut. Dựng trên máy chủ, khoảng 10–25 phút.' };
+const FORMAT_NOTE = { ink: 'Bàn tay vẽ từng cảnh trên nền giấy, như video whiteboard.', cine: 'Cảnh quay và ảnh thật lấp kín khung, máy quay chuyển động, chữ và số liệu hiện trong không gian, phụ đề kiểu CapCut. Dựng trên máy chủ, khoảng 10–25 phút.',
+  money: 'Series Đòn Bẩy Tư Duy: gõ một băn khoăn về tiền bạc, công việc hay thói quen (ví dụ: vì sao lương tăng mà vẫn hết tiền?). AI tìm nghiên cứu thật trên web, đặt tên khái niệm, kể bằng giọng tiểu luận trên cảnh quay thật và đồ hoạ 3D, phụ đề nét mảnh. Khoảng 2 phút, dựng trên máy chủ.' };
 const LENGTHS =[[30, '30 giây'], [60, '1 phút'], [90, '1,5 phút'], [120, '2 phút'], [180, '3 phút'], [300, '5 phút']];
 const STATUS = { queued: 'Đang chờ máy dựng', running: 'Đang dựng', review: 'Chờ bạn duyệt phân cảnh', browser: 'Sẵn sàng dựng trên máy của bạn', done: 'Đã xong', failed: 'Chưa dựng được' };
 const DEFAULTS = { voices: [{ id: 'hoaimy', label: 'Hoài My (nữ)' }, { id: 'namminh', label: 'Nam Minh (nam)' }], defaults: { pace: 'normal', seconds: 60, mood: 'auto', captions: true, review: false, voice: 'hoaimy' }, maxSeconds: 300 };
@@ -55,10 +56,12 @@ export async function showInkCreate(ctx) {
   const whereRow = h('div', { class: 'ink-field' });
   const paintFormat = () => {
     formatNote.textContent = FORMAT_NOTE[st.format];
-    whereRow.hidden = st.format === 'cine' || !cfg.browser; if (st.format === 'cine') st.browser = false;
-    moodRow.hidden = st.format === 'cine';
+    whereRow.hidden = st.format !== 'ink' || !cfg.browser; if (st.format !== 'ink') st.browser = false;
+    moodRow.hidden = st.format !== 'ink';
+    // the series has its own voice when it is ready (still changeable below)
+    if (st.format === 'money' && cfg.voices.some((v) => v.id === 'vanduy') && !st.voicePicked) { st.voice = 'vanduy'; voice.value = 'vanduy'; }
   };
-  const voice = h('select', { 'aria-label': 'Giọng đọc', onchange: () => { st.voice = voice.value; keep(); } }, cfg.voices.map((v) => h('option', { value: v.id, selected: v.id === st.voice }, v.label)));
+  const voice = h('select', { 'aria-label': 'Giọng đọc', onchange: () => { st.voice = voice.value; st.voicePicked = true; keep(); } }, cfg.voices.map((v) => h('option', { value: v.id, selected: v.id === st.voice }, v.label)));
   const moodRow = h('label', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Nhạc nền'), mood, musicFile, musicNote);
   whereRow.append(h('span', { class: 'ink-label' }, 'Nơi dựng video'),
     chips(h, [['server', 'Máy chủ dựng'], ['browser', 'Dựng trên máy này']], st.browser ? 'browser' : 'server', (v) => { st.browser = v === 'browser'; whereNote.textContent = WHERE_NOTE[v]; keep(); }), whereNote);
@@ -73,7 +76,7 @@ export async function showInkCreate(ctx) {
     });
   } },
     cfg.cine ? h('div', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Kiểu video'),
-      chips(h, [['ink', 'Vẽ tay'], ['cine', 'Điện ảnh (cảnh quay thật)']], st.format, (v) => { st.format = v; paintFormat(); keep(); }), formatNote) : null,
+      chips(h, [['ink', 'Vẽ tay'], ['cine', 'Điện ảnh (cảnh quay thật)'], ['money', 'Đòn Bẩy Tư Duy']], st.format, (v) => { st.format = v; paintFormat(); keep(); }), formatNote) : null,
     chips(h, [['topic', 'Từ chủ đề'], ['script', 'Từ kịch bản có sẵn']], st.mode, (v) => { st.mode = v; paintText(); keep(); }, 'ink-mode'),
     h('label', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Nội dung'), text),
     lenRow,

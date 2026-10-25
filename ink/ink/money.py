@@ -1,0 +1,92 @@
+"""The 'Đòn Bẩy Tư Duy' video type (personal finance, career, behaviour): one named concept per video, researched on
+the web right now, told in an essay voice over real footage and 3D graphics, with fine karaoke captions.
+
+  research: the AI searches the web (Gemini + Google Search, or OpenAI web search) and returns the concept, 2-4 real
+            studies, a metaphor, everyday Vietnamese examples, one thing to do today; every name/year/number comes
+            from the pages found, which are kept as the video's sources
+  write:    the narration in one of four frames (A essay, B everyday maths, C a common advice turned over, D one
+            concept one episode), scored by the editor and rewritten when weak
+  look:     then the cinematic director (cine.py) films it; this module only sets the series' own look: brand line,
+            fine captions in a colour that suits the video's mood, a world palette, the cover kicker"""
+import json, random
+from . import ai, script as S
+
+FRAMES = {'A': 'A. Tiểu luận thức tỉnh', 'B': 'B. Phép tính đời thường', 'C': 'C. Bẻ một lời khuyên phổ biến', 'D': 'D. Một khái niệm – một tập'}
+# colour of the words already read, and the world's palette, chosen by the video's mood (never the same look every time)
+MOODS = {
+    'tiet_kiem_hy_vong': {'subColor': '#ffb38a', 'world': ['#ff9a8b', '#ffd1a8', '#3b2a4a'], 'grade': 'dawn'},
+    'no_canh_giac': {'subColor': '#ff6b6b', 'world': ['#2b1f3a', '#7b2d4a', '#ff5d5d'], 'grade': 'night'},
+    'su_nghiep': {'subColor': '#d4f25a', 'world': ['#1f4e9c', '#7fb3ff', '#d4f25a'], 'grade': 'cool'},
+    'tram_tinh': {'subColor': '#f5c04a', 'world': ['#0f3b3a', '#f1e4c8', '#c8693f'], 'grade': 'earth'},
+    'tinh_thuc': {'subColor': '#9be7ff', 'world': ['#101a2e', '#3c6e9f', '#9be7ff'], 'grade': 'cool'},
+}
+DISCLAIMER = 'Nội dung mang tính thông tin, không phải tư vấn tài chính. Ảnh/video minh hoạ.'
+
+
+def _research_ok(o):
+    if not str(o.get('concept_en') or o.get('concept_vi') or '').strip(): raise ValueError('thiếu tên khái niệm')
+    if not isinstance(o.get('studies'), list) or not o['studies']: raise ValueError('thiếu nghiên cứu')
+
+
+def research(topic, notes='', log=print):
+    log('1/3 Tìm khái niệm và nghiên cứu trên web…')
+    try:
+        facts, sources = ai.research(S.system(), S.prompt('money_research', topic=topic, notes=notes or 'không'), check=_research_ok, log=log)
+    except RuntimeError as e:
+        # no web search available: the research step still runs, held to studies the model knows for sure
+        log(f'   không tìm được trên web ({str(e)[:120]}); chỉ dùng nghiên cứu kinh điển, không thêm số mới')
+        facts = ai.ask(S.system(), S.prompt('money_research', topic=topic, notes=(notes + '\n' if notes else '') +
+                       'KHÔNG tìm được web lúc này: chỉ dùng nghiên cứu kinh điển bạn chắc chắn (tác giả, năm), bỏ mọi con số không chắc.'), 0.3, check=_research_ok, log=log)
+        sources = []
+    log(f'   khái niệm: {facts.get("concept_en")} – {facts.get("concept_vi")} · {len(facts.get("studies") or [])} nghiên cứu · {len(sources)} nguồn web')
+    return facts, sources
+
+
+def script(inp, seconds, pace, log=print):
+    """the narration in the same shape the other types use ({title, core_message, lines, strategy}), plus what the
+    series needs later (research, sources, hook, caption, mood)"""
+    topic = inp.get('topic') or inp.get('script') or ''
+    facts, sources = research(topic, inp.get('notes', ''), log)
+    target = round(seconds * S.wps() * S.speed(pace))
+    frame = FRAMES[random.SystemRandom().choice(list(FRAMES))] if seconds >= 75 else FRAMES['D']
+    log(f'2/3 Viết lời đọc (khung {frame})…')
+    feedback, best = '', None
+    G = S.genre_text('giai_thich')
+    for round_ in range(3):
+        sc = ai.ask(S.system(), S.prompt('money_write', topic=topic, research=json.dumps(facts, ensure_ascii=False), frame=frame, seconds=seconds, words=target, feedback=feedback),
+                    0.75, check=S._lines_ok, log=log)
+        strategy = {'core_message': sc.get('core_message', ''), 'genre': G['genre'], 'title': sc.get('title', '')}
+        review, avg, low = S._review(strategy, sc, seconds, target, log, G, topic)
+        if best is None or avg > best[2]: best = (sc, review, avg)
+        if avg >= 8 and not low: break
+        feedback = 'Biên tập viên yêu cầu sửa (bắt buộc):\n- ' + '\n- '.join(review.get('issues', [])[:5])
+    sc, review, _ = best
+    sc = S.fit_length(sc, seconds, target, G['genre'], log)
+    sc['strategy'] = {'core_message': sc.get('core_message', ''), 'genre': G['genre'], 'title': sc.get('title', '')}
+    sc['review'] = review; sc['money'] = {'facts': facts, 'sources': sources, 'frame': frame}
+    return sc
+
+
+def finish(sb, sc, inp):
+    """the series' own look and words on the cinematic plan cine.py made"""
+    m = sc.get('money') or {}
+    facts, sources = m.get('facts') or {}, m.get('sources') or []
+    mood = MOODS.get(str(sc.get('mood') or ''), random.SystemRandom().choice(list(MOODS.values())))
+    st = sb['plan']['storyboard']
+    st['brand'] = (inp.get('brand') or 'ĐÒN BẨY TƯ DUY').strip()[:40]
+    st['subStyle'], st['subWords'] = 'fine', 5
+    st['style'] = {**st.get('style', {}), 'subColor': mood['subColor'], 'grade': mood['grade']}
+    st['world'] = mood['world']
+    cover = st.get('cover') or {}
+    cover.update({'kicker': 'Đòn Bẩy Tư Duy', 'hook': str(sc.get('hook') or cover.get('hook') or sb['title'])[:80],
+                  'detail': ' – '.join(x for x in (facts.get('concept_en'), facts.get('concept_vi')) if x)[:60]})
+    st['cover'] = cover
+    sb['plan']['theme'] = 'finance' if facts.get('group') == 'tien_bac' else 'life'
+    sb['plan']['series'] = 'Đòn Bẩy Tư Duy'
+    src = '; '.join(f'{s["title"] or s["url"]}' for s in sources[:4]) or '; '.join(f'{x.get("who")} ({x.get("year")})' for x in (facts.get('studies') or [])[:3])
+    tags = ['#DonBayTuDuy'] + ['#' + str(h).lstrip('#') for h in (sc.get('hashtags') or [])][:3]
+    sb['title'] = str(sc.get('title') or sb['title'])[:100]
+    sb['caption'] = (str(sc.get('caption') or '').strip() + f'\n\nNguồn: {src}. {DISCLAIMER}').strip()
+    sb['hashtags'] = tags
+    sb['series'] = 'money'; sb['sources'] = sources; sb['concept'] = {k: facts.get(k) for k in ('concept_en', 'concept_vi', 'group', 'metaphor')}
+    return sb

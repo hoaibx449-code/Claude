@@ -566,7 +566,7 @@ function musicCard(c) {
 
 /** Kinds of video made in Zalo (the web page's engine): one default, and which ones people may pick with DINHDANG. */
 function zaloFormatsCard(c, z) {
-  const WAYS = ['ink', 'cine'], CL = { ink: 'Vẽ tay (bàn tay vẽ trên bảng trắng)', cine: 'Điện ảnh (cảnh quay thật, cần khoá Pixabay)' };
+  const WAYS = ['ink', 'cine', 'money'], CL = { ink: 'Vẽ tay (bàn tay vẽ trên bảng trắng)', cine: 'Điện ảnh (cảnh quay thật, cần khoá Pixabay)', money: 'Đòn Bẩy Tư Duy (tài chính, sự nghiệp; cần khoá Pixabay)' };
   z.formats ||= { default: 'ink', allowed: [...WAYS] };
   if (!WAYS.includes(z.formats.default)) z.formats.default = 'ink';
   z.formats.allowed = (z.formats.allowed || []).filter((k) => WAYS.includes(k));

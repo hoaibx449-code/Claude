@@ -24,8 +24,8 @@ export const KIND_KEYS = ['sketch', 'bars', 'flow', 'compare', 'steps', 'number'
 export const MODE_KEYS = ['hand', 'motion', 'math', 'kinetic'] as const;
 /** Video formats (src/engine/looks.ts). */
 export const LOOK_KEYS = ['director', 'act', 'whiteboard', 'illustrated', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
-/** Kinds of video made in Zalo: the web page's engine, hand-drawn ('ink') or real footage ('cine'). */
-export const ZALO_WAYS = ['ink', 'cine'] as const;
+/** Kinds of video made in Zalo: the web page's engine, hand-drawn ('ink'), real footage ('cine') or the 'Đòn Bẩy Tư Duy' series ('money'). */
+export const ZALO_WAYS = ['ink', 'cine', 'money'] as const;
 export const GOOGLE_MODES = ['auto', 'popup', 'redirect'] as const;
 export const VISUAL_KEYS = ['doodle', 'sketch', 'diagram', 'mix', 'images'] as const;
 export const SOURCE_KEYS = ['topic', 'mine-ai', 'mine-free'] as const;
@@ -466,7 +466,8 @@ export function cleanConfig(input: any, base: Config): Config {
         formats: (() => {
           const f = z.formats || {}, d = b.formats, ok = (k: unknown) => typeof k === 'string' && ZALO_WAYS.includes(k as any);
           // a list saved before videos in Zalo came from the Ink engine (old format keys) means "all of them"
-          const legacy = Array.isArray(f.allowed) && f.allowed.some((k: unknown) => !ok(k));
+          // …and so does the full list from before 'Đòn Bẩy Tư Duy' existed (ink + cine): the new kind is offered too
+          const legacy = Array.isArray(f.allowed) && (f.allowed.some((k: unknown) => !ok(k)) || (f.allowed.length === 2 && f.allowed.includes('ink') && f.allowed.includes('cine')));
           return { default: ok(f.default) ? f.default : d.default, allowed: Array.isArray(f.allowed) && !legacy ? [...new Set(f.allowed.filter(ok))] as string[] : d.allowed };
         })(),
         assistant: (() => {

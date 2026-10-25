@@ -371,7 +371,10 @@ def plan(inp, log=print):
     seconds = max(20, min(S.MAX_SECONDS, int(inp.get('seconds') or 60))); pace = inp.get('pace', 'normal')
     clips = max(2, min(6, seconds // 20))
     fp = fingerprint(inp.get('seed') or random.SystemRandom().randrange(1 << 30))
-    if inp.get('mode') == 'script':
+    if inp.get('format') == 'money':  # 'Đòn Bẩy Tư Duy': researched on the web, essay voice (money.py)
+        from . import money
+        sc = money.script(inp, seconds, pace, log); topic = inp.get('topic') or sc.get('title') or ''
+    elif inp.get('mode') == 'script':
         sc = S.from_script(inp.get('script', ''), seconds, pace=pace, log=log); topic = sc.get('title') or ''
     else:
         topic = inp.get('topic', '')
@@ -382,10 +385,14 @@ def plan(inp, log=print):
     min_types = max(3, min(6, len(lines) // 5))
     sec_per_line = round(sum(S.words(l) for l in lines) / max(1, len(lines)) / wps, 1)
     best, feedback = None, ''
+    # the series' own way of filming (Đòn Bẩy Tư Duy): numbers and mechanisms in 3D graphics, everyday moments in real footage
+    series = ('SERIES "ĐÒN BẨY TƯ DUY": khoảng một nửa thời lượng là đồ hoạ 3D (g_blocks cho con số cộng dồn, g_flow cho cơ chế/dòng chảy, g_timeline cho mốc nghiên cứu, g_cards cho các bước làm), '
+              'nửa còn lại là cảnh quay thật cho ví dụ đời thường và cảm xúc (từ khoá cụ thể: chủ thể + hành động, bối cảnh Việt Nam/châu Á khi hợp). '
+              'Thẻ chữ song ngữ chỉ khi đặt tên khái niệm. Cảnh cuối là câu hỏi mời bình luận. Không hù doạ, không hình ảnh tiền bạc phô trương.\n') if inp.get('format') == 'money' else ''
     for round_ in range(3):
         log('Đạo diễn phân cảnh…' if not round_ else f'Đạo diễn làm lại theo góp ý (lần {round_})…')
         o = ai.ask(S.system(), S.prompt('cine_direct', topic=topic, genre=strategy.get('genre') or 'chưa rõ', core=sc.get('core_message') or strategy.get('core_message', ''),
-                                        lines='\n'.join(f'{i}. {l}' for i, l in enumerate(lines)), fingerprint=fp_text(fp), clips=clips, min_types=min_types, sec_per_line=sec_per_line, feedback=feedback),
+                                        lines='\n'.join(f'{i}. {l}' for i, l in enumerate(lines)), fingerprint=fp_text(fp), clips=clips, min_types=min_types, sec_per_line=sec_per_line, feedback=series + feedback),
                    0.85, check=lambda x: build(x, lines, fp, clips), log=log)
         scenes = ground(build(o, lines, fp, clips), fp); problems = variety(scenes, min_types) + rhythm(scenes, wps)
         try:
@@ -423,8 +430,12 @@ def plan(inp, log=print):
           **({'mood': o['mood']} if o.get('mood') in MOODS else {}), 'storyboard': sb}
     types = [s['type'] for s in scenes]
     log(f'Phân cảnh điện ảnh: {len(scenes)} cảnh, {len(set(types))} kiểu ({", ".join(sorted(set(types)))}), {say_words(scenes)} chữ')
-    return {'format': 'cine', 'title': hb['title'], 'caption': o.get('caption', ''), 'hashtags': o.get('hashtags') or [], 'scenes': scenes, 'plan': hb,
-            'fingerprint': fp['seed'], 'judge': scores, 'ai': [f'{p}/{m}' for p, m in ai.used]}
+    out = {'format': 'cine', 'title': hb['title'], 'caption': o.get('caption', ''), 'hashtags': o.get('hashtags') or [], 'scenes': scenes, 'plan': hb,
+           'fingerprint': fp['seed'], 'judge': scores, 'ai': [f'{p}/{m}' for p, m in ai.used]}
+    if inp.get('format') == 'money':
+        from . import money
+        out = money.finish(out, sc, inp)
+    return out
 
 
 def _plan_file(job_sb, work):

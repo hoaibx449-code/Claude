@@ -93,3 +93,13 @@ body[data-theme=cine] #sub[data-bg=light] span.k{color:color-mix(in srgb,var(--c
 body[data-theme=cine] #sub[data-bg=light] span.on{color:color-mix(in srgb,var(--c-acc) 60%,#000)!important}
 body[data-theme=cine] #sub[data-bg=mid]{left:0!important;right:0!important;margin:0 auto;width:fit-content;max-width:640px;padding:8px 18px!important;border-radius:14px;background:rgba(8,10,16,.42)!important;backdrop-filter:blur(6px)!important}
 body[data-theme=cine] #sub[data-bg=mid] span.on{color:color-mix(in srgb,var(--c-acc) 55%,#fff)!important}
+
+/* ===== PHỤ ĐỀ NÉT MẢNH (subStyle "fine"): 1 dòng in hoa giãn chữ, không viền đậm; chữ đã đọc chuyển sang --sub-color ===== */
+body[data-theme=cine][data-sub=fine] #sub{top:1010px;left:60px;right:60px;flex-wrap:nowrap;white-space:nowrap;justify-content:center;
+  font-weight:500;font-size:27px;line-height:1.2;letter-spacing:.15em;text-transform:uppercase;column-gap:.42em}
+body[data-theme=cine][data-sub=fine] #sub span,body[data-theme=cine][data-sub=fine] #sub span.k{color:rgba(255,255,255,.86);transform:none!important;
+  text-shadow:0 1px 2px rgba(0,0,0,.65),0 0 14px rgba(0,0,0,.35)}
+body[data-theme=cine][data-sub=fine] #sub span.done{color:var(--sub-color)!important}
+body[data-theme=cine][data-sub=fine] #sub span.on{color:transparent!important;background:linear-gradient(90deg,var(--sub-color) var(--q),rgba(255,255,255,.86) var(--q))!important;
+  -webkit-background-clip:text;background-clip:text;text-shadow:none}
+body[data-theme=cine][data-sub=fine] #sub[data-bg=light] span{color:rgba(18,18,18,.85);text-shadow:0 1px 2px rgba(255,255,255,.7)}

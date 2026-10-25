@@ -214,7 +214,13 @@ test('Zalo video kind: the admin default is used, and DINHDANG offers only the t
  assert.equal(JSON.parse((await f.env.DB.prepare('SELECT input FROM ink_jobs').first()).input).format,'ink');
  // settings saved before (old format keys) still give a working choice
  const { cleanConfig }=await import('../web/src/settings.ts');
- assert.deepEqual(cleanConfig({zalo:{formats:{default:'kinetic',allowed:['kinetic','classic-sketch']}}},defaultConfig(f.env)).zalo.formats,{default:'ink',allowed:['ink','cine']});
+ assert.deepEqual(cleanConfig({zalo:{formats:{default:'kinetic',allowed:['kinetic','classic-sketch']}}},defaultConfig(f.env)).zalo.formats,{default:'ink',allowed:['ink','cine','money']});
+ // the full list from before 'Đòn Bẩy Tư Duy' offers it too
+ assert.deepEqual(cleanConfig({zalo:{formats:{default:'cine',allowed:['ink','cine']}}},defaultConfig(f.env)).zalo.formats.allowed,['ink','cine','money']);
+ // 'Đòn Bẩy Tư Duy' from Zalo: the series' own kind, made on the render machines
+ c.zalo.formats={default:'money',allowed:['money']};await f.env.DB.prepare('DELETE FROM ink_jobs').run();await f.env.DB.prepare("DELETE FROM usage WHERE kind='render'").run();
+ await f.receive('TAO vì sao lương tăng mà vẫn hết tiền','v3');await f.drain();
+ const inp=JSON.parse((await f.env.DB.prepare('SELECT input FROM ink_jobs').first()).input);assert.equal(inp.format,'money');assert.equal(inp.browser,false);assert.match(f.sent.at(-1).body.text,/Đòn Bẩy Tư Duy/);
 }));
 test('the webhook is never dropped for being quiet, and is put back when something else moves or deletes it',async()=>fixture(async f=>{
  const { receiveMode, keepWebhook } = await import('../web/src/zalo.ts');

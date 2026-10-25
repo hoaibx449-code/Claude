@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
   push:
     branches: [claude/ai-hand-drawing-video-platform-9na7xi]
-    paths: ['ink/ink/**', 'ink/assets/**', 'ink/requirements.txt', 'ink/Dockerfile', '.github/workflows/deploy-ink-cloud.yml']
+    paths: ['ink/ink/**', 'ink/hbx/**', 'ink/assets/**', 'ink/requirements.txt', 'ink/Dockerfile', '.github/workflows/deploy-ink-cloud.yml']
 
 permissions:
   contents: read
