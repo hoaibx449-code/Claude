@@ -41,7 +41,8 @@ def resolve_images(sb, base):
 def open_page(pw, sb):
     # HBX_CHROMIUM: a Chromium already on the machine (otherwise Playwright's own download)
     exe = os.environ.get('HBX_CHROMIUM')
-    b = pw.chromium.launch(args=['--allow-file-access-from-files'], **({'executable_path': exe} if exe else {}))
+    # WebGL (3D metaphor scenes, meta3d.js) in a headless browser: software rendering, same picture on every machine
+    b = pw.chromium.launch(args=['--allow-file-access-from-files', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'], **({'executable_path': exe} if exe else {}))
     pg = b.new_page(viewport={'width': 720, 'height': 1280}, device_scale_factor=DSF)
     pg.goto(PLAYER)
     pg.evaluate('sb => HBX.build(sb)', sb)
