@@ -55,10 +55,13 @@ Icon (tên Lucide): sun, cloud, eye, zap, atom, droplet, flame, wind, brain, hea
 - `speed` (chỉ cảnh video thật): slow (slow motion cảm xúc) · ramp (speed ramp: nhanh rồi chậm lại ở khoảnh khắc) · freeze (dừng hình ở `cue` + tiếng nhấn) · fast (tua nhanh, time-lapse).
 - Không 2 cảnh liền cùng `camera` hay cùng `effect`; một kiểu `overlay` tối đa 2–3 lần cả video.
 
-## Nhịp & giữ chân
-- Cứ 15–20 giây có một "làm mới thị giác" (pattern interrupt): đổi hẳn kiểu cảnh + crashZoom/smash/impact/stamp/flash.
-- Setup → pause → payoff: câu chuẩn bị dùng cảnh lặng (breathe/kenBurns), câu "à ra thế" dùng cú mạnh (snapZoom/impact/dipwhite).
-- Nhịp biến thiên: đoạn dồn dập (cắt nhanh, đồ hoạ liên tiếp) xen đoạn thở (cảnh rộng, dissolve).
+## Nhịp giữ chân 3 tầng (theo tâm lý chú ý: cái mới kéo mắt nhưng lặp lại thì nhờn rất nhanh)
+Mỗi câu dài khoảng {sec_per_line} giây. Đánh dấu `beat` cho cảnh:
+- Tầng 1 — mỗi 2–4 giây hình đổi nhẹ: đã có vì mỗi câu một cảnh; thêm 1 chi tiết bật theo `cue` khi hợp.
+- Tầng 2 — `"beat": "reward"`: cứ 3–4 câu (8–12 giây) phải có MỘT phần thưởng nhỏ: con số bất ngờ, ví dụ đời thường, khoảnh khắc "à ra thế" — kèm cú mạnh ĐÚNG vào chữ đắt (snapZoom/crashZoom/punchIn, impact/keyword/stamp/flash, hoặc trans smash/dipwhite).
+- Tầng 3 — `"beat": "turn"`: ở khoảng 1/3 và 2/3 video có một cú bẻ hướng lớn ("nhưng khoan…", lật ngộ nhận, câu hỏi mới) + hứa trước điều ở cuối; đổi hẳn kiểu cảnh, smash/dipblack/iris.
+- `"beat": "breath"`: ngay sau mỗi cú mạnh là 1 cảnh thở (cảnh rộng, breathe/kenBurns, dissolve, không đồ hoạ phủ) để cú mạnh tiếp theo vẫn còn tác dụng. Không 2 cú mạnh liền nhau.
+- Hiệu ứng phải CHỈ VÀO NỘI DUNG (khoanh đúng vật đang nói, chữ nổ/từ khoá là chữ có trong câu) — không gắn hiệu ứng chỉ để cho có.
 - Cấu trúc theo nội dung: ngộ nhận → sự thật, vấn đề → giải pháp, câu hỏi → điều tra → câu trả lời, sai → đúng, trước → sau, đếm ngược… — để hình kể theo đúng cấu trúc đó.
 9. `sub`: phụ đề cùng nội dung với lời đọc nhưng số viết bằng số ("26,4%"), chữ thường như câu bình thường (KHÔNG in hoa cả câu), chia cụm nghĩa bằng `|` (≤ 38 ký tự/cụm, không kết thúc bằng hư từ), KHÔNG dấu chấm cuối, đánh dấu 1 cụm đắt nhất bằng `*…*`.
 
@@ -70,4 +73,4 @@ Icon (tên Lucide): sun, cloud, eye, zap, atom, droplet, flame, wind, brain, hea
 - `sticker` (tuỳ chọn) hứa trước cú bẻ hướng: {{"text": "…", "line": số thứ tự câu}}.
 
 Chỉ trả JSON:
-{{"title": "...", "theme": "...", "mood": "...", "style": {{...}}, "cover": {{...}}, "sticker": {{...}}, "caption": "...", "hashtags": ["#..."], "scenes": [{{"line": 0, "type": "shot", "sub": "...", "bg": {{"q": "...", "video": true}}, "cam": "push", "title": ["...", "..."], "fx": {{"camera": "snapZoom", "cue": "...", "overlay": [{{"kind": "impact", "text": "...", "cue": "..."}}], "effect": "vignette", "speed": "ramp"}}}}, {{"line": 1, "type": "big_number", "sub": "...", "kicker": "...", "value": 750, "suffix": " nm", "caption": "...", "trans": "smash", "cut": "J", "fx": {{"camera": "crashZoom", "overlay": [{{"kind": "stamp", "text": "SỰ THẬT", "x": 0.5, "y": 0.2}}]}}}}]}}
+{{"title": "...", "theme": "...", "mood": "...", "style": {{...}}, "cover": {{...}}, "sticker": {{...}}, "caption": "...", "hashtags": ["#..."], "scenes": [{{"line": 0, "type": "shot", "sub": "...", "bg": {{"q": "...", "video": true}}, "cam": "push", "title": ["...", "..."], "fx": {{"camera": "snapZoom", "cue": "...", "overlay": [{{"kind": "impact", "text": "...", "cue": "..."}}], "effect": "vignette", "speed": "ramp"}}}}, {{"line": 1, "type": "big_number", "sub": "...", "kicker": "...", "value": 750, "suffix": " nm", "caption": "...", "trans": "smash", "cut": "J", "beat": "reward", "fx": {{"camera": "crashZoom", "overlay": [{{"kind": "stamp", "text": "SỰ THẬT", "x": 0.5, "y": 0.2}}]}}}}]}}

@@ -7,7 +7,7 @@ eye, words anchored in the space, CapCut-style captions. Made by the HBX engine 
 
 The job keeps {format:'cine', title, caption, hashtags, scenes, plan} where `plan` is the HBX plan without its
 scenes (scenes sit at the top so the storyboard review page lists them like a hand-drawn one)."""
-import json, os, random, shutil, subprocess, sys
+import json, os, random, re, shutil, subprocess, sys
 from . import ai, script as S
 from .render import pace_rate
 
@@ -55,6 +55,37 @@ def fp_text(fp):
     st = fp['style']
     return (f"- Bảng màu: nhấn {st['accent']}, nhấn phụ {st['accent2']}, chữ trên màu nhấn {st['accentInk']}; nền {'tối' if st['scheme'] == 'dark' else 'sáng'}; font tiêu đề {st['font']}; chỉnh màu {st['grade']}.\n"
             f"- Chất dựng chủ đạo: {fp['voice']}.\n- Ưu tiên dùng (khi hợp ý câu): {', '.join(fp['favour'])}.\n- Chuyển cảnh hay dùng: {', '.join(fp['trans'])}.")
+
+
+def norm_words(text): return [w for w in re.findall(r'\w+', str(text).lower()) if len(w) > 1 and not w.isdigit()] + re.findall(r'\d+', str(text))
+
+
+STRONG_CAM = {'snapZoom', 'crashZoom', 'punchIn', 'shake'}
+STRONG_OVER = {'impact', 'keyword', 'stamp', 'flash'}
+STRONG_TRANS = {'smash', 'dipwhite', 'flash', 'glitch', 'rgb'}
+
+
+def strong(s):
+    f = s.get('fx') or {}
+    return f.get('camera') in STRONG_CAM or any(o.get('kind') in STRONG_OVER for o in f.get('overlay', [])) or s.get('trans') in STRONG_TRANS
+
+
+def rhythm(scenes, wps):
+    """the 3-tier retention rhythm, checked on the estimated timeline: a reward every 8–12 s, turns near 1/3 and 2/3,
+    a breath after every strong beat. Returns problems in plain words."""
+    out, t, times = [], 0.0, []
+    for s in scenes: times.append(t); t += max(1.2, S.words(s['say']) / wps)
+    total = t or 1
+    hits = [times[i] for i, s in enumerate(scenes) if s.get('beat') in ('reward', 'turn') and strong(s)]
+    edges = [0.0] + hits + [total]
+    for a, b in zip(edges, edges[1:]):
+        if b - a > 13: out.append(f'khoảng {a:.0f}–{b:.0f} giây không có phần thưởng nhỏ nào (beat "reward" + cú mạnh đúng chữ đắt): cần mỗi 8–12 giây')
+    turns = [times[i] / total for i, s in enumerate(scenes) if s.get('beat') == 'turn']
+    for mark in (1 / 3, 2 / 3):
+        if total > 25 and not any(abs(x - mark) < .15 for x in turns): out.append(f'thiếu cú bẻ hướng lớn (beat "turn") quanh {mark * total:.0f} giây')
+    for i in range(1, len(scenes)):
+        if strong(scenes[i]) and strong(scenes[i - 1]): out.append(f'cảnh {i} và {i + 1} đều là cú mạnh liền nhau: cảnh sau phải là cảnh thở (breath)')
+    return out
 
 
 def say_words(scenes): return sum(S.words(s.get('say', '')) for s in scenes)
@@ -119,6 +150,7 @@ def build(o, lines, fp, clips):
         elif t != 'shot':
             s['tone'] = fp['tones'][tone_i % 3]; tone_i += 1
         if s.get('trans') not in TRANS: s.pop('trans', None)
+        if s.get('beat') not in ('reward', 'turn', 'breath'): s.pop('beat', None)
         # J-cut: the next picture arrives before its words; L-cut: the picture stays a little after the words moved on
         s['lead'] = {'J': .55, 'L': .02}.get(str(s.pop('cut', '')).upper()[:1], .18)
         fx = s.get('fx') if isinstance(s.get('fx'), dict) else {}
@@ -127,6 +159,12 @@ def build(o, lines, fp, clips):
               'cue': fx.get('cue') if isinstance(fx.get('cue'), str) and fx['cue'].lower() in say.lower() else None,
               'overlay': [o for o in (fx.get('overlay') if isinstance(fx.get('overlay'), list) else [fx.get('overlay')] if isinstance(fx.get('overlay'), dict) else [])
                           if isinstance(o, dict) and o.get('kind') in FX_OVER][:2]}
+        # an overlay's words must come from the line itself (effects point at the content, not decoration)
+        def _fits(o):
+            if o.get('kind') not in ('impact', 'keyword', 'stamp') or not o.get('text'): return True
+            said = set(norm_words(say + ' ' + s['sub']))
+            return bool(set(norm_words(str(o['text']))) & said) or o['kind'] == 'stamp'
+        fx['overlay'] = [o for o in fx['overlay'] if _fits(o)]
         for o in fx['overlay']:
             if o.get('cue') and str(o['cue']).lower() not in say.lower(): o.pop('cue')
             for c in ('x', 'y'):
@@ -185,7 +223,10 @@ def _brief(scenes):
         f = s.get('fx') or {}
         bits += [f'[dựng: {f.get("camera") or "-"}/{",".join(o["kind"] for o in f.get("overlay", [])) or "-"}/{f.get("effect") or "-"}/{s.get("trans") or "-"}]']
         return '; '.join(b for b in bits if b and b != 'None')[:200]
-    return '\n'.join(f'{i + 1} · {s["type"]} · "{s["say"]}" · {what(s)}' for i, s in enumerate(scenes))
+    out, t = [], 0.0
+    for i, s in enumerate(scenes):
+        out.append(f'{i + 1} · {t:.0f}s · {s["type"]}{" · " + s["beat"] if s.get("beat") else ""} · "{s["say"]}" · {what(s)}'); t += max(1.2, S.words(s['say']) / 3.3)
+    return '\n'.join(out)
 
 
 def plan(inp, log=print):
@@ -203,13 +244,14 @@ def plan(inp, log=print):
     lines = [' '.join(str(l['say']).split()) for l in sc['lines'] if str(l.get('say', '')).strip()]
     strategy = sc.get('strategy') or {}
     min_types = max(4, min(9, len(lines) // 3))
+    wps = S.wps() * S.speed(pace); sec_per_line = round(sum(S.words(l) for l in lines) / max(1, len(lines)) / wps, 1)
     best, feedback = None, ''
     for round_ in range(3):
         log('Đạo diễn phân cảnh…' if not round_ else f'Đạo diễn làm lại theo góp ý (lần {round_})…')
         o = ai.ask(S.system(), S.prompt('cine_direct', topic=topic, genre=strategy.get('genre') or 'chưa rõ', core=sc.get('core_message') or strategy.get('core_message', ''),
-                                        lines='\n'.join(f'{i}. {l}' for i, l in enumerate(lines)), fingerprint=fp_text(fp), clips=clips, min_types=min_types, feedback=feedback),
+                                        lines='\n'.join(f'{i}. {l}' for i, l in enumerate(lines)), fingerprint=fp_text(fp), clips=clips, min_types=min_types, sec_per_line=sec_per_line, feedback=feedback),
                    0.85, check=lambda x: build(x, lines, fp, clips), log=log)
-        scenes = build(o, lines, fp, clips); problems = variety(scenes, min_types)
+        scenes = build(o, lines, fp, clips); problems = variety(scenes, min_types) + rhythm(scenes, wps)
         try:
             j = ai.ask(S.system(), S.prompt('cine_judge', topic=topic, scenes=_brief(scenes)), 0.2,
                        check=lambda x: isinstance(x.get('scores'), dict) or (_ for _ in ()).throw(ValueError('thiếu scores')), log=log)
