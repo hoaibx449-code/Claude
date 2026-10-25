@@ -38,7 +38,8 @@ export async function initialPageContent(path:string,config:Config,env:Env) {
  const legalKey=({'/dieu-khoan':'terms','/bao-mat':'privacy','/hoan-tien':'refund'} as const)[path as '/dieu-khoan'];
  if(legalKey){
   const brand=[config.brand.name,config.brand.accent].filter(Boolean).join(' ');
-  body='<h1>'+escape(page[0])+'</h1>'+fillLegal(config.legal[legalKey],config.legal,brand).split('\n').filter(Boolean).map(line=>line.startsWith('## ')?'<h2>'+escape(line.slice(3))+'</h2>':'<p>'+escape(line)+'</p>').join('');
+  body=config.beta.enabled?'<h1>'+escape(page[0])+'</h1><p>Đây là phiên bản đang thử nghiệm. Điều khoản sử dụng và chính sách bảo mật đầy đủ sẽ được công bố khi trang web chính thức ra mắt.</p>'
+   :'<h1>'+escape(page[0])+'</h1>'+fillLegal(config.legal[legalKey],config.legal,brand).split('\n').filter(Boolean).map(line=>line.startsWith('## ')?'<h2>'+escape(line.slice(3))+'</h2>':'<p>'+escape(line)+'</p>').join('');
  }else if(path==='/prompt-hunter'){
   const {results}=await env.DB.prepare("SELECT title,description FROM hunter_prompts WHERE status='published' ORDER BY updated_at DESC LIMIT 24").all<{title:string;description:string}>();
   body+=results.map(p=>'<article><h2>'+escape(p.title)+'</h2><p>'+escape(p.description||'')+'</p></article>').join('');

@@ -924,7 +924,8 @@ function consentAgain() {
   document.body.append(bg);
 }
 function cookieNotice() {
-  if (store.get('nv_cookie')) return;
+  // the trial version shows no cookie banner
+  if (ui.beta || store.get('nv_cookie')) return;
   const box = h('div', { class: 'cookie' }, h('span', {}, 'Chúng tôi chỉ dùng cookie cần thiết cho đăng nhập và thống kê ẩn danh. ', h('a', { href: '#/bao-mat' }, 'Tìm hiểu')),
     h('button', { type: 'button', class: 'small', onclick: () => { store.set('nv_cookie', '1'); box.remove(); } }, 'Đồng ý'));
   document.body.append(box);
@@ -932,24 +933,27 @@ function cookieNotice() {
 
 // ---------- legal
 let legalCache = null;
+const LEGAL_TITLES = { terms: 'Điều khoản sử dụng', privacy: 'Chính sách bảo mật', refund: 'Chính sách hoàn tiền' };
+/** During Beta the legal pages only say the site is a trial version (no full legal text until the official launch). */
+const BETA_LEGAL = 'Đây là phiên bản đang thử nghiệm. Điều khoản sử dụng và chính sách bảo mật đầy đủ sẽ được công bố khi trang web chính thức ra mắt.';
 async function showLegal(which) {
   viewed('legal', { which });
+  if (ui.beta) {
+    show(h('div', { class: 'doc' }, h('div', { class: 'card' }, h('h1', {}, LEGAL_TITLES[which]),
+      h('div', { class: 'legal-beta' }, h('b', {}, (ui.beta.label || 'Beta') + ' · phiên bản thử nghiệm'), h('p', {}, BETA_LEGAL)))), footer());
+    return;
+  }
   const l = (legalCache ||= await api('/api/legal'));
-  const beta = !!ui.beta, titles = { terms: 'Điều khoản sử dụng', privacy: 'Chính sách bảo mật', refund: 'Chính sách hoàn tiền' };
-  // during Beta everything is free: the sections and lines about prices, payment and refunds do not apply
-  const money = /thanh toán|hoàn tiền|hoàn lại tiền|gói cước|gói trả phí|bảng giá|chuyển khoản|sepay|vietqr|hoá đơn|hóa đơn|credit/i;
   const blocks = [];
-  let list = null, skip = false;
-  for (const raw of (beta && which === 'refund' ? '' : l[which]).split('\n')) {
+  let list = null;
+  for (const raw of l[which].split('\n')) {
     const line = raw.trim();
     if (!line) { list = null; continue; }
-    if (line.startsWith('## ')) { list = null; skip = beta && money.test(line); if (!skip) blocks.push(h('h2', {}, line.slice(3))); continue; }
-    if (skip || (beta && money.test(line))) continue;
+    if (line.startsWith('## ')) { list = null; blocks.push(h('h2', {}, line.slice(3))); continue; }
     if (line.startsWith('- ')) { if (!list) { list = h('ul'); blocks.push(list); } list.append(h('li', {}, line.slice(2))); }
     else { list = null; blocks.push(h('p', {}, line)); }
   }
-  const note = beta ? h('div', { class: 'legal-beta' }, h('b', {}, (ui.beta.label || 'Beta') + ' · phiên bản thử nghiệm'), h('p', {}, which === 'refund' ? 'Trong giai đoạn thử nghiệm, mọi tính năng đều miễn phí và không có giao dịch thanh toán nào, nên chưa áp dụng chính sách hoàn tiền.' : 'Trang web đang chạy thử nghiệm và miễn phí. Nội dung dưới đây áp dụng cho giai đoạn này và có thể được cập nhật khi chính thức ra mắt.')) : null;
-  show(h('div', { class: 'doc' }, h('div', { class: 'card' }, h('h1', {}, titles[which] + (beta ? ' (bản Beta)' : '')), h('p', { class: 'muted' }, `Phiên bản ${l.version} · ${l.company}${l.taxId ? ' · MST ' + l.taxId : ''}`), note, ...blocks)), footer());
+  show(h('div', { class: 'doc' }, h('div', { class: 'card' }, h('h1', {}, LEGAL_TITLES[which]), h('p', { class: 'muted' }, `Phiên bản ${l.version} · ${l.company}${l.taxId ? ' · MST ' + l.taxId : ''}`), ...blocks)), footer());
 }
 
 // ---------- create (guests may fill everything; sign-in is asked only when the video is made)
