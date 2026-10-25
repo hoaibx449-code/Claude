@@ -88,6 +88,43 @@ def rhythm(scenes, wps):
     return out
 
 
+def polish(scenes, fp, wps):
+    """the mechanical rules the AI still broke, fixed in code (deterministic per video): repeated transitions, camera
+    tricks or effects in a row, two strong beats back to back, and gaps of more than 12 s without a reward"""
+    r = random.Random(fp['seed'])
+    calm_tr = ['cut', 'dissolve', 'slide', 'wipe', 'iris', 'through', 'whip', 'pushup', 'blur']
+    for i in range(1, len(scenes)):
+        a, b = scenes[i - 1], scenes[i]
+        if b.get('trans') and b.get('trans') == a.get('trans'):
+            b['trans'] = r.choice([t for t in calm_tr if t != a.get('trans')])
+        fa, fb = a.get('fx') or {}, b.get('fx') or {}
+        if fb.get('camera') and fb.get('camera') == fa.get('camera'): fb.pop('camera')
+        if fb.get('effect') and fb.get('effect') == fa.get('effect'): fb.pop('effect')
+        if strong(a) and strong(b):   # the second one becomes the breath
+            fb.pop('camera', None) if fb.get('camera') in STRONG_CAM else None
+            fb['overlay'] = [o for o in fb.get('overlay', []) if o.get('kind') not in STRONG_OVER]
+            if b.get('trans') in STRONG_TRANS: b['trans'] = r.choice(['dissolve', 'cut', 'slide'])
+            fb.setdefault('camera', 'breathe' if b['type'] != 'shot' else 'kenBurns'); b['beat'] = 'breath'
+        if fb: b['fx'] = {k: v for k, v in fb.items() if v}
+        else: b.pop('fx', None)
+    for i in range(2, len(scenes)):
+        if scenes[i]['type'] == scenes[i - 1]['type'] == scenes[i - 2]['type'] == 'shot' and scenes[i].get('cam') == scenes[i - 1].get('cam') == scenes[i - 2].get('cam'):
+            scenes[i]['cam'] = r.choice([c for c in CAMS if c != scenes[i]['cam']])
+    # rewards: no stretch longer than 12 s without one — the line's own key words pop on a snap zoom
+    t, times = 0.0, []
+    for s in scenes: times.append(t); t += max(1.2, S.words(s['say']) / wps)
+    last = 0.0
+    for i, s in enumerate(scenes):
+        if s.get('beat') in ('reward', 'turn') and strong(s): last = times[i]; continue
+        if times[i] - last >= 9 and not strong(scenes[i - 1] if i else {}) and not (i + 1 < len(scenes) and strong(scenes[i + 1])):
+            key = re.findall(r'\*([^*]+)\*', s['sub'])
+            if key:
+                f = s.setdefault('fx', {}); f['camera'] = 'snapZoom'; f['cue'] = None
+                f['overlay'] = [o for o in f.get('overlay', []) if o.get('kind') not in STRONG_OVER][:1] + [{'kind': 'keyword', 'text': key[0][:24], 'y': .2}]
+                f.pop('cue'); s['beat'] = 'reward'; last = times[i]
+    return scenes
+
+
 def say_words(scenes): return sum(S.words(s.get('say', '')) for s in scenes)
 
 
@@ -264,6 +301,10 @@ def plan(inp, log=print):
         if avg >= 8 and not problems: break
         feedback = 'GÓP Ý BẮT BUỘC SỬA từ lần trước:\n- ' + '\n- '.join(problems + issues)
     _, o, scenes, scores = best
+    before = len(variety(scenes, min_types) + rhythm(scenes, wps))
+    scenes = polish(scenes, fp, wps)
+    left = variety(scenes, min_types) + rhythm(scenes, wps)
+    log(f'   tự sửa luật dựng: còn {len(left)}/{before} lỗi' + (f' ({"; ".join(left[:3])})' if left else ''))
     style = {**fp['style'], **{k: v for k, v in (o.get('style') or {}).items() if k in ('scheme', 'grade') and isinstance(v, str)}}
     if not fp['caps']: style['titleCase'] = 'none'
     shots = [i + 1 for i, s in enumerate(scenes) if s['type'] == 'shot'] or [1]
