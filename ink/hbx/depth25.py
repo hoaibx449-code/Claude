@@ -218,9 +218,23 @@ def bake_sb(sbp, fps=30):
     if tasks:
         import multiprocessing as mp
         from concurrent.futures import ProcessPoolExecutor, as_completed
-        with ProcessPoolExecutor(max(1, min(len(tasks), os.cpu_count() or 2)), mp_context=mp.get_context('fork')) as ex:
-            for i, f in enumerate(as_completed([ex.submit(_bake_task, t) for t in tasks])):
-                k, kind, n = f.result(); print(f'  nướng cảnh {i + 1}/{len(tasks)} (cảnh {k + 1}: {kind} {n} khung)', flush=True)
+        # 'spawn', not 'fork': the depth model (onnxruntime) and OpenCV keep threads in this process, and a forked
+        # copy of a threaded process can hang forever on a lock. A shot that fails or stalls is baked here instead.
+        done, left = 0, list(tasks)
+        ex = ProcessPoolExecutor(max(1, min(len(tasks), os.cpu_count() or 2)), mp_context=mp.get_context('spawn'))
+        try:
+            futs = {ex.submit(_bake_task, t): t for t in tasks}
+            for f in as_completed(futs, timeout=120 + 20 * len(tasks)):
+                k, kind, n = f.result(); left.remove(futs[f]); done += 1
+                print(f'  nướng cảnh {done}/{len(tasks)} (cảnh {k + 1}: {kind} {n} khung)', flush=True)
+            ex.shutdown()
+        except Exception as e:  # noqa: BLE001
+            print(f'  nướng song song lỗi ({type(e).__name__}), nướng tuần tự {len(left)} cảnh còn lại', flush=True)
+            for p in list(getattr(ex, '_processes', {}).values()): p.kill()
+            ex.shutdown(wait=False, cancel_futures=True)
+        for t in left:
+            k, kind, n = _bake_task(t); done += 1
+            print(f'  nướng cảnh {done}/{len(tasks)} (cảnh {k + 1}: {kind} {n} khung)', flush=True)
     sbp.write_text(json.dumps(sb, ensure_ascii=False, indent=1))
 
 
