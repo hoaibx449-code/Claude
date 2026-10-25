@@ -81,8 +81,16 @@ def run(job):
             music = os.path.join(out, 'music.' + (inp.get('musicExt') or 'mp3'))
             try: open(music, 'wb').write(call(f'jobs/{jid}/music', lease=lease, raw=True, timeout=120))
             except Exception as e: log(f'  bỏ nhạc riêng ({e}), dùng nhạc tự tạo'); music = None  # noqa: BLE001
+        browser = bool(inp.get('browser'))
         total, provider = make_video(sb, out, inp.get('pace', 'normal'), music, inp.get('mood') or 'auto', float(inp.get('musicVolume') or 0.2),
-                                     inp.get('captions', True) is not False, log)
+                                     inp.get('captions', True) is not False, log, browser=browser)
+        if browser:
+            # the user's own device draws the frames: hand over the drawing plan and the sound
+            state.update(progress=60, message='Gửi bản vẽ cho trình duyệt'); report()
+            put(jid, lease, out, 'draw.json', timeout=300); put(jid, lease, out, 'audio.aac', timeout=300)
+            call(f'jobs/{jid}/exported', {'duration': round(total, 1), 'voice': provider, 'ai': [f'{p}/{m}' for p, m in ai.used]}, lease=lease)
+            print(f'Xong phần máy dựng của {jid}: chờ trình duyệt vẽ ({total:.1f} giây video)', flush=True)
+            return True
         state.update(progress=96, message='Lưu video'); report()
         video = os.path.join(out, 'video.mp4'); thumb = os.path.join(out, 'thumb.jpg')
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', os.path.join(out, 'cover.jpg'), '-vf', 'scale=360:-2', thumb], check=False)
@@ -104,7 +112,7 @@ def run(job):
 
 
 def put(jid, lease, out, name, timeout=120):
-    types = {'mp4': 'video/mp4', 'jpg': 'image/jpeg', 'png': 'image/png'}
+    types = {'mp4': 'video/mp4', 'jpg': 'image/jpeg', 'png': 'image/png', 'json': 'application/json', 'aac': 'audio/aac'}
     with open(os.path.join(out, name), 'rb') as f:
         call(f'jobs/{jid}/file/{name}', method='PUT', body=f.read(), ctype=types[name.rsplit('.', 1)[1]], lease=lease, timeout=timeout)
 

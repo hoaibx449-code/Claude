@@ -2,8 +2,9 @@
 const PACES = [['slow', 'Chậm'], ['normal', 'Vừa'], ['fast', 'Nhanh'], ['faster', 'Rất nhanh']];
 const PACE_NOTE = { slow: 'Đọc thong thả, vẽ chậm rãi', normal: 'Nhịp video ngắn tiêu chuẩn', fast: 'Dồn dập, đổi cảnh nhanh', faster: 'Rất dồn dập, hợp video dưới 1 phút' };
 const MOODS = [['auto', 'Tự chọn theo nội dung'], ['motivating', 'Truyền động lực'], ['calm', 'Nhẹ nhàng'], ['upbeat', 'Sôi động'], ['emotional', 'Cảm xúc'], ['none', 'Không nhạc'], ['mine', 'Nhạc của tôi…']];
+const WHERE_NOTE = { server: 'Bạn có thể rời trang, video tự dựng xong và báo cho bạn.', browser: 'AI viết kịch bản và đọc giọng trên máy chủ, còn phần vẽ và xuất video chạy ngay trên máy tính/điện thoại của bạn. Cần mở trang trong lúc dựng.' };
 const LENGTHS = [[30, '30 giây'], [60, '1 phút'], [90, '1,5 phút'], [120, '2 phút'], [180, '3 phút'], [300, '5 phút']];
-const STATUS = { queued: 'Đang chờ máy dựng', running: 'Đang dựng', review: 'Chờ bạn duyệt phân cảnh', done: 'Đã xong', failed: 'Chưa dựng được' };
+const STATUS = { queued: 'Đang chờ máy dựng', running: 'Đang dựng', review: 'Chờ bạn duyệt phân cảnh', browser: 'Sẵn sàng dựng trên máy của bạn', done: 'Đã xong', failed: 'Chưa dựng được' };
 const DEFAULTS = { voices: [{ id: 'hoaimy', label: 'Hoài My (nữ)' }, { id: 'namminh', label: 'Nam Minh (nam)' }], defaults: { pace: 'normal', seconds: 60, mood: 'auto', captions: true, review: false, voice: 'hoaimy' }, maxSeconds: 300 };
 const file = (id, name) => `/api/ink/jobs/${id}/${'file/' + name}`;
 
@@ -18,7 +19,7 @@ export async function showInkCreate(ctx) {
   const { h, api, show, me, openLogin, toast, fail, navigate, busy, footer } = ctx;
   const cfg = me ? await api('/api/ink/config').catch(() => DEFAULTS) : DEFAULTS;
   const d = cfg.defaults;
-  const st = { mode: 'topic', topic: '', script: '', seconds: Math.min(d.seconds, cfg.maxSeconds), pace: d.pace, voice: d.voice, mood: d.mood, music: '', captions: d.captions, review: d.review, audience: '', tone: '', notes: '' };
+  const st = { mode: 'topic', topic: '', script: '', seconds: Math.min(d.seconds, cfg.maxSeconds), pace: d.pace, voice: d.voice, mood: d.mood, music: '', captions: d.captions, review: d.review, audience: '', tone: '', notes: '', browser: false };
   try { Object.assign(st, JSON.parse(sessionStorage.getItem('ink-draft') || '{}'), { music: '' }); } catch { /* fresh form */ }
   const keep = () => { try { sessionStorage.setItem('ink-draft', JSON.stringify({ ...st, music: '' })); } catch { /* private mode */ } };
   const text = h('textarea', { rows: 3, class: 'ink-topic', maxlength: 500 });
@@ -32,6 +33,7 @@ export async function showInkCreate(ctx) {
   const lenRow = h('div', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Độ dài'),
     chips(h, LENGTHS.map(([s, l]) => [s, l, s > cfg.maxSeconds]), st.seconds, (v) => { st.seconds = v; keep(); }));
   const paceNote = h('small', { class: 'muted' }, PACE_NOTE[st.pace]);
+  const whereNote = h('small', { class: 'muted' }, WHERE_NOTE[st.browser ? 'browser' : 'server']);
   const musicFile = h('input', { type: 'file', accept: 'audio/mpeg,audio/mp4,audio/x-m4a,audio/wav', hidden: true });
   const musicNote = h('small', { class: 'muted' });
   const mood = h('select', { 'aria-label': 'Nhạc nền', onchange: () => { if (mood.value === 'mine') musicFile.click(); else { st.mood = mood.value; st.music = ''; musicNote.textContent = ''; keep(); } } },
@@ -60,6 +62,8 @@ export async function showInkCreate(ctx) {
     chips(h, [['topic', 'Từ chủ đề'], ['script', 'Từ kịch bản có sẵn']], st.mode, (v) => { st.mode = v; paintText(); keep(); }, 'ink-mode'),
     h('label', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Nội dung'), text),
     lenRow,
+    cfg.browser ? h('div', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Nơi dựng video'),
+      chips(h, [['server', 'Máy chủ dựng'], ['browser', 'Dựng trên máy này']], st.browser ? 'browser' : 'server', (v) => { st.browser = v === 'browser'; whereNote.textContent = WHERE_NOTE[v]; keep(); }), whereNote) : null,
     h('div', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Nhịp video'), chips(h, PACES, st.pace, (v) => { st.pace = v; paceNote.textContent = PACE_NOTE[v]; keep(); }), paceNote),
     h('div', { class: 'ink-grid' },
       h('label', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Giọng đọc'), voice),
@@ -129,6 +133,7 @@ export async function showInkWatch(ctx, id) {
           h('img', { class: 'ink-overview', src: file(id, 'overview.png'), alt: 'Bảng phân cảnh' }),
           h('ol', { class: 'ink-lines' }, (sb?.scenes || []).map((s) => h('li', {}, s.say))), h('div', { class: 'row' }, goBtn)));
       }
+      if (j.status === 'browser') parts.push(await browserPanel(ctx, j, () => { last = ''; paint(); }));
       if (j.status === 'failed') {
         const retry = h('button', { type: 'button', class: 'btn' }, 'Thử lại');
         retry.onclick = () => busy(retry, 'Đang gửi…', async () => { try { await api(`/api/ink/jobs/${id}/retry`, { method: 'POST' }); last = ''; paint(); } catch (e) { fail(e); } });
@@ -164,4 +169,41 @@ export async function showInkWatch(ctx, id) {
   };
   await paint();
   return () => { alive = false; clearTimeout(timer); };
+}
+
+/** status 'browser': the drawing plan is ready; this device draws the frames and uploads the MP4 */
+async function browserPanel(ctx, j, refresh) {
+  const { h, api, fail, busy } = ctx;
+  const mod = await import('/ink-render.js?v=1'), sup = await mod.browserSupport();
+  const bar = h('div', { class: 'ink-bar' }, h('i', { style: 'width:0%' })), note = h('p', { class: 'muted' }, sup.ok ? `Máy này sẽ dựng ở ${sup.width}×${sup.height}.` : sup.why);
+  const done = sup.ok ? await mod.savedScenes(j.id, sup.width) : 0;
+  const go = h('button', { type: 'button', class: 'btn', disabled: !sup.ok }, done ? `Dựng tiếp (đã xong ${done} cảnh)` : 'Bắt đầu dựng trên máy này');
+  const other = h('button', { type: 'button', class: 'ghost' }, 'Để máy chủ dựng giúp');
+  other.onclick = () => busy(other, 'Đang chuyển…', async () => { try { await api(`/api/ink/jobs/${j.id}/handoff`, { method: 'POST' }); refresh(); } catch (e) { fail(e); } });
+  let running = false, sent = 0;
+  const setBar = (p, m) => {
+    bar.firstChild.style.width = Math.round(p * 100) + '%'; note.textContent = `${m} · ${Math.round(p * 100)}%`;
+    if (Date.now() - sent > 8000) { sent = Date.now(); api(`/api/ink/jobs/${j.id}/browser/progress`, { method: 'POST', body: { progress: 60 + p * 38, message: 'Đang dựng trên máy người dùng: ' + m } }).catch(() => {}); }
+  };
+  const leave = (e) => { if (running) { e.preventDefault(); e.returnValue = ''; } };
+  go.onclick = async () => {
+    running = true; go.disabled = true; other.disabled = true; addEventListener('beforeunload', leave);
+    try {
+      const r = await mod.renderInBrowser({ job: j.id, sup, onProgress: setBar, isCancelled: () => !bar.isConnected });
+      note.textContent = 'Đang tải video lên…';
+      await new Promise((ok, no) => {
+        const x = new XMLHttpRequest(); x.open('PUT', `/api/ink/jobs/${j.id}/browser/video`); x.setRequestHeader('x-nv', '1'); x.setRequestHeader('content-type', 'video/mp4');
+        x.upload.onprogress = (e) => { if (e.lengthComputable) { bar.firstChild.style.width = Math.round(100 * e.loaded / e.total) + '%'; note.textContent = `Đang tải video lên · ${Math.round(100 * e.loaded / e.total)}%`; } };
+        x.onload = () => (x.status < 300 ? ok() : no(new Error(JSON.parse(x.responseText || '{}').error || 'Tải video lên lỗi ' + x.status))); x.onerror = () => no(new Error('Mất kết nối khi tải video lên. Bấm lại để thử tiếp (phần đã vẽ được giữ).'));
+        x.send(r.mp4);
+      });
+      await api(`/api/ink/jobs/${j.id}/browser/done`, { method: 'POST', body: { seconds: r.seconds, device: navigator.userAgent.slice(0, 80) } });
+      await r.clear(); running = false; refresh();
+    } catch (e) { running = false; go.disabled = false; other.disabled = false; go.textContent = 'Dựng tiếp'; fail(e); note.textContent = 'Đã dừng: ' + e.message + ' Phần đã vẽ được giữ trên máy này.'; }
+    finally { removeEventListener('beforeunload', leave); }
+  };
+  return h('section', { class: 'card ink-progress' }, h('h2', {}, 'Sẵn sàng dựng trên máy của bạn'),
+    h('p', {}, 'Kịch bản, giọng đọc và bản vẽ đã xong. Máy bạn sẽ vẽ từng khung hình rồi xuất MP4. Giữ trang này mở; màn hình được giữ sáng trong lúc dựng. Nếu bị gián đoạn, mở lại trang và bấm Dựng tiếp: các cảnh đã xong không phải vẽ lại.'),
+    j.files.includes('overview.png') ? h('details', {}, h('summary', {}, 'Xem bảng phân cảnh'), h('img', { class: 'ink-overview', src: `/api/ink/jobs/${j.id}/file/overview.png`, alt: 'Bảng phân cảnh', loading: 'lazy' })) : null,
+    bar, note, h('div', { class: 'row' }, go, other));
 }

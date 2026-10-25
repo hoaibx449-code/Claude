@@ -3,7 +3,7 @@
 const MACHINE = { server: ['Máy chủ riêng', 'VPS, máy ảo cloud hoặc máy tính ở nhà chạy Ubuntu. Luôn bật, nhận video ngay, không giới hạn.'],
   cloudrun: ['Google Cloud Run', 'Dùng tài khoản Google Cloud sẵn có của dự án. Chỉ bật khi có video, trả tiền theo phút (gói miễn phí đủ vài trăm video/tháng).'],
   github: ['GitHub Actions', 'Miễn phí, không cần máy chủ. Hợp để thử nghiệm; điều khoản GitHub không cho dùng làm máy chủ phục vụ khách hàng.'],
-  browser: ['Trình duyệt (máy người dùng)', 'Đang phát triển: vẽ và ghép video ngay trên máy tính/điện thoại của người dùng.'] };
+  browser: ['Trình duyệt (máy người dùng)', 'Người dùng được chọn "Dựng trên máy này": máy dựng chỉ viết kịch bản, đọc giọng và xuất bản vẽ (nhanh, nhẹ); phần vẽ khung hình và xuất MP4 chạy trên máy tính/điện thoại của họ. Dùng kèm ít nhất một máy dựng khác.'] };
 const GUIDES = [
   ['Thuê máy chủ (VPS) ở đâu, cấu hình bao nhiêu?', [
     'Cấu hình tối thiểu: 2 nhân CPU, 4 GB RAM, 25 GB ổ cứng, hệ điều hành Ubuntu 22.04 hoặc 24.04. Video 1 phút dựng mất khoảng 3–4 phút.',
@@ -64,12 +64,12 @@ export async function showInkAdmin({ h, api, body, toast, fail }) {
   wake.onclick = async () => { try { await api('/api/admin/ink/dispatch', { method: 'POST' }); toast('Đã đánh thức máy dựng. Video chờ sẽ được nhận trong khoảng 1 phút.'); } catch (e) { fail(e); } };
   const when = (t) => (t ? new Date(t).toLocaleString('vi-VN') : '—');
   const M = data.machines || { seen: [], servers: [], cloud: false, version: '' };
-  const ready = { server: M.seen.some((x) => x.kind === 'server' && x.online), cloudrun: M.cloud, github: data.token, browser: false };
+  const ready = { server: M.seen.some((x) => x.kind === 'server' && x.online), cloudrun: M.cloud, github: data.token, browser: true };
   // where videos are made: tick to use, arrows to set the order (the first that can take the job makes it)
   const machines = h('ol', { class: 'ink-machines' });
-  const paintMachines = () => machines.replaceChildren(...s.machines.order.map((k, i) => h('li', { class: 'ink-machine' + (k === 'browser' ? ' off' : '') },
-    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!s.machines.on[k], disabled: k === 'browser', onchange: (e) => { s.machines.on[k] = e.target.checked; } }), h('strong', {}, MACHINE[k][0])),
-    h('span', { class: 'chip' + (ready[k] ? ' ok' : '') }, k === 'browser' ? 'Đang phát triển' : ready[k] ? '✓ Sẵn sàng' : '✗ Chưa thiết lập'),
+  const paintMachines = () => machines.replaceChildren(...s.machines.order.map((k, i) => h('li', { class: 'ink-machine' },
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!s.machines.on[k], onchange: (e) => { s.machines.on[k] = e.target.checked; } }), h('strong', {}, MACHINE[k][0])),
+    h('span', { class: 'chip' + (ready[k] ? ' ok' : '') }, k === 'browser' ? (s.machines.on.browser ? 'Người dùng được chọn' : 'Đang tắt') : ready[k] ? '✓ Sẵn sàng' : '✗ Chưa thiết lập'),
     h('small', { class: 'muted' }, MACHINE[k][1]),
     h('span', { class: 'ink-move' },
       h('button', { type: 'button', class: 'ghost small', 'aria-label': 'Lên', disabled: i === 0, onclick: () => { const o = s.machines.order; [o[i - 1], o[i]] = [o[i], o[i - 1]]; paintMachines(); } }, '↑'),

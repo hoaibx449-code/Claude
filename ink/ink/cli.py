@@ -43,8 +43,9 @@ def save_plan(sb, out, brand=''):
         f.write((sb.get('caption') or '') + '\n\n' + ' '.join(sb.get('hashtags') or []) + '\n')
 
 
-def make_video(sb, out, pace='normal', music=None, mood='auto', music_volume=0.20, captions=True, log=print):
-    """voice, music and the hand-drawn render of a storyboard; returns the video length in seconds"""
+def make_video(sb, out, pace='normal', music=None, mood='auto', music_volume=0.20, captions=True, log=print, browser=False):
+    """voice, music and the hand-drawn render of a storyboard; returns the video length in seconds.
+    browser=True: instead of the MP4, write draw.json + audio.aac for the user's browser to draw (export.py)"""
     os.environ['INK_VOICE_RATE'] = pace_rate(pace)
     log(f'Giọng đọc (một mạch, có mốc từng chữ), nhịp {pace}…')
     voice, timing, words, provider = narrate([s['say'] for s in sb['scenes']], os.path.join(out, 'voice'), log=log)
@@ -53,6 +54,11 @@ def make_video(sb, out, pace='normal', music=None, mood='auto', music_volume=0.2
         m = sb.get('music') if mood == 'auto' else mood
         m = m if m in MOODS else 'motivating'
         music = write_music(timing[-1][2] + 1, os.path.join(out, 'voice', 'music.wav'), m); log(f'  nhạc nền: tự tạo, không khí "{m}"')
+    if browser:
+        from .export import export
+        log('Xuất bản vẽ cho trình duyệt…')
+        return export(sb, timing, words, voice, out, cover_parts(sb.get('cover') or {'lines': [sb.get('title') or 'Video mới']}),
+                      music, music_volume, captions, pace), provider
     log('Dựng video…')
     base_ops, drawn = cover_parts(sb.get('cover') or {'lines': [sb.get('title') or 'Video mới']})
     base = np.empty((H, W, 3), np.uint8); base[:] = BG

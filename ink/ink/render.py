@@ -66,12 +66,26 @@ def cam_matrix(cam, dur, t):
     return np.float32([[z, 0, -x0 * z], [0, z, -y0 * z]])
 
 
+def draw_time(S, dur, td_max):
+    """seconds the hand takes to draw a scene of S stroke pixels that is shown for `dur` seconds"""
+    return min(max(0.6, S / DRAW_SPEED), max(0.6, min(td_max, dur * 0.7)))
+
+
+def sound_events(i, t0, kind, info, cam, use_cover):
+    """the pen while drawing, a whoosh on a slide, a pop when a key picture lands"""
+    ev = []
+    if i and kind != 'cut': ev.append((max(0, t0 - 0.08), 'whoosh', 0.22))
+    if info.get('td'): ev.append((t0 + info['t_in'], 'scratch', info['td']))
+    if use_cover or (cam or {}).get('punch'): ev.append((t0 + info.get('t_in', 0) + info.get('td', 0), 'pop', 0))
+    return ev
+
+
 def scene_frames(ops, dur, cam, base=None, t_in=T_IN, td_max=1.5, info=None):
     """frames of one scene; `base` is a picture already on the board when the scene starts (the cover title),
     the hand draws `ops` over it. With t_in=0 the hand is already on the paper at the first frame."""
     nf = max(1, int(round(dur * FPS))); T_IN = t_in
     items, S, last, side0, sideL = plan(ops or [])
-    Td = min(max(0.6, S / DRAW_SPEED), max(0.6, min(td_max, dur * 0.7)))
+    Td = draw_time(S, dur, td_max)
     if info is not None: info.update(t_in=t_in, td=Td if items else 0)
     board = np.empty((H, W, 3), np.uint8)
     if base is not None: board[:] = base
@@ -201,13 +215,20 @@ def render(scenes, timing, voice, out, words=None, cover=None, music=None, music
             gt = (written + k) / FPS
             if captions and words: o = draw_caption(o, words, gt, phrases)
             pr.stdin.write(progress(np.array(o, copy=True), gt, total).tobytes()); last = fr
-        t0 = written / FPS
-        if i and kind != 'cut': events.append((max(0, t0 - 0.08), 'whoosh', TR))
-        if info.get('td'): events.append((t0 + info['t_in'], 'scratch', info['td']))
-        if use_cover or cam.get('punch'): events.append((t0 + info.get('t_in', 0) + info.get('td', 0), 'pop', 0))
+        events += sound_events(i, written / FPS, kind, info, cam, use_cover)
         written += nf; prev = last; log(f'cảnh {i + 1}/{len(scenes)} xong')
     pr.stdin.close(); pr.wait()
-    # sound: the voice; music under it that dips while someone speaks; the pen, pops and whooshes
+    mix_audio(total, voice, mix, music, music_volume, events if effects else [])
+    subprocess.check_call(['ffmpeg', '-y', '-loglevel', 'error', '-i', silent, '-i', mix, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart', out])
+    for x in (silent, mix):
+        if os.path.exists(x): os.remove(x)
+    return total
+
+
+def mix_audio(total, voice, out, music=None, music_volume=0.20, events=(), adts=False):
+    """the voice; music under it that dips while someone speaks; the pen, pops and whooshes.
+    adts=True writes raw AAC frames (.aac), which the browser renderer puts straight into its MP4"""
+    fx = out + '.fx.wav'
     ins = ['-i', voice]; chains = ['[0:a]aresample=44100,asplit=2[v1][v2]']; mixin = ['[v2]']
     if music and os.path.exists(music):
         ins += ['-stream_loop', '-1', '-i', music]; m = ins.count('-i') - 1
@@ -215,12 +236,11 @@ def render(scenes, timing, voice, out, words=None, cover=None, music=None, music
         chains.append('[m][v1]sidechaincompress=threshold=0.03:ratio=6:attack=15:release=350[md]'); mixin.append('[md]')
     else:
         chains.append('[v1]anullsink')
-    if effects and events:
+    if events:
         sfx.track(total, events, fx); ins += ['-i', fx]; e = ins.count('-i') - 1
         chains.append(f'[{e}:a]aresample=44100,volume=0.55[fx]'); mixin.append('[fx]')
     fil = ';'.join(chains) + f';{"".join(mixin)}amix=inputs={len(mixin)}:duration=first:normalize=0,loudnorm=I=-15:TP=-1.5,apad[out]'
-    subprocess.check_call(['ffmpeg', '-y', '-loglevel', 'error'] + ins + ['-filter_complex', fil, '-map', '[out]', '-t', f'{total:.3f}', mix])
-    subprocess.check_call(['ffmpeg', '-y', '-loglevel', 'error', '-i', silent, '-i', mix, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart', out])
-    for x in (silent, mix, fx):
-        if os.path.exists(x): os.remove(x)
-    return total
+    enc = ['-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2', '-f', 'adts'] if adts else []
+    subprocess.check_call(['ffmpeg', '-y', '-loglevel', 'error'] + ins + ['-filter_complex', fil, '-map', '[out]', '-t', f'{total:.3f}'] + enc + [out])
+    if os.path.exists(fx): os.remove(fx)
+    return out

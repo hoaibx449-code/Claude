@@ -18,7 +18,7 @@ type Rc = { userId: string | null; quiet: boolean; log(type: string, extra?: any
 
 export const PACES = ['slow', 'normal', 'fast', 'faster'] as const;
 export const MOODS = ['auto', 'motivating', 'calm', 'upbeat', 'emotional', 'none'] as const;
-const FILES: Record<string, string> = { 'video.mp4': 'video/mp4', 'cover.jpg': 'image/jpeg', 'overview.png': 'image/png', 'thumb.jpg': 'image/jpeg' };
+const FILES: Record<string, string> = { 'video.mp4': 'video/mp4', 'cover.jpg': 'image/jpeg', 'overview.png': 'image/png', 'thumb.jpg': 'image/jpeg', 'draw.json': 'application/json', 'audio.aac': 'audio/aac' };
 const STALE_MS = 15 * 60_000; // no heartbeat for this long: the machine is gone, the job goes back in the queue
 const MAX_ACTIVE = 2;
 
@@ -67,7 +67,7 @@ export function cleanInk(i: any): InkSettings {
     voice: { fallback: v.fallback !== false, default: list.some((x) => x.id === v.default && x.on) ? v.default : (list.find((x) => x.on) || list[0])?.id || 'hoaimy', list: list.length ? list : d.voice.list },
     defaults: { pace: pick(df.pace, PACES, 'normal'), seconds: num(df.seconds, 20, 300, 60), mood: pick(df.mood, MOODS, 'auto'), musicVolume: num(df.musicVolume, 0, 0.6, 0.2), captions: df.captions !== false, review: df.review === true },
     github: { repo: /^[\w.-]{1,40}\/[\w.-]{1,100}$/.test(g.repo || '') ? g.repo : d.github.repo, workflow: /^[\w.-]{1,60}\.ya?ml$/.test(g.workflow || '') ? g.workflow : d.github.workflow, ref: /^[\w./-]{1,120}$/.test(g.ref || '') ? g.ref : d.github.ref },
-    machines: { order: morder, on: Object.fromEntries(MACHINES.map((k) => [k, k === 'browser' ? false : typeof m.on?.[k] === 'boolean' ? m.on[k] : d.machines.on[k]])) as Record<MachineKind, boolean>,
+    machines: { order: morder, on: Object.fromEntries(MACHINES.map((k) => [k, typeof m.on?.[k] === 'boolean' ? m.on[k] : d.machines.on[k]])) as Record<MachineKind, boolean>,
       cloudJob: /^[a-z][a-z0-9-]{2,62}$/.test(m.cloudJob || '') ? m.cloudJob : d.machines.cloudJob },
   };
 }
@@ -97,6 +97,7 @@ async function wake(env: Env, force: boolean) {
   const { s } = await settings(env), errors: string[] = [];
   for (const kind of s.machines.order) {
     if (!s.machines.on[kind]) continue;
+    if (kind === 'browser') continue; // the user's device draws; it never takes the AI and voice part
     const r = kind === 'server' ? await serverAwake(env) : kind === 'cloudrun' ? await startCloud(env, s, force) : kind === 'github' ? await startGithub(env, force) : 'chưa hỗ trợ';
     if (r === 'ok') return 'ok';
     errors.push(`${MACHINE_NAMES[kind]}: ${r}`);
@@ -177,7 +178,7 @@ const key = (j: { user_id: string; id: string }, name: string) => `ink/${j.user_
 const view = (j: any) => {
   const input = JSON.parse(j.input || '{}'), meta = JSON.parse(j.meta || '{}');
   return { id: j.id, parent: j.parent || null, title: j.title, status: j.status, stage: j.stage, progress: j.progress, message: j.message, error: j.error,
-    duration: j.duration, created_at: j.created_at, finished_at: j.finished_at, pace: input.pace, mode: input.mode, seconds: input.seconds,
+    duration: j.duration, created_at: j.created_at, finished_at: j.finished_at, pace: input.pace, browser: !!input.browser, mode: input.mode, seconds: input.seconds,
     files: meta.files || [], caption: meta.caption || '', hashtags: meta.hashtags || [] };
 };
 
@@ -205,7 +206,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
   if (!s.enabled && !(await isAdmin(env, env.config, user))) throw new HttpError(404, 'Ink Studio đang tạm tắt.');
   if (sub === 'config' && method === 'GET') {
     const { plan } = await planOf(env, user.id);
-    return json({ voices: s.voice.list.filter((v) => v.on).map((v) => ({ id: v.id, label: v.label })), defaults: { ...s.defaults, voice: s.voice.default },
+    return json({ browser: s.machines.on.browser, voices: s.voice.list.filter((v) => v.on).map((v) => ({ id: v.id, label: v.label })), defaults: { ...s.defaults, voice: s.voice.default },
       maxSeconds: Math.min(300, plan.maxSeconds, env.config.limits.maxSeconds) });
   }
   if (sub === 'music' && method === 'POST') {
@@ -232,10 +233,12 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
     if (music && !(await env.BUCKET.head(`ink-music/${user.id}/${music}`))) throw new HttpError(400, 'Không tìm thấy nhạc đã tải lên.');
     const input = { mode, [mode]: text, seconds, audience: str(b.audience, 200), tone: str(b.tone, 120), notes: str(b.notes, 600),
       pace: pick(b.pace, PACES, s.defaults.pace as any), voice: voice.id, mood: pick(b.mood, MOODS, s.defaults.mood as any), music,
-      musicVolume: num(b.musicVolume, 0, 0.6, s.defaults.musicVolume), captions: b.captions !== false, review: typeof b.review === 'boolean' ? b.review : s.defaults.review };
+      musicVolume: num(b.musicVolume, 0, 0.6, s.defaults.musicVolume), captions: b.captions !== false, review: typeof b.review === 'boolean' ? b.review : s.defaults.review,
+      // drawn on the user's own device: a machine writes the script, voice and drawing plan, the browser draws
+      browser: b.browser === true && s.machines.on.browser };
     return json({ id: await enqueue(env, rc, user, input, 'plan') });
   }
-  const m = sub.match(/^jobs\/([a-f0-9]{24})(?:\/(file\/[\w.]+|approve|repace|retry|storyboard))?$/);
+  const m = sub.match(/^jobs\/([a-f0-9]{24})(?:\/(file\/[\w.]+|approve|repace|retry|storyboard|handoff|browser\/video|browser\/done|browser\/progress))?$/);
   if (!m) throw new HttpError(404, 'Không tìm thấy.');
   const j = await own(env, user, m[1]), act = m[2] || '';
   if (!act && method === 'GET') {
@@ -278,6 +281,39 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
     const b = await body<any>(req, 2_000), input = { ...JSON.parse(j.input), pace: pick(b.pace, PACES, 'fast') };
     if (b.voice && s.voice.list.some((v) => v.on && v.id === b.voice)) input.voice = b.voice;
     return json({ id: await enqueue(env, rc, user, input, 'render', JSON.parse(j.storyboard), j.id, j.title) });
+  }
+  // ---- drawn in the browser: progress, the finished MP4, or give the job to a render machine instead
+  if (act.startsWith('browser/') || act === 'handoff') {
+    if (j.status !== 'browser') throw new HttpError(409, 'Video này không chờ dựng trên trình duyệt.');
+    if (act === 'browser/progress' && method === 'POST') {
+      rc.quiet = true;
+      const b = await body<any>(req, 1_000);
+      await env.DB.prepare('UPDATE ink_jobs SET progress = ?, message = ?, updated_at = ? WHERE id = ?').bind(Math.round(num(b.progress, 60, 99, 60)), str(b.message, 160), Date.now(), j.id).run();
+      return json({ ok: true });
+    }
+    if (act === 'browser/video' && method === 'PUT') {
+      if (req.headers.get('content-type') !== 'video/mp4') throw new HttpError(415, 'Chỉ nhận MP4.');
+      if (Number(req.headers.get('content-length')) > 100_000_000) throw new HttpError(413, 'Video quá lớn (tối đa 100 MB).');
+      await env.BUCKET.put(key(j, 'video.mp4'), req.body, { httpMetadata: { contentType: 'video/mp4' } });
+      const meta = JSON.parse(j.meta || '{}');
+      await env.DB.prepare('UPDATE ink_jobs SET meta = ? WHERE id = ?').bind(JSON.stringify({ ...meta, files: [...new Set([...(meta.files || []), 'video.mp4'])] }), j.id).run();
+      return json({ ok: true });
+    }
+    if (act === 'browser/done' && method === 'POST') {
+      const head = await env.BUCKET.head(key(j, 'video.mp4'));
+      if (!head || head.size < 10_000) throw new HttpError(400, 'Chưa tải video lên.');
+      const b = await body<any>(req, 2_000).catch(() => ({} as any)), now = Date.now();
+      await env.DB.prepare("UPDATE ink_jobs SET status = 'done', progress = 100, message = 'Đã xong', finished_at = ?, updated_at = ? WHERE id = ?").bind(now, now, j.id).run();
+      rc.log('ink.done', { data: { job: j.id, machine: 'browser', renderSec: num(b.seconds, 0, 99999, 0), device: str(b.device, 80), size: head.size } });
+      return json({ ok: true });
+    }
+    if (act === 'handoff' && method === 'POST') {
+      const input = { ...JSON.parse(j.input), browser: false };
+      await env.DB.prepare("UPDATE ink_jobs SET status = 'queued', stage = 'render', input = ?, progress = 0, message = 'Đang chờ máy dựng', updated_at = ? WHERE id = ?").bind(JSON.stringify(input), Date.now(), j.id).run();
+      rc.log('ink.handoff', { data: { job: j.id } });
+      rc.wait(dispatch(env));
+      return json({ ok: true });
+    }
   }
   if (act === 'retry' && method === 'POST') {
     if (j.status !== 'failed') throw new HttpError(409, 'Chỉ thử lại được video bị lỗi.');
@@ -332,7 +368,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
         ...(voice.provider === 'microsoft' ? { INK_MS_VOICE: voice.code } : { EVERAI_VOICE_CODE: voice.code }),
       } } } });
   }
-  const m = sub.match(/^jobs\/([a-f0-9]{24})\/(progress|planned|done|fail|music|file\/[\w.]+)$/);
+  const m = sub.match(/^jobs\/([a-f0-9]{24})\/(progress|planned|exported|done|fail|music|file\/[\w.]+)$/);
   if (!m) throw new HttpError(404, 'Không tìm thấy.');
   const lease = req.headers.get('x-nv-lease') || '';
   const j = await env.DB.prepare('SELECT * FROM ink_jobs WHERE id = ?').bind(m[1]).first<any>();
@@ -355,7 +391,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
   if (act.startsWith('file/') && req.method === 'PUT') {
     const name = act.slice(5);
     if (!FILES[name]) throw new HttpError(400, 'Tên tệp không hợp lệ.');
-    if (Number(req.headers.get('content-length')) > (name === 'video.mp4' ? 300_000_000 : 8_000_000)) throw new HttpError(413, 'Tệp quá lớn.');
+    if (Number(req.headers.get('content-length')) > (name === 'video.mp4' ? 300_000_000 : name === 'draw.json' || name === 'audio.aac' ? 40_000_000 : 8_000_000)) throw new HttpError(413, 'Tệp quá lớn.');
     await env.BUCKET.put(key(j, name), req.body, { httpMetadata: { contentType: FILES[name] } });
     const files = [...new Set([...(meta.files || []), name])];
     await env.DB.prepare('UPDATE ink_jobs SET meta = ?, heartbeat = ? WHERE id = ?').bind(JSON.stringify({ ...meta, files }), now, j.id).run();
@@ -365,11 +401,21 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     const b = await body<any>(req, 400_000), sb = b.storyboard;
     if (!sb || !Array.isArray(sb.scenes) || !sb.scenes.length) throw new HttpError(400, 'Phân cảnh rỗng.');
     const title = str(sb.title, 100) || j.title, next = { ...meta, caption: str(sb.caption, 1000), hashtags: (Array.isArray(sb.hashtags) ? sb.hashtags : []).map((x: unknown) => '#' + str(x, 40).replace(/^#+/, '')).filter((x: string) => /^#[A-Za-z0-9_]{2,40}$/.test(x)).slice(0, 10), ai: b.ai };
-    const review = input.review === true;
+    const review = input.review === true && !input.browser; // in the browser the storyboard is shown before drawing anyway
     await env.DB.prepare(`UPDATE ink_jobs SET storyboard = ?, title = ?, meta = ?, stage = 'render', status = ?, lease = ?, progress = ?, message = ?, updated_at = ? WHERE id = ?`)
       .bind(JSON.stringify(sb), title, JSON.stringify(next), review ? 'review' : 'running', review ? '' : lease, 40, review ? 'Phân cảnh xong, chờ bạn duyệt' : 'Phân cảnh xong, đang dựng', now, j.id).run();
     if (review) rc.wait(notify(env, j.user_id, j.id, 'Phân cảnh đã sẵn sàng', `"${title}": xem phân cảnh và bấm Dựng video.`));
     return json({ render: !review });
+  }
+  if (act === 'exported' && req.method === 'POST') {
+    // the drawing plan and the sound are ready: the user's browser draws the video
+    if (!(await env.BUCKET.head(key(j, 'draw.json'))) || !(await env.BUCKET.head(key(j, 'audio.aac')))) throw new HttpError(400, 'Chưa tải bản vẽ lên.');
+    const b = await body<any>(req, 5_000).catch(() => ({} as any));
+    await env.DB.prepare("UPDATE ink_jobs SET status = 'browser', lease = '', progress = 60, message = 'Sẵn sàng dựng trên máy của bạn', duration = ?, meta = ?, updated_at = ? WHERE id = ?")
+      .bind(num(b.duration, 0, 3600, 0), JSON.stringify({ ...meta, voice: str(b.voice, 40), ai: b.ai || meta.ai }), now, j.id).run();
+    rc.log('ink.exported', { data: { job: j.id, videoSec: b.duration } });
+    rc.wait(notify(env, j.user_id, j.id, 'Sẵn sàng dựng trên máy của bạn', `"${j.title}": mở trang video để máy bạn vẽ và xuất video.`));
+    return json({ ok: true });
   }
   if (act === 'done' && req.method === 'POST') {
     if (!(await env.BUCKET.head(key(j, 'video.mp4')))) throw new HttpError(400, 'Chưa tải video lên.');
