@@ -545,25 +545,22 @@ function musicCard(c) {
     list, h('button', { type: 'button', class: 'ghost small', onclick: () => { c.music.push({ id: 'nhac-' + Date.now().toString(36).slice(-5), title: '', file: '' }); draw(); } }, '+ Thêm bản nhạc'));
 }
 
-/** Video formats for videos made in Zalo: one default, and which ones people may pick with DINHDANG. */
+/** Kinds of video made in Zalo (the web page's engine): one default, and which ones people may pick with DINHDANG. */
 function zaloFormatsCard(c, z) {
-  const WAYS = ['auto', 'classic-sketch', 'classic-diagram', 'classic', 'act', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz'];
-  const CL = { web: 'Mặc định của web', auto: 'Tự động đa dạng', 'classic-sketch': 'Sketchnote theo lời', 'classic-diagram': 'Biểu đồ vẽ tay', classic: 'Tranh doodle' };
-  const name = (k) => CL[k] || c.labels.looks?.[k] || k;
-  const off = (k) => (k in CL ? (k === 'auto' ? false : (c.visibility['visual:' + ({ 'classic-sketch': 'sketch', 'classic-diagram': 'diagram', classic: 'doodle' })[k]] || 'on') !== 'on') : (c.visibility['look:' + k] || 'on') !== 'on');
-  z.formats ||= { default: 'web', allowed: [...WAYS] };
+  const WAYS = ['ink', 'cine'], CL = { ink: 'Vẽ tay (bàn tay vẽ trên bảng trắng)', cine: 'Điện ảnh (cảnh quay thật, cần khoá Pixabay)' };
+  z.formats ||= { default: 'ink', allowed: [...WAYS] };
+  if (!WAYS.includes(z.formats.default)) z.formats.default = 'ink';
+  z.formats.allowed = (z.formats.allowed || []).filter((k) => WAYS.includes(k));
   const note = h('p', { class: 'muted' });
-  const paintNote = () => { const n = z.formats.allowed.filter((k) => !off(k)).length; note.textContent = n >= 2 ? `Người dùng gõ DINHDANG để chọn 1 trong ${n} định dạng đã tick; chưa chọn thì dùng định dạng mặc định.` : 'Tick ít hơn 2 định dạng: mọi video qua Zalo dùng định dạng mặc định, người dùng không chọn được.'; };
-  const boxes = WAYS.map((k) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: z.formats.allowed.includes(k), disabled: off(k), onchange: (e) => {
-    z.formats.allowed = e.target.checked ? [...new Set([...z.formats.allowed, k])].sort((a, b) => WAYS.indexOf(a) - WAYS.indexOf(b)) : z.formats.allowed.filter((x) => x !== k); paintNote();
-  } }), name(k) + (off(k) ? ' (đang tắt ở Định dạng & hiển thị)' : '')));
+  const paintNote = () => { note.textContent = z.formats.allowed.length >= 2 ? 'Người dùng gõ DINHDANG để chọn kiểu; chưa chọn thì dùng kiểu mặc định.' : 'Tick ít hơn 2 kiểu: mọi video qua Zalo dùng kiểu mặc định, người dùng không chọn được.'; };
+  const boxes = WAYS.map((k) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: z.formats.allowed.includes(k), onchange: (e) => {
+    z.formats.allowed = e.target.checked ? WAYS.filter((x) => x === k || z.formats.allowed.includes(x)) : z.formats.allowed.filter((x) => x !== k); paintNote();
+  } }), CL[k]));
   paintNote();
-  return card('Định dạng video qua Zalo', 'Chọn định dạng mặc định cho video tạo qua Zalo, và tick các định dạng người dùng được chọn bằng lệnh DINHDANG. Phim tài liệu AI cần vẽ ảnh trên web nên không có ở đây.',
-    h('label', {}, 'Định dạng mặc định', select([['web', CL.web], ...WAYS.map((k) => [k, name(k)])], z.formats.default || 'web', (v) => { z.formats.default = v; })),
+  return card('Kiểu video qua Zalo', 'Video tạo qua Zalo dùng cùng máy dựng với trang Tạo video trên web. Chọn kiểu mặc định và các kiểu người dùng được chọn bằng lệnh DINHDANG.',
+    h('label', {}, 'Kiểu mặc định', select(WAYS.map((k) => [k, CL[k]]), z.formats.default, (v) => { z.formats.default = v; })),
     h('span', { class: 'plabel' }, 'Người dùng được chọn'),
     h('div', { class: 'grid' }, ...boxes),
-    h('div', { class: 'row' }, h('button', { type: 'button', class: 'ghost small', onclick: (e) => { z.formats.allowed = []; e.target.closest('.card').querySelectorAll('input[type=checkbox]').forEach((x) => { x.checked = false; }); paintNote(); } }, 'Chỉ dùng mặc định (bỏ tick hết)'),
-      h('button', { type: 'button', class: 'ghost small', onclick: (e) => { z.formats.allowed = WAYS.filter((k) => !off(k)); e.target.closest('.card').querySelectorAll('input[type=checkbox]').forEach((x) => { if (!x.disabled) x.checked = true; }); paintNote(); } }, 'Cho chọn tất cả')),
     note);
 }
 /** Ask the bot anything as a customer would and see how it answered: the AI (which model) or the prepared answers, and why. */
@@ -619,8 +616,7 @@ function zaloTab(c, secrets, secretInput, zcheck, inbox) {
     card('Cài đặt Zalo', null, h('div', { class: 'grid' },
       check(z.enabled, (v) => { z.enabled = v; }, 'Bật tạo video qua Zalo'),
       check(z.allowGuests, (v) => { z.allowGuests = v; }, 'Cho người chưa có tài khoản web dùng ngay'),
-      check(z.autoRender, (v) => { z.autoRender = v; }, 'Tự dựng video ngay (không chờ sửa trên web)'),
-      h('label', {}, 'Kịch bản gửi qua Zalo được minh hoạ bằng', select([['mine-free', 'Luật tự động (miễn phí)'], ['mine-ai', 'AI (tốn lượt)']], z.scriptSource, (v) => { z.scriptSource = v; })),
+      check(z.review, (v) => { z.review = v; }, 'Gửi phân cảnh qua Zalo để người dùng duyệt (OK / SUA / HUY) trước khi dựng'),
       h('label', {}, 'Đường dẫn tư vấn Zalo (https://zalo.me/…)', input(z.botLink, (v) => { z.botLink = v.trim(); }))),
       h('h3', {}, 'Báo cho chủ web qua Zalo'),
       h('div', { class: 'grid' },

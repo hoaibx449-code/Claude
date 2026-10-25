@@ -28,6 +28,7 @@ async function fixture(run: (f: any) => Promise<void>) {
       while (pending.length) await Promise.all(pending.splice(0));
     };
     await env.DB.prepare("INSERT INTO users (id, email, name, created_at) VALUES ('boss', 'boss@shop.vn', 'Chủ', 1)").run();
+    await env.DB.prepare("INSERT INTO settings(key,value,updated_at) VALUES('ink:voicechecks',?,0)").bind(JSON.stringify({ 'microsoft:vi-VN-HoaiMyNeural': { ok: true, at: 1 } })).run();
     await env.DB.prepare("INSERT INTO zalo_links (user_id, chat_id, name, linked_at, notify, prefs) VALUES ('boss', 'owner-chat', 'Chủ', 1, 1, '{}')").run();
     await run({ env, sent, prompts, say, setAnswer: (a: any) => { answer = a; } });
   } finally { globalThis.fetch = orig; rmSync(dir, { recursive: true, force: true }); }
@@ -71,9 +72,11 @@ test('a hard question goes to the owner with a code, and the owner answers with 
 test('asking for a video in plain words queues it like TAO', () => fixture(async (f) => {
   f.setAnswer({ reply: 'Mình đang dựng và sẽ gửi MP4 ngay.', intent: 'make_video', topic: 'sức mạnh của lãi kép' });
   await f.say('làm giúp mình video về lãi kép với');
-  const q = await f.env.DB.prepare("SELECT text, status FROM zalo_messages WHERE id = 'm1-tao'").first();
-  assert.equal(q.text, 'TAO sức mạnh của lãi kép'); assert.equal(q.status, 'received');
-  assert.match(f.sent.at(-1).text,/hàng chờ thiết kế/);assert.doesNotMatch(f.sent.at(-1).text,/Mình đang dựng/);
+  const q = await f.env.DB.prepare("SELECT text, status, job_id FROM zalo_messages WHERE id = 'm1-tao'").first();
+  assert.equal(q.text, 'TAO sức mạnh của lãi kép'); assert.equal(q.status, 'handled'); assert.match(q.job_id, /^ink:/);
+  const job = await f.env.DB.prepare('SELECT input FROM ink_jobs').first(); assert.equal(JSON.parse(job.input).topic, 'sức mạnh của lãi kép');
+  // what is said is what really happened (queued, storyboard to review), never the model's own claim
+  assert.match(f.sent.at(-1).text,/Đã nhận video "sức mạnh của lãi kép"/);assert.ok(!f.sent.some((m: any)=>/Mình đang dựng/.test(m.text)));
 }));
 
 test('a refused AI key is skipped for a while instead of failing before every answer', async () => {
@@ -172,13 +175,15 @@ test('a slow or failing AI is not covered with a canned menu: the minute job ask
   assert.match(f.sent.filter((m: any) => m.chat_id === 'customer-abc123').at(-1).text, /<b>Chuyên nghiệp<\/b>/);
 }));
 
-test('browser mode never repeats model claims of rendering or promises an automatic MP4',()=>fixture(async f=>{
+test('a video asked for in Zalo is made by the render machines even when the site draws on the browser, and the model claim is never repeated',()=>fixture(async f=>{
  f.env.config.rendering.mode='browser';
  f.setAnswer({reply:'Mình đang dựng video, xong tự gửi MP4 nhé.',intent:'make_video',topic:'video về thói quen đọc sách'});
  await f.say('Làm video về thói quen đọc sách giúp tôi');
- const text=f.sent.at(-1).text;assert.match(text,/chưa dựng MP4/);assert.match(text,/mở web/);assert.doesNotMatch(text,/Mình đang dựng video/);
- assert.equal((await f.env.DB.prepare('SELECT COUNT(*) n FROM jobs').first()).n,0);
+ assert.ok(!f.sent.some((m: any)=>/Mình đang dựng video/.test(m.text)));
+ const job=await f.env.DB.prepare('SELECT input, status FROM ink_jobs').first();assert.equal(JSON.parse(job.input).browser,false);assert.equal(job.status,'queued');
+ // asked once: the person's message limit counts it once
  assert.equal((await f.env.DB.prepare("SELECT COUNT(*) n FROM zalo_messages WHERE id='m1-tao'").first()).n,1);
+ assert.equal((await f.env.DB.prepare("SELECT n FROM usage WHERE kind='zalo'").first()).n,1);
 }));
 test('disabled video actions cannot be acknowledged as started',()=>fixture(async f=>{
  f.env.config.zalo.assistant.makeVideos=false;

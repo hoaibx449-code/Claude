@@ -24,8 +24,8 @@ export const KIND_KEYS = ['sketch', 'bars', 'flow', 'compare', 'steps', 'number'
 export const MODE_KEYS = ['hand', 'motion', 'math', 'kinetic'] as const;
 /** Video formats (src/engine/looks.ts). */
 export const LOOK_KEYS = ['director', 'act', 'whiteboard', 'illustrated', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz', 'doc'] as const;
-/** Ways a video made in Zalo can be drawn (the documentary needs pictures drawn on the web, so it is not one). */
-export const ZALO_WAYS = ['auto', 'classic-sketch', 'classic-diagram', 'classic', 'act', 'kinetic', 'split', 'chat', 'story', 'data', 'quiz'] as const;
+/** Kinds of video made in Zalo: the web page's engine, hand-drawn ('ink') or real footage ('cine'). */
+export const ZALO_WAYS = ['ink', 'cine'] as const;
 export const GOOGLE_MODES = ['auto', 'popup', 'redirect'] as const;
 export const VISUAL_KEYS = ['doodle', 'sketch', 'diagram', 'mix', 'images'] as const;
 export const SOURCE_KEYS = ['topic', 'mine-ai', 'mine-free'] as const;
@@ -135,12 +135,13 @@ export interface ZaloConfig {
   /** How a script sent by chat is illustrated: free rules or AI. */
   scriptSource: 'mine-free' | 'mine-ai';
   autoRender: boolean; ocrEnabled: boolean;
+  /** the storyboard is sent in Zalo first; the person answers OK (make it), SUA … (change it) or HUY */
+  review: boolean;
   ownerChat: string;
   notifyOwner: { signup: boolean; failed: boolean; order: boolean; daily: boolean };
   templates: Record<string, string>;
   /** video formats for videos made in Zalo: the one used when the person picked none, and the ones
-   *  they may pick with DINHDANG ('web' = the site's default, 'auto' = varied by content, 'classic-*'
-   *  = hand-drawn boards, else a format key). Fewer than two allowed = no choice, the default is used. */
+   *  they may pick with DINHDANG (ZALO_WAYS). Fewer than two allowed = no choice, the default is used. */
   formats: { default: string; allowed: string[] };
   /** the bot answers free questions like a member of staff (AI), besides commands and notices */
   assistant: {
@@ -257,12 +258,12 @@ export function defaultConfig(env: Env): Config {
     zalo: {
       enabled: false, botLink: '', receive: 'webhook', keepWebhook: true, perDay: 300, stickers: { welcome: '', thanks: '' },
       followup: { enabled: false, hours: 20, text: 'Chào {ten}, hôm trước bạn có hỏi về gói {goi} bên mình. Bạn còn phân vân điều gì không, mình giải đáp ngay nhé? Nếu muốn làm thử trước, bạn chỉ cần nhắn chủ đề video là mình làm luôn 😊' },
-      allowGuests: true, scriptSource: 'mine-free', autoRender: true, ocrEnabled: true, ownerChat: '',
+      allowGuests: true, scriptSource: 'mine-free', autoRender: true, ocrEnabled: true, review: true, ownerChat: '',
       notifyOwner: { signup: true, failed: true, order: true, daily: false },
-      formats: { default: 'web', allowed: [...ZALO_WAYS] },
+      formats: { default: 'ink', allowed: [...ZALO_WAYS] },
       assistant: { enabled: true, name: 'Trợ lý', persona: 'Thân thiện, ngắn gọn, xưng "mình", gọi khách là "bạn". Trả lời đúng trọng tâm, tối đa 5 câu.', knowledge: '', makeVideos: true, handoff: true, perDay: 150, ai: 'auto' },
       templates: {
-        help: 'Chào {ten}! Gửi cho mình:\n• KB + kịch bản của bạn → mình dựng video\n• TAO + chủ đề → AI viết kịch bản rồi dựng\n• TT → xem video đang dựng\n• DS → video gần đây\n• KHUNG DOC hoặc KHUNG NGANG → đổi khung hình\n• DINHDANG → chọn định dạng video\n• GIONG → chọn giọng đọc\n• TAT / BAT → tắt/bật thông báo\n• HUYKETNOI → bỏ liên kết',
+        help: 'Chào {ten}! Gửi cho mình:\n• TAO + chủ đề → AI viết kịch bản rồi làm video\n• KB + kịch bản của bạn → làm video đúng lời bạn viết\n• OK / SUA … / HUY → duyệt, sửa hoặc bỏ phân cảnh mình gửi\n• TT → xem video đang làm\n• DS → video gần đây\n• DINHDANG → chọn kiểu video (vẽ tay, điện ảnh)\n• GIONG → chọn giọng đọc\n• TAT / BAT → tắt/bật thông báo\n• HUYKETNOI → bỏ liên kết',
         linked: 'Đã kết nối Zalo với tài khoản {email}. Video dựng xong sẽ được gửi về đây. Gõ HUONGDAN để xem lệnh.',
         queued: 'Đã nhận! Video "{tieuDe}" ({canh} cảnh, {dang}) đang được dựng, khoảng vài phút. Mình sẽ gửi link khi xong.{suaWeb}',
         done: '🎬 Video "{tieuDe}" đã xong ({giay} giây).\nXem / tải: {link}\n(Link có hạn {hanNgay} ngày)',
@@ -421,12 +422,14 @@ export function cleanConfig(input: any, base: Config): Config {
         followup: { enabled: z.followup?.enabled === true, hours: int(z.followup?.hours, 4, 168, b.followup.hours), text: str(z.followup?.text, 600, b.followup.text) || b.followup.text }, botLink: /^https:\/\/[^\s"<>]{4,200}$/.test(z.botLink || '') ? z.botLink : z.botLink === '' ? '' : b.botLink,
         allowGuests: typeof z.allowGuests === 'boolean' ? z.allowGuests : b.allowGuests, scriptSource: z.scriptSource === 'mine-ai' ? 'mine-ai' : 'mine-free',
         ocrEnabled: typeof z.ocrEnabled==='boolean'?z.ocrEnabled:b.ocrEnabled,
-        autoRender: typeof z.autoRender === 'boolean' ? z.autoRender : b.autoRender, ownerChat: /^[\w.-]{1,80}$/.test(z.ownerChat || '') ? z.ownerChat : z.ownerChat === '' ? '' : b.ownerChat,
+        autoRender: typeof z.autoRender === 'boolean' ? z.autoRender : b.autoRender, review: typeof z.review === 'boolean' ? z.review : b.review, ownerChat: /^[\w.-]{1,80}$/.test(z.ownerChat || '') ? z.ownerChat : z.ownerChat === '' ? '' : b.ownerChat,
         notifyOwner: { signup: z.notifyOwner?.signup ?? b.notifyOwner.signup, failed: z.notifyOwner?.failed ?? b.notifyOwner.failed, order: z.notifyOwner?.order ?? b.notifyOwner.order, daily: z.notifyOwner?.daily ?? b.notifyOwner.daily },
         templates: tpl,
         formats: (() => {
           const f = z.formats || {}, d = b.formats, ok = (k: unknown) => typeof k === 'string' && ZALO_WAYS.includes(k as any);
-          return { default: f.default === 'web' || ok(f.default) ? f.default : d.default, allowed: Array.isArray(f.allowed) ? [...new Set(f.allowed.filter(ok))] as string[] : d.allowed };
+          // a list saved before videos in Zalo came from the Ink engine (old format keys) means "all of them"
+          const legacy = Array.isArray(f.allowed) && f.allowed.some((k: unknown) => !ok(k));
+          return { default: ok(f.default) ? f.default : d.default, allowed: Array.isArray(f.allowed) && !legacy ? [...new Set(f.allowed.filter(ok))] as string[] : d.allowed };
         })(),
         assistant: (() => {
           const a = z.assistant || {}, d = b.assistant;

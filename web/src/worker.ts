@@ -31,7 +31,7 @@ import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, 
 import { adminRoutes } from './admin.ts';
 import { helpChat } from './help.ts';
 import { budgetState, fitVoiceToBudget, requireBudget } from './budget.ts';
-import { checkShare, followUps, keepWebhook, notifyJob, rememberOrigin, resumeZalo, shareLink, zaloUser, zaloWebhook, pollZalo, receiveMode } from './zalo.ts';
+import { shareInk, checkShare, followUps, keepWebhook, notifyJob, rememberOrigin, resumeZalo, shareLink, zaloUser, zaloWebhook, pollZalo, receiveMode } from './zalo.ts';
 import { pushPublicKey, pushUser, validEndpoint } from './push.ts';
 import { checkAllowed, checkSource, expireOrders, limitsFor, planOf, planRoutes, sepayWebhook } from './plans.ts';
 import { affiliateScene, communityPublic, deleteVideo, introFor, serveObject, shareToCommunity, siteType, storedVideoKey, upload, videoKey } from './media.ts';
@@ -206,6 +206,8 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
   if (site && (method === 'GET' || method === 'HEAD')) { rc.quiet = true; return serveObject(env, req, `site/${site[1]}.${site[2]}`, siteType(site[2]), { 'cache-control': 'public, max-age=31536000, immutable' }); }
   // listen to a voice before choosing it (public; samples are cached)
   if (path === '/api/voices/preview' && method === 'GET') return voicePreview(req, env, rc);
+  const si = path.match(/^\/api\/share\/ink\/([a-f0-9]{24})(?:\/(cover\.jpg))?$/);
+  if (si && (method === 'GET' || method === 'HEAD')) return shareInk(env, rc, req, si[1], si[2] || '');
   const sh = path.match(/^\/api\/share\/([a-f0-9]{24})$/);
   if (sh && method === 'GET') return shareVideo(env, rc, sh[1], url);
   // the cover picture of a shared video (sent as a photo in Zalo), signed like the video link
