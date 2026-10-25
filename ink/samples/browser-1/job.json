@@ -1,0 +1,30 @@
+{
+ "id": "7b649137bb98e6ab0e306900",
+ "parent": null,
+ "title": "Bí mật hoàng hôn đỏ",
+ "status": "done",
+ "stage": "render",
+ "progress": 100,
+ "message": "Đã xong",
+ "error": "",
+ "duration": 0,
+ "created_at": 1792892561544,
+ "finished_at": 1792892646030,
+ "pace": "normal",
+ "browser": true,
+ "mode": "topic",
+ "seconds": 45,
+ "files": [
+  "cover.jpg",
+  "thumb.jpg",
+  "video.mp4"
+ ],
+ "caption": "Hoàng hôn chúng ta thấy mỗi chiều thực ra không hề có màu đỏ như bạn tưởng. Cùng khám phá sự thật khoa học đằng sau hiện tượng này nhé!",
+ "hashtags": [
+  "#khoahoc",
+  "#hoanghon",
+  "#vutru",
+  "#kienthuc",
+  "#learnontiktok"
+ ]
+}

@@ -1,0 +1,5 @@
+[error] Applying inline style violates the following Content Security Policy directive 'style-src 'self' https://fonts.googleapis.com https://accounts.google.com/gsi/style'. Either the 'unsafe-inline' keyword, a hash ('sha256-6OsKZs2s1Ur+16zfOPFr7miuNNJJ2RiHaAvDT01x30k='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked.
+[error] Failed to load resource: the server responded with a status of 401 (Unauthorized)
+[error] Applying inline style violates the following Content Security Policy directive 'style-src 'self' https://fonts.googleapis.com https://accounts.google.com/gsi/style'. Either the 'unsafe-inline' keyword, a hash ('sha256-6OsKZs2s1Ur+16zfOPFr7miuNNJJ2RiHaAvDT01x30k='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked.
+[log] Loading Pillow, numpy
+[log] Loaded Pillow, numpy

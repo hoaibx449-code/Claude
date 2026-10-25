@@ -1,0 +1,255 @@
+{
+ "title": "Bí mật hoàng hôn đỏ",
+ "core_message": "Hoàng hôn màu đỏ vì ánh sáng phải đi qua lớp không khí dày hơn.",
+ "scenes": [
+  {
+   "say": "Hoàng hôn thực ra không có màu đỏ.",
+   "phrases": [
+    "Hoàng hôn",
+    "thực ra",
+    "không có",
+    "màu đỏ."
+   ],
+   "visual": {
+    "layout": "big_number",
+    "number": "0",
+    "label": "không đỏ",
+    "prop": "sun",
+    "figure": {
+     "pose": "shrug",
+     "face": "surprised"
+    }
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "whoosh"
+  },
+  {
+   "say": "Ánh sáng mặt trời vốn dĩ mang màu trắng.",
+   "phrases": [
+    "Ánh sáng mặt trời",
+    "vốn dĩ",
+    "mang màu trắng."
+   ],
+   "visual": {
+    "layout": "hero",
+    "prop": "sun",
+    "label": "màu trắng",
+    "figure": {
+     "pose": "stand",
+     "face": "happy"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Vì sao lại chuyển sang rực rỡ lúc chiều tà?",
+   "phrases": [
+    "Vì sao",
+    "lại chuyển sang",
+    "rực rỡ",
+    "lúc chiều tà?"
+   ],
+   "visual": {
+    "layout": "callout",
+    "prop": "question",
+    "label": "chuyển rực rỡ"
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "whoosh"
+  },
+  {
+   "say": "Hãy tưởng tượng tia sáng đang chạy marathon đến mắt bạn.",
+   "phrases": [
+    "Hãy tưởng tượng",
+    "tia sáng",
+    "đang chạy marathon",
+    "đến mắt bạn."
+   ],
+   "visual": {
+    "layout": "thought",
+    "prop": "shoe",
+    "label": "chạy marathon",
+    "figure": {
+     "pose": "run",
+     "face": "determined"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Khi mặt trời lặn, quãng đường phải đi dài gấp chục lần.",
+   "phrases": [
+    "Khi mặt trời lặn,",
+    "quãng đường phải đi",
+    "dài gấp",
+    "chục lần."
+   ],
+   "visual": {
+    "layout": "big_number",
+    "number": "10x",
+    "label": "dài hơn",
+    "prop": "road",
+    "figure": {
+     "pose": "point",
+     "face": "surprised"
+    }
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "whoosh"
+  },
+  {
+   "say": "Lớp không khí dày đặc va đập và giữ lại các tia xanh.",
+   "phrases": [
+    "Lớp không khí dày đặc",
+    "va đập và giữ lại",
+    "các tia xanh."
+   ],
+   "visual": {
+    "layout": "hold",
+    "prop": "wall",
+    "label": "giữ tia xanh",
+    "figure": {
+     "pose": "worry",
+     "face": "tired"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Đây mới là điều thú vị giữ chân bạn tới cuối.",
+   "phrases": [
+    "Đây mới là",
+    "điều thú vị",
+    "giữ chân bạn",
+    "tới cuối."
+   ],
+   "visual": {
+    "layout": "hero",
+    "prop": "bulb",
+    "label": "giữ tới cuối",
+    "figure": {
+     "pose": "think",
+     "face": "happy"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Chỉ bước sóng dài như màu đỏ mới kiên cường vượt qua.",
+   "phrases": [
+    "Chỉ bước sóng dài",
+    "như màu đỏ",
+    "mới kiên cường",
+    "vượt qua."
+   ],
+   "visual": {
+    "layout": "callout",
+    "prop": "flag",
+    "label": "màu đỏ kiên cường",
+    "figure": {
+     "pose": "flex",
+     "face": "determined"
+    }
+   },
+   "camera": {
+    "type": "push",
+    "punch": true
+   },
+   "transition": "whoosh"
+  },
+  {
+   "say": "Hoàng hôn màu đỏ vì ánh sáng đi qua lớp không khí dày.",
+   "phrases": [
+    "Hoàng hôn màu đỏ",
+    "vì ánh sáng",
+    "đi qua",
+    "lớp không khí dày."
+   ],
+   "visual": {
+    "layout": "thought",
+    "prop": "sun",
+    "label": "không khí dày",
+    "figure": {
+     "pose": "stand",
+     "face": "calm"
+    }
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Theo bạn, trên sao Hỏa thì hoàng hôn có màu gì?",
+   "phrases": [
+    "Theo bạn,",
+    "trên sao Hỏa",
+    "thì hoàng hôn",
+    "có màu gì?"
+   ],
+   "visual": {
+    "layout": "cta",
+    "question": "Sao Hỏa màu gì?",
+    "title": "Bình luận ngay"
+   },
+   "camera": {
+    "type": "push"
+   },
+   "transition": "cut"
+  }
+ ],
+ "cover": {
+  "lines": [
+   "Hoàng hôn",
+   "không đỏ?"
+  ],
+  "highlight": "không đỏ",
+  "badge": "SỰ THẬT",
+  "prop": "sun",
+  "figure": {
+   "pose": "worry",
+   "face": "surprised"
+  }
+ },
+ "caption": "Hoàng hôn chúng ta thấy mỗi chiều thực ra không hề có màu đỏ như bạn tưởng. Cùng khám phá sự thật khoa học đằng sau hiện tượng này nhé!",
+ "hashtags": [
+  "#khoahoc",
+  "#hoanghon",
+  "#vutru",
+  "#kienthuc",
+  "#learnontiktok"
+ ],
+ "music": "calm",
+ "ai": [
+  "gemini/gemini-3.5-flash-lite",
+  "gemini/gemini-3.5-flash-lite",
+  "gemini/gemini-3.5-flash-lite",
+  "gemini/gemini-3.5-flash-lite",
+  "gemini/gemini-3.5-flash-lite",
+  "gemini/gemini-3.5-flash-lite",
+  "gemini/gemini-3.5-flash-lite",
+  "gemini/gemini-3.5-flash-lite",
+  "gemini/gemini-3.5-flash-lite"
+ ]
+}
