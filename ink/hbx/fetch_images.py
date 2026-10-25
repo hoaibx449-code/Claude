@@ -32,12 +32,23 @@ def pick(hits, k=6):
     top = hits[:k]
     return RNG.choices(top, weights=[k - i for i in range(len(top))])[0] if top else None
 
+# pictures that carry printed words (diagrams, signs, posters, screens…): their English text would sit on the video
+import re as _re
+TEXTY = _re.compile(r'\b(text|word|words|letter|letters|font|typography|alphabet|sign|signage|poster|banner|label|diagram|chart|graph|infographic|'
+                    r'illustration|vector|icon|logo|map|quote|message|newspaper|book page|document|screen|calendar|menu|sale|advertis\w*|render)\b', _re.I)
+def textless(hits): return [h for h in hits if not TEXTY.search(h.get('tags', ''))]
+def relevance(q):
+    words = [w for w in _re.findall(r'[a-z]+', q.lower()) if len(w) > 2]
+    return lambda h: sum(w.rstrip('s') in h.get('tags', '').lower() for w in words)
+
 def search(q, vertical, used, lang='en'):
     # used: id đã dùng trong video + id bị loại (avoid)
     p = dict(key=KEY, q=q[:100], image_type='photo', safesearch='true', per_page=30, order='popular', lang=lang, min_width=1000)
     if vertical: p['orientation'] = 'vertical'
     hits = json.loads(get('https://pixabay.com/api/?' + urllib.parse.urlencode(p))).get('hits', [])
+    hits = textless(hits)
     if not hits and vertical: return search(q, False, used, lang)
+    sc = relevance(q); hits.sort(key=lambda h: -sc(h))   # on the subject first, then popularity (stable sort)
     fresh = [h for h in hits if h['id'] not in used and h['id'] not in AVOID] or [h for h in hits if h['id'] not in used]
     return pick(fresh) or (hits[0] if hits else None)
 
@@ -46,7 +57,7 @@ VMAX, VFPS = 12, 30
 def vsearch(q, used):
     p = dict(key=KEY, q=q[:100], video_type='film', safesearch='true', per_page=30, order='popular', min_width=1280)
     hits = json.loads(get('https://pixabay.com/api/videos/?' + urllib.parse.urlencode(p))).get('hits', [])
-    hits = [h for h in hits if ('v%d' % h['id']) not in used and h.get('duration', 0) >= 4]
+    hits = [h for h in textless(hits) if ('v%d' % h['id']) not in used and h.get('duration', 0) >= 4]
     hits = [h for h in hits if ('v%d' % h['id']) not in AVOID] or hits
     # ĐÚNG NỘI DUNG trước: chấm theo số từ khoá có trong tags của clip; rồi mới ưu tiên clip dọc, rồi độ phổ biến
     words = [w for w in q.lower().split() if len(w) > 2]

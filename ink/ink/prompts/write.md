@@ -1,5 +1,6 @@
 Nhiệm vụ: viết LỜI ĐỌC hoàn chỉnh từ dàn ý.
 
+Chủ đề người dùng yêu cầu (BẮT BUỘC bám đúng, không đổi sang chủ đề khác, không mở rộng sang chuyện khác): {topic}
 Chiến lược: {strategy}
 Thể loại: {genre}. Giọng và cấu trúc theo thể loại:
 {structure}

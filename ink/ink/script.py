@@ -57,13 +57,13 @@ def from_topic(topic, seconds=60, audience='', goal='mang lại giá trị thậ
     G = genre_text(genre_of(strategy)); strategy['genre'] = G['genre']
     log(f'   thể loại: {G["genre"]}')
     log('2/4 Dàn ý…')
-    outline = ai.ask(system(), prompt('outline', strategy=json.dumps(strategy, ensure_ascii=False), seconds=seconds, words=target, **G), 0.7,
+    outline = ai.ask(system(), prompt('outline', topic=topic, strategy=json.dumps(strategy, ensure_ascii=False), seconds=seconds, words=target, **G), 0.7,
                      check=lambda o: o.get('beats') or (_ for _ in ()).throw(ValueError('thiếu beats')), log=log)
     feedback = ''; best = None
     for round_ in range(3):
         log('3/4 Viết lời đọc…' if round_ == 0 else f'3/4 Viết lại theo góp ý biên tập (lần {round_})…')
-        script = ai.ask(system(), prompt('write', strategy=json.dumps(strategy, ensure_ascii=False), outline=json.dumps(outline, ensure_ascii=False), seconds=seconds, words=target, feedback=feedback, **G), 0.75, check=_lines_ok, log=log)
-        review, avg, low = _review(strategy, script, seconds, target, log, G)
+        script = ai.ask(system(), prompt('write', topic=topic, strategy=json.dumps(strategy, ensure_ascii=False), outline=json.dumps(outline, ensure_ascii=False), seconds=seconds, words=target, feedback=feedback, **G), 0.75, check=_lines_ok, log=log)
+        review, avg, low = _review(strategy, script, seconds, target, log, G, topic)
         if best is None or avg > best[2]: best = (script, review, avg)
         if avg >= 8.5 and not low: break
         feedback = 'Biên tập viên yêu cầu sửa những điểm sau (bắt buộc khắc phục):\n- ' + '\n- '.join(review.get('issues', [])[:5])
@@ -100,10 +100,10 @@ def _num(v):
     except (TypeError, ValueError): return 0.0
 
 
-def _review(strategy, script, seconds, target, log, G):
+def _review(strategy, script, seconds, target, log, G, topic=''):
     text = '\n'.join(l['say'] for l in script['lines'])
     log('4/4 Biên tập viên chấm kịch bản…')
-    review = ai.ask(system(), prompt('review', core=strategy.get('core_message', ''), seconds=seconds, words=target, count=words(text), script=text, **G), 0.2,
+    review = ai.ask(system(), prompt('review', topic=topic or strategy.get('core_message', ''), core=strategy.get('core_message', ''), seconds=seconds, words=target, count=words(text), script=text, **G), 0.2,
                     check=lambda o: o.get('scores') or (_ for _ in ()).throw(ValueError('thiếu scores')), log=log)
     sc = {k: _num(v) for k, v in review.get('scores', {}).items()}
     low = [k for k, v in sc.items() if v < 8]; avg = sum(sc.values()) / max(1, len(sc))

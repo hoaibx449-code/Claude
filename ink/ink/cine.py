@@ -160,6 +160,18 @@ def structure(scenes, lines_meta, fp, wps):
     return scenes
 
 
+def merge_lines(lines, wps, lo=4.0, hi=7.5):
+    """one shot per thought, not per sentence: short lines that follow each other join into a scene of about 4–7 s
+    (a picture every 2 s reads as flicker). The hook stays alone, a question or a turn opens a new scene."""
+    out = []
+    for i, l in enumerate(lines):
+        sec = S.words(l) / wps
+        if out and i > 1 and out[-1][1] < lo and out[-1][1] + sec <= hi and not TURN_WORDS.match(l) and not out[-1][0].rstrip().endswith('?'):
+            out[-1] = (out[-1][0] + ' ' + l, out[-1][1] + sec)
+        else: out.append((l, sec))
+    return [l for l, _ in out]
+
+
 def say_words(scenes): return sum(S.words(s.get('say', '')) for s in scenes)
 
 
@@ -182,10 +194,19 @@ def _clean_sub(sub, say):
     return ' | '.join(p for p in parts if p)
 
 
+NOT_FOOTAGE = re.compile(r'\b(diagram|graph|chart|infographic|illustration|vector|icon|3d|render|rendering|text|sign|poster|map|drawing|cartoon|animation|showing|concept|or)\b', re.I)
+
+
+def _footage_q(q):
+    """a stock-photo search: subject + place + light, never diagrams or drawings (they come with English words)"""
+    q = ' '.join(NOT_FOOTAGE.sub(' ', str(q)).split())
+    return q or 'nature landscape'
+
+
 def _img(o):
     """an image slot {q, video?} for the engine (q cleaned), or None"""
     if not isinstance(o, dict): return None
-    q = ' '.join(str(o.get('q') or '').split())[:100]
+    q = _footage_q(o.get('q') or '')[:100] if str(o.get('q') or '').strip() else ''
     return ({k: v for k, v in o.items() if k in ('video', 'focus', 'depth', 'vstart')} | {'q': q}) if q else None
 
 
@@ -357,8 +378,9 @@ def plan(inp, log=print):
         sc = S.from_topic(topic, seconds, inp.get('audience', ''), tone=inp.get('tone') or 'tự nhiên, hợp với chủ đề và người xem', notes=inp.get('notes', ''), pace=pace, log=log)
     lines = [' '.join(str(l['say']).split()) for l in sc['lines'] if str(l.get('say', '')).strip()]
     strategy = sc.get('strategy') or {}
-    min_types = max(3, min(6, len(lines) // 6))
-    wps = S.wps() * S.speed(pace); sec_per_line = round(sum(S.words(l) for l in lines) / max(1, len(lines)) / wps, 1)
+    wps = S.wps() * S.speed(pace); lines = merge_lines(lines, wps)
+    min_types = max(3, min(6, len(lines) // 5))
+    sec_per_line = round(sum(S.words(l) for l in lines) / max(1, len(lines)) / wps, 1)
     best, feedback = None, ''
     for round_ in range(3):
         log('Đạo diễn phân cảnh…' if not round_ else f'Đạo diễn làm lại theo góp ý (lần {round_})…')
@@ -390,7 +412,7 @@ def plan(inp, log=print):
     except (TypeError, ValueError): c['shot'] = shots[0]
     if c['shot'] not in shots: c['shot'] = shots[0]
     c['hook'] = str(c.get('hook') or o.get('title') or lines[0])[:80]
-    sb = {'theme': 'cine', 'brand': (inp.get('brand') or '').strip()[:40] or str(o.get('title') or '')[:30].upper(), 'style': style, 'cover': c,
+    sb = {'theme': 'cine', 'brand': (inp.get('brand') or '').strip()[:40], 'style': style, 'cover': c,
           'pace': 'fast' if pace in ('fast', 'faster') else 'normal', 'subWords': 3}
     st = o.get('sticker')
     if isinstance(st, dict) and st.get('text'):

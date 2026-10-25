@@ -1,6 +1,7 @@
 Nhiệm vụ: CHẤM kịch bản như một biên tập viên nội dung khó tính trước khi đưa đi sản xuất.
 
-Chủ đề / thông điệp: {core}
+Chủ đề người dùng yêu cầu: {topic}
+Thông điệp: {core}
 Thể loại: {genre} (kết đúng kiểu: {ending})
 Độ dài mục tiêu: {seconds} giây (khoảng {words} chữ). Số chữ hiện có: {count}.
 Kịch bản:
@@ -17,7 +18,8 @@ Chấm từng tiêu chí từ 1 đến 10 như người lướt TikTok khó tín
 - truth: mọi điều khẳng định đều đúng sự thật, kể cả hook (nói sai để gây sốc thì tối đa 3); không câu nào nói ra kỹ thuật làm video với người xem.
 - language: văn nói tự nhiên, câu ngắn, đúng chính tả, dễ đọc thành tiếng, không sáo rỗng.
 - length: độ dài đúng mục tiêu.
+- on_topic: kịch bản nói ĐÚNG chủ đề người dùng yêu cầu từ đầu đến cuối; lạc sang chủ đề khác hoặc đổi trọng tâm thì tối đa 3.
 Nêu tối đa 5 vấn đề cụ thể cần sửa (chỉ rõ câu nào, sửa thế nào).
 
 JSON:
-{{"scores": {{"hook": 0, "clarity": 0, "concrete": 0, "value": 0, "ending": 0, "genre_fit": 0, "truth": 0, "language": 0, "length": 0, "retention": 0}}, "issues": ["..."]}}
+{{"scores": {{"hook": 0, "clarity": 0, "concrete": 0, "value": 0, "ending": 0, "genre_fit": 0, "truth": 0, "language": 0, "length": 0, "retention": 0, "on_topic": 0}}, "issues": ["..."]}}

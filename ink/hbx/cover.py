@@ -68,7 +68,7 @@ html,body{{margin:0;width:720px;height:1280px;overflow:hidden;background:#000}}
 .br{{position:absolute;left:52px;bottom:120px;font:600 18px/1 "Be Vietnam Pro",sans-serif;letter-spacing:.2em;color:rgba(255,255,255,.6)}}
 </style><div class="bg"></div><div class="sh"></div>
 <div class="box">{f'<div class="k">{kick}</div>' if kick else ''}<div class="h">{_md(hook, acc, ink)}</div>{f'<div class="d">{det}</div>' if det else ''}</div>
-<div class="br">{brand}</div>'''
+{f'<div class="br">{brand}</div>' if brand else ''}'''
 
 
 def render_cover(sb, base, out):

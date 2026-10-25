@@ -183,7 +183,13 @@ def main():
     import time; T0 = time.time()
     n = int(round(total * FPS)); tmp = Path(tempfile.mkdtemp(prefix='hbxr_'))
     ps = [Process(target=worker, args=(sb, list(range(k, n, a.workers)), tmp)) for k in range(a.workers)]
-    [p.start() for p in ps]; [p.join() for p in ps]
+    [p.start() for p in ps]
+    last = -1
+    while any(p.is_alive() for p in ps):   # progress for the site: frames written so far
+        time.sleep(5); done = len(list(tmp.glob('*.jpg'))) + len(list(tmp.glob('*.png')))
+        pc = min(99, int(100 * done / max(1, n)))
+        if pc // 10 != last // 10: last = pc; print(f'  chụp khung {pc}%', flush=True)
+    [p.join() for p in ps]
     if any(p.exitcode for p in ps): sys.exit('worker lỗi')
     print(f'  chụp {n} khung: {time.time() - T0:.0f}s', flush=True); T1 = time.time()
 

@@ -256,12 +256,12 @@
   const TR = {
     // bay xuyên (FPV): lao vào giữa cảnh cũ (phóng to + nhòe + nghiêng) rồi trồi ra ở cảnh mới
     fpv(A, B, p, fx) {
-      const a = p < .5, q = a ? p / .5 : (p - .5) / .5, el = a ? A : B;
-      A.style.visibility = a ? 'visible' : 'hidden'; B.style.visibility = a ? 'hidden' : 'visible';
-      // cảnh mới không bao giờ nhỏ hơn khung (trước đây 0,55x → lộ viền đen, giật ngược chiều)
-      const sc = a ? 1 + .9 * q * q : 1, rot = a ? 5 * q * q : 0;
-      el.style.transform = `scale(${sc}) rotate(${rot}deg)`; el.style.filter = `blur(${(a ? q : 1 - q) * 9}px)`;
-      fx.innerHTML = `<div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,transparent 30%,rgba(0,0,0,${.55 * Math.sin(Math.PI * p)}) 80%)"></div>`;
+      // cảnh cũ lao tới + nghiêng + nhoè; cảnh mới hiện dần từ vệt nhoè (không đổi cỡ đột ngột, không lộ viền)
+      const m = clamp((p - .35) / .35), e = E.io(p);
+      A.style.visibility = 'visible'; B.style.visibility = m > 0 ? 'visible' : 'hidden'; B.style.zIndex = 2;
+      A.style.transform = `scale(${1 + .6 * e * e}) rotate(${4 * e * e}deg)`; A.style.filter = `blur(${e * 10}px)`;
+      B.style.opacity = E.io(m); B.style.transform = `rotate(${-2 * (1 - m)}deg) scale(${1 + .06 * (1 - m)})`; B.style.filter = `blur(${(1 - m) * 9}px)`;
+      fx.innerHTML = `<div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,transparent 30%,rgba(0,0,0,${.45 * Math.sin(Math.PI * p)}) 80%)"></div>`;
     },
     stripes(A, B, p, fx) {
       A.style.visibility = p < .5 ? 'visible' : 'hidden'; B.style.visibility = p >= .5 ? 'visible' : 'hidden';
@@ -316,7 +316,7 @@
       const def = S[s.type](s, { i, n: sb.scenes.length, start: acc, sb });
       const el = document.createElement('section');
       el.className = 'scene'; el.dataset.tone = s.tone || 'a';
-      el.innerHTML = `<div class="cam">${deco(i + (sb.seed || 1))}<div class="pill"><i></i>${esc(sb.brand || '')}</div>${def.html}</div>`;
+      el.innerHTML = `<div class="cam">${deco(i + (sb.seed || 1))}${sb.brand ? `<div class="pill"><i></i>${esc(sb.brand)}</div>` : ''}${def.html}</div>`;
       root.appendChild(el);
       (EXT.decorate || []).forEach(f => f(s, el, { i, start: acc }));   // kho kỹ thuật dựng (fx.js): đồ hoạ phủ, hiệu ứng, tốc độ
       const o = { s, el, cam: el.querySelector('.cam'), camKind: s.camera || def.cam, start: acc, dur: s.dur, focus: def.focus, items: [...el.querySelectorAll('[data-in]')] };

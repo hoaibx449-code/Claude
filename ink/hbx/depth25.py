@@ -158,7 +158,7 @@ def bake(src, d, kind, n, out, t_of, ow=720, oh=1280, over=1.07, gname=None, pac
         r = -np.deg2rad(roll); ux, uy = qx / zm, qy / zm
         ux, uy = ux * np.cos(r) - uy * np.sin(r), ux * np.sin(r) + uy * np.cos(r)
         dd = dat(ux, uy)
-        for _ in range(1 if flat else 4):
+        for _ in range(1 if flat else 3):
             sc = 1 / (1 - z * (.12 + .88 * dd)); k = .2 + .8 * dd
             px, py = (ux + x * k) / sc, (uy + y * k) / sc
             dd = dat(px, py)
@@ -172,23 +172,36 @@ def bake(src, d, kind, n, out, t_of, ow=720, oh=1280, over=1.07, gname=None, pac
 
 TAIL = .6   # nướng dư 0,6 s cuối cảnh để máy vẫn chạy trong lúc chuyển cảnh
 
+def _video_get(fd, off, ns, rate, focus):
+    cache = {}
+    def get(i):
+        j = min(off + ns, off + int(i * rate) + 1)
+        if j not in cache: cache.clear(); cache[j] = cover(cv2.imread(str(fd / f'f{j:04d}.jpg')), focus.get('x', .5), focus.get('y', .5))
+        return cache[j]
+    return get
+
+
+def _bake_task(t):
+    """one shot, in a worker process (scenes bake side by side on every core)"""
+    cv2.setNumThreads(1)
+    k, src, d, kind, n, out, dur, fps, gname, pace = t
+    if isinstance(src, tuple): src = _video_get(*src)
+    bake(src, d, kind, n, out, lambda i: (i / fps) / dur, gname=gname, pace=pace)
+    return k, kind, n
+
+
 def bake_sb(sbp, fps=30):
     sbp = Path(sbp); sb = json.loads(sbp.read_text()); gname = (sb.get('style') or {}).get('grade'); pace = sb.get('pace')
+    tasks = []
     for k, s in enumerate(sb['scenes']):
         if s.get('type') != 'shot': continue
         bg = s.get('bg') or {}; kind = s.get('cam', 'push'); dur = float(s['dur']); n = int(round((dur + TAIL) * fps))
-        t_of = lambda i, dur=dur: (i / fps) / dur
         key = f"{k:02d}_{kind}_{n}_{gname}_{pace}_{Path(bg.get('src', 'x')).stem}_{int(100 * (bg.get('focus') or {}).get('x', .5))}{int(100 * (bg.get('focus') or {}).get('y', .5))}_{bg.get('from', 0)}"
         out = sbp.parent / 'assets' / f'shot_{key}'
         if not (out / f'f{n:04d}.jpg').exists():
             if bg.get('frames'):                     # video: lấy khung nguồn, chạy chậm nếu clip ngắn hơn cảnh
                 fd = sbp.parent / bg['frames']['dir']; off = int(float(bg.get('from', 0)) * fps); ns = max(1, bg['frames']['n'] - off); rate = min(1., ns / n)
-                cache = {}
-                def get(i, fd=fd, ns=ns, rate=rate, off=off):
-                    j = min(off + ns, off + int(i * rate) + 1)
-                    if j not in cache: cache.clear(); cache[j] = cover(cv2.imread(str(fd / f'f{j:04d}.jpg')), *(lambda f: (f.get('x', .5), f.get('y', .5)))(bg.get('focus') or {}))
-                    return cache[j]
-                bake(get, .45, kind, n, out, t_of, gname=gname, pace=pace)
+                tasks.append((k, (fd, off, ns, rate, bg.get('focus') or {}), .45, kind, n, out, dur, fps, gname, pace))
             elif bg.get('src'):                      # ảnh: 2.5D thị sai từng điểm ảnh
                 f = bg.get('focus') or {}
                 img = cover(cv2.imread(str(sbp.parent / bg['src'])), f.get('x', .5), f.get('y', .5))
@@ -199,10 +212,15 @@ def bake_sb(sbp, fps=30):
                     edge = float(np.mean(np.abs(cv2.Sobel(d, cv2.CV_32F, 1, 0)) + np.abs(cv2.Sobel(d, cv2.CV_32F, 0, 1))))
                     if edge > .014: d = d * .4 + .3           # ảnh nhiều vật mảnh trên nền trời → giảm mạnh thị sai
                 if isinstance(d, np.ndarray): bg['dgrid'] = cv2.resize(d, (9, 16), interpolation=cv2.INTER_AREA).round(3).tolist()
-                bake(img, d, kind, n, out, t_of, gname=gname, pace=pace)
+                tasks.append((k, img, d, kind, n, out, dur, fps, gname, pace))
             else: continue
-            print(f'  nướng cảnh {k + 1}: {kind} {n} khung', flush=True)
         bg['baked'] = {'dir': f'assets/{out.name}', 'n': n, 'fps': fps}
+    if tasks:
+        import multiprocessing as mp
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        with ProcessPoolExecutor(max(1, min(len(tasks), os.cpu_count() or 2)), mp_context=mp.get_context('fork')) as ex:
+            for i, f in enumerate(as_completed([ex.submit(_bake_task, t) for t in tasks])):
+                k, kind, n = f.result(); print(f'  nướng cảnh {i + 1}/{len(tasks)} (cảnh {k + 1}: {kind} {n} khung)', flush=True)
     sbp.write_text(json.dumps(sb, ensure_ascii=False, indent=1))
 
 

@@ -225,10 +225,10 @@ export async function inkCron(env: Env) {
   await env.DB.prepare("UPDATE ink_jobs SET status = 'queued', lease = '', message = 'Đang chờ máy dựng (thử lại)' WHERE status = 'running' AND heartbeat < ?").bind(now - STALE_MS).run();
   const waiting = await env.DB.prepare("SELECT MIN(updated_at) AS t FROM ink_jobs WHERE status = 'queued'").first<any>();
   const running = await env.DB.prepare("SELECT COUNT(*) AS n FROM ink_jobs WHERE status = 'running'").first<any>();
-  // nothing is being made and something waits for more than 3 minutes: the last wake-up was lost
-  if (waiting?.t && !running?.n && now - waiting.t > 3 * 60_000) {
+  // nothing is being made and something waits for more than 2 minutes: the last wake-up was lost
+  if (waiting?.t && !running?.n && now - waiting.t > 2 * 60_000) {
     const last = await env.DB.prepare("SELECT MAX(CAST(value AS INTEGER)) AS t FROM settings WHERE key IN ('ink:dispatch', 'ink:cloud', 'ink:cron')").first<any>();
-    if (!last?.t || now - Number(last.t) > 5 * 60_000) { await mark(env, 'ink:cron'); await dispatch(env, true); }
+    if (!last?.t || now - Number(last.t) > 3 * 60_000) { await mark(env, 'ink:cron'); await dispatch(env, true); }
   }
 }
 
@@ -402,7 +402,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
       if (!sb || !Array.isArray(sb.scenes) || !sb.scenes.length) throw new HttpError(400, 'Phân cảnh rỗng.');
       const next = { ...meta, caption: str(sb.caption, 1000), hashtags: (Array.isArray(sb.hashtags) ? sb.hashtags : []).map((x: unknown) => '#' + str(x, 40).replace(/^#+/, '')).filter((x: string) => /^#[A-Za-z0-9_]{2,40}$/.test(x)).slice(0, 10), ai: sb.ai };
       await env.DB.prepare("UPDATE ink_jobs SET storyboard = ?, title = ?, meta = ?, stage = 'render', progress = 30, message = 'Phân cảnh xong', updated_at = ? WHERE id = ?")
-        .bind(JSON.stringify(sb), str(sb.title, 100) || j.title, JSON.stringify(next), Date.now(), j.id).run();
+        .bind(JSON.stringify(sb), (input.mode === 'script' ? str(sb.title, 100) : '') || j.title, JSON.stringify(next), Date.now(), j.id).run();
       return json({ ok: true });
     }
     if (act === 'browser/music' && method === 'GET') {
@@ -545,7 +545,8 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
   if (act === 'planned' && req.method === 'POST') {
     const b = await body<any>(req, 400_000), sb = b.storyboard;
     if (!sb || !Array.isArray(sb.scenes) || !sb.scenes.length) throw new HttpError(400, 'Phân cảnh rỗng.');
-    const title = str(sb.title, 100) || j.title, next = { ...meta, caption: str(sb.caption, 1000), hashtags: (Array.isArray(sb.hashtags) ? sb.hashtags : []).map((x: unknown) => '#' + str(x, 40).replace(/^#+/, '')).filter((x: string) => /^#[A-Za-z0-9_]{2,40}$/.test(x)).slice(0, 10), ai: b.ai };
+    // the user's own topic stays the video's name; the AI's title only names videos made from a pasted script
+    const title = (input.mode === 'script' ? str(sb.title, 100) : '') || j.title, next = { ...meta, caption: str(sb.caption, 1000), hashtags: (Array.isArray(sb.hashtags) ? sb.hashtags : []).map((x: unknown) => '#' + str(x, 40).replace(/^#+/, '')).filter((x: string) => /^#[A-Za-z0-9_]{2,40}$/.test(x)).slice(0, 10), ai: b.ai };
     const review = input.review === true && !input.browser; // in the browser the storyboard is shown before drawing anyway
     await env.DB.prepare(`UPDATE ink_jobs SET storyboard = ?, title = ?, meta = ?, stage = 'render', status = ?, lease = ?, progress = ?, message = ?, updated_at = ? WHERE id = ?`)
       .bind(JSON.stringify(sb), title, JSON.stringify(next), review ? 'review' : 'running', review ? '' : lease, 40, review ? 'Phân cảnh xong, chờ bạn duyệt' : 'Phân cảnh xong, đang dựng', now, j.id).run();

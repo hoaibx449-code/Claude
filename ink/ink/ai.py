@@ -76,8 +76,12 @@ def ask(system, user, temperature=0.7, check=None, log=print):
         raise RuntimeError('AI không trả lời được: ' + ' | '.join(errors))
     models = chain()
     if not models: raise RuntimeError('Chưa có khóa AI (OPENAI_API_KEY hoặc GEMINI_API_KEY).')
+    first = {}
+    for p_, m_ in models: first.setdefault(p_, m_)
     for provider, model in models:
-        for attempt in range(2):
+        # the best model of each provider is worth waiting for when busy (429/503): the lighter ones break long JSON
+        waits = [6, 15, 30] if first.get(provider) == model else [4]
+        for attempt in range(len(waits) + 1):
             try:
                 raw = (_gemini if provider == 'gemini' else _openai)(model, system, user, temperature)
                 obj = parse_json(raw)
@@ -86,10 +90,14 @@ def ask(system, user, temperature=0.7, check=None, log=print):
             except urllib.error.HTTPError as e:
                 msg = f'{provider}/{model}: HTTP {e.code}'
                 errors.append(msg); log('  AI lỗi, thử tiếp: ' + msg)
-                if e.code in (429, 500, 502, 503, 504) and attempt == 0: time.sleep(4); continue
+                if e.code in (429, 500, 502, 503, 504) and attempt < len(waits):
+                    try: after = float(e.headers.get('retry-after') or 0)
+                    except (TypeError, ValueError): after = 0
+                    time.sleep(min(60, max(waits[attempt], after))); continue
                 break
             except (ValueError, KeyError, IndexError, json.JSONDecodeError, urllib.error.URLError, TimeoutError) as e:
                 msg = f'{provider}/{model}: {type(e).__name__}: {str(e)[:160]}'
                 errors.append(msg); log('  AI trả lời chưa đạt, thử tiếp: ' + msg)
+                if attempt == 0 and first.get(provider) == model: continue   # the best model gets a second try
                 break
     raise RuntimeError('Tất cả mô hình AI đều không trả lời được: ' + ' | '.join(errors))

@@ -5,7 +5,7 @@
 A job is either 'plan' (script, storyboard, cover; then the video too unless the user wants to review the
 storyboard first) or 'render' (an approved or re-paced storyboard to video, no AI call). The site hands
 the AI order, models, voice and keys with each job (admin settings), so nothing is configured here."""
-import json, os, socket, subprocess, sys, tempfile, threading, time, traceback, urllib.request, urllib.error
+import json, os, re, socket, subprocess, sys, tempfile, threading, time, traceback, urllib.request, urllib.error
 from . import ai
 from .cli import make_plan, make_video, save_plan
 from . import voice as V
@@ -60,6 +60,14 @@ def run(job):
         print(m, flush=True)
         for k, v in steps.items():
             if m.strip().startswith(k): state.update(progress=v, message=m.strip()[:120]); report(); return
+        mm = re.match(r'\s*nướng cảnh (\d+)/(\d+)', m) or re.match(r'\s*chụp khung (\d+)%', m)
+        if mm:   # the cinematic render: baking the camera moves (52–70), then capturing frames (70–92)
+            a = int(mm.group(1))
+            if 'nướng' in m:
+                b = int(mm.group(2)); state.update(progress=52 + int(18 * a / b), message=f'Đang làm chuyển động cảnh {a}/{b}')
+                if a % 5 == 0 or a == b: report()
+            else: state.update(progress=70 + int(22 * a / 100), message=f'Đang ghi hình {a}%'); report()
+            return
         if m.startswith('cảnh '):
             try: a, b = m.split()[1].split('/'); state.update(progress=52 + int(43 * int(a) / int(b)), message=f'Đang vẽ cảnh {a}/{b}')
             except ValueError: return

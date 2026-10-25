@@ -1,5 +1,6 @@
 Nhiệm vụ: dựng DÀN Ý giữ chân người xem từ chiến lược sau.
 
+Chủ đề người dùng yêu cầu (BẮT BUỘC bám đúng, không đổi sang chủ đề khác, không mở rộng sang chuyện khác): {topic}
 Chiến lược: {strategy}
 Độ dài: khoảng {seconds} giây (khoảng {words} chữ lời đọc tổng cộng).
 
