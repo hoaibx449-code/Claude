@@ -19,7 +19,7 @@ TRANS = ['through', 'cut', 'dissolve', 'whip', 'zoom', 'flash', 'slideup', 'glit
          'dipblack', 'dipwhite', 'pushup', 'slide', 'iris', 'wipe', 'smash', 'fpv']
 # the technique library (hbx/engine/fx.js): fake camera, overlays, picture effects, footage speed — chosen per scene
 FX_CAM = ['punchIn', 'punchOut', 'snapZoom', 'crashZoom', 'kenBurns', 'handheld', 'shake', 'pullOut', 'tiltUp', 'tiltDown', 'panL', 'panR', 'dutch', 'breathe']
-FX_OVER = ['arrow', 'circle', 'box', 'underline', 'scribble', 'spotlight', 'impact', 'keyword', 'lowerthird', 'counter', 'progress', 'typewriter', 'stamp', 'sticker', 'bracket', 'flash']
+FX_OVER = ['arrow', 'circle', 'box', 'underline', 'scribble', 'spotlight', 'impact', 'keyword', 'lowerthird', 'counter', 'progress', 'typewriter', 'stamp', 'sticker', 'bracket', 'flash', 'chapter']
 FX_EFF = ['vignette', 'grain', 'glow', 'chroma', 'lightleak', 'halftone', 'bw', 'warm', 'cool', 'blurIn', 'filmburn', 'dim', 'duotone']
 FX_SPEED = ['slow', 'ramp', 'freeze', 'fast']
 # every way of telling a line in pictures the engine knows, and which "family" it belongs to (variety rules)
@@ -125,6 +125,41 @@ def polish(scenes, fp, wps):
                 f = s.setdefault('fx', {}); f['camera'] = 'snapZoom'; f['cue'] = None
                 f['overlay'] = [o for o in f.get('overlay', []) if o.get('kind') not in STRONG_OVER][:1] + [{'kind': 'keyword', 'text': key[0][:24], 'y': .2}]
                 f.pop('cue'); s['beat'] = 'reward'; last = times[i]
+    return scenes
+
+
+TURN_WORDS = re.compile(r'\b(nhưng|thật ra|thực ra|khoan|ngược lại|bất ngờ|điều lạ|sự thật là|vậy mà|tuy nhiên|còn kỳ lạ)\b', re.I)
+
+
+def structure(scenes, lines_meta, fp, wps):
+    """the story's shape in pictures: chapter cards where the script opens a chapter (videos of 90 s and more), turns
+    near 1/3 and 2/3 when the director left them out (the line that turns the story: "nhưng…", a question, a word
+    cut), and a loop ending that comes back to the opening footage so the video replays seamlessly"""
+    r = random.Random(fp['seed'] + 7)
+    t, times = 0.0, []
+    for s in scenes: times.append(t); t += max(1.2, S.words(s['say']) / wps)
+    total = t or 1
+    if total >= 90:
+        n = 0
+        for i, m in enumerate(lines_meta[:len(scenes)]):
+            if i and isinstance(m, dict) and str(m.get('chapter') or '').strip():
+                n += 1; s = scenes[i]; f = s.setdefault('fx', {})
+                f['overlay'] = [o for o in f.get('overlay', []) if o.get('kind') not in ('chapter', 'lowerthird')][:1] + [{'kind': 'chapter', 'sub': f'PHẦN {n + 1}', 'text': str(m['chapter'])[:28]}]
+                s['trans'] = r.choice(['dipblack', 'iris', 'wipe']); s.setdefault('beat', 'turn')
+    for mark in (1 / 3, 2 / 3):
+        if total < 25 or any(s.get('beat') == 'turn' and abs(times[i] / total - mark) < .15 for i, s in enumerate(scenes)): continue
+        near = sorted(range(1, len(scenes) - 1), key=lambda i: abs(times[i] / total - mark))[:5]
+        pick = next((i for i in near if scenes[i]['type'] in ('question', 'c_word', 'c_headline') or TURN_WORDS.search(scenes[i]['say'])), near[0] if near else None)
+        if pick is None: continue
+        s = scenes[pick]; s['beat'] = 'turn'
+        if not strong(scenes[pick - 1]): s['trans'] = r.choice(['smash', 'dipwhite', 'glitch'] if s['type'] != 'shot' else ['smash', 'whip', 'dipwhite'])
+        if pick + 1 < len(scenes) and strong(scenes[pick + 1]):   # keep a breath after it
+            f = scenes[pick + 1].get('fx') or {}; f.pop('camera', None) if f.get('camera') in STRONG_CAM else None
+            f['overlay'] = [o for o in f.get('overlay', []) if o.get('kind') not in STRONG_OVER]; scenes[pick + 1]['beat'] = 'breath'
+            if scenes[pick + 1].get('trans') in STRONG_TRANS: scenes[pick + 1]['trans'] = 'dissolve'
+    first, last = scenes[0], scenes[-1]
+    if first['type'] == 'shot' and last['type'] == 'shot' and first.get('bg') and last.get('bg'):
+        last['bg'] = dict(first['bg']); last['cam'] = first.get('cam', 'push'); last['loop'] = True   # same footage: the end flows into the start
     return scenes
 
 
@@ -305,7 +340,7 @@ def plan(inp, log=print):
         feedback = 'GÓP Ý BẮT BUỘC SỬA từ lần trước:\n- ' + '\n- '.join(problems + issues)
     _, o, scenes, scores = best
     before = len(variety(scenes, min_types) + rhythm(scenes, wps))
-    scenes = polish(scenes, fp, wps)
+    scenes = structure(polish(scenes, fp, wps), sc['lines'], fp, wps)
     left = variety(scenes, min_types) + rhythm(scenes, wps)
     log(f'   tự sửa luật dựng: còn {len(left)}/{before} lỗi' + (f' ({"; ".join(left[:3])})' if left else ''))
     style = {**fp['style'], **{k: v for k, v in (o.get('style') or {}).items() if k in ('scheme', 'grade') and isinstance(v, str)}}

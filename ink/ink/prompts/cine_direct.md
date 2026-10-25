@@ -77,6 +77,7 @@ Mỗi câu dài khoảng {sec_per_line} giây. Đánh dấu `beat` cho cảnh:
 - Tầng 3 — `"beat": "turn"`: ở khoảng 1/3 và 2/3 video có một cú bẻ hướng lớn ("nhưng khoan…", lật ngộ nhận, câu hỏi mới) + hứa trước điều ở cuối; đổi hẳn kiểu cảnh, smash/dipblack/iris.
 - `"beat": "breath"`: ngay sau mỗi cú mạnh là 1 cảnh thở (cảnh rộng, breathe/kenBurns, dissolve, không đồ hoạ phủ) để cú mạnh tiếp theo vẫn còn tác dụng. Không 2 cú mạnh liền nhau.
 - Hiệu ứng phải CHỈ VÀO NỘI DUNG (khoanh đúng vật đang nói, chữ nổ/từ khoá là chữ có trong câu) — không gắn hiệu ứng chỉ để cho có.
+- Kết vòng lặp: cảnh cuối là `shot` dùng lại ĐÚNG `q` của cảnh đầu (câu chốt vọng lại câu mở) để video phát lại liền mạch.
 - Cấu trúc theo nội dung: ngộ nhận → sự thật, vấn đề → giải pháp, câu hỏi → điều tra → câu trả lời, sai → đúng, trước → sau, đếm ngược… — để hình kể theo đúng cấu trúc đó.
 9. `sub`: phụ đề cùng nội dung với lời đọc nhưng số viết bằng số ("26,4%"), chữ thường như câu bình thường (KHÔNG in hoa cả câu), chia cụm nghĩa bằng `|` (≤ 38 ký tự/cụm, không kết thúc bằng hư từ), KHÔNG dấu chấm cuối, đánh dấu 1 cụm đắt nhất bằng `*…*`.
 

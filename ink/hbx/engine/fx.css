@@ -40,3 +40,6 @@
 .scene[data-fx=chroma] .cam{filter:drop-shadow(-4px 0 0 rgba(255,0,60,.55)) drop-shadow(4px 0 0 rgba(0,220,255,.55))}
 .scene[data-fx=duotone] .cam{filter:grayscale(1) contrast(1.2)}
 .scene[data-fx=duotone]:after{content:"";position:absolute;inset:0;background:linear-gradient(160deg,var(--c-acc2,#3fd0ff),var(--c-acc,#ffcf3f));mix-blend-mode:color;z-index:18;pointer-events:none}
+.fx-chap{left:0;top:150px;display:flex;flex-direction:column;gap:4px;padding:14px 30px 14px 40px;background:var(--c-card,rgba(10,12,18,.85));color:var(--c-ink,#fff);border-left:10px solid var(--c-acc,#ffcf3f);border-radius:0 16px 16px 0;box-shadow:0 14px 30px rgba(0,0,0,.35)}
+.fx-chap small{font:800 18px var(--c-body,'Be Vietnam Pro');letter-spacing:3px;color:var(--c-acc,#ffcf3f)}.fx-chap b{font:800 40px/1.1 var(--c-font,'Oswald');text-transform:var(--c-case,uppercase)}
+.fx-chap b em{font-style:normal;color:var(--c-acc2,#3fd0ff)}

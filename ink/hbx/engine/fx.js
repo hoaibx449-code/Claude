@@ -35,9 +35,10 @@
     sticker: (o) => `<div class="fxo fx-stick" style="left:${(o.x ?? .7) * W}px;top:${(o.y ?? .14) * H}px">${rich(o.text || '')}</div>`,
     bracket: (o) => `<div class="fxo fx-brk" style="left:${o.x * W - (o.w || 320) / 2}px;top:${o.y * H - (o.h || 200) / 2}px;width:${o.w || 320}px;height:${o.h || 200}px"></div>`,
     flash: () => `<div class="fxo fx-flash"></div>`,
+    chapter: (o) => `<div class="fxo fx-chap"><small>${esc(o.sub || 'PHẦN')}</small><b>${rich(o.text || '')}</b></div>`,
   };
   const OV_SFX = { arrow: 'swish', circle: 'swish', box: 'tick', underline: 'swish', scribble: 'swish', spotlight: 'whoosh', impact: 'impact', keyword: 'pop',
-    lowerthird: 'swish', counter: 'tick', progress: 'roll', typewriter: 'type', stamp: 'impact', sticker: 'pop', bracket: 'tick', flash: 'impact' };
+    lowerthird: 'swish', counter: 'tick', progress: 'roll', typewriter: 'type', stamp: 'impact', sticker: 'pop', bracket: 'tick', flash: 'impact', chapter: 'swish' };
   const DEF = { arrow: { x: .5, y: .3 }, circle: { x: .5, y: .38 }, box: { x: .5, y: .4 }, underline: { x: .5, y: .3 }, scribble: { x: .5, y: .3 }, spotlight: { x: .5, y: .4 }, bracket: { x: .5, y: .4 } };
 
   X.decorate.push((s, el, c) => {
@@ -102,6 +103,7 @@
       if (k === 'keyword' || k === 'sticker') w.firstElementChild.style.transform = `translate(-50%,-50%) scale(${.3 + .7 * E().back(p)}) rotate(${(k === 'sticker' ? 6 : 0) + Math.sin(lt * 3) * 1.5}deg)`;
       if (k === 'stamp') w.firstElementChild.style.transform = `translate(-50%,-50%) rotate(-9deg) scale(${2.4 - 1.4 * E().out3(p)})`;
       if (k === 'lowerthird') w.firstElementChild.style.clipPath = `inset(0 ${(1 - e) * 100}% 0 0)`;
+      if (k === 'chapter') { const c = w.firstElementChild, out = Math.max(0, Math.min(1, (lt - t0 - 2.2) / .4)); c.style.clipPath = `inset(0 ${(1 - e) * 100}% 0 0)`; c.style.opacity = 1 - out; }
       if (k === 'counter') w.firstElementChild.style.transform = `translate(-50%,0) scale(${.5 + .5 * E().back(p)})`;
       if (k === 'progress') { const i = w.querySelector('i'); i.style.width = `calc(var(--to) * ${E().io(clamp((lt - t0) / 1.2))})`; }
       if (k === 'typewriter') { const el = w.firstElementChild, s = el.dataset.full; el.textContent = s.slice(0, Math.floor(s.length * p)) + (p < 1 && Math.floor(lt * 4) % 2 ? '▌' : ''); }
