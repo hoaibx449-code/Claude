@@ -20,7 +20,7 @@
 .ink-meta { display: grid; gap: 4px; min-width: 0; }
 .ink-meta strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ink-status { font-size: .85rem; font-weight: 600; }
-.ink-status.s-done { color: #15803d; } .ink-status.s-failed { color: #b91c1c; } .ink-status.s-review { color: #b45309; } .ink-status.s-running, .ink-status.s-queued { color: #7c3aed; }
+.ink-status.s-done { color: #15803d; } .ink-status.s-failed { color: #b91c1c; } .ink-status.s-review { color: #b45309; } .ink-status.s-running, .ink-status.s-queued { color: var(--accent, #7c3aed); }
 .ink-bar { height: 10px; border-radius: 99px; background: var(--line, #eee); overflow: hidden; }
 .ink-bar i { display: block; height: 100%; background: var(--grad, #7c3aed); transition: width .6s ease; }
 .ink-progress { display: grid; gap: 12px; max-width: 640px; }

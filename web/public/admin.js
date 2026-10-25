@@ -787,7 +787,7 @@ function contentTab(c) {
   const paintLogoChoices = () => logoChoices.replaceChildren(
     h('div', { class: 'chips' }, h('span', { class: 'muted' }, 'Biểu tượng:'), ...[['pen', 'Cây bút'], ['robot', 'Robot'], ['spark', 'Tia sáng'], ['play', 'Nút phát'], ['brush', 'Cọ vẽ'], ['star', 'Ngôi sao'], ['letter', 'Chữ cái đầu']].map(([k, n]) => h('button', { type: 'button', class: 'chip' + (c.site.logo.icon === k && !c.site.logo.image ? ' on' : ''), onclick: () => { c.site.logo.icon = k; c.site.logo.image = ''; paintLogoPreview(); } }, n))),
     h('div', { class: 'chips' }, h('span', { class: 'muted' }, 'Nền:'), ...[['brand', 'Tím cam'], ['sunset', 'Hoàng hôn'], ['ocean', 'Đại dương'], ['forest', 'Rừng xanh'], ['night', 'Đêm tím']].map(([k, n]) => { const b = h('button', { type: 'button', class: 'chip logo-bg' + (c.site.logo.bg === k ? ' on' : ''), onclick: () => { c.site.logo.bg = k; paintLogoPreview(); } }, h('i', {}), n); b.firstChild.style.background = LOGO_BG[k]; return b; }),
-      h('label', { class: 'chip logo-bg' + (/^#/.test(c.site.logo.bg) ? ' on' : '') }, 'Màu riêng ', h('input', { type: 'color', value: /^#/.test(c.site.logo.bg) ? c.site.logo.bg : '#7c3aed', oninput: (e) => { c.site.logo.bg = e.target.value; paintLogo(logoPreview, c.site.logo, c.brand.name); } }))));
+      h('label', { class: 'chip logo-bg' + (/^#/.test(c.site.logo.bg) ? ' on' : '') }, 'Màu riêng ', h('input', { type: 'color', value: /^#/.test(c.site.logo.bg) ? c.site.logo.bg : (c.site.colors?.primary || '#7c3aed'), oninput: (e) => { c.site.logo.bg = e.target.value; paintLogo(logoPreview, c.site.logo, c.brand.name); } }))));
   paintLogoPreview();
   const tplList = h('div', { class: 'scenes' });
   const drawTpls = () => tplList.replaceChildren(...c.templates.map((t, i) => h('div', { class: 'scene' },
@@ -798,14 +798,25 @@ function contentTab(c) {
   c.site.social ||= {}; c.site.helpBot ||= { enabled: true, name: 'Trợ lý', welcome: '', knowledge: '', perDay: 30 };
   const THEMES = [['aurora', 'Tím cam năng lượng (mặc định)', 'linear-gradient(120deg,#6d28d9,#a21caf,#f43f5e,#f97316)'], ['ocean', 'Đại dương', 'linear-gradient(120deg,#0891b2,#0e7490,#1d4ed8)'],
     ['sunset', 'Hoàng hôn', 'linear-gradient(120deg,#f97316,#e11d48,#9333ea)'], ['forest', 'Rừng xanh', 'linear-gradient(120deg,#059669,#047857,#d97706)'], ['classic', 'Cổ điển (nền trắng)', 'linear-gradient(120deg,#2f6bff,#1748d6)']];
+  c.site.colors ||= { primary: '', second: '' };
+  const col = c.site.colors, preview = () => window.nvApplyColors?.(c.site);
+  // the admin's own colours: pick one main colour, the second one (gradients, highlights) follows unless chosen too
+  const mainPick = h('input', { type: 'color', value: col.primary || '#7c3aed', oninput: (e) => { col.primary = e.target.value; c.site.theme = 'custom'; preview(); paintThemes(); } });
+  const secondPick = h('input', { type: 'color', value: col.second || '#ff7a00', disabled: !col.second, oninput: (e) => { col.second = e.target.value; preview(); paintThemes(); } });
+  const autoSecond = check(!col.second, (v) => { col.second = v ? '' : secondPick.value; secondPick.disabled = v; preview(); paintThemes(); }, 'Màu phụ tự chọn theo màu chính');
+  const customBox = h('div', { class: 'grid' }, h('label', {}, 'Màu chủ đạo', mainPick), h('label', {}, 'Màu phụ (gradient, điểm nhấn)', secondPick), autoSecond);
   const themeRow = h('div', { class: 'theme-pick' });
-  const paintThemes = () => themeRow.replaceChildren(...THEMES.map(([k, name, g]) => h('button', { type: 'button', class: (c.site.theme || 'aurora') === k ? 'on' : '', 'aria-pressed': String((c.site.theme || 'aurora') === k),
-    onclick: () => { c.site.theme = k; document.documentElement.dataset.theme = k; paintThemes(); } }, h('i', { style: 'background:' + g }), name)));
+  const paintThemes = () => {
+    const on = c.site.theme || 'aurora', mine = col.primary ? `linear-gradient(120deg,${col.primary},${col.second || col.primary})` : 'conic-gradient(#ef4444,#f59e0b,#22c55e,#06b6d4,#6366f1,#d946ef,#ef4444)';
+    themeRow.replaceChildren(...[...THEMES, ['custom', 'Tự chọn màu', mine]].map(([k, name, g]) => h('button', { type: 'button', class: on === k ? 'on' : '', 'aria-pressed': String(on === k),
+      onclick: () => { c.site.theme = k; if (k === 'custom' && !col.primary) col.primary = mainPick.value; preview(); paintThemes(); } }, h('i', { style: 'background:' + g }), name)));
+    customBox.hidden = on !== 'custom';
+  };
   paintThemes();
   const SOCIAL_NAMES = [['facebook', 'Facebook'], ['youtube', 'YouTube'], ['tiktok', 'TikTok'], ['instagram', 'Instagram'], ['zalo', 'Zalo OA'], ['threads', 'Threads'], ['x', 'X (Twitter)'], ['linkedin', 'LinkedIn']];
   const hb = c.site.helpBot;
   return [
-    card('Giao diện', 'Bộ màu cho toàn trang. Bấm để xem trước ngay, rồi Lưu cài đặt để áp dụng cho mọi người.', themeRow,h('label',{},'Dòng chữ khi mở trang',input(c.site.loadingText||'Đang mở xưởng vẽ…',v=>{c.site.loadingText=v;},{maxlength:120,placeholder:'Đang mở xưởng vẽ…'}))),
+    card('Giao diện', 'Bộ màu cho toàn trang: chọn một bộ có sẵn hoặc "Tự chọn màu". Nút, gradient, biểu tượng, thanh trình duyệt và icon khi ghim màn hình đều đổi theo. Bấm để xem trước ngay, rồi Lưu cài đặt để áp dụng cho mọi người.', themeRow, customBox,h('label',{},'Dòng chữ khi mở trang',input(c.site.loadingText||'Đang mở xưởng vẽ…',v=>{c.site.loadingText=v;},{maxlength:120,placeholder:'Đang mở xưởng vẽ…'}))),
     card('Mạng xã hội', 'Dán đường dẫn đầy đủ (https://…). Kênh nào có link sẽ hiện biểu tượng ở trang chủ và chân trang; để trống = ẩn.', h('div', { class: 'grid' },
       SOCIAL_NAMES.map(([k, name]) => h('label', {}, name, input(c.site.social[k], (v) => { c.site.social[k] = v.trim(); }, { type: 'url', placeholder: 'https://' }))))),
     card('Trợ lý hỗ trợ', 'Khung chat ở góc phải: AI hướng dẫn sử dụng và giải đáp thắc mắc. Dùng AI theo "Thứ tự AI"; khi AI lỗi sẽ trả lời theo câu hỏi thường gặp.',

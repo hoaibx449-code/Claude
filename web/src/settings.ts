@@ -100,8 +100,10 @@ export interface SiteConfig {
   /** short how-to video shown next to the three steps */
   tutorial: string;
   showcase: SiteMedia[];
-  /** colour theme of the whole site */
+  /** colour theme of the whole site ('custom' = the colours below) */
   theme: string;
+  /** the admin's own colours for the 'custom' theme: main colour, and a second one for gradients ('' = worked out from the main one) */
+  colors: { primary: string; second: string };
   /** links to the brand's social channels, shown on the home page and in the footer */
   social: Partial<Record<(typeof SOCIAL_KEYS)[number], string>>;
   /** which pages the menus show (header, side bar, phone tab bar, footer all follow this one list) and in what order */
@@ -111,7 +113,31 @@ export interface SiteConfig {
   /** the help chat in the bottom right corner */
   helpBot: { enabled: boolean; name: string; welcome: string; knowledge: string; perDay: number };
 }
-export const THEMES = ['aurora', 'ocean', 'sunset', 'forest', 'classic'] as const;
+export const THEMES = ['aurora', 'ocean', 'sunset', 'forest', 'classic', 'custom'] as const;
+/** main and second colour of each ready-made theme (browser bar, installed app, favicon) */
+const THEME_COLORS: Record<string, [string, string]> = { aurora: ['#7c3aed', '#ff7a00'], ocean: ['#0e7490', '#f97316'], sunset: ['#c2410c', '#7c3aed'], forest: ['#047857', '#d97706'], classic: ['#1f5eff', '#ffb020'] };
+const HEX = /^#[0-9a-f]{6}$/i;
+/** the colour turned round the colour wheel (a second colour that goes with the first) */
+export function shiftHue(hex: string, deg: number) {
+  const n = parseInt(hex.slice(1), 16), r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  let h = 0; const sat = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
+  if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h = ((h * 60 + deg) % 360 + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * sat, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+  const [R, G, B] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return '#' + [R, G, B].map((v) => Math.round((v + m) * 255).toString(16).padStart(2, '0')).join('');
+}
+/** The site's colours: theme name, main and second colour, and the CSS variables a 'custom' theme needs on <html>. */
+export function siteColors(site: { theme?: string; colors?: { primary?: string; second?: string } }) {
+  const c = site.colors || {};
+  if (site.theme === 'custom' && HEX.test(c.primary || '')) {
+    const c1 = c.primary!.toLowerCase(), c2 = HEX.test(c.second || '') ? c.second!.toLowerCase() : shiftHue(c1, 40);
+    return { theme: 'custom', primary: c1, second: c2, style: `--c1:${c1};--c2:${c2}` };
+  }
+  const theme = site.theme && THEME_COLORS[site.theme] ? site.theme : 'aurora', [c1, c2] = THEME_COLORS[theme];
+  return { theme, primary: c1, second: c2, style: '' };
+}
 export const MENU_KEYS = ['home', 'gioi-thieu', 'tao', 'mau', 'cong-dong', 'kham-pha', 'faciup-live', 'prompt-hunter', 'video', 'goi', 'tro-giup'] as const;
 export const LOGO_ICONS = ['pen', 'robot', 'spark', 'play', 'brush', 'star', 'letter'] as const;
 export const LOGO_BGS = ['brand', 'sunset', 'ocean', 'forest', 'night'] as const;
@@ -287,7 +313,7 @@ export function defaultConfig(env: Env): Config {
     notice: '',
     templates: DEFAULT_TEMPLATES,
     beta: { enabled: true, label: 'Beta', note: 'Đang thử nghiệm: tính năng và giao diện có thể thay đổi. Góp ý giúp chúng tôi làm video hay hơn.' },
-    site: { loadingText:'Đang kết nối đội AI…', heroTitle: 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút', heroText: '', heroMedia: '', heroPoster: '', tutorial: '', showcase: [], theme: 'aurora', menu: { hidden: [], order: [] }, logo: { image: '', icon: 'pen', bg: 'brand' }, social: {},
+    site: { loadingText:'Đang kết nối đội AI…', heroTitle: 'Biến ý tưởng thành video vẽ tay sinh động chỉ trong vài phút', heroText: '', heroMedia: '', heroPoster: '', tutorial: '', showcase: [], theme: 'aurora', colors: { primary: '', second: '' }, menu: { hidden: [], order: [] }, logo: { image: '', icon: 'pen', bg: 'brand' }, social: {},
       helpBot: { enabled: true, name: 'Trợ lý', welcome: 'Chào bạn 👋 Mình là trợ lý AI của trang. Bạn cần hướng dẫn tạo video hay có thắc mắc gì?', knowledge: '', perDay: 30 } },
     budget: { dailyVnd: 200_000, monthlyVnd: 3_000_000, warnPct: 80, perVideoVnd: 15_000 },
     // one documentary ≈ 10 AI pictures + voice ≈ 11.000đ cost; 1 credit = 1 video, packs priced with margin
@@ -486,6 +512,8 @@ export function cleanConfig(input: any, base: Config): Config {
           .map((m: any) => ({ title: str(m?.title, 60, ''), caption: str(m?.caption, 120, ''), video: media(m?.video), poster: media(m?.poster) }))
           .filter((m: SiteMedia) => m.video || m.poster),
         theme: pick(x.theme, THEMES, d.theme),
+        colors: (() => { const c = x.colors || {}, dc = d.colors || { primary: '', second: '' }, hex = (v: unknown, dv: string) => (v === '' ? '' : HEX.test(String(v ?? '')) ? String(v).toLowerCase() : dv);
+          return { primary: hex(c.primary, dc.primary), second: hex(c.second, dc.second) }; })(),
         menu: (() => { const m = x.menu || {}, keys = MENU_KEYS as readonly string[], list = (v: unknown) => [...new Set((Array.isArray(v) ? v : []).filter((k: unknown): k is string => typeof k === 'string' && keys.includes(k)))];
           return { hidden: list(m.hidden ?? d.menu.hidden), order: list(m.order ?? d.menu.order) }; })(),
         logo: (() => { const l = x.logo || {}, dl = d.logo, bg = String(l.bg ?? dl.bg);

@@ -49,8 +49,8 @@ button, select, input, textarea { font: inherit; color: var(--ink); }
 /* 16px stops iOS from zooming into fields */
 input, select, textarea { font-size: 16px; }
 button, .btn { background: var(--grad); color: #fff; border: 0; border-radius: 12px; padding: 11px 18px; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px;
-  box-shadow: 0 8px 20px -10px rgba(124, 58, 237, .7); transition: transform .12s ease, box-shadow .12s ease, opacity .12s; }
-button:hover, .btn:hover { transform: translateY(-1px); box-shadow: 0 12px 24px -10px rgba(124, 58, 237, .8); }
+  box-shadow: 0 8px 20px -10px color-mix(in srgb, var(--accent) 70%, transparent); transition: transform .12s ease, box-shadow .12s ease, opacity .12s; }
+button:hover, .btn:hover { transform: translateY(-1px); box-shadow: 0 12px 24px -10px color-mix(in srgb, var(--accent) 80%, transparent); }
 button:active, .btn:active { transform: translateY(0) scale(.98); }
 button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 button.ghost, .btn.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line); box-shadow: none; }
@@ -818,7 +818,7 @@ details.brief textarea { margin: 8px 0; font-size: var(--fs-sm); }
    ====================================================================== */
 :root {
   --blue: #1f5eff; --blue-2: #1748d6; --blue-soft: #eaf1ff; --navy: #0f1b3d; --sun: #ffb020;
-  --violet: var(--blue); --violet-2: var(--blue-2); --orange: var(--sun); --orange-2: #f59e0b; --pink: var(--blue);
+  --violet: var(--blue); --violet-2: var(--blue-2); --orange: var(--accent-2); --orange-2: color-mix(in srgb, var(--accent-2) 85%, #000); --pink: var(--blue);
   --grad: linear-gradient(135deg, #2f6bff 0%, #1f5eff 55%, #1748d6 100%);
   --grad-soft: linear-gradient(135deg, #eef4ff 0%, #f6f9ff 100%);
   --paper: #f5f7fb; --card: #ffffff; --ink: #0f1b3d; --muted: #5b6785; --line: #e6eaf2;

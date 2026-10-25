@@ -214,7 +214,7 @@ export function showLive({h,show,api,openLogin,zaloLink}){
   return lines;}
  function paintMine(r){const me=personal?.me;if(!me)return;
   // a video that left the list is finished: it flies to the lead with the bell
-  const now=new Set((me.jobs||[]).map(j=>j.id));for(const [id,i] of mineSeen)if(!now.has(id)){const a=r.agents[i],lead=r.agents[0];if(a&&lead){fly(a.seat,lead.seat,'#f97316',true);showPop('bot','Video của bạn đã xong! Xem trong Video của tôi.',zaloName);}}
+  const now=new Set((me.jobs||[]).map(j=>j.id));for(const [id,i] of mineSeen)if(!now.has(id)){const a=r.agents[i],lead=r.agents[0];if(a&&lead){fly(a.seat,lead.seat,'var(--accent-2)',true);showPop('bot','Video của bạn đã xong! Xem trong Video của tôi.',zaloName);}}
   mineSeen=new Map();for(const j of me.jobs||[]){const [icon]=PHASE[j.status==='queued'?'queued':j.phase]||PHASE.rendering;mineSeen.set(j.id,Math.max(0,r.agents.findIndex(a=>a.icon===icon)));}
   // signed in without a Zalo conversation of their own: a guide written for them, every 25 s
   if(!personal.linked&&Date.now()-guideAt>25000){guideAt=Date.now();const g=myGuide(me,r);showPop('bot',(t=>t[0].toUpperCase()+t.slice(1))(g[guideStep++%g.length]),zaloName+' · gửi bạn');ting(false);}}

@@ -166,8 +166,35 @@ function options(list, selected) {
 const LOGO_ICONS = { pen: '<path d="M15.5 4.5l4 4L9 19H5v-4z"/><path d="M13 7l4 4"/>', robot: '<rect x="5" y="8" width="14" height="11" rx="4"/><path d="M12 4v4"/><circle cx="12" cy="3.5" r="1.2"/><path d="M9.5 13h.01M14.5 13h.01"/>',
   spark: '<path d="M12 3l2.2 6.3L20.5 12l-6.3 2.2L12 20.5l-2.2-6.3L3.5 12l6.3-2.7z"/>', play: '<path d="M8 5.5v13l11-6.5z"/>', brush: '<path d="M18 3l3 3-9 9-3-3z"/><path d="M9 12c-3 0-5 2-5 5 0 1.5-1 2.5-2 3 4 1 9 0 9-5"/>',
   star: '<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.8z"/>' };
-const LOGO_BG = { brand: 'linear-gradient(135deg,#7c3aed,#c026d3 45%,#ff2d75 70%,#ff7a00)', sunset: 'linear-gradient(135deg,#ff7a00,#ff2d75)', ocean: 'linear-gradient(135deg,#06b6d4,#2563eb)', forest: 'linear-gradient(135deg,#22c55e,#0d9488)', night: 'linear-gradient(135deg,#1e1b4b,#7c3aed)' };
-const LOGO_FILL = { brand: ['#7c3aed', '#ff7a00'], sunset: ['#ff7a00', '#ff2d75'], ocean: ['#06b6d4', '#2563eb'], forest: ['#22c55e', '#0d9488'], night: ['#1e1b4b', '#7c3aed'] };
+// "brand" and "night" follow the site's colours (Quản trị → Giao diện)
+const LOGO_BG = { brand: 'var(--grad)', sunset: 'linear-gradient(135deg,#ff7a00,#ff2d75)', ocean: 'linear-gradient(135deg,#06b6d4,#2563eb)', forest: 'linear-gradient(135deg,#22c55e,#0d9488)', night: 'linear-gradient(135deg,#1e1b4b,var(--accent))' };
+const LOGO_FILL = { sunset: ['#ff7a00', '#ff2d75'], ocean: ['#06b6d4', '#2563eb'], forest: ['#22c55e', '#0d9488'] };
+// main and second colour of each ready-made theme; "custom" uses the admin's own (the second one worked out when left empty)
+const THEME_COLORS = { aurora: ['#7c3aed', '#ff7a00'], ocean: ['#0e7490', '#f97316'], sunset: ['#c2410c', '#7c3aed'], forest: ['#047857', '#d97706'], classic: ['#1f5eff', '#ffb020'] };
+function shiftHue(hex, deg) {
+  const n = parseInt(hex.slice(1), 16), r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min, sat = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
+  let hh = !d ? 0 : max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  hh = ((hh * 60 + deg) % 360 + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * sat, x = c * (1 - Math.abs(((hh / 60) % 2) - 1)), m = l - c / 2;
+  const rgb = hh < 60 ? [c, x, 0] : hh < 120 ? [x, c, 0] : hh < 180 ? [0, c, x] : hh < 240 ? [0, x, c] : hh < 300 ? [x, 0, c] : [c, 0, x];
+  return '#' + rgb.map((v) => Math.round((v + m) * 255).toString(16).padStart(2, '0')).join('');
+}
+function siteColors(site) {
+  const c = site?.colors || {}, hex = /^#[0-9a-f]{6}$/i;
+  if (site?.theme === 'custom' && hex.test(c.primary || '')) return { theme: 'custom', primary: c.primary, second: hex.test(c.second || '') ? c.second : shiftHue(c.primary, 40) };
+  const theme = THEME_COLORS[site?.theme] ? site.theme : 'aurora';
+  return { theme, primary: THEME_COLORS[theme][0], second: THEME_COLORS[theme][1] };
+}
+/** the colour theme on the whole page (also used by the admin's live preview) */
+function applyColors(site) {
+  const k = siteColors(site), root = document.documentElement;
+  root.dataset.theme = k.theme;
+  if (k.theme === 'custom') { root.style.setProperty('--c1', k.primary); root.style.setProperty('--c2', k.second); } else { root.style.removeProperty('--c1'); root.style.removeProperty('--c2'); }
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', k.primary);
+  return k;
+}
+window.nvApplyColors = applyColors;
 function paintLogo(el, logo, brand) {
   logo ||= { icon: 'pen', bg: 'brand' }; el.replaceChildren(); el.classList.toggle('has-image', !!logo.image);
   if (logo.image) { el.style.background = 'none'; el.append(h('img', { src: siteUrl(logo.image), alt: '' })); return; }
@@ -178,7 +205,7 @@ function paintLogo(el, logo, brand) {
 function logoFavicon(logo, brand) {
   let link = document.querySelector('link[rel="icon"]'); if (!link) { link = h('link', { rel: 'icon' }); document.head.append(link); }
   if (!logo) return; if (logo.image) { link.href = siteUrl(logo.image); return; }
-  const [a, b] = LOGO_FILL[logo.bg] || [logo.bg || '#7c3aed', logo.bg || '#ff7a00'];
+  const k = siteColors(ui.site), [a, b] = LOGO_FILL[logo.bg] || (logo.bg === 'night' ? ['#1e1b4b', k.primary] : /^#/.test(logo.bg || '') ? [logo.bg, logo.bg] : [k.primary, k.second]);
   const mark = logo.icon === 'letter' ? `<text x="12" y="16.5" text-anchor="middle" font-family="Arial" font-weight="800" font-size="12" fill="#fff">${(brand || 'F').trim().charAt(0).toUpperCase().replace(/[<&]/g, '')}</text>` : `<g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${LOGO_ICONS[logo.icon] || LOGO_ICONS.pen}</g>`;
   link.href = 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="24" height="24" rx="6" fill="url(#g)"/><g transform="translate(3 3) scale(.75)">${mark}</g></svg>`);
 }
@@ -213,9 +240,9 @@ function applyUI(next) {
   document.getElementById('logout').textContent = T('logout');
   document.getElementById('adminLink').textContent = T('admin');
   applyMenu();
+  applyColors(ui.site);
   for (const el of document.querySelectorAll('.brand .logo')) paintLogo(el, ui.site?.logo, ui.brand.name);
   logoFavicon(ui.site?.logo, ui.brand.name);
-  document.documentElement.dataset.theme = ui.site?.theme || 'aurora';
   const loading=document.getElementById('loadingText');if(loading)loading.textContent=ui.site?.loadingText||'Đang kết nối đội AI…';
   window.nvHelpChat?.();
   for(const bb of document.querySelectorAll('[data-beta]')){bb.hidden=!ui.beta;bb.textContent=ui.beta?.label||'Beta';bb.title=ui.beta?.note||'Phiên bản thử nghiệm';}

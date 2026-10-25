@@ -27,7 +27,7 @@ import { detectIntent, FORMATS, FORMAT_NAMES, FORMAT_STYLE, NICHES, NICHE_NAMES,
 import { fillLegal } from './legal.ts';
 import { aiCost, clientIp, imageCost, logEvent, routeName, summarize, voiceCost, type LogEntry } from './log.ts';
 import { notifications } from './notifications.ts';
-import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, vis } from './settings.ts';
+import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, siteColors, vis } from './settings.ts';
 import { adminRoutes } from './admin.ts';
 import { helpChat } from './help.ts';
 import { budgetState, fitVoiceToBudget, requireBudget } from './budget.ts';
@@ -163,7 +163,10 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
         headers.delete('content-length');headers.delete('etag');headers.set('cache-control','no-cache');
         const meta=pageMetadata(path,config.config.brand.name+' '+config.config.brand.accent,url.origin,url.search);
         const initial=await initialPageContent(path,config.config,rawEnv);
+        const colors=siteColors(config.config.site);
         return new HTMLRewriter()
+          .on('html',{element(el){el.setAttribute('data-theme',colors.theme);if(colors.style)el.setAttribute('style',colors.style);}})
+          .on('meta[name="theme-color"]',{element(el){el.setAttribute('content',colors.primary);}})
           .on('title',{element(el){el.setInnerContent(meta.title);}})
           .on('meta[name="description"],meta[property="og:description"]',{element(el){el.setAttribute('content',meta.description);}})
           .on('meta[property="og:title"]',{element(el){el.setAttribute('content',meta.title);}})
