@@ -8,6 +8,7 @@ import { DEFAULT_TEMPLATES, type Template } from './templates.ts';
 import { DOODLE_NAMES } from './doodles.ts';
 import { DEFAULT_PRIVACY, DEFAULT_REFUND, DEFAULT_TERMS, LEGAL_VERSION, type LegalConfig } from './legal.ts';
 
+const OLD_DONE = '🎬 Video "{tieuDe}" đã xong ({giay} giây).\nXem / tải: {link}\n(Link có hạn {hanNgay} ngày)';
 export const SECRET_NAMES = ['OPENAI_API_KEY', 'GEMINI_API_KEY', 'OLLAMA_API_KEY', 'EVERAI_API_KEY', 'GOOGLE_TTS_API_KEY', 'ELEVENLABS_API_KEY', 'ZALO_BOT_TOKEN', 'SEPAY_API_KEY', 'PIXABAY_API_KEY', 'ANTHROPIC_API_KEY'] as const;
 export type SecretName = (typeof SECRET_NAMES)[number];
 /** Keys the render machine needs (voices); the Worker uses the AI ones itself. */
@@ -296,7 +297,7 @@ export function defaultConfig(env: Env): Config {
         help: 'Chào {ten}! Gửi cho mình:\n• TAO + chủ đề → AI viết kịch bản rồi làm video\n• KB + kịch bản của bạn → làm video đúng lời bạn viết\n• OK / SUA … / HUY → duyệt, sửa hoặc bỏ phân cảnh mình gửi\n• TT → xem video đang làm\n• DS → video gần đây\n• DINHDANG → chọn kiểu video (vẽ tay, điện ảnh)\n• GIONG → chọn giọng đọc\n• TAT / BAT → tắt/bật thông báo\n• HUYKETNOI → bỏ liên kết',
         linked: 'Đã kết nối Zalo với tài khoản {email}. Video dựng xong sẽ được gửi về đây. Gõ HUONGDAN để xem lệnh.',
         queued: 'Đã nhận! Video "{tieuDe}" ({canh} cảnh, {dang}) đang được dựng, khoảng vài phút. Mình sẽ gửi link khi xong.{suaWeb}',
-        done: '🎬 Video "{tieuDe}" đã xong ({giay} giây).\nXem / tải: {link}\n(Link có hạn {hanNgay} ngày)',
+        done: 'Video của bạn đã sẵn sàng\n{tieuDe}\n\nXem và tải về: {link}\nLink dùng được {hanNgay} ngày.',
         failed: 'Video "{tieuDe}" dựng chưa được: {loi}. Bạn gửi lại giúp mình, hoặc mở web để sửa.',
         unknown: 'Mình chưa hiểu. Gõ HUONGDAN để xem cách dùng, hoặc gửi KB + kịch bản để tạo video.',
         noAI: 'Hiện chỉ dựng từ kịch bản có sẵn. Hãy gửi: KB + kịch bản của bạn.',
@@ -452,6 +453,7 @@ export function cleanConfig(input: any, base: Config): Config {
       const z = i.zalo || {}, b = base.zalo;
       const tpl: Record<string, string> = {};
       for (const k of Object.keys(b.templates)) tpl[k] = typeof z.templates?.[k] === 'string' && z.templates[k].trim() ? z.templates[k].slice(0, 1500) : b.templates[k];
+      if (tpl.done === OLD_DONE) tpl.done = b.templates.done;   // the old default (emoji, "(? giây)") gives way to the new one
       return {
         enabled: typeof z.enabled === 'boolean' ? z.enabled : b.enabled, receive: z.receive === 'poll' ? 'poll' : 'webhook',
         keepWebhook: typeof z.keepWebhook === 'boolean' ? z.keepWebhook : b.keepWebhook,
