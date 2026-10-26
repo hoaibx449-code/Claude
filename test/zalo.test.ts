@@ -183,17 +183,22 @@ test('the storyboard is reviewed in Zalo: OK makes it, SUA plans again with the 
 }));
 test('a finished Ink video comes back as its cover with a no-login link that plays it; TT finds it too',async()=>fixture(async f=>{
  f.enableAI();
- const { zaloInk, shareInk }=await import('../web/src/zalo.ts');
+ const { zaloInk, shareInk, inkPage }=await import('../web/src/zalo.ts');
  await f.receive('TAO thói quen đọc sách','v1');await f.drain();
  const j=await f.env.DB.prepare('SELECT * FROM ink_jobs').first();
  f.objects.set(`ink/${j.user_id}/${j.id}/video.mp4`,'mp4-bytes');f.objects.set(`ink/${j.user_id}/${j.id}/cover.jpg`,'jpg');
  await f.env.DB.prepare("UPDATE ink_jobs SET status='done', meta=? WHERE id=?").bind(JSON.stringify({files:['video.mp4','cover.jpg']}),j.id).run();
  await zaloInk(f.env,f.rc,{...(await f.env.DB.prepare('SELECT * FROM ink_jobs').first()),duration:42},'done');
- const photo=f.sent.at(-1);assert.match(photo.url,/sendPhoto$/);assert.match(photo.body.caption,/42 giây/);
- const link=photo.body.caption.match(/https:\/\/\S+/)[0];assert.match(link,new RegExp(`/api/share/ink/${j.id}\\?e=`));assert.match(photo.body.photo,/\/cover\.jpg\?e=/);
- const res=await shareInk(f.env,f.rc,new Request(link),j.id,'');assert.equal(res.status,200);
- await assert.rejects(shareInk(f.env,f.rc,new Request(link.replace(/s=\w+/,'s=bad')),j.id,''),/hết hạn/);
- await f.receive('TT','v2');await f.drain();assert.match(f.sent.at(-1).body.text,/thói quen đọc sách: đã xong\n\s+https:\/\/studio\.test\/api\/share\/ink\//);
+ const photo=f.sent.at(-1);assert.match(photo.url,/sendPhoto$/);assert.doesNotMatch(photo.body.caption,/\?|🎬/);
+ // the message carries a short link to the video's own page (player + download), not a bare .mp4
+ const link=photo.body.caption.match(/https:\/\/\S+/)[0],m=new URL(link).pathname.match(/^\/v\/([a-f0-9]{24})\.([0-9a-z]+)\.([a-f0-9]{16})$/);assert.ok(m);assert.equal(m[1],j.id);assert.match(photo.body.photo,/\/cover\.jpg\?e=/);
+ const pg=await inkPage(f.env,f.rc,new URL(link),m[1],m[2],m[3],'FACIUP','#123456');assert.equal(pg.status,200);const html=await pg.text();assert.match(html,/Tải video về máy/);
+ const file=html.match(/<video src="([^"]+)"/)[1].replace(/&amp;/g,'&');
+ const res=await shareInk(f.env,f.rc,new Request(file),j.id,'');assert.equal(res.status,200);
+ const dl=await shareInk(f.env,f.rc,new Request(file+'&dl=1'),j.id,'');assert.match(dl.headers.get('content-disposition'),/attachment/);
+ assert.equal((await inkPage(f.env,f.rc,new URL(link),m[1],m[2],'0'.repeat(16),'FACIUP','#123456')).status,403);
+ await assert.rejects(shareInk(f.env,f.rc,new Request(file.replace(/s=\w+/,'s=bad')),j.id,''),/hết hạn/);
+ await f.receive('TT','v2');await f.drain();assert.match(f.sent.at(-1).body.text,/thói quen đọc sách: đã xong\n\s+https:\/\/studio\.test\/v\/[a-f0-9]{24}\./);
  // turned off with TAT: no news of the video
  await f.env.DB.prepare('UPDATE zalo_links SET notify=0').run();const n=f.sent.length;
  await zaloInk(f.env,f.rc,j,'done');assert.equal(f.sent.length,n);

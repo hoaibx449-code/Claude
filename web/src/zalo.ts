@@ -718,7 +718,7 @@ async function statusText(env: XEnv, user: User | null) {
   if (!all.length) return 'Bạn chưa có video nào. Gửi TAO + chủ đề để làm video đầu tiên nhé.';
   const names: Record<string, string> = { queued: 'đang chờ máy dựng', running: 'đang dựng', review: 'phân cảnh chờ bạn duyệt (OK để dựng, SUA … để sửa)', browser: 'chờ dựng trên trình duyệt (mở web)', done: 'đã xong', failed: 'bị lỗi' };
   const lines = await Promise.all(all.map(async (j) => {
-    const link = j.status === 'done' ? '\n  ' + (j.ink ? await inkShareLink(env, web, j.id) : await shareLink(env, web, j.id)) : '';
+    const link = j.status === 'done' ? '\n  ' + (j.ink ? await inkPageLink(env, web, j.id) : await shareLink(env, web, j.id)) : '';
     return `• ${j.title}: ${names[j.status] || j.status}${j.status === 'running' ? ` ${j.progress}%` : ''}${link}${j.status === 'failed' && j.error ? ' (' + j.error + ')' : ''}`;
   }));
   return lines.join('\n');
@@ -910,6 +910,44 @@ export async function inkShareLink(env: Env, origin: string, id: string, file = 
   const sig = (await hmacHex(env.RUNNER_TOKEN || '', `share:ink:${id}:${exp}`)).slice(0, 32);
   return `${origin}/api/share/ink/${id}${file ? '/' + file : ''}?e=${exp}&s=${sig}`;
 }
+/** Short no-login link to the video's own page (player, download button): /v/<id>.<expiry>.<signature> */
+export async function inkPageLink(env: Env, origin: string, id: string) {
+  const exp = Math.floor(Date.now() / 1000) + SHARE_DAYS * 86_400;
+  const sig = (await hmacHex(env.RUNNER_TOKEN || '', `page:ink:${id}:${exp}`)).slice(0, 16);
+  return `${origin}/v/${id}.${exp.toString(36)}.${sig}`;
+}
+const escAttr = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+/**
+ * GET /v/<token>: a clean page to watch and save a finished video, made for phones (Zalo's in-app browser
+ * neither plays nor saves a bare .mp4 link well). The player and the download use the signed file links.
+ */
+export async function inkPage(env: XEnv, rc: Rc, url: URL, id: string, exp36: string, sig: string, brand: string, color: string) {
+  const exp = parseInt(exp36, 36), page = (code: number, title: string, body: string) => new Response(
+    `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex">
+<title>${escAttr(title)} · ${escAttr(brand)}</title><meta property="og:title" content="${escAttr(title)}"><meta property="og:site_name" content="${escAttr(brand)}">
+<style>:root{--a:${escAttr(color)};color-scheme:light dark}*{box-sizing:border-box}body{margin:0;font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#f4f5f7;color:#16181d}
+@media(prefers-color-scheme:dark){body{background:#0f1115;color:#eef0f4}.card{background:#171a21!important;border-color:#262a33!important}.muted{color:#9aa1ad!important}}
+.wrap{max-width:460px;margin:0 auto;padding:16px 16px 32px}.brand{font-weight:800;letter-spacing:.2px;margin:4px 2px 12px;display:flex;align-items:center;gap:8px}.brand i{width:10px;height:10px;border-radius:3px;background:var(--a)}
+.card{background:#fff;border:1px solid #e6e8ec;border-radius:18px;overflow:hidden}video{display:block;width:100%;max-height:72vh;background:#000;aspect-ratio:9/16;object-fit:contain}
+.meta{padding:14px 16px 16px}h1{font-size:18px;line-height:1.35;margin:0 0 4px}.muted{color:#636a76;font-size:14px;margin:0}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px;padding:13px 16px;border-radius:12px;background:var(--a);color:#fff;font-weight:700;text-decoration:none}
+.btn.ghost{background:transparent;color:inherit;border:1px solid #d5d9e0}.note{font-size:13px;margin-top:12px}</style></head>
+<body><div class="wrap"><div class="brand"><i></i>${escAttr(brand)}</div>${body}</div></body></html>`,
+    { status: code, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'private, no-store', 'x-robots-tag': 'noindex',
+      'content-security-policy': "default-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; media-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" } });
+  const good = exp && exp * 1000 > Date.now() && timingSafeEqual((await hmacHex(env.RUNNER_TOKEN || '', `page:ink:${id}:${exp}`)).slice(0, 16), sig);
+  if (!good) return page(403, 'Link đã hết hạn', `<div class="card meta"><h1>Link đã hết hạn</h1><p class="muted">Gõ <b>TT</b> trong Zalo để nhận link mới, hoặc đăng nhập web để xem video của bạn.</p><a class="btn" href="/video">Mở trang Video của tôi</a></div>`);
+  const j = await env.DB.prepare("SELECT title, duration, user_id FROM ink_jobs WHERE id = ? AND status = 'done'").bind(id).first<any>();
+  if (!j) return page(404, 'Không tìm thấy video', `<div class="card meta"><h1>Video không còn</h1><p class="muted">Video có thể đã bị xoá.</p></div>`);
+  rc.userId = j.user_id;
+  const origin = url.origin, file = await inkShareLink(env, origin, id), cover = await inkShareLink(env, origin, id, 'cover.jpg');
+  const secs = Math.round(j.duration || 0), len = secs ? (secs >= 60 ? `${Math.floor(secs / 60)} phút ${secs % 60 ? (secs % 60) + ' giây' : ''}`.trim() : `${secs} giây`) : '';
+  const days = Math.max(1, Math.ceil((exp * 1000 - Date.now()) / 86_400_000));
+  return page(200, j.title, `<div class="card"><video src="${escAttr(file)}" poster="${escAttr(cover)}" controls playsinline preload="metadata"></video>
+<div class="meta"><h1>${escAttr(j.title)}</h1><p class="muted">Video 9:16${len ? ' · ' + len : ''}</p>
+<a class="btn" href="${escAttr(file + '&dl=1')}" download>Tải video về máy</a>
+<p class="muted note">Trên Zalo, nếu nút tải không chạy: bấm ⋯ ở góc trên → Mở bằng trình duyệt. Link dùng được thêm ${days} ngày.</p></div></div>`);
+}
 /** GET /api/share/ink/<id>[/cover.jpg]: the video plays (or the cover shows) without logging in. */
 export async function shareInk(env: XEnv, rc: Rc, req: Request, id: string, file: string) {
   const url = new URL(req.url), exp = Number(url.searchParams.get('e'));
@@ -922,8 +960,9 @@ export async function shareInk(env: XEnv, rc: Rc, req: Request, id: string, file
     return serveObject(env, req, `ink/${j.user_id}/${id}/${pic || 'cover.jpg'}`, 'image/jpeg', { 'cache-control': 'public, max-age=86400' });
   }
   rc.userId = j.user_id;
-  rc.log('video.download', { data: { job: id, kind: 'share', ink: true } });
-  return serveObject(env, req, `ink/${j.user_id}/${id}/video.mp4`, 'video/mp4', { 'content-disposition': `inline; filename="video-${id.slice(0, 8)}.mp4"`, 'cache-control': 'private, max-age=3600' });
+  const dl = url.searchParams.get('dl') === '1';
+  rc.log('video.download', { data: { job: id, kind: dl ? 'share-download' : 'share', ink: true } });
+  return serveObject(env, req, `ink/${j.user_id}/${id}/video.mp4`, 'video/mp4', { 'content-disposition': `${dl ? 'attachment' : 'inline'}; filename="video-${id.slice(0, 8)}.mp4"`, 'cache-control': 'private, max-age=3600' });
 }
 const sceneList = (sb: any) => (Array.isArray(sb?.scenes) ? sb.scenes : []).map((x: any, i: number) => `${i + 1}. ${String(x.say || '').replace(/\s+/g, ' ').trim()}`);
 /**
@@ -955,8 +994,9 @@ export async function zaloInk(env: XEnv, rc: { log(type: string, extra?: any): v
     const web = await siteUrl(env);
     if (kind === 'failed') { await send(env, link.chat_id, fill(z.templates.failed, { tieuDe: j.title, loi: String(extra || '').slice(0, 200) })); return; }
     const files: string[] = JSON.parse(j.meta || '{}').files || [];
-    const share = await inkShareLink(env, web, j.id);
-    const text = fill(z.templates.done, { tieuDe: j.title, link: share, hanNgay: SHARE_DAYS, giay: Math.round(j.duration) || '?' });
+    const share = await inkPageLink(env, web, j.id), secs = Math.round(j.duration || 0);
+    const text = fill(z.templates.done, { tieuDe: j.title, link: share, hanNgay: SHARE_DAYS, giay: secs || '', thoiLuong: secs ? (secs >= 60 ? `${Math.floor(secs / 60)} phút ${secs % 60 ? (secs % 60) + ' giây' : ''}`.trim() : `${secs} giây`) : '' })
+      .replace(/\s*\((?:\s*giây)?\)/g, '').replace(/ · \n/g, '\n').replace(/\n{3,}/g, '\n\n');
     if (files.includes('cover.jpg') || files.includes('thumb.jpg') || (await env.BUCKET.head(`ink/${j.user_id}/${j.id}/cover.jpg`))) {
       const p = await zaloApi(token, 'sendPhoto', { chat_id: link.chat_id, photo: await inkShareLink(env, web, j.id, 'cover.jpg'), caption: text.slice(0, 1900) }, 10_000);
       rc.log('zalo.notify', { ok: p.ok, data: { job: j.id, ink: true, photo: true, error: p.ok ? undefined : p.error } });
