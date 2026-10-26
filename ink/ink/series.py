@@ -44,8 +44,14 @@ def invent(series, topic, core, lines, log=print):
                   0.95, check=lambda o: _spec_ok(o, used), log=log)
 
 
+def _unwrap(code):
+    """the body the engine wants, when the AI wrote the whole `function (THREE, K) {...}` around it"""
+    m = re.match(r'\s*(?:(?:export\s+default|const\s+\w+\s*=)\s*)?(?:function\s*\w*\s*\(\s*THREE\s*,\s*K\s*\)|\(\s*THREE\s*,\s*K\s*\)\s*=>)\s*\{(.*)\}\s*;?\s*$', code, re.S)
+    return m.group(1).strip() if m else code
+
+
 def _code_ok(text):
-    code, _ = ai.blocks(text)
+    code, _ = ai.blocks(text); code = _unwrap(code)
     if 'return' not in code or 'W.sc.add' not in code: raise ValueError('mã phải trả về hàm (P, o, W) và thêm vật vào W.sc')
     for bad in ('fetch(', 'XMLHttpRequest', 'import(', 'document.cookie', 'localStorage', 'eval(', 'new Function', 'setTimeout', 'setInterval', 'requestAnimationFrame', 'Math.random', 'Date.now', 'performance.now'):
         if bad in code: raise ValueError(f'mã không được dùng {bad}')
@@ -82,6 +88,17 @@ def validate(name, code, spec, log=print, timeout=150):
             log(f'   không đọc được ảnh thử ({e})'); return None
         h, w = ims[0].shape; mid = [im[h // 5: h * 4 // 5, w // 6: w * 5 // 6] for im in ims]
         if max(m.std() for m in mid) < 9: return 'khung hình gần như trống: vật quá nhỏ, nằm ngoài khung hoặc cùng màu nền (đặt vật quanh gốc toạ độ, cao 2–5 đơn vị, dùng màu P.*)'
+        # an art director looks at the three frames: does it read as the metaphor, is it well made, does it move?
+        sheet = os.path.join(d, 'sheet.jpg')
+        frames = [Image.open(os.path.join(d, 'pv', f)).convert('RGB').resize((360, 640)) for f in sorted(os.listdir(os.path.join(d, 'pv'))) if f.endswith('.jpg')]
+        im = Image.new('RGB', (360 * len(frames), 640)); [im.paste(f, (360 * i, 0)) for i, f in enumerate(frames)]; im.save(sheet, quality=85)
+        try:
+            j = ai.look(S.system(), S.prompt('prop_look', spec=json.dumps({k: spec.get(k) for k in ('metaphor', 'look', 'beats')}, ensure_ascii=False)), sheet,
+                        check=lambda x: isinstance(x.get('score'), (int, float)) or (_ for _ in ()).throw(ValueError('thiếu score')), log=log)
+        except Exception as e:  # noqa: BLE001 - no model could look: the render checks above stand
+            log(f'   chưa xem được hình thử ({str(e)[:100]})'); return None
+        log(f'   giám đốc hình ảnh chấm đạo cụ: {j["score"]}/10')
+        if j['score'] < 6: return 'giám đốc hình ảnh chấm ' + str(j['score']) + '/10: ' + '; '.join(str(x) for x in (j.get('issues') or [])[:4])
         return None
 
 
@@ -94,7 +111,7 @@ def write(spec, log=print):
             text = ai.code(S.prompt('prop_system'), S.prompt('prop_code', spec=json.dumps(spec, ensure_ascii=False, indent=1), feedback=feedback or 'không'), check=_code_ok, log=log)
         except RuntimeError as e:
             log(f'   không AI nào viết được mã ({str(e)[:160]})'); return None
-        code, meta = ai.blocks(text)
+        code, meta = ai.blocks(text); code = _unwrap(code)
         if isinstance(meta.get('example'), dict): spec['example'] = meta['example']
         if isinstance(meta.get('params'), dict): spec['params'] = meta['params']
         err = validate(name, code, spec, log)
@@ -113,6 +130,16 @@ def guide(spec):
             f'\n  o: {params or "{}"}' + (f'\n  diễn tiến gợi ý: {beats}' if beats else '') +
             '\n  Dùng prop này cho ÍT NHẤT 60% số cảnh m_scene (mỗi lần một góc máy/đoạn diễn tiến khác, đặt `cue` là một từ có trong câu); phần còn lại dùng `stage`; quy tắc "một prop tối đa 3 lần" không áp dụng cho prop này. KHÔNG dùng các prop có sẵn khác (leaky, treadmill, dominoes...).'
             '\n  Mỗi cảnh thêm khoá `vp`: mô tả tiếng Anh ngắn những gì đang hiện trên hình (chủ thể + hành động + đạo cụ), không viết phong cách.\n')
+
+
+def enforce(scenes, spec):
+    """the video's own prop carries its 3D scenes: any built-in prop the director still picked (other than the lone
+    figure) becomes the new prop with its tested options"""
+    ex = spec.get('example') if isinstance(spec.get('example'), dict) else {}
+    for s in scenes:
+        if s['type'] == 'm_scene' and s.get('prop') not in (spec['prop'], 'stage'):
+            s['prop'], s['o'] = spec['prop'], json.loads(json.dumps(ex))
+    return scenes
 
 
 def visual_prompts(scenes, spec):
