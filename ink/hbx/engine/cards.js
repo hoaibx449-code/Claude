@@ -48,7 +48,10 @@
     ${s.bars ? `<div style="display:flex;flex-direction:column;gap:12px;margin-top:8px">${s.bars.map((b, i) => `<div class="cbar ${i ? 'ghost' : ''}" style="width:${b * 4.2}px"><b data-bar="${1.1 + i * .2}"></b></div>`).join('')}</div>` : ''}`);
   // lưới chấm (1 chấm = 1 đơn vị)
   S.c_dots = (s, c) => {
-    const cols = s.cols || 18, rows = s.rows || 5, n = cols * rows, hi = new Set(s.hi || [Math.floor(n / 2) - 2]);
+    const cols = s.cols || 18, rows = s.rows || 5, n = cols * rows;
+    // `hi`: the dots lit, as indexes [3, 7] — or a share the AI often gives instead: 0.3 / 30 (%) → the first 30% of the dots
+    const h = s.hi, k = typeof h === 'number' ? Math.round(n * (h <= 1 ? h : Math.min(100, h) / 100)) : 0;
+    const hi = new Set(Array.isArray(h) ? h.map(Number) : typeof h === 'number' ? Array.from({ length: k }, (_, j) => j) : [Math.floor(n / 2) - 2]);
     const dots = Array.from({ length: n }, (_, k) => `<i class="${hi.has(k) ? 'hi' : ''}" data-k="${k}"></i>`).join('');
     return card(s, c, `${s.text ? `<div class="fit" data-max="${s.size || 52}" data-in=".2" data-a="up">${rich(s.text)}</div>` : ''}
       <div class="dots" style="grid-template-columns:repeat(${cols},15px)" data-dots="${s.dotsAt || .5}">${dots}</div>
