@@ -32,7 +32,7 @@ import { type Config, effectiveEnv, isAdmin, load, publicConfig, runnerSecrets, 
 import { adminRoutes } from './admin.ts';
 import { helpChat } from './help.ts';
 import { budgetState, fitVoiceToBudget, requireBudget } from './budget.ts';
-import { shareInk, checkShare, followUps, keepWebhook, notifyJob, rememberOrigin, resumeZalo, shareLink, zaloUser, zaloWebhook, pollZalo, receiveMode } from './zalo.ts';
+import { inkPage, shareInk, checkShare, followUps, keepWebhook, notifyJob, rememberOrigin, resumeZalo, shareLink, zaloUser, zaloWebhook, pollZalo, receiveMode } from './zalo.ts';
 import { pushPublicKey, pushUser, validEndpoint } from './push.ts';
 import { checkAllowed, checkSource, expireOrders, limitsFor, planOf, planRoutes, sepayWebhook } from './plans.ts';
 import { affiliateScene, communityPublic, deleteVideo, introFor, serveObject, shareToCommunity, siteType, storedVideoKey, upload, videoKey } from './media.ts';
@@ -155,6 +155,9 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
       const page=await solutionPage(req,env);if(page)return page;
       throw new HttpError(404,'Không tìm thấy trang.');
     }
+    // a finished video's own page, sent in Zalo: watch and save without logging in
+    const vp=path.match(/^\/v\/([a-f0-9]{24})\.([0-9a-z]{1,9})\.([a-f0-9]{16})$/);
+    if(vp&&(method==='GET'||method==='HEAD')){const env=await effectiveEnv(rawEnv);return inkPage(env as any,rc,url,vp[1],vp[2],vp[3],brandName(env.config)||'FACIUP',siteColors(env.config.site).primary);}
     // the installed app's name, colours and icon follow the site's settings (not the files shipped with the code)
     if(path==='/manifest.webmanifest'||path==='/icons/app.svg'){
       const {config}=await load(rawEnv);
