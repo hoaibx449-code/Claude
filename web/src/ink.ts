@@ -134,10 +134,21 @@ async function startGithub(env: Env, force: boolean) {
   const { s, token } = await settings(env);
   if (!token) return 'chưa có GitHub token';
   if (!force && (await recently(env, 'ink:dispatch'))) return 'ok';
-  const res = await fetch(`https://api.github.com/repos/${s.github.repo}/actions/workflows/${s.github.workflow}/dispatches`, {
-    method: 'POST', body: JSON.stringify({ ref: s.github.ref }),
-    headers: { authorization: 'Bearer ' + token, accept: 'application/vnd.github+json', 'user-agent': 'faciup-ink', 'x-github-api-version': '2022-11-28', 'content-type': 'application/json' },
-  });
+  const headers = { authorization: 'Bearer ' + token, accept: 'application/vnd.github+json', 'user-agent': 'faciup-ink', 'x-github-api-version': '2022-11-28', 'content-type': 'application/json' };
+  const base = `https://api.github.com/repos/${s.github.repo}/actions`;
+  if (force) {
+    // called when videos wait and no machine holds one: a run going for 20+ minutes without taking a video is stuck
+    // (an install that hangs); it is cancelled so the next one can start. A younger run is still starting: let it be.
+    const r = await fetch(`${base}/workflows/${s.github.workflow}/runs?status=in_progress&per_page=5`, { headers }).then((x) => x.ok ? x.json() as Promise<any> : null).catch(() => null);
+    for (const run of r?.workflow_runs || []) {
+      const age = Date.now() - Date.parse(run.run_started_at || run.created_at);
+      if (age < 20 * 60_000) return 'ok';
+      await fetch(`${base}/runs/${run.id}/cancel`, { method: 'POST', headers }).catch(() => null);
+      await env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('ink:stuck', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+        .bind(JSON.stringify({ run: run.id, minutes: Math.round(age / 60_000) }), Date.now()).run();
+    }
+  }
+  const res = await fetch(`${base}/workflows/${s.github.workflow}/dispatches`, { method: 'POST', body: JSON.stringify({ ref: s.github.ref }), headers });
   if (!res.ok) return `GitHub từ chối (HTTP ${res.status}): ${(await res.text()).slice(0, 160)}`;
   await mark(env, 'ink:dispatch'); return 'ok';
 }

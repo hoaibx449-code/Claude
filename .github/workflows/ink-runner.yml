@@ -28,15 +28,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      # installs never hold the queue: each has a time limit and apt retries instead of waiting forever on a lock or a
+      # slow mirror (a stuck install once kept every video waiting for half an hour)
       - name: Cài FFmpeg và thư viện
+        timeout-minutes: 8
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
-          pip install -q -r ink/requirements.txt
+          for i in 1 2 3; do
+            sudo timeout 240 apt-get -o DPkg::Lock::Timeout=60 -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update -qq \
+              && sudo timeout 240 apt-get -o DPkg::Lock::Timeout=60 -o Acquire::Retries=3 install -y -qq --no-install-recommends ffmpeg fonts-dejavu-core && break
+            echo "apt chưa xong (lần $i), thử lại"; sleep 10
+          done
+          command -v ffmpeg
+          pip install -q --timeout 60 -r ink/requirements.txt
       - name: Cài trình duyệt và thư viện cho kiểu Điện ảnh
+        timeout-minutes: 10
         run: |
           python -m playwright install --with-deps chromium
           cd ink/hbx && npm ci --no-audit --no-fund
       - name: Cài bộ dựng Shorts 3D
+        timeout-minutes: 8
         run: |
           npm ci --prefix shorts/renderer/engine --no-audit --no-fund
           cd shorts/renderer/engine && npx playwright install chromium
