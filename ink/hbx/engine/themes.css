@@ -132,3 +132,5 @@ body[data-theme=finance]{--fb-hl:#f3d58a}
 /* chữ hoa tiếng Việt: giãn dòng đủ chỗ cho dấu, cân dòng */
 .title{line-height:1.14}.big{line-height:1.12}.fb-cap{line-height:1.12}
 .title,.big,.fb-cap,.cap,#sub{text-wrap:balance}
+.kicker.hl-on{filter:saturate(1.3) brightness(1.08)}
+.numwrap.hl-on .cnt{background:var(--hl,#ffd23f);color:var(--hl-ink,#111);border-radius:22px;padding:0 24px}

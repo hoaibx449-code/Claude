@@ -2,6 +2,8 @@
 
 Environment (keys only come from secrets, never from files):
   OPENAI_API_KEY, GEMINI_API_KEY
+  ANTHROPIC_API_KEY  Claude writes the code of the 3D props (code()); without it Gemini/OpenAI write it
+  INK_CLAUDE_MODEL   default claude-opus-5-5
   INK_AI_ORDER     e.g. "gemini,openai" (default) - who is asked first
   INK_GEMINI_MODELS e.g. "gemini-3.5-flash,gemini-flash-latest"
   INK_OPENAI_MODELS e.g. "gpt-4.1-mini,gpt-4.1-nano"
@@ -40,10 +42,10 @@ def _gemini(model, system, user, temperature):
     return ''.join(p.get('text', '') for p in r['candidates'][0]['content']['parts'])
 
 
-def _openai(model, system, user, temperature):
+def _openai(model, system, user, temperature, timeout=70):
     body = {'model': model, 'temperature': temperature, 'response_format': {'type': 'json_object'},
             'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}]}
-    r = _post('https://api.openai.com/v1/chat/completions', body, {'authorization': 'Bearer ' + os.environ['OPENAI_API_KEY']})
+    r = _post('https://api.openai.com/v1/chat/completions', body, {'authorization': 'Bearer ' + os.environ['OPENAI_API_KEY']}, timeout)
     return r['choices'][0]['message']['content']
 
 
@@ -146,3 +148,90 @@ def research(system, user, check=None, log=print):
             msg = f'{provider}/{model}: {type(e).__name__}: {str(getattr(e, "code", "") or e)[:160]}'
             errors.append(msg); log('  tìm nguồn chưa được, thử tiếp: ' + msg)
     raise RuntimeError('Không tìm được nguồn trên web: ' + ' | '.join(errors))
+
+
+# ---------------------------------------------------------------- looking at a picture (the preview grid of a video)
+def look(system, user, image_path, check=None, log=print):
+    """a JSON answer about an image; Gemini first, OpenAI after (the chain's order). Raises when no model can see it."""
+    import base64
+    data = base64.b64encode(open(image_path, 'rb').read()).decode()
+    mime = 'image/png' if image_path.endswith('.png') else 'image/jpeg'
+    errors = []
+    for provider, model in chain():
+        if 'lite' in model: continue
+        try:
+            if provider == 'gemini':
+                url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={os.environ["GEMINI_API_KEY"]}'
+                r = _post(url, {'systemInstruction': {'parts': [{'text': system}]}, 'contents': [{'role': 'user', 'parts': [{'inline_data': {'mime_type': mime, 'data': data}}, {'text': user}]}],
+                                'generationConfig': {'temperature': 0.2, 'responseMimeType': 'application/json'}}, {}, timeout=120)
+                raw = ''.join(p.get('text', '') for p in r['candidates'][0]['content']['parts'])
+            else:
+                r = _post('https://api.openai.com/v1/chat/completions', {'model': model, 'temperature': 0.2, 'response_format': {'type': 'json_object'},
+                          'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': [{'type': 'image_url', 'image_url': {'url': f'data:{mime};base64,{data}'}}, {'type': 'text', 'text': user}]}]},
+                          {'authorization': 'Bearer ' + os.environ['OPENAI_API_KEY']}, timeout=120)
+                raw = r['choices'][0]['message']['content']
+            obj = parse_json(raw)
+            if check: check(obj)
+            used.append((provider, model + '+vision')); return obj
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError, KeyError, IndexError, json.JSONDecodeError) as e:
+            errors.append(f'{provider}/{model}: {type(e).__name__}: {str(getattr(e, "code", "") or e)[:120]}'); log('  xem hình chưa được, thử tiếp: ' + errors[-1])
+    raise RuntimeError('Không mô hình nào xem được hình: ' + ' | '.join(errors))
+
+
+# ---------------------------------------------------------------- writing code (the 3D props of a series video)
+def _claude(system, user, effort='high'):
+    import anthropic
+    client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'], max_retries=3)
+    with client.messages.stream(model=os.environ.get('INK_CLAUDE_MODEL', 'claude-opus-5-5'), max_tokens=32000, system=system,
+                                thinking={'type': 'adaptive'}, output_config={'effort': effort},
+                                messages=[{'role': 'user', 'content': user}]) as stream:
+        msg = stream.get_final_message()
+    if msg.stop_reason == 'refusal': raise ValueError('Claude từ chối trả lời')
+    return ''.join(b.text for b in msg.content if b.type == 'text')
+
+
+def code(system, user, check=None, log=print):
+    """the answer of a code-writing request as text (the prompt asks for one ```js block plus a JSON block).
+    Claude first when its key is there; otherwise, or when it fails, the JSON chain answers {"code": ..., ...}."""
+    errors = []
+    if os.environ.get('ANTHROPIC_API_KEY') and not remote:
+        try:
+            import anthropic
+            for attempt in range(2):
+                try:
+                    text = _claude(system, user)
+                    if check: check(text)
+                    used.append(('anthropic', os.environ.get('INK_CLAUDE_MODEL', 'claude-opus-5-5'))); return text
+                except ValueError as e:
+                    errors.append(f'claude: {str(e)[:160]}'); log('  Claude viết mã chưa đạt, thử lại: ' + errors[-1])
+        except ImportError:
+            errors.append('claude: chưa cài thư viện anthropic')
+        except Exception as e:  # API errors (key, credit, overload): the other providers write it
+            errors.append(f'claude: {type(e).__name__}: {str(e)[:160]}'); log('  Claude lỗi, chuyển mô hình khác: ' + errors[-1])
+    def ok(obj):
+        if not str(obj.get('code') or '').strip(): raise ValueError('thiếu "code"')
+        if check: check(as_text(obj))
+    as_text = lambda obj: '```js\n' + str(obj.get('code')) + '\n```\n```json\n' + json.dumps({k: v for k, v in obj.items() if k != 'code'}, ensure_ascii=False) + '\n```'
+    ask_json = user + '\n\nTrả về MỘT đối tượng JSON: mã JavaScript đặt trong khóa "code" (chuỗi), các khóa khác như yêu cầu.'
+    # code needs a strong model: the full OpenAI model first (the light ones break three.js), then the usual chain
+    if os.environ.get('OPENAI_API_KEY') and not remote:
+        for m in [x.strip() for x in os.environ.get('INK_CODE_OPENAI', 'gpt-4.1').split(',') if x.strip()]:
+            try:
+                obj = parse_json(_openai(m, system, ask_json, 0.4, 180)); ok(obj)
+                used.append(('openai', m)); return as_text(obj)
+            except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError, KeyError, IndexError, json.JSONDecodeError) as e:
+                errors.append(f'openai/{m}: {type(e).__name__}: {str(getattr(e, "code", "") or e)[:120]}'); log('  ' + errors[-1])
+    try:
+        return as_text(ask(system, ask_json, 0.6, check=ok, log=log))
+    except RuntimeError as e:
+        raise RuntimeError(' | '.join(errors + [str(e)]))
+
+
+def blocks(text):
+    """the ```js and ```json blocks of a code answer: (code, obj)"""
+    js = re.search(r'```(?:js|javascript)\s*\n(.*?)```', text, re.S)
+    if not js: raise ValueError('không thấy khối ```js')
+    m = re.search(r'```json\s*\n(.*?)```', text, re.S)
+    try: obj = json.loads(m.group(1)) if m else {}
+    except json.JSONDecodeError: raise ValueError('khối ```json hỏng')
+    return js.group(1).strip(), obj

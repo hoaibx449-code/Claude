@@ -31,6 +31,12 @@ FAMILY = {'shot': 'footage', 'callouts': 'footage', 'compare': 'compare', 'warni
           'i_donut': 'number', 'i_gauge': 'number', 'i_rank': 'chart', 'i_scale': 'chart', 'i_funnel': 'flow', 'i_pyramid': 'flow', 'i_cycle': 'flow',
           'i_ipo': 'flow', 'i_venn': 'compare', 'i_matrix': 'compare', 'i_proscons': 'compare', 'i_beforeafter': 'compare', 'i_table': 'compare', 'i_steps': 'list'}
 FOOTAGE = {'shot', 'callouts', 'compare', 'warning', 'c_photo'}
+# the 3D metaphor world (hbx/engine/meta3d.js, three.js): only for the 'Đòn Bẩy Tư Duy' series, where it carries about half the video
+FAMILY['m_scene'] = 'metaphor'
+# the treadmill and the dominoes are clichés: kept in the engine for old storyboards, never chosen again
+M_PROPS = {'leaky', 'stairs2', 'meter', 'cluster', 'split', 'jar', 'stage'}
+M_CAMS = {'orbit', 'push', 'pull', 'rise', 'low', 'top', 'side'}
+M_POSES = {'idle', 'think', 'point', 'cheer', 'slump', 'walk', 'run'}
 # on a baked 2.5D shot the camera already moves through the picture: only light hand-held tricks may stack on it
 SHOT_CAM = {'handheld', 'shake', 'dutch'}
 
@@ -109,7 +115,7 @@ def polish(scenes, fp, wps):
             fb.pop('camera', None) if fb.get('camera') in STRONG_CAM else None
             fb['overlay'] = [o for o in fb.get('overlay', []) if o.get('kind') not in STRONG_OVER]
             if b.get('trans') in STRONG_TRANS: b['trans'] = r.choice(['dissolve', 'cut', 'slide'])
-            if b['type'] != 'shot': fb.setdefault('camera', 'breathe')
+            if b['type'] not in ('shot', 'm_scene'): fb.setdefault('camera', 'breathe')
             b['beat'] = 'breath'
         if fb: b['fx'] = {k: v for k, v in fb.items() if v}
         else: b.pop('fx', None)
@@ -126,7 +132,7 @@ def polish(scenes, fp, wps):
             key = re.findall(r'\*([^*]+)\*', s['sub'])
             if key:
                 f = s.setdefault('fx', {})
-                if s['type'] != 'shot': f['camera'] = 'snapZoom'
+                if s['type'] not in ('shot', 'm_scene'): f['camera'] = 'snapZoom'
                 f['overlay'] = [o for o in f.get('overlay', []) if o.get('kind') not in STRONG_OVER][:1] + [{'kind': 'keyword', 'text': key[0][:24], 'y': .2}]
                 s['beat'] = 'reward'; last = times[i]
     return scenes
@@ -135,7 +141,7 @@ def polish(scenes, fp, wps):
 TURN_WORDS = re.compile(r'\b(nhưng|thật ra|thực ra|khoan|ngược lại|bất ngờ|điều lạ|sự thật là|vậy mà|tuy nhiên|còn kỳ lạ)\b', re.I)
 
 
-def structure(scenes, lines_meta, fp, wps):
+def structure(scenes, lines_meta, fp, wps, meta=False):
     """the story's shape in pictures: turns
     near 1/3 and 2/3 when the director left them out (the line that turns the story: "nhưng…", a question, a word
     cut), and a loop ending that comes back to the opening footage so the video replays seamlessly"""
@@ -155,7 +161,7 @@ def structure(scenes, lines_meta, fp, wps):
             f['overlay'] = [o for o in f.get('overlay', []) if o.get('kind') not in STRONG_OVER]; scenes[pick + 1]['beat'] = 'breath'
             if scenes[pick + 1].get('trans') in STRONG_TRANS: scenes[pick + 1]['trans'] = 'dissolve'
     first, last = scenes[0], scenes[-1]
-    if first['type'] == 'shot' and last['type'] == 'shot' and first.get('bg') and last.get('bg'):
+    if not meta and first['type'] == 'shot' and last['type'] == 'shot' and first.get('bg') and last.get('bg'):
         last['bg'] = dict(first['bg']); last['cam'] = first.get('cam', 'push'); last['loop'] = True   # same footage: the end flows into the start
     return scenes
 
@@ -170,6 +176,22 @@ def merge_lines(lines, wps, lo=4.0, hi=7.5):
             out[-1] = (out[-1][0] + ' ' + l, out[-1][1] + sec)
         else: out.append((l, sec))
     return [l for l, _ in out]
+
+
+def split_lines(lines, wps, most=3.2, least=1.4):
+    """a fast cut (about 1.5–3 s a picture): a long sentence is cut at its commas into phrases the picture can follow,
+    never into a scrap under ~1.5 s"""
+    out = []
+    for l in lines:
+        if S.words(l) / wps <= most: out.append(l); continue
+        parts, cur = [], ''
+        for b in (x.strip() for x in re.split(r'(?<=[,;:–—])\s+', l) if x.strip()):
+            if cur and S.words(cur) / wps >= least and S.words(b) / wps >= least * .8: parts.append(cur); cur = b
+            else: cur = (cur + ' ' + b).strip()
+        if cur and parts and S.words(cur) / wps < least: parts[-1] += ' ' + cur
+        elif cur: parts.append(cur)
+        out += parts
+    return out
 
 
 def say_words(scenes): return sum(S.words(s.get('say', '')) for s in scenes)
@@ -210,7 +232,109 @@ def _img(o):
     return ({k: v for k, v in o.items() if k in ('video', 'focus', 'depth', 'vstart')} | {'q': q}) if q else None
 
 
-def build(o, lines, fp, clips):
+# ---------------------------------------------------------------- the 'Đòn Bẩy Tư Duy' look: one text layer, one world
+M_TYPES = {'shot', 'm_scene', 'big_number', 'question'}
+M_TEXT = ('title', 'items', 'pins', 'quote', 'label', 'note', 'kicker', 'caption', 'value', 'decimals', 'prefix', 'suffix')
+M_OVER = {'arrow', 'circle', 'underline', 'spotlight', 'bracket'}          # pointing at the picture, never words on it
+M_EFF = {'grain', 'vignette', 'warm', 'cool', 'dim'}                       # one consistent grade, no collage of looks
+POSED = re.compile(r'\b(portrait|model|posing|pose|smiling|smile|beautiful|pretty|attractive|fashion|woman in|girl in|selfie|headshot|studio|face|faces|close up face|elderly|old man|old woman)\b', re.I)
+
+
+OFFTONE = re.compile(r'\b(traditional|costume|calligraphy|ao dai|conical hat|non la|temple|pagoda|festival|ancient|vintage|antique|historical|kimono|hanbok)\b', re.I)
+
+
+def _m_query(q, fallback):
+    """a footage search that finds a moment (hands, objects, a place, an action) in today's city life, not a model
+    posing for the camera nor a costume picture from another world"""
+    q = ' '.join(OFFTONE.sub(' ', POSED.sub(' ', str(q or ''))).split())
+    # a place word ("vietnam") makes the stock search return anything tagged with the place instead of the subject;
+    # style words ("natural lighting", "no people") are not in any tag either
+    q = re.sub(r'\b(vietnam\w*|viet nam|saigon|hanoi|asia\w*)\b', ' ', q, flags=re.I)
+    q = re.sub(r'\b(natural|soft|bright|cinematic|warm)\s+(light|lighting)\b|\bno(\s+\w+)?$|\b(4k|hd|high quality|realistic)\b', ' ', q, flags=re.I)
+    q = ' '.join(re.sub(r'[,.;]+', ' ', q).split()[:6])
+    return q if len(q.split()) >= 2 else fallback
+
+
+def _number(v):
+    """a count-up value: 30, 2.5, "30%", "1.200" → number; None when it is not one"""
+    if isinstance(v, bool): return None
+    if isinstance(v, (int, float)): return v
+    m = re.fullmatch(r'\s*[^\d-]*(-?\d{1,3}(?:[.,]\d{3})+|-?\d+(?:[.,]\d+)?)\s*\D*\s*', str(v or ''))
+    if not m: return None
+    t = m.group(1)
+    if re.fullmatch(r'-?\d{1,3}(?:[.,]\d{3})+', t): return int(re.sub(r'[.,]', '', t))
+    f = float(t.replace(',', '.'))
+    return int(f) if f.is_integer() else f
+
+
+def series_rules(scenes, fp):
+    """what makes the series read as made by a person: words on screen once (the fine captions), big text only where
+    a concept is named or a study's number lands (at most 3 times), one picture world (shots + 3D metaphors), no
+    posed stock portraits, no blurred or black-and-white collage, no loop back to the opening picture"""
+    prev_q = 'city street morning'
+    big = 0
+    for i, s in enumerate(scenes):
+        t = s['type']
+        if t not in M_TYPES:   # cards, charts, slides and flow boxes become real footage of the same idea
+            side = next((s[x].get('image') for x in ('a', 'before', 'b', 'after') if isinstance(s.get(x), dict) and isinstance(s[x].get('image'), dict)), None)
+            q = (s.get('image') or {}).get('q') or (side or {}).get('q') or s.get('alt') or prev_q + ' hands close up'
+            keep = {k: s[k] for k in ('say', 'sub', 'lead', 'trans', 'beat', 'fx') if k in s}
+            s.clear(); s.update(keep, type='shot', bg=_img({'q': q}), cam=CAMS[i % len(CAMS)]); t = 'shot'
+        if t == 'shot':
+            for k in M_TEXT: s.pop(k, None)
+            s['bg']['q'] = _m_query(s['bg'].get('q'), prev_q); prev_q = s['bg']['q']
+            if s.get('cam') == 'fpv': s['cam'] = 'push'
+        elif t == 'm_scene':
+            if s.get('tag') or s.get('num'): s.pop('title', None)
+            if s.get('title'):
+                if big >= 1: s.pop('title')
+                else: big += 1
+            if s.get('tag') or s.get('num'): big += 1
+            if big > 3: s.pop('tag', None); s.pop('num', None)
+        elif t == 'big_number':
+            big += 1
+            v = _number(s.get('value'))
+            if v is not None: s['value'] = v
+            # no number to count up (missing, words, a year) left an empty black frame: real footage instead
+            if big > 3 or v is None or (isinstance(v, int) and 1800 <= v <= 2100 and not s.get('suffix') and not s.get('prefix')):
+                s.clear(); s.update({'type': 'shot', 'say': s.get('say', ''), 'sub': s.get('sub', ''), 'bg': _img({'q': prev_q + ' detail'}), 'cam': 'push'})
+        s.pop('loop', None)
+        f = s.get('fx') or {}
+        f['overlay'] = [o for o in f.get('overlay', []) if o.get('kind') in M_OVER][:1]
+        if f.get('effect') not in M_EFF: f.pop('effect', None)
+        f = {k: v for k, v in f.items() if v}
+        if f: s['fx'] = f
+        else: s.pop('fx', None)
+    return scenes
+
+
+def _m_scene(s, say, extra=()):
+    """a 3D metaphor scene made safe: a known prop (or this video's own one), known camera moves, cues that are really in the line"""
+    if s.get('prop') not in M_PROPS and s.get('prop') not in extra: s['prop'] = 'stage'
+    if not isinstance(s.get('o'), dict): s['o'] = {}
+    if s['prop'] == 'stage' and s['o'].get('pose') not in M_POSES: s['o']['pose'] = 'think'
+    for k in ('in', 'out', 'core', 'baseLabel', 'offLabel', 'save', 'spend'):
+        v = s['o'].get(k)
+        if isinstance(v, dict): v = v.get('text') or v.get('label') or v.get('vi') or ''
+        if k in s['o']: s['o'][k] = ' '.join(str(v if not isinstance(v, (list, dict)) else '').split())[:24]
+        if s['o'].get(k) == '': s['o'].pop(k)
+    cams = [c for c in (s.get('cams') if isinstance(s.get('cams'), list) else [s['cam']] if isinstance(s.get('cam'), dict) else []) if isinstance(c, dict) and c.get('kind') in M_CAMS][:4]
+    s.pop('cam', None)
+    s['cams'] = cams or [{'kind': 'orbit'}]
+    if isinstance(s.get('tag'), dict) and not (s['tag'].get('en') or s['tag'].get('vi')): s.pop('tag')
+    if isinstance(s.get('num'), dict) and not isinstance(s['num'].get('value'), (int, float)): s.pop('num')
+    low = say.lower()
+    def drop_cues(o):
+        if isinstance(o, dict):
+            if isinstance(o.get('cue'), str) and o['cue'].lower() not in low: o.pop('cue')
+            for v in o.values(): drop_cues(v)
+        elif isinstance(o, list):
+            for v in o: drop_cues(v)
+    drop_cues(s)
+    return s
+
+
+def build(o, lines, fp, clips, meta=False, extra=()):
     """the director's answer → engine scenes, one per script line, in order; raises ValueError when unusable"""
     got = {}
     for s in o.get('scenes') or []:
@@ -218,6 +342,7 @@ def build(o, lines, fp, clips):
         except (TypeError, ValueError, AttributeError): continue
         if isinstance(s, dict) and s.get('type') == 'g_timeline':  # the flat timeline instead (no empty frames)
             s = dict(s, type='timeline', items=[{'when': str(i.get('year') or i.get('when') or ''), 'text': i.get('text', '')} for i in s.get('items') or [] if isinstance(i, dict)])
+        if s.get('type') == 'm_scene' and not meta: continue
         if 0 <= k < len(lines) and k not in got and s.get('type') in FAMILY: got[k] = dict(s)
     if len(got) < len(lines) * .8: raise ValueError(f'thiếu cảnh cho {len(lines) - len(got)} câu')
     scenes, videos, qs, tone_i = [], 0, {}, 0
@@ -225,6 +350,11 @@ def build(o, lines, fp, clips):
         s = got.get(k) or {'type': 'shot', 'bg': {'q': (scenes[-1].get('bg') or {}).get('q', 'city aerial') if scenes else 'sunrise sky'}}
         s['say'] = say; s.pop('line', None); s['sub'] = _clean_sub(s.get('sub'), say)
         t = s['type']
+        if t == 'big_number':   # a number to count up, or real footage (an empty number left a black frame)
+            v = _number(s.get('value'))
+            if v is None: s = {'type': 'shot', 'say': say, 'sub': s['sub'], 'bg': {'q': s.get('alt') or ((scenes[-1].get('bg') or {}).get('q', 'city street') if scenes else 'city street morning')}}; t = 'shot'
+            else: s['value'] = v
+        if t == 'm_scene': s = _m_scene(s, say, extra)
         for key in ('bg', 'image'):
             if key in s: s[key] = _img(s[key])
         for side in ('a', 'b', 'before', 'after'):
@@ -290,7 +420,7 @@ def ground(scenes, fp):
         if isinstance(s.get('value'), (int, float)):
             sh.update({k: s[k] for k in ('value', 'decimals', 'prefix', 'suffix', 'caption', 'label') if k in s})
         else:
-            its = [{'text': str(it.get('text') or it.get('label') or it.get('title') or '')[:40], **({'cue': it['cue']} if it.get('cue') else {})}
+            its = [{'text': S.clip(it.get('text') or it.get('label') or it.get('title') or '', 40), **({'cue': it['cue']} if it.get('cue') else {})}
                    for it in (s.get('items') or s.get('nodes') or s.get('tiles') or []) if isinstance(it, dict)]
             its = [it for it in its if it['text']][:3]
             if its: sh['items'] = its
@@ -300,7 +430,7 @@ def ground(scenes, fp):
         f = {k: v for k, v in f.items() if k in ('overlay', 'effect', 'cue') or (k == 'camera' and v in SHOT_CAM)}
         if f: sh['fx'] = f
         scenes[i] = sh
-    board = lambda i: scenes[i]['type'] not in FOOTAGE
+    board = lambda i: scenes[i]['type'] not in FOOTAGE and scenes[i]['type'] != 'm_scene'
     seen = set()
     for i in range(n):   # infographics: each kind once, two at most
         t = scenes[i]['type']
@@ -309,6 +439,8 @@ def ground(scenes, fp):
             else: seen.add(t)
     for i in range(1, n):   # never two boards in a row
         if board(i) and board(i - 1): to_shot(i)
+    for i in range(2, n):   # three 3D scenes in a row: the third goes back to real footage
+        if all(scenes[j]['type'] == 'm_scene' for j in (i - 2, i - 1, i)): to_shot(i)
     cap = max(1, n // 4)
     extra = [i for i in range(n) if board(i)]
     r.shuffle(extra)   # the plainest boards (no number, no data) go first
@@ -318,18 +450,23 @@ def ground(scenes, fp):
     return scenes
 
 
-def variety(scenes, min_types):
+def variety(scenes, min_types, meta=False, series_led=False):
     """the director's rules, checked: problems in plain words (empty = fine)"""
     out, n = [], len(scenes)
+    if meta:   # the series: half 3D metaphors, the rest real moments; few words on screen
+        share = sum(s['type'] == 'm_scene' for s in scenes) / max(1, n)
+        if not .35 <= share <= (.9 if series_led else .6): out.append(f'cảnh 3D m_scene chiếm {share:.0%}, cần khoảng {"60–75" if series_led else "45–55"}%')
+        posed = [i + 1 for i, s in enumerate(scenes) if s['type'] == 'shot' and POSED.search(str((s.get('bg') or {}).get('q', '')))]
+        if posed: out.append(f'cảnh {posed}: từ khoá cảnh quay là người mẫu tạo dáng; đổi sang khoảnh khắc thật (tay, đồ vật, hành động, nơi chốn)')
     types = [s['type'] for s in scenes]
     for i in range(1, n):
-        if types[i] == types[i - 1] and types[i] != 'shot': out.append(f'cảnh {i} và {i + 1} cùng kiểu {types[i]}: đổi một cảnh sang kiểu khác hợp ý câu')
-    for t in set(types) - FOOTAGE:
+        if types[i] == types[i - 1] and types[i] not in ('shot', 'm_scene'): out.append(f'cảnh {i} và {i + 1} cùng kiểu {types[i]}: đổi một cảnh sang kiểu khác hợp ý câu')
+    for t in (set() if meta else set(types) - FOOTAGE - {'m_scene'}):
         if types.count(t) > 1 and t.startswith('i_'): out.append(f'infographic {t} dùng {types.count(t)} lần: mỗi loại tối đa 1 lần')
         elif types.count(t) > max(2, .12 * n): out.append(f'kiểu {t} chiếm {types.count(t)}/{n} cảnh (đồ hoạ một kiểu tối đa 12%)')
-    if len(set(types)) < min_types: out.append(f'chỉ dùng {len(set(types))} kiểu cảnh, cần ít nhất {min_types}')
-    foot = sum(t in FOOTAGE for t in types) / max(1, n)
-    if foot < .7: out.append(f'cảnh quay thật chỉ {foot:.0%}, cần ≥ 70%: bảng đồ hoạ chỉ khi câu thật sự cần (số liệu so sánh, cơ chế)')
+    if not meta and len(set(types)) < min_types: out.append(f'chỉ dùng {len(set(types))} kiểu cảnh, cần ít nhất {min_types}')
+    foot = sum(t in FOOTAGE or t == 'm_scene' for t in types) / max(1, n)
+    if not meta and foot < .7: out.append(f'cảnh quay thật chỉ {foot:.0%}, cần ≥ 70%: bảng đồ hoạ chỉ khi câu thật sự cần (số liệu so sánh, cơ chế)')
     if sum(t.startswith('i_') for t in types) > 2: out.append('quá 2 infographic: chuyển phần dư sang cảnh quay thật có số/ghim nổi trên cảnh')
     tr = [s.get('trans') for s in scenes[1:]]
     if any(tr[i] and tr[i] == tr[i - 1] == tr[i - 2] for i in range(2, len(tr))): out.append('3 lần chuyển cảnh liền nhau cùng một kiểu')
@@ -337,7 +474,7 @@ def variety(scenes, min_types):
     fxc = [(s.get('fx') or {}).get('camera') for s in scenes]
     if any(fxc[i] and fxc[i] == fxc[i - 1] for i in range(1, n)): out.append('2 cảnh liền cùng một kỹ thuật máy quay giả (punchIn, snapZoom…)')
     with_fx = sum(bool(s.get('fx')) for s in scenes) / max(1, n)
-    if with_fx < .5: out.append(f'chỉ {with_fx:.0%} cảnh có công thức dựng (fx): cần ≥ 60% cảnh có máy quay giả/đồ hoạ phủ/hiệu ứng')
+    if not meta and with_fx < .5: out.append(f'chỉ {with_fx:.0%} cảnh có công thức dựng (fx): cần ≥ 60% cảnh có máy quay giả/đồ hoạ phủ/hiệu ứng')
     ov = [o['kind'] for s in scenes for o in (s.get('fx') or {}).get('overlay', [])]
     for k in set(ov):
         if ov.count(k) > max(2, n // 6): out.append(f'đồ hoạ phủ "{k}" lặp {ov.count(k)} lần')
@@ -364,6 +501,17 @@ def _brief(scenes):
     return '\n'.join(out)
 
 
+M_GUIDE = """SERIES "ĐÒN BẨY TƯ DUY" — chỉ dùng 4 kiểu cảnh: `shot` (cảnh quay thật), `m_scene` (thế giới ẩn dụ 3D, KHOẢNG MỘT NỬA số câu: 45–55%), `big_number` (tối đa 1 lần, cho con số nghiên cứu đắt nhất), `question` (câu hỏi kết). KHÔNG dùng thẻ, biểu đồ, sơ đồ, compare, infographic.
+CHỮ TRÊN HÌNH: phụ đề đã có sẵn, nên `shot` KHÔNG đặt title/items/pins/quote/label. Chữ lớn chỉ 2–3 lần cả video: thẻ tên khái niệm (`tag`), con số nghiên cứu (`num`/big_number).
+CẢNH QUAY THẬT theo CẢM XÚC của câu, không theo nghĩa đen của từ: tìm KHOẢNH KHẮC có hành động (tay, đồ vật, nơi chốn, người đang làm việc gì đó, nhìn nghiêng/từ sau lưng), bối cảnh Việt Nam/châu Á khi hợp. KHÔNG cảnh rõ mặt người (bản quyền hình ảnh): chỉ tay, đồ vật, nơi chốn, người nhìn từ sau lưng hoặc ở xa; CẤM người mẫu tạo dáng, chân dung, close up mặt, "smiling woman", "portrait", "model", "elderly man". Từ khoá 2–5 chữ tiếng Anh tả ĐÚNG vật/hành động của câu, KHÔNG thêm "vietnam", tên nơi, hay chữ tả ánh sáng/phong cách (làm kết quả lạc đề). Ví dụ tốt: "hand scrolling shopping app at night", "motorbike traffic saigon rain", "receipt pile on desk", "salary envelope counting cash hands". Cả video giữ MỘT tông màu (không đen trắng xen ảnh ấm) và MỘT THẾ GIỚI: đời sống đô thị Việt Nam hiện đại của nhân vật (văn phòng, quán cà phê, căn hộ, xe máy, siêu thị, ví, hoá đơn, điện thoại). KHÔNG cổ trang, áo dài/nón lá trình diễn, thư pháp, lễ hội, đền chùa, cảnh quê hoài cổ — trừ khi câu nói đúng về điều đó.
+- `m_scene` {{prop, o {{…}}, cams [{{kind, cue?, a0?, a1?}}], tag {{en, vi, cue}}?, title [l1, l2]?, num {{value, from?, decimals?, suffix?, caption?, cue?}}?, label?}}: một VẬT ẨN DỤ đang chuyển động trên đảo nổi, có nhân vật không mặt. Chọn prop theo CƠ CHẾ của ý, không theo từ khoá:
+  leaky (xô thủng: tiền vào trên, rò ra đáy; o: in, out, rate) · stairs2 (2 cầu thang song song, vd thu nhập/chi tiêu; o: beats [{{cue}}], labels [a,b]) · meter (vọt lên rồi tụt về cũ; o: rise {{cue}}, fall {{cue}}, baseLabel) · cluster (vật chính kéo theo vật phụ; o: core, items [{{text,cue}}]) · split (dòng tiền rẽ vào hũ tiết kiệm; o: save, spend, frac) · jar (hũ tích luỹ dâng dần; o: from, to 0..1, fill {{cue}}, marks [{{v,text}}]) · stage (nhân vật một mình; o: pose idle|think|point|cheer|slump|walk|run).
+- `cams`: cắt góc máy trong cảnh 2–4 giây một góc (orbit giới thiệu, push nhấn, pull mở rộng, rise, low kịch tính, top toàn cục, side); cảnh dài hơn 5 giây phải có ≥ 2 góc, góc sau có `cue`.
+- `tag`: thẻ thuật ngữ song ngữ, CHỈ khi câu đặt tên khái niệm (≤ 3 thẻ cả video). Số liệu nghiên cứu: `num` trên m_scene (prop jar/meter) hoặc big_number.
+- Không đặt 3 cảnh m_scene liền nhau; một prop dùng tối đa 3 lần với góc máy khác. Cảnh cuối: m_scene prop stage hoặc question với câu hỏi mời bình luận. Không hù doạ, không hình ảnh tiền bạc phô trương.
+"""
+
+
 def plan(inp, log=print):
     """the HBX plan for a job's input, made by the whole crew: content creator + scriptwriter (the same strategy,
     outline, writing, editor review, hook and length steps as hand-drawn videos), then director + cinematographer
@@ -381,20 +529,30 @@ def plan(inp, log=print):
         sc = S.from_topic(topic, seconds, inp.get('audience', ''), tone=inp.get('tone') or 'tự nhiên, hợp với chủ đề và người xem', notes=inp.get('notes', ''), pace=pace, log=log)
     lines = [' '.join(str(l['say']).split()) for l in sc['lines'] if str(l.get('say', '')).strip()]
     strategy = sc.get('strategy') or {}
-    wps = S.wps() * S.speed(pace); lines = merge_lines(lines, wps)
+    wps = S.wps() * S.speed(pace)
+    fast = inp.get('format') == 'money' or isinstance(inp.get('series'), dict)
+    lines = split_lines(merge_lines(lines, wps, 2.0, 3.6), wps) if fast else merge_lines(lines, wps)
     min_types = max(3, min(6, len(lines) // 5))
     sec_per_line = round(sum(S.words(l) for l in lines) / max(1, len(lines)) / wps, 1)
     best, feedback = None, ''
-    # the series' own way of filming (Đòn Bẩy Tư Duy): numbers and mechanisms in 3D graphics, everyday moments in real footage
-    series = ('SERIES "ĐÒN BẨY TƯ DUY": khoảng một nửa thời lượng là đồ hoạ 3D (g_blocks cho con số cộng dồn, g_flow cho cơ chế/dòng chảy, g_timeline cho mốc nghiên cứu, g_cards cho các bước làm), '
-              'nửa còn lại là cảnh quay thật cho ví dụ đời thường và cảm xúc (từ khoá cụ thể: chủ thể + hành động, bối cảnh Việt Nam/châu Á khi hợp). '
-              'Thẻ chữ song ngữ chỉ khi đặt tên khái niệm. Cảnh cuối là câu hỏi mời bình luận. Không hù doạ, không hình ảnh tiền bạc phô trương.\n') if inp.get('format') == 'money' else ''
+    # the series' own way of filming (Đòn Bẩy Tư Duy, or a user's series): mechanisms in 3D metaphors, everyday moments in real footage
+    ser = inp.get('series') if isinstance(inp.get('series'), dict) else None
+    meta = inp.get('format') == 'money' or bool(ser)
+    series = M_GUIDE if meta else ''
+    spec = code = None; extra = ()
+    if ser:  # a new metaphor, its prop written and test-filmed before the director starts
+        from . import series as SR
+        spec, code = SR.prepare(ser, topic, sc.get('core_message') or strategy.get('core_message', ''), lines, log)
+        series = series.replace('SERIES "ĐÒN BẨY TƯ DUY"', f'SERIES "{ser.get("name") or "của bạn"}"')
+        if code: series += SR.guide(spec); extra = (spec['prop'],)
     for round_ in range(3):
         log('Đạo diễn phân cảnh…' if not round_ else f'Đạo diễn làm lại theo góp ý (lần {round_})…')
         o = ai.ask(S.system(), S.prompt('cine_direct', topic=topic, genre=strategy.get('genre') or 'chưa rõ', core=sc.get('core_message') or strategy.get('core_message', ''),
                                         lines='\n'.join(f'{i}. {l}' for i, l in enumerate(lines)), fingerprint=fp_text(fp), clips=clips, min_types=min_types, sec_per_line=sec_per_line, feedback=series + feedback),
-                   0.85, check=lambda x: build(x, lines, fp, clips), log=log)
-        scenes = ground(build(o, lines, fp, clips), fp); problems = variety(scenes, min_types) + rhythm(scenes, wps)
+                   0.85, check=lambda x: build(x, lines, fp, clips, meta, extra), log=log)
+        scenes = ground(build(o, lines, fp, clips, meta, extra), fp)
+        if meta: scenes = series_rules(scenes, fp)
+        problems = variety(scenes, min_types, meta, bool(extra)) + rhythm(scenes, wps)
         try:
             j = ai.ask(S.system(), S.prompt('cine_judge', topic=topic, scenes=_brief(scenes)), 0.2,
                        check=lambda x: isinstance(x.get('scores'), dict) or (_ for _ in ()).throw(ValueError('thiếu scores')), log=log)
@@ -407,9 +565,11 @@ def plan(inp, log=print):
         if avg >= 8 and not problems: break
         feedback = 'GÓP Ý BẮT BUỘC SỬA từ lần trước:\n- ' + '\n- '.join(problems + issues)
     _, o, scenes, scores = best
-    before = len(variety(scenes, min_types) + rhythm(scenes, wps))
-    scenes = structure(polish(scenes, fp, wps), sc['lines'], fp, wps)
-    left = variety(scenes, min_types) + rhythm(scenes, wps)
+    before = len(variety(scenes, min_types, meta, bool(extra)) + rhythm(scenes, wps))
+    scenes = structure(polish(scenes, fp, wps), sc['lines'], fp, wps, meta)
+    if meta: scenes = series_rules(scenes, fp)
+    if extra: scenes = SR.enforce(scenes, spec)
+    left = variety(scenes, min_types, meta, bool(extra)) + rhythm(scenes, wps)
     log(f'   tự sửa luật dựng: còn {len(left)}/{before} lỗi' + (f' ({"; ".join(left[:3])})' if left else ''))
     style = {**fp['style'], **{k: v for k, v in (o.get('style') or {}).items() if k in ('scheme', 'grade') and isinstance(v, str)}}
     if not fp['caps']: style['titleCase'] = 'none'
@@ -418,23 +578,23 @@ def plan(inp, log=print):
     try: c['shot'] = int(c.get('shot'))
     except (TypeError, ValueError): c['shot'] = shots[0]
     if c['shot'] not in shots: c['shot'] = shots[0]
-    c['hook'] = str(c.get('hook') or o.get('title') or lines[0])[:80]
+    c['hook'] = S.clip(c.get('hook') or o.get('title') or lines[0], 80)
     # numbers, studies and health/money claims checked on the web: unsourced ones are said carefully
     said, ex, facts = S.fact_check(topic, [s['say'] for s in scenes], {'cover_hook': c['hook'], 'cover_detail': c.get('detail', ''), 'caption': o.get('caption', '')},
                                    rewrite=inp.get('mode') != 'script', log=log)
     for s, l in zip(scenes, said):
         if l != s['say']: s['say'] = l; s['sub'] = _clean_sub(None, l)
-    c['hook'] = ex.get('cover_hook', c['hook'])[:80]
+    c['hook'] = S.clip(ex.get('cover_hook', c['hook']), 80)
     if c.get('detail'): c['detail'] = ex.get('cover_detail', c['detail'])
     if o.get('caption'): o['caption'] = ex.get('caption', o['caption'])
-    sb = {'theme': 'cine', 'brand': (inp.get('brand') or '').strip()[:40], 'style': style, 'cover': c,
+    sb = {'theme': 'cine', 'brand': S.clip(inp.get('brand') or '', 40), 'style': style, 'cover': c,
           'pace': 'fast' if pace in ('fast', 'faster') else 'normal', 'subWords': 3}
     st = o.get('sticker')
     if isinstance(st, dict) and st.get('text'):
-        try: sb['sticker'] = {'text': str(st['text'])[:40], 'line': int(st.get('line'))}
+        try: sb['sticker'] = {'text': S.clip(st['text'], 40), 'line': int(st.get('line'))}
         except (TypeError, ValueError): pass
     theme = str(o.get('theme') or 'science').lower()
-    hb = {'id': 'INK', 'title': o.get('title') or sc.get('title') or lines[0][:60], 'theme': theme if theme in THEMES else 'science',
+    hb = {'id': 'INK', 'title': S.clip(o.get('title') or sc.get('title') or lines[0], 100), 'theme': theme if theme in THEMES else 'science',
           **({'mood': o['mood']} if o.get('mood') in MOODS else {}), 'storyboard': sb}
     types = [s['type'] for s in scenes]
     log(f'Phân cảnh điện ảnh: {len(scenes)} cảnh, {len(set(types))} kiểu ({", ".join(sorted(set(types)))}), {say_words(scenes)} chữ')
@@ -443,6 +603,9 @@ def plan(inp, log=print):
     if inp.get('format') == 'money':
         from . import money
         out = money.finish(out, sc, inp)
+    if ser:
+        out = SR.finish(out, spec, code, ser)
+        out['script_table'] = SR.table(SR.visual_prompts(scenes, spec), wps)
     return out
 
 
@@ -456,6 +619,7 @@ def _plan_file(job_sb, work):
 def _env(job_sb=None):
     env = dict(os.environ)
     if job_sb and job_sb.get('fingerprint'): env['HBX_SEED'] = str(job_sb['fingerprint'])  # this video's own picks among good footage
+    if job_sb and job_sb.get('series') in ('money', 'series'): env['HBX_MODERN'] = '1'   # one modern city world: costume/heritage pictures go last
     env['PIXABAY_KEY'] = env.get('PIXABAY_API_KEY') or env.get('PIXABAY_KEY', '')  # from the site's admin page
     if not env['PIXABAY_KEY']: raise RuntimeError('Máy dựng chưa có khoá Pixabay (Quản trị → API & token → Pixabay).')
     return env
@@ -473,15 +637,49 @@ def _run(args, log, env):
 
 
 def preview(job_sb, out, log=print):
-    """the engine's own preview: images chosen (their ids kept in the plan), a grid of shots and the cover"""
+    """the engine's own preview: images chosen (their ids kept in the plan), a grid of shots and the cover. For the
+    'Đòn Bẩy Tư Duy' series a director looks at that grid once and has the shots that look generated replaced."""
     work = os.path.join(out, 'cine'); os.makedirs(work, exist_ok=True); env = _env(job_sb)
-    pf = _plan_file(job_sb, work)
-    _run([sys.executable, 'build.py', 'preview', '--plan', pf, '--work', os.path.join(work, 'w')], log, env)
-    p = json.load(open(pf, encoding='utf-8')); job_sb['scenes'] = p['storyboard'].pop('scenes'); job_sb['plan']['storyboard'] = p['storyboard']
+    def run():
+        pf = _plan_file(job_sb, work)
+        _run([sys.executable, 'build.py', 'preview', '--plan', pf, '--work', os.path.join(work, 'w')], log, env)
+        p = json.load(open(pf, encoding='utf-8')); job_sb['scenes'] = p['storyboard'].pop('scenes'); job_sb['plan']['storyboard'] = p['storyboard']
+    run()
+    try:  # a 3D prop that broke in the engine shows as the lone figure: say so in the log
+        for e in json.load(open(os.path.join(work, 'w', 'pv', 'errors.json')))[:5]: log(f'   lỗi cảnh 3D: {e.get("prop", "")} {e.get("step")}: {str(e.get("error"))[:160]}')
+    except (OSError, ValueError): pass
+    if job_sb.get('series') in ('money', 'series') and _judge_preview(job_sb, os.path.join(work, 'w', 'preview.jpg'), log): run()
     from PIL import Image
     Image.open(os.path.join(work, 'w', 'preview.jpg')).save(os.path.join(out, 'overview.png'))
     shutil.copy(os.path.join(work, 'w', 'cover_preview.jpg'), os.path.join(out, 'cover.jpg'))
     return job_sb
+
+
+def _judge_preview(job_sb, grid, log=print):
+    """the director's look at the preview grid: posed stock models, off-topic or empty frames and clashing colours get
+    a new footage search (the old picture is excluded). True when something was replaced."""
+    scenes = job_sb['scenes']
+    listing = '\n'.join(f'{i + 1} · {s["type"]} · "{s["say"][:90]}" · {(s.get("bg") or {}).get("q", "")}' for i, s in enumerate(scenes))
+    try:
+        j = ai.look(S.system(), S.prompt('look_judge', scenes=listing), grid,
+                    check=lambda x: isinstance(x.get('fix'), list) or (_ for _ in ()).throw(ValueError('thiếu fix')), log=log)
+    except Exception as e:  # noqa: BLE001 - no model could look: the rules already applied stand
+        log(f'   đạo diễn chưa xem được bản xem trước ({e})'); return False
+    swapped = 0
+    for f in j['fix'][:8]:
+        try: k = int(f.get('scene')) - 1
+        except (TypeError, ValueError): continue
+        if not 0 <= k < len(scenes) or scenes[k]['type'] != 'shot' or f.get('problem') not in ('portrait', 'offtopic', 'blank', 'clash'): continue
+        q = _m_query(f.get('q'), '')
+        if not q: continue
+        bg = scenes[k].get('bg') or {}
+        old = bg.get('pid')
+        for key in ('src', 'pid', 'frames', 'credit', 'page'): bg.pop(key, None)
+        bg['q'] = _footage_q(q); bg['avoid'] = [x for x in list(bg.get('avoid') or []) + ([old] if old else []) if x][-6:]
+        scenes[k]['bg'] = bg; swapped += 1
+    log(f'   đạo diễn chấm bản xem trước: {S._num(j.get("score")):.0f}/10 · đổi {swapped} cảnh quay' + (f' ({"; ".join(str(f.get("problem")) + " " + str(f.get("scene")) for f in j["fix"][:5])})' if j['fix'] else ''))
+    job_sb['preview_judge'] = {'score': S._num(j.get('score')), 'fix': j['fix'][:8]}
+    return swapped > 0
 
 
 def _srt(words, path):
@@ -528,6 +726,31 @@ def sync_report(video, sbp, log=print):
     return r
 
 
+def stretch(job_sb, seconds, now, log=print):
+    """the voice came out too short for the chosen length: each scene's line keeps its words and gains a clause, so
+    the pictures and the cues on them stay valid. True when the scenes were lengthened."""
+    scenes = job_sb['scenes']; n = len(scenes)
+    have = sum(S.words(s['say']) for s in scenes); more = round(have * (seconds / max(1.0, now) - 1))
+    if more < 8 or n < 3: return False
+    log(f'  lời đọc thiếu khoảng {more} chữ cho {seconds} giây: viết thêm vào từng cảnh…')
+    def ok(o):
+        if not isinstance(o.get('lines'), list) or len(o['lines']) != n: raise ValueError(f'cần đúng {n} dòng')
+    try:
+        o = ai.ask(S.system(), S.prompt('stretch', now=round(now), seconds=seconds, more=more, n=n,
+                                         script='\n'.join(f'{i}. {s["say"]}' for i, s in enumerate(scenes))), 0.6, check=ok, log=log)
+    except Exception as e:  # noqa: BLE001 - a shorter video is still a video
+        log(f'   không viết thêm được ({e})'); return False
+    grew = 0
+    for i, (s, new) in enumerate(zip(scenes, o['lines'])):
+        old, new = s['say'], ' '.join(str(new).split())
+        # only a line that really starts with the old words grows (the picture and its cues stay right)
+        if i in (0, n - 1) or len(new) <= len(old) + 3 or not new.startswith(old.rstrip('.?!… ')): continue
+        extra = new[len(old.rstrip('.?!… ')):].strip(' ,.;')
+        s['say'] = new; s['sub'] = _clean_sub((s.get('sub') or _sub(old)) + ' | ' + _sub(extra), new); grew += 1
+    log(f'   đã viết thêm vào {grew}/{n} cảnh, {sum(S.words(s["say"]) for s in scenes) - have} chữ')
+    return grew > 0
+
+
 def render(job_sb, out, pace='normal', log=print, seconds=0):
     """voice + the HBX render; returns (seconds of video, voice provider, measured caption sync or None)"""
     from .voice import narrate, duration
@@ -536,12 +759,21 @@ def render(job_sb, out, pace='normal', log=print, seconds=0):
     os.environ['INK_VOICE_RATE'] = pace_rate(pace)
     log('Giọng đọc (một mạch, có mốc từng chữ)…')
     voice, timing, words, provider = narrate(lines, os.path.join(work, 'voice'), log=log)
-    if seconds and provider == 'microsoft' and not 0.88 <= timing[-1][2] / seconds <= 1.12:
-        was = int(pace_rate(pace).rstrip('%')); rate = round(max(-15, min(50, ((1 + was / 100) * timing[-1][2] / seconds - 1) * 100)))
+    # the video lasts the time the person chose: first the reading speed is nudged (Microsoft freely, EverAI only
+    # a little: its speed comes in steps of 0.1 and sounds rushed or dragged beyond ±12%), then, if the words are
+    # still too few for the time, every scene's line is lengthened and read again
+    if seconds and not 0.9 <= timing[-1][2] / seconds <= 1.12:
+        was = int(pace_rate(pace).rstrip('%')); lo, hi = (-15, 50) if provider == 'microsoft' else (-12, 15)
+        rate = round(max(lo, min(hi, ((1 + was / 100) * timing[-1][2] / seconds - 1) * 100)))
+        if provider != 'microsoft': rate = round(rate / 10) * 10 if abs(rate - was) >= 5 else was
         if rate != was:
             log(f'  giọng dài {timing[-1][2]:.0f} giây, chọn {seconds}: đọc lại ở tốc độ {rate:+d}%')
             os.environ['INK_VOICE_RATE'] = f'{rate:+d}%'
             voice, timing, words, provider = narrate(lines, os.path.join(work, 'voice'), log=log)
+    if seconds and timing[-1][2] < seconds * 0.88 and stretch(job_sb, seconds, timing[-1][2], log):
+        lines = [s['say'] for s in job_sb['scenes']]
+        voice, timing, words, provider = narrate(lines, os.path.join(work, 'voice'), log=log)
+        log(f'  sau khi viết thêm: giọng dài {timing[-1][2]:.0f}/{seconds} giây')
     srt = os.path.join(work, 'voice.srt'); _srt(words, srt)
     st = job_sb['plan']['storyboard'].get('sticker')
     if isinstance(st, dict) and isinstance(st.get('line'), int) and 0 <= st['line'] < len(timing):

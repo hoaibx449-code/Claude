@@ -41,7 +41,8 @@ def resolve_images(sb, base):
 def open_page(pw, sb):
     # HBX_CHROMIUM: a Chromium already on the machine (otherwise Playwright's own download)
     exe = os.environ.get('HBX_CHROMIUM')
-    b = pw.chromium.launch(args=['--allow-file-access-from-files'], **({'executable_path': exe} if exe else {}))
+    # WebGL (3D metaphor scenes, meta3d.js) in a headless browser: software rendering, same picture on every machine
+    b = pw.chromium.launch(args=['--allow-file-access-from-files', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'], **({'executable_path': exe} if exe else {}))
     pg = b.new_page(viewport={'width': 720, 'height': 1280}, device_scale_factor=DSF)
     pg.goto(PLAYER)
     pg.evaluate('sb => HBX.build(sb)', sb)
@@ -154,8 +155,11 @@ def main():
         out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
         with sync_playwright() as pw:
             b, pg = open_page(pw, sb)
+            errs = []; pg.on('pageerror', lambda e: errs.append({'step': 'page', 'error': str(e)[:300]}))
             for t in a.preview.split(','):
                 pg.evaluate(f'HBX.setTime({float(t)})'); pg.screenshot(path=str(out / f'p_{float(t):06.2f}.jpg'), type='jpeg', quality=85)
+            errs += pg.evaluate('window.HBX_ERRORS || []')
+            (out / 'errors.json').write_text(json.dumps(errs, ensure_ascii=False))
             b.close()
         return
 

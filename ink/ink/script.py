@@ -15,6 +15,9 @@ WPS = 2.8          # Vietnamese words (syllables) per second for the EverAI voic
 # words per second of each voice at its plain speed, pauses between sentences included (measured: Microsoft read
 # 199 words in 58.1 s at +8%); the script is sized to the chosen voice and pace so the video lasts the chosen time
 VOICE_WPS = {'microsoft': 3.18, 'everai': 2.9}
+# voices that read clearly faster or slower than their provider's average (measured on real videos):
+# Văn Duy read 549 words in 134 s at speed 1.1 → about 3.75 words a second at its plain speed
+VOICE_CODE_WPS = {'vi_male_vanduy_mb': 3.75}
 MAX_SECONDS = 300  # five minutes
 GENERIC_BADGES = {'mẹo hay', 'hot', 'xem ngay', 'bí quyết', 'mới', 'hay', 'cực hay', 'must see', 'tips', 'mẹo', 'quan trọng', 'đừng bỏ lỡ'}
 
@@ -32,6 +35,27 @@ def system():
 
 def words(text): return len(re.findall(r'\w+', text))
 
+GLUE_END = {'và', 'của', 'là', 'thì', 'mà', 'những', 'các', 'một', 'cho', 'với', 'để', 'khi', 'nếu', 'nhưng', 'rằng', 'vì', 'bị',
+            'được', 'đã', 'sẽ', 'đang', 'không', 'rất', 'cũng', 'như', 'trong', 'từ', 'về', 'tới', 'đến', 'nên', 'hay', 'hoặc',
+            'khiến', 'làm', 'do', 'theo', 'the', 'a', 'an', 'of', 'and', 'to', 'for', 'in'}
+
+
+def clip(text, n):
+    """text shown on screen, at most n characters, never cut inside a word: at a clause break when there is one
+    (" – ", ",", ":"), else at a word, and never ending on a linking word ("khiến", "của", "và"…) or a dangling sign"""
+    t = ' '.join(str(text or '').split())
+    if len(t) <= n: return t
+    head = t[:n + 1]
+    for sep in (' – ', ' - ', ': ', ', ', '; '):
+        k = head.rfind(sep)
+        if k >= n * .45: return head[:k].rstrip(' ,;:–-')
+    # Vietnamese words are several syllables ("chi tiêu"): a cut right before a word that opens a clause keeps them whole
+    cuts = [m.start() for m in re.finditer(r' (?:khiến|vì|do|mà|nên|để|nhưng|và|khi|nếu|thì|rồi|giúp|làm cho|với) ', head)]
+    if cuts and cuts[-1] >= n * .45: return head[:cuts[-1]].rstrip(' ,;:–-')
+    ws = head[:head.rfind(' ')].split() if ' ' in head else [head[:n]]
+    while len(ws) > 1 and ws[-1].lower().strip('.,;:–-') in GLUE_END: ws.pop()
+    return ' '.join(ws).rstrip(' ,;:–-')
+
 
 def _lines_ok(obj):
     if not isinstance(obj.get('lines'), list) or not obj['lines']: raise ValueError('thiếu lines')
@@ -46,6 +70,8 @@ def speed(pace):
 
 
 def wps():
+    code = os.environ.get('EVERAI_VOICE_CODE', '') if os.environ.get('INK_VOICE_PROVIDER') == 'everai' else ''
+    if code in VOICE_CODE_WPS: return VOICE_CODE_WPS[code]
     return VOICE_WPS.get(os.environ.get('INK_VOICE_PROVIDER', ''), VOICE_WPS['everai'] if os.environ.get('EVERAI_API_KEY') else VOICE_WPS['microsoft'])
 
 

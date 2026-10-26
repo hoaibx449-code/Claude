@@ -279,8 +279,18 @@ const view = (j: any) => {
   const input = JSON.parse(j.input || '{}'), meta = JSON.parse(j.meta || '{}');
   return { id: j.id, parent: j.parent || null, title: j.title, status: j.status, stage: j.stage, progress: j.progress, message: j.message, error: j.error,
     duration: j.duration, created_at: j.created_at, finished_at: j.finished_at, pace: input.pace, browser: !!input.browser, mode: input.mode, seconds: input.seconds, format: input.format || 'ink',
-    files: meta.files || [], caption: meta.caption || '', hashtags: meta.hashtags || [] };
+    files: meta.files || [], caption: meta.caption || '', hashtags: meta.hashtags || [], series: input.series?.name || '' };
 };
+
+/** a name shown in lists: at most n characters, cut at a clause or a whole word, never inside one */
+function clip(text: string, n: number) {
+  const t = text.replace(/\s+/g, ' ').trim();
+  if (t.length <= n) return t;
+  const head = t.slice(0, n + 1);
+  for (const sep of [' – ', ' - ', ': ', ', ', '; ', '? ']) { const k = head.lastIndexOf(sep); if (k >= n * 0.45) return head.slice(0, k + (sep === '? ' ? 1 : 0)).trim(); }
+  const k = head.lastIndexOf(' ');
+  return (k > 0 ? head.slice(0, k) : t.slice(0, n)).replace(/[\s,;:–-]+$/, '') + '…';
+}
 
 async function own(env: Env, user: User, id: string) {
   const j = await env.DB.prepare('SELECT * FROM ink_jobs WHERE id = ? AND user_id = ?').bind(id, user.id).first<any>();
@@ -341,7 +351,7 @@ async function enqueue(env: XEnv, rc: Rc, user: User, input: any, stage: 'plan' 
   // made in the user's browser: no machine is woken, the page does everything (status 'browser')
   const browser = input.browser === true, status = browser ? 'browser' : 'queued', message = browser ? 'Sẵn sàng dựng trên máy của bạn' : 'Đang chờ máy dựng';
   await env.DB.prepare(`INSERT INTO ink_jobs (id, user_id, parent, title, input, storyboard, stage, status, message, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, user.id, parent, title || str(input.topic || input.script, 80) || 'Video mới', JSON.stringify(input), storyboard ? JSON.stringify(storyboard) : null, stage, status, message, now, now).run();
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, user.id, parent, title || clip(str(input.topic || input.script, 500), 80) || 'Video mới', JSON.stringify(input), storyboard ? JSON.stringify(storyboard) : null, stage, status, message, now, now).run();
   rc.log('ink.queue', { data: { job: id, stage, mode: input.mode, seconds: input.seconds, pace: input.pace, parent, browser } });
   if (!browser) rc.wait(dispatch(env).then((r) => { if (r !== 'ok') rc.log('ink.dispatch', { ok: false, data: { error: r } }); }));
   return id;
@@ -362,14 +372,20 @@ export async function createInk(env: XEnv, rc: Rc, user: User, b: any, extra: Re
   const voice = ready.find((v) => v.id === b.voice) || (format === 'money' ? ready.find((v) => v.id === 'vanduy') : undefined) || ready.find((v) => v.id === s.voice.default) || ready[0];
   const music = /^[a-f0-9]{24}\.(mp3|m4a|wav)$/.test(b.music || '') ? b.music : '';
   if (music && !(await env.BUCKET.head(`ink-music/${user.id}/${music}`))) throw new HttpError(400, 'Không tìm thấy nhạc đã tải lên.');
-  const input = { mode, [mode]: text, seconds, audience: str(b.audience, 200), tone: str(b.tone, 120), notes: str(b.notes, 600),
+  const input: Record<string, any> = { mode, [mode]: text, seconds, audience: str(b.audience, 200), tone: str(b.tone, 120), notes: str(b.notes, 600),
     pace: pick(b.pace, PACES, s.defaults.pace as any), voice: voice.id, rid: !extra.zalo && RID.test(String(b.rid || '')) ? String(b.rid) : '', mood: pick(b.mood, MOODS, s.defaults.mood as any), music,
     musicVolume: num(b.musicVolume, 0, 0.6, s.defaults.musicVolume), captions: b.captions !== false, review: typeof b.review === 'boolean' ? b.review : s.defaults.review,
     // drawn on the user's own device: a machine writes the script, voice and drawing plan, the browser draws
     // 'cine': real footage (HBX engine, render machines only); 'money': 'Đòn Bẩy Tư Duy' (researched on the web, same engine); 'ink': hand-drawn
     format,
     browser: b.browser === true && s.machines.on.browser && format === 'ink', ...extra };
-  if (format !== 'ink' && !(env as any).PIXABAY_API_KEY) throw new HttpError(503, `Kiểu ${format === 'money' ? 'Đòn Bẩy Tư Duy' : 'Điện ảnh'} đang được chuẩn bị, vui lòng chọn Vẽ tay.`);
+  if (typeof b.series === 'string' && b.series) {  // a series films with the cinematic engine and its own new 3D prop
+    const sr = await env.DB.prepare('SELECT * FROM ink_series WHERE id = ? AND user_id = ?').bind(b.series, user.id).first<any>();
+    if (!sr) throw new HttpError(404, 'Không tìm thấy series.');
+    if (input.format === 'ink') input.format = 'cine';
+    (input as any).series = { id: sr.id, name: sr.name, topic: sr.topic, style: sr.style, used: JSON.parse(sr.used || '[]') };
+  }
+  if (input.format !== 'ink' && !(env as any).PIXABAY_API_KEY) throw new HttpError(503, `Kiểu ${format === 'money' ? 'Đòn Bẩy Tư Duy' : 'Điện ảnh'} đang được chuẩn bị, vui lòng chọn Vẽ tay.`);
   return enqueue(env, rc, user, input, 'plan', null, typeof b.parent === 'string' ? b.parent : null);
 }
 /** Voices a video can be read with right now (tested, switched on). */
@@ -417,6 +433,25 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
     await env.BUCKET.put(`ink-music/${user.id}/${id}.${ext}`, bytes, { httpMetadata: { contentType: type } });
     return json({ music: `${id}.${ext}` });
   }
+  if (sub === 'series' && method === 'GET') {
+    rc.quiet = true;
+    const rows = (await env.DB.prepare('SELECT * FROM ink_series WHERE user_id = ? ORDER BY updated_at DESC LIMIT 50').bind(user.id).all<any>()).results;
+    return json({ series: rows.map((r) => ({ id: r.id, name: r.name, topic: r.topic, style: r.style, videos: r.videos, used: JSON.parse(r.used || '[]').slice(-30) })) });
+  }
+  if (sub === 'series' && method === 'POST') {
+    const b = await body<any>(req, 4_000), name = str(b.name, 80), topic = str(b.topic, 300);
+    if (name.length < 2) throw new HttpError(400, 'Hãy đặt tên series.');
+    const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM ink_series WHERE user_id = ?').bind(user.id).first<any>();
+    if ((n?.n || 0) >= 50) throw new HttpError(400, 'Tối đa 50 series.');
+    const id = randomId(12), t = Date.now();
+    await env.DB.prepare('INSERT INTO ink_series(id,user_id,name,topic,style,used,videos,created_at,updated_at) VALUES(?,?,?,?,?,?,0,?,?)').bind(id, user.id, name, topic, str(b.style, 300), '[]', t, t).run();
+    return json({ id });
+  }
+  const sm = sub.match(/^series\/([a-f0-9]{24})$/);
+  if (sm && method === 'DELETE') {
+    await env.DB.prepare('DELETE FROM ink_series WHERE id = ? AND user_id = ?').bind(sm[1], user.id).run();
+    return json({ ok: true });
+  }
   if (sub === 'jobs' && method === 'GET') {
     rc.quiet = true;
     const rows = (await env.DB.prepare('SELECT * FROM ink_jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT 60').bind(user.id).all<any>()).results;
@@ -459,7 +494,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
   if (act === 'storyboard' && method === 'GET') {
     const sb = j.storyboard ? JSON.parse(j.storyboard) : null;
     if (new URL(req.url).searchParams.get('full') === '1') return json({ storyboard: sb });
-    return json({ storyboard: sb && { title: sb.title, cover: sb.cover, caption: sb.caption, hashtags: sb.hashtags, facts: sb.facts || null, scenes: sb.scenes.map((x: any) => ({ say: x.say, layout: x.visual?.layout })) } });
+    return json({ storyboard: sb && { title: sb.title, cover: sb.cover, caption: sb.caption, hashtags: sb.hashtags, facts: sb.facts || null, scenes: sb.scenes.map((x: any) => ({ say: x.say, layout: x.visual?.layout })), table: sb.script_table, metaphor: sb.series_meta?.metaphor } });
   }
   if (act.startsWith('file/') && method === 'GET') {
     const name = act.slice(5);
@@ -549,7 +584,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
       if (!sb || !Array.isArray(sb.scenes) || !sb.scenes.length) throw new HttpError(400, 'Phân cảnh rỗng.');
       const next = { ...meta, caption: str(sb.caption, 1000), hashtags: (Array.isArray(sb.hashtags) ? sb.hashtags : []).map((x: unknown) => '#' + str(x, 40).replace(/^#+/, '')).filter((x: string) => /^#[A-Za-z0-9_]{2,40}$/.test(x)).slice(0, 10), ai: sb.ai };
       await env.DB.prepare("UPDATE ink_jobs SET storyboard = ?, title = ?, meta = ?, stage = 'render', progress = 30, message = 'Phân cảnh xong', updated_at = ? WHERE id = ?")
-        .bind(JSON.stringify(sb), (input.mode === 'script' ? str(sb.title, 100) : '') || j.title, JSON.stringify(next), Date.now(), j.id).run();
+        .bind(JSON.stringify(sb), (input.mode === 'script' ? clip(str(sb.title, 300), 100) : '') || j.title, JSON.stringify(next), Date.now(), j.id).run();
       return json({ ok: true });
     }
     if (act === 'browser/music' && method === 'GET') {
@@ -658,6 +693,8 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
         INK_AI_ORDER: s.ai.order.join(','), INK_AI_FALLBACK: s.ai.fallback ? '1' : '0', INK_GEMINI_MODELS: s.ai.gemini, INK_OPENAI_MODELS: s.ai.openai,
         GEMINI_API_KEY: env.GEMINI_API_KEY || '', OPENAI_API_KEY: env.OPENAI_API_KEY || '', EVERAI_API_KEY: (env as any).EVERAI_API_KEY || '',
         // footage other videos used lately: this one picks different shots (many people, same topic, different videos)
+        // a series' own 3D prop is written by Claude when its key is set (Gemini/OpenAI otherwise)
+        ...(input.series ? { ANTHROPIC_API_KEY: (env as any).ANTHROPIC_API_KEY || '' } : {}),
         ...(input.format === 'cine' || input.format === 'money' ? { PIXABAY_API_KEY: (env as any).PIXABAY_API_KEY || '', HBX_AVOID: (await recentFootage(env)).join(',') } : {}),
         INK_VOICE_PROVIDER: voice.provider, INK_VOICE_FALLBACK: s.voice.fallback ? '1' : '0',
         ...(voice.provider === 'microsoft' ? { INK_MS_VOICE: voice.code } : { EVERAI_VOICE_CODE: voice.code }),
@@ -696,7 +733,16 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     const b = await body<any>(req, 400_000), sb = b.storyboard;
     if (!sb || !Array.isArray(sb.scenes) || !sb.scenes.length) throw new HttpError(400, 'Phân cảnh rỗng.');
     // the user's own topic stays the video's name; the AI's title only names videos made from a pasted script
-    const title = (input.mode === 'script' ? str(sb.title, 100) : '') || j.title, next = { ...meta, caption: str(sb.caption, 1000), hashtags: (Array.isArray(sb.hashtags) ? sb.hashtags : []).map((x: unknown) => '#' + str(x, 40).replace(/^#+/, '')).filter((x: string) => /^#[A-Za-z0-9_]{2,40}$/.test(x)).slice(0, 10), ai: b.ai };
+    const title = (input.mode === 'script' ? clip(str(sb.title, 300), 100) : '') || j.title, next = { ...meta, caption: str(sb.caption, 1000), hashtags: (Array.isArray(sb.hashtags) ? sb.hashtags : []).map((x: unknown) => '#' + str(x, 40).replace(/^#+/, '')).filter((x: string) => /^#[A-Za-z0-9_]{2,40}$/.test(x)).slice(0, 10), ai: b.ai };
+    // the series remembers the metaphor and prop this video used: the next one invents another
+    const sm = sb.series_meta;
+    if (input.series?.id && sm?.ok && sm.prop) {
+      const sr = await env.DB.prepare('SELECT used FROM ink_series WHERE id = ? AND user_id = ?').bind(input.series.id, j.user_id).first<any>();
+      if (sr) {
+        const used = [...JSON.parse(sr.used || '[]'), { metaphor: str(sm.metaphor, 200), prop: str(sm.prop, 30), job: j.id, at: now }].slice(-200);
+        await env.DB.prepare('UPDATE ink_series SET used = ?, videos = videos + 1, updated_at = ? WHERE id = ?').bind(JSON.stringify(used), now, input.series.id).run();
+      }
+    }
     const review = input.review === true && !input.browser; // in the browser the storyboard is shown before drawing anyway
     await env.DB.prepare(`UPDATE ink_jobs SET storyboard = ?, title = ?, meta = ?, stage = 'render', status = ?, lease = ?, progress = ?, message = ?, updated_at = ? WHERE id = ?`)
       .bind(JSON.stringify(sb), title, JSON.stringify(next), review ? 'review' : 'running', review ? '' : lease, 40, review ? 'Phân cảnh xong, chờ bạn duyệt' : 'Phân cảnh xong, đang dựng', now, j.id).run();

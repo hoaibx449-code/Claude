@@ -69,3 +69,11 @@
 .ink-field { display: grid; gap: 4px; margin: 6px 0; }
 .ink-field textarea, .ink-field input, .ink-field select { width: 100%; box-sizing: border-box; }
 .ink-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 10px; }
+
+.ink-series-new { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line, #e5e7eb); border-radius: 12px; }
+.ink-table-wrap { overflow-x: auto; margin-top: 10px; }
+.ink-table table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ink-table th, .ink-table td { text-align: left; vertical-align: top; padding: 8px; border-top: 1px solid var(--line, #e5e7eb); }
+.ink-table td:first-child { white-space: nowrap; font-weight: 600; }
+.ink-table td small { display: block; font-weight: 400; color: var(--muted, #6b7280); }
+.ink-table td[lang=en] { color: var(--muted, #6b7280); min-width: 220px; }

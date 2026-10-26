@@ -12,10 +12,11 @@ Việc cần làm:
 6. Một việc làm được ngay từ hôm nay, không cần mua sản phẩm nào. Không tư vấn đầu tư cụ thể (mã cổ phiếu, coin, sản phẩm), không hứa làm giàu.
 
 Trả về DUY NHẤT JSON (không thêm chữ ngoài JSON):
-{{"concept_en": "...", "concept_vi": "...", "group": "tien_bac|su_nghiep|tam_ly", "summary": "khái niệm nói gì, 1-2 câu",
- "studies": [{{"who": "tác giả/tổ chức", "year": "năm", "finding": "kết quả chính, lược dịch", "number": "con số chính nếu có", "source": "tên trang/tổ chức đã đọc"}}],
+{{"concept_en": "...", "concept_vi": "nghĩa tiếng Việt tự nhiên như người nói (không dịch từng chữ)", "group": "tien_bac|su_nghiep|tam_ly", "summary": "khái niệm nói gì, 1-2 câu",
+ "studies": [{{"who": "tác giả/tổ chức", "year": "năm", "did": "họ đã làm gì (thí nghiệm/khảo sát ai, bao nhiêu người)", "finding": "kết quả chính, lược dịch", "number": "con số chính nếu có", "source": "tên trang/tổ chức đã đọc"}}],
  "limits": "giới hạn/tranh luận nếu có, 1 câu (để trống nếu không có)",
  "metaphor": "vật ẩn dụ và nó chuyển động thế nào",
  "examples": ["ví dụ đời thường 1", "ví dụ 2"],
+ "character": "một nhân vật người đi làm Việt Nam điển hình cho vấn đề này: tên, tuổi, nghề, thu nhập, một thói quen cụ thể",
  "action": "việc làm được ngay từ hôm nay",
  "balance": "một câu cân bằng (khi nào điều ngược lại vẫn đúng / không chê lựa chọn của người xem)"}}
