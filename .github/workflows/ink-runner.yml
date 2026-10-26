@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ink-runner
+  group: ink-runner-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -28,10 +28,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Cài FFmpeg và thư viện
+      - name: Kiểm tra FFmpeg và font
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
-          pip install -q -r ink/requirements.txt
+          if ! command -v ffmpeg >/dev/null || ! command -v fc-match >/dev/null; then
+            sudo timeout 180 apt-get update -o Acquire::Retries=1 -o Acquire::http::Timeout=20
+            sudo timeout 180 apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
+          fi
+          ffmpeg -version | head -1
+          fc-match 'DejaVu Sans'
+      - name: Cài thư viện Python
+        timeout-minutes: 10
+        run: python -m pip install --prefer-binary --progress-bar off --timeout 30 --retries 2 -r ink/requirements.txt
       - name: Cài trình duyệt và thư viện cho kiểu Điện ảnh
         run: |
           python -m playwright install --with-deps chromium
@@ -65,3 +72,4 @@ jobs:
           path: ink-review
           retention-days: 3
           if-no-files-found: ignore
+
