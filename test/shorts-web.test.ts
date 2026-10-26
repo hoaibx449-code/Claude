@@ -21,7 +21,7 @@ test('Shorts uses the existing quota/ownership queue without Pixabay; older mach
     assert.equal(j.user_id,user.id);assert.equal(JSON.parse(j.input).format,'shorts3d');assert.equal(JSON.parse(j.input).browser,false);
     assert.equal(await createInk(env,rc,user,{format:'shorts3d',topic:'Bắt đầu từ những việc nhỏ',seconds:30,rid:'shorts-web-123456'}),id);
     await assert.rejects(()=>inkUser(new Request('https://test/api/ink/jobs/'+id),env,rc,{id:'someone-else',email:'other@example.com'} as any,'/api/ink/jobs/'+id),/tìm thấy/);
-    await assert.rejects(()=>createInk(env,rc,user,{format:'shorts3d',topic:'Test',seconds:120}),/90|tối đa/);
+    await assert.rejects(()=>createInk(env,rc,user,{format:'shorts3d',topic:'Test',seconds:180}),/2 phút|tối đa/);
     const req=(cap=false)=>new Request('https://test/api/ink-runner/claim',{method:'POST',headers:{authorization:'Bearer '+env.RUNNER_TOKEN,'content-type':'application/json'},body:JSON.stringify({runner:'test',kind:'github',shorts3d:cap})});
     assert.equal((await (await inkRunner(req(),env,'claim',rc)).json()).job,null);
     const job:any=(await (await inkRunner(req(true),env,'claim',rc)).json()).job;

@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'ink'))
-from ink.shorts3d import validate
+from ink.shorts3d import validate, fit_times
 
 
 def example():
@@ -33,6 +33,11 @@ class Validation(unittest.TestCase):
 
     def test_rejects_mismatched_narration(self):
         with self.assertRaises(ValueError):validate(example(),['a','b'])
+
+    def test_voice_retiming_scales_scenes_and_captions_together(self):
+        spans,words=fit_times([(0,0,66),(1,66,132)],[(1,'kết',120,132)],120/132,120)
+        self.assertEqual(spans,[(0,0,60),(1,60,120)])
+        self.assertEqual(words[-1][-1],120)
 
 
 if __name__=='__main__': unittest.main()

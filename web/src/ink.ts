@@ -417,7 +417,7 @@ export async function createInk(env: XEnv, rc: Rc, user: User, b: any, extra: Re
   // 'Đòn Bẩy Tư Duy' runs about two minutes unless asked otherwise
   const cap = Math.min(300, plan.maxSeconds, env.config.limits.maxSeconds), seconds = Math.round(num(b.seconds, 20, 300, Math.min(format === 'money' ? 120 : s.defaults.seconds, cap)));
   if (seconds > cap) throw new HttpError(402, `Gói ${plan.name} cho video tối đa ${cap} giây.`);
-  if (format === 'shorts3d' && seconds > 90) throw new HttpError(400, 'Shorts 3D hiện hỗ trợ tối đa 90 giây.');
+  if (format === 'shorts3d' && seconds > 120) throw new HttpError(400, 'Shorts 3D hiện hỗ trợ tối đa 2 phút.');
   if (format === 'shorts3d' && b.series) throw new HttpError(400, 'Shorts 3D chưa dùng series Điện ảnh; hãy bỏ chọn series.');
   const ready = await readyVoices(env, s);
   if (!ready.length) throw new HttpError(503, 'Giọng đọc đang được bảo trì, vui lòng thử lại sau ít phút.');
