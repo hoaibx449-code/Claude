@@ -420,7 +420,7 @@ def ground(scenes, fp):
         if isinstance(s.get('value'), (int, float)):
             sh.update({k: s[k] for k in ('value', 'decimals', 'prefix', 'suffix', 'caption', 'label') if k in s})
         else:
-            its = [{'text': str(it.get('text') or it.get('label') or it.get('title') or '')[:40], **({'cue': it['cue']} if it.get('cue') else {})}
+            its = [{'text': S.clip(it.get('text') or it.get('label') or it.get('title') or '', 40), **({'cue': it['cue']} if it.get('cue') else {})}
                    for it in (s.get('items') or s.get('nodes') or s.get('tiles') or []) if isinstance(it, dict)]
             its = [it for it in its if it['text']][:3]
             if its: sh['items'] = its
@@ -578,15 +578,15 @@ def plan(inp, log=print):
     try: c['shot'] = int(c.get('shot'))
     except (TypeError, ValueError): c['shot'] = shots[0]
     if c['shot'] not in shots: c['shot'] = shots[0]
-    c['hook'] = str(c.get('hook') or o.get('title') or lines[0])[:80]
-    sb = {'theme': 'cine', 'brand': (inp.get('brand') or '').strip()[:40], 'style': style, 'cover': c,
+    c['hook'] = S.clip(c.get('hook') or o.get('title') or lines[0], 80)
+    sb = {'theme': 'cine', 'brand': S.clip(inp.get('brand') or '', 40), 'style': style, 'cover': c,
           'pace': 'fast' if pace in ('fast', 'faster') else 'normal', 'subWords': 3}
     st = o.get('sticker')
     if isinstance(st, dict) and st.get('text'):
-        try: sb['sticker'] = {'text': str(st['text'])[:40], 'line': int(st.get('line'))}
+        try: sb['sticker'] = {'text': S.clip(st['text'], 40), 'line': int(st.get('line'))}
         except (TypeError, ValueError): pass
     theme = str(o.get('theme') or 'science').lower()
-    hb = {'id': 'INK', 'title': o.get('title') or sc.get('title') or lines[0][:60], 'theme': theme if theme in THEMES else 'science',
+    hb = {'id': 'INK', 'title': S.clip(o.get('title') or sc.get('title') or lines[0], 100), 'theme': theme if theme in THEMES else 'science',
           **({'mood': o['mood']} if o.get('mood') in MOODS else {}), 'storyboard': sb}
     types = [s['type'] for s in scenes]
     log(f'Phân cảnh điện ảnh: {len(scenes)} cảnh, {len(set(types))} kiểu ({", ".join(sorted(set(types)))}), {say_words(scenes)} chữ')

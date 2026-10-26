@@ -79,8 +79,8 @@ def _hook(*cands):
     for c in cands:
         c = ' '.join(str(c or '').replace('|', ' ').split())
         n = len(c.split())
-        if 4 <= n <= 11 and not c.endswith((',', '…', '...', ':', '-')): return c[:80]
-    return ' '.join(str(next((c for c in cands if c), '')).split())[:80]
+        if 4 <= n <= 11 and not c.endswith((',', '…', '...', ':', '-')): return S.clip(c, 80)
+    return S.clip(next((c for c in cands if c), ''), 80)
 
 
 def finish(sb, sc, inp):
@@ -91,20 +91,21 @@ def finish(sb, sc, inp):
     st = sb['plan']['storyboard']
     ser = inp.get('series') if isinstance(inp.get('series'), dict) else {}
     name = str(ser.get('name') or '').strip() or 'Đòn Bẩy Tư Duy'   # a user's series carries its own name, never this one
-    st['brand'] = (inp.get('brand') or name.upper()).strip()[:40]
+    st['brand'] = S.clip(inp.get('brand') or name.upper(), 40)
     st['subStyle'], st['subWords'] = 'fine', 6
     st.pop('sticker', None)   # no extra words stuck on the picture: the captions carry the words
     st['style'] = {**st.get('style', {}), 'subColor': mood['subColor'], 'grade': mood['grade']}
     st['world'] = mood['world']
     cover = st.get('cover') or {}
-    cover.update({'kicker': name[:28], 'hook': _hook(sc.get('hook'), sb.get('title'), cover.get('hook')),
-                  'detail': ' – '.join(x for x in (facts.get('concept_en'), facts.get('concept_vi')) if x)[:60]})
+    cover.update({'kicker': S.clip(name, 28), 'hook': _hook(sc.get('hook'), sb.get('title'), cover.get('hook')),
+                  # the concept's name and a short Vietnamese gloss: whole words, a whole phrase (never "… khiến chi")
+                  'detail': ' – '.join(x for x in (S.clip(facts.get('concept_en'), 28), S.clip(re.split(r'\s+(?:khiến|vì|do|mà|làm|nên|để)\s+', str(facts.get('concept_vi') or ''))[0], 34)) if x)})
     st['cover'] = cover
     sb['plan']['theme'] = 'finance' if facts.get('group') == 'tien_bac' else 'life'
     sb['plan']['series'] = name
     src = '; '.join(f'{s["title"] or s["url"]}' for s in sources[:4]) or '; '.join(f'{x.get("who")} ({x.get("year")})' for x in (facts.get('studies') or [])[:3])
     tags = ['#' + (re.sub(r'[^A-Za-z0-9]', '', _ascii(name.title())) or 'DonBayTuDuy')] + ['#' + str(h).lstrip('#') for h in (sc.get('hashtags') or [])][:3]
-    sb['title'] = str(sc.get('title') or sb['title'])[:100]
+    sb['title'] = S.clip(sc.get('title') or sb['title'], 100)
     sb['caption'] = (str(sc.get('caption') or '').strip() + f'\n\nNguồn: {src}. {DISCLAIMER}').strip()
     sb['hashtags'] = tags
     sb['series'] = 'money'; sb['sources'] = sources; sb['concept'] = {k: facts.get(k) for k in ('concept_en', 'concept_vi', 'group', 'metaphor')}

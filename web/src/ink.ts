@@ -245,6 +245,16 @@ const view = (j: any) => {
     files: meta.files || [], caption: meta.caption || '', hashtags: meta.hashtags || [], series: input.series?.name || '' };
 };
 
+/** a name shown in lists: at most n characters, cut at a clause or a whole word, never inside one */
+function clip(text: string, n: number) {
+  const t = text.replace(/\s+/g, ' ').trim();
+  if (t.length <= n) return t;
+  const head = t.slice(0, n + 1);
+  for (const sep of [' – ', ' - ', ': ', ', ', '; ', '? ']) { const k = head.lastIndexOf(sep); if (k >= n * 0.45) return head.slice(0, k + (sep === '? ' ? 1 : 0)).trim(); }
+  const k = head.lastIndexOf(' ');
+  return (k > 0 ? head.slice(0, k) : t.slice(0, n)).replace(/[\s,;:–-]+$/, '') + '…';
+}
+
 async function own(env: Env, user: User, id: string) {
   const j = await env.DB.prepare('SELECT * FROM ink_jobs WHERE id = ? AND user_id = ?').bind(id, user.id).first<any>();
   if (!j) throw new HttpError(404, 'Không tìm thấy video.');
@@ -260,7 +270,7 @@ async function enqueue(env: XEnv, rc: Rc, user: User, input: any, stage: 'plan' 
   // made in the user's browser: no machine is woken, the page does everything (status 'browser')
   const browser = input.browser === true, status = browser ? 'browser' : 'queued', message = browser ? 'Sẵn sàng dựng trên máy của bạn' : 'Đang chờ máy dựng';
   await env.DB.prepare(`INSERT INTO ink_jobs (id, user_id, parent, title, input, storyboard, stage, status, message, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, user.id, parent, title || str(input.topic || input.script, 80) || 'Video mới', JSON.stringify(input), storyboard ? JSON.stringify(storyboard) : null, stage, status, message, now, now).run();
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, user.id, parent, title || clip(str(input.topic || input.script, 500), 80) || 'Video mới', JSON.stringify(input), storyboard ? JSON.stringify(storyboard) : null, stage, status, message, now, now).run();
   rc.log('ink.queue', { data: { job: id, stage, mode: input.mode, seconds: input.seconds, pace: input.pace, parent, browser } });
   if (!browser) rc.wait(dispatch(env).then((r) => { if (r !== 'ok') rc.log('ink.dispatch', { ok: false, data: { error: r } }); }));
   return id;
@@ -449,7 +459,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
       if (!sb || !Array.isArray(sb.scenes) || !sb.scenes.length) throw new HttpError(400, 'Phân cảnh rỗng.');
       const next = { ...meta, caption: str(sb.caption, 1000), hashtags: (Array.isArray(sb.hashtags) ? sb.hashtags : []).map((x: unknown) => '#' + str(x, 40).replace(/^#+/, '')).filter((x: string) => /^#[A-Za-z0-9_]{2,40}$/.test(x)).slice(0, 10), ai: sb.ai };
       await env.DB.prepare("UPDATE ink_jobs SET storyboard = ?, title = ?, meta = ?, stage = 'render', progress = 30, message = 'Phân cảnh xong', updated_at = ? WHERE id = ?")
-        .bind(JSON.stringify(sb), (input.mode === 'script' ? str(sb.title, 100) : '') || j.title, JSON.stringify(next), Date.now(), j.id).run();
+        .bind(JSON.stringify(sb), (input.mode === 'script' ? clip(str(sb.title, 300), 100) : '') || j.title, JSON.stringify(next), Date.now(), j.id).run();
       return json({ ok: true });
     }
     if (act === 'browser/music' && method === 'GET') {
@@ -596,7 +606,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     const b = await body<any>(req, 400_000), sb = b.storyboard;
     if (!sb || !Array.isArray(sb.scenes) || !sb.scenes.length) throw new HttpError(400, 'Phân cảnh rỗng.');
     // the user's own topic stays the video's name; the AI's title only names videos made from a pasted script
-    const title = (input.mode === 'script' ? str(sb.title, 100) : '') || j.title, next = { ...meta, caption: str(sb.caption, 1000), hashtags: (Array.isArray(sb.hashtags) ? sb.hashtags : []).map((x: unknown) => '#' + str(x, 40).replace(/^#+/, '')).filter((x: string) => /^#[A-Za-z0-9_]{2,40}$/.test(x)).slice(0, 10), ai: b.ai };
+    const title = (input.mode === 'script' ? clip(str(sb.title, 300), 100) : '') || j.title, next = { ...meta, caption: str(sb.caption, 1000), hashtags: (Array.isArray(sb.hashtags) ? sb.hashtags : []).map((x: unknown) => '#' + str(x, 40).replace(/^#+/, '')).filter((x: string) => /^#[A-Za-z0-9_]{2,40}$/.test(x)).slice(0, 10), ai: b.ai };
     // the series remembers the metaphor and prop this video used: the next one invents another
     const sm = sb.series_meta;
     if (input.series?.id && sm?.ok && sm.prop) {

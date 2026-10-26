@@ -35,6 +35,27 @@ def system():
 
 def words(text): return len(re.findall(r'\w+', text))
 
+GLUE_END = {'và', 'của', 'là', 'thì', 'mà', 'những', 'các', 'một', 'cho', 'với', 'để', 'khi', 'nếu', 'nhưng', 'rằng', 'vì', 'bị',
+            'được', 'đã', 'sẽ', 'đang', 'không', 'rất', 'cũng', 'như', 'trong', 'từ', 'về', 'tới', 'đến', 'nên', 'hay', 'hoặc',
+            'khiến', 'làm', 'do', 'theo', 'the', 'a', 'an', 'of', 'and', 'to', 'for', 'in'}
+
+
+def clip(text, n):
+    """text shown on screen, at most n characters, never cut inside a word: at a clause break when there is one
+    (" – ", ",", ":"), else at a word, and never ending on a linking word ("khiến", "của", "và"…) or a dangling sign"""
+    t = ' '.join(str(text or '').split())
+    if len(t) <= n: return t
+    head = t[:n + 1]
+    for sep in (' – ', ' - ', ': ', ', ', '; '):
+        k = head.rfind(sep)
+        if k >= n * .45: return head[:k].rstrip(' ,;:–-')
+    # Vietnamese words are several syllables ("chi tiêu"): a cut right before a word that opens a clause keeps them whole
+    cuts = [m.start() for m in re.finditer(r' (?:khiến|vì|do|mà|nên|để|nhưng|và|khi|nếu|thì|rồi|giúp|làm cho|với) ', head)]
+    if cuts and cuts[-1] >= n * .45: return head[:cuts[-1]].rstrip(' ,;:–-')
+    ws = head[:head.rfind(' ')].split() if ' ' in head else [head[:n]]
+    while len(ws) > 1 and ws[-1].lower().strip('.,;:–-') in GLUE_END: ws.pop()
+    return ' '.join(ws).rstrip(' ,;:–-')
+
 
 def _lines_ok(obj):
     if not isinstance(obj.get('lines'), list) or not obj['lines']: raise ValueError('thiếu lines')
