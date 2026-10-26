@@ -8,7 +8,7 @@ the web right now, told in an essay voice over real footage and 3D graphics, wit
             concept one episode), scored by the editor and rewritten when weak
   look:     then the cinematic director (cine.py) films it; this module only sets the series' own look: brand line,
             fine captions in a colour that suits the video's mood, a world palette, the cover kicker"""
-import json, random
+import json, random, re
 from . import ai, script as S
 
 FRAMES = {'A': 'A. Tiểu luận thức tỉnh', 'B': 'B. Phép tính đời thường', 'C': 'C. Bẻ một lời khuyên phổ biến', 'D': 'D. Một khái niệm – một tập'}
@@ -69,25 +69,41 @@ def script(inp, seconds, pace, log=print):
     return sc
 
 
+def _ascii(t):
+    import unicodedata
+    return unicodedata.normalize('NFKD', t.replace('đ', 'd').replace('Đ', 'D')).encode('ascii', 'ignore').decode()
+
+
+def _hook(*cands):
+    """the cover line: the first one that reads as a whole sentence (4–11 words, not a fragment)"""
+    for c in cands:
+        c = ' '.join(str(c or '').replace('|', ' ').split())
+        n = len(c.split())
+        if 4 <= n <= 11 and not c.endswith((',', '…', '...', ':', '-')): return c[:80]
+    return ' '.join(str(next((c for c in cands if c), '')).split())[:80]
+
+
 def finish(sb, sc, inp):
     """the series' own look and words on the cinematic plan cine.py made"""
     m = sc.get('money') or {}
     facts, sources = m.get('facts') or {}, m.get('sources') or []
     mood = MOODS.get(str(sc.get('mood') or ''), random.SystemRandom().choice(list(MOODS.values())))
     st = sb['plan']['storyboard']
-    st['brand'] = (inp.get('brand') or 'ĐÒN BẨY TƯ DUY').strip()[:40]
-    st['subStyle'], st['subWords'] = 'fine', 5
+    ser = inp.get('series') if isinstance(inp.get('series'), dict) else {}
+    name = str(ser.get('name') or '').strip() or 'Đòn Bẩy Tư Duy'   # a user's series carries its own name, never this one
+    st['brand'] = (inp.get('brand') or name.upper()).strip()[:40]
+    st['subStyle'], st['subWords'] = 'fine', 6
     st.pop('sticker', None)   # no extra words stuck on the picture: the captions carry the words
     st['style'] = {**st.get('style', {}), 'subColor': mood['subColor'], 'grade': mood['grade']}
     st['world'] = mood['world']
     cover = st.get('cover') or {}
-    cover.update({'kicker': 'Đòn Bẩy Tư Duy', 'hook': str(sc.get('hook') or cover.get('hook') or sb['title'])[:80],
+    cover.update({'kicker': name[:28], 'hook': _hook(sc.get('hook'), sb.get('title'), cover.get('hook')),
                   'detail': ' – '.join(x for x in (facts.get('concept_en'), facts.get('concept_vi')) if x)[:60]})
     st['cover'] = cover
     sb['plan']['theme'] = 'finance' if facts.get('group') == 'tien_bac' else 'life'
-    sb['plan']['series'] = 'Đòn Bẩy Tư Duy'
+    sb['plan']['series'] = name
     src = '; '.join(f'{s["title"] or s["url"]}' for s in sources[:4]) or '; '.join(f'{x.get("who")} ({x.get("year")})' for x in (facts.get('studies') or [])[:3])
-    tags = ['#DonBayTuDuy'] + ['#' + str(h).lstrip('#') for h in (sc.get('hashtags') or [])][:3]
+    tags = ['#' + (re.sub(r'[^A-Za-z0-9]', '', _ascii(name.title())) or 'DonBayTuDuy')] + ['#' + str(h).lstrip('#') for h in (sc.get('hashtags') or [])][:3]
     sb['title'] = str(sc.get('title') or sb['title'])[:100]
     sb['caption'] = (str(sc.get('caption') or '').strip() + f'\n\nNguồn: {src}. {DISCLAIMER}').strip()
     sb['hashtags'] = tags

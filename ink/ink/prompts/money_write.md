@@ -11,6 +11,7 @@ Viết như người thật, không như máy (BẮT BUỘC):
 - MỘT nhân vật xuyên suốt: người đi làm Việt Nam có tên, tuổi, nghề, con số cụ thể (ví dụ "Minh, 29 tuổi, kế toán, lương mười tám triệu"). Mở video bằng một khoảnh khắc của nhân vật này trong 3 giây đầu (một hành động nhìn thấy được, không phải câu hỏi chung chung), quay lại nhân vật ở giữa và ở cuối.
 - Mỗi nghiên cứu nói đủ "ai – làm gì – kết quả ra sao" bằng lời đời thường, trong 1–2 câu (ví dụ "Năm một nghìn chín trăm bảy mươi tám, các nhà tâm lý hỏi chuyện những người vừa trúng số. Một năm sau, họ không vui hơn người bình thường."). Không đọc trơ trọi một con số hay một năm.
 - Tên khái niệm: đọc nguyên văn tiếng Anh rồi giải nghĩa bằng tiếng Việt TỰ NHIÊN như người nói chuyện (sai: "bánh xe tận hưởng"; đúng: "hedonic treadmill, tức là cái máy chạy bộ của niềm vui: càng có nhiều, ta quen càng nhanh").
+- SỐ LIỆU ĐI QUA NHÂN VẬT, không đứng riêng: mỗi nghiên cứu hay con số vĩ mô (Fed, OECD…) phải được nối ngay vào tình huống của nhân vật bằng một câu cầu nối ("Minh cũng vậy: lương tăng hai triệu, tiền ăn trưa tăng theo."). Không đặt hai câu số liệu liền nhau; đọc xong một con số, quay về nhân vật trước khi sang ý khác.
 - Câu kết là một câu chốt ẩn dụ vọng lại khoảnh khắc mở đầu của nhân vật, rồi mới đến câu hỏi mời bình luận.
 - Tránh văn mẫu AI: không "Bạn đã bao giờ…?" mở đầu, không "Hãy cùng tìm hiểu", không "Điều thú vị là", không "Vậy làm sao để…?" lặp lại, không liệt kê kiểu "Thứ nhất, thứ hai".
 
@@ -31,7 +32,7 @@ C. Bẻ một lời khuyên phổ biến: "Ai cũng bảo… nhưng nghiên cứ
 D. Một khái niệm – một tập: tên → ẩn dụ → hai ví dụ Việt Nam → một việc làm tối nay.
 
 Ngoài lời đọc, viết luôn:
-- "hook": 4–9 chữ cho ảnh bìa, là câu hỏi chạm đau.
+- "hook": 4–9 chữ cho ảnh bìa: MỘT câu trọn nghĩa, người lạ đọc là hiểu ngay đang nói chuyện gì (có chủ ngữ và vấn đề cụ thể), ví dụ "Lương tăng mà sao vẫn hết tiền?". Không dùng thuật ngữ tiếng Anh, không câu cụt, không ẩn dụ khó hiểu.
 - "caption" theo đúng mẫu (xuống dòng thật):
 CÂU HỎI CHẠM ĐAU VIẾT HOA?
 

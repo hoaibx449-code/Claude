@@ -441,10 +441,10 @@
   X.scenes.m_scene = (s, c) => {
     const { esc, rich } = U();
     let h = `<div class="m3"><canvas class="m3c" width="720" height="1280"></canvas><div class="m3vig"></div>`;
-    if (s.tag) h += `<div class="m3tag" data-in="${at(s.tag, .5)}" data-a="pop"><b>${esc(s.tag.en || '')}</b>${s.tag.vi ? `<small>${esc(s.tag.vi)}</small>` : ''}</div>`;
+    if (s.tag) h += `<div class="m3tag" data-in="${at(s.tag, .5)}" data-a="term" data-d=".32"><b>${esc(s.tag.en || '')}</b>${s.tag.vi ? `<small>${esc(s.tag.vi)}</small>` : ''}</div>`;
     const tl = Array.isArray(s.title) ? s.title : s.title ? [s.title] : [];
-    if (tl.length) h += `<div class="m3title" data-in="${s.titleAt ?? .3}" data-a="up">${tl.map((l, i) => `<div class="m3t${i + 1}">${rich(l)}</div>`).join('')}</div>`;
-    if (s.num) { const n = s.num, t0 = at(n, .6); h += `<div class="m3num" data-in="${t0}" data-a="pop"><div class="m3n">${esc(n.prefix || '')}<span class="cnt" data-from="${n.from ?? 0}" data-to="${n.value}" data-dec="${n.decimals || 0}" data-t="${t0 + .1}" data-dur="${n.dur || 2.2}">${n.from ?? 0}</span>${esc(n.suffix || '')}</div>${n.caption ? `<small>${rich(n.caption)}</small>` : ''}</div>`; }
+    if (tl.length) h += `<div class="m3title">${tl.map((l, i) => `<div class="m3t${i + 1}" data-in="${(s.titleAt ?? .3) + i * .22}" data-a="close" data-d=".38">${rich(l)}</div>`).join('<br>')}</div>`;
+    if (s.num) { const n = s.num, t0 = at(n, .6); h += `<div class="m3num" data-in="${t0}" data-a="stat" data-d=".22"><div class="m3n">${esc(n.prefix || '')}<span class="cnt" data-from="${n.from ?? 0}" data-to="${n.value}" data-dec="${n.decimals || 0}" data-t="${t0 + .1}" data-dur="${n.dur || 2.2}">${n.from ?? 0}</span>${esc(n.suffix || '')}</div>${n.caption ? `<small>${rich(n.caption)}</small>` : ''}</div>`; }
     if (s.label) h += `<div class="clabel" data-in=".3" data-a="left"><b>${String(c.i + 1).padStart(2, '0')}</b>${esc(s.label)}</div>`;
     const sfx = [s.tag && `<i class="cm" data-in="${at(s.tag, .5)}" data-a="none" data-sfx="pop"></i>`, s.num && `<i class="cm" data-in="${at(s.num, .6) + 2.2}" data-a="none" data-sfx="impact"></i>`].filter(Boolean).join('');
     return { cam: 'still', html: h + sfx };

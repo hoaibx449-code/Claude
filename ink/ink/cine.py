@@ -178,6 +178,22 @@ def merge_lines(lines, wps, lo=4.0, hi=7.5):
     return [l for l, _ in out]
 
 
+def split_lines(lines, wps, most=3.2, least=1.4):
+    """a fast cut (about 1.5–3 s a picture): a long sentence is cut at its commas into phrases the picture can follow,
+    never into a scrap under ~1.5 s"""
+    out = []
+    for l in lines:
+        if S.words(l) / wps <= most: out.append(l); continue
+        parts, cur = [], ''
+        for b in (x.strip() for x in re.split(r'(?<=[,;:–—])\s+', l) if x.strip()):
+            if cur and S.words(cur) / wps >= least and S.words(b) / wps >= least * .8: parts.append(cur); cur = b
+            else: cur = (cur + ' ' + b).strip()
+        if cur and parts and S.words(cur) / wps < least: parts[-1] += ' ' + cur
+        elif cur: parts.append(cur)
+        out += parts
+    return out
+
+
 def say_words(scenes): return sum(S.words(s.get('say', '')) for s in scenes)
 
 
@@ -224,9 +240,13 @@ M_EFF = {'grain', 'vignette', 'warm', 'cool', 'dim'}                       # one
 POSED = re.compile(r'\b(portrait|model|posing|pose|smiling|smile|beautiful|pretty|attractive|fashion|woman in|girl in|selfie|headshot|studio|face|faces|close up face|elderly|old man|old woman)\b', re.I)
 
 
+OFFTONE = re.compile(r'\b(traditional|costume|calligraphy|ao dai|conical hat|non la|temple|pagoda|festival|ancient|vintage|antique|historical|kimono|hanbok)\b', re.I)
+
+
 def _m_query(q, fallback):
-    """a footage search that finds a moment (hands, objects, a place, an action), not a model posing for the camera"""
-    q = ' '.join(POSED.sub(' ', str(q or '')).split())
+    """a footage search that finds a moment (hands, objects, a place, an action) in today's city life, not a model
+    posing for the camera nor a costume picture from another world"""
+    q = ' '.join(OFFTONE.sub(' ', POSED.sub(' ', str(q or ''))).split())
     return q if len(q.split()) >= 2 else fallback
 
 
@@ -478,7 +498,7 @@ def _brief(scenes):
 
 M_GUIDE = """SERIES "ĐÒN BẨY TƯ DUY" — chỉ dùng 4 kiểu cảnh: `shot` (cảnh quay thật), `m_scene` (thế giới ẩn dụ 3D, KHOẢNG MỘT NỬA số câu: 45–55%), `big_number` (tối đa 1 lần, cho con số nghiên cứu đắt nhất), `question` (câu hỏi kết). KHÔNG dùng thẻ, biểu đồ, sơ đồ, compare, infographic.
 CHỮ TRÊN HÌNH: phụ đề đã có sẵn, nên `shot` KHÔNG đặt title/items/pins/quote/label. Chữ lớn chỉ 2–3 lần cả video: thẻ tên khái niệm (`tag`), con số nghiên cứu (`num`/big_number).
-CẢNH QUAY THẬT theo CẢM XÚC của câu, không theo nghĩa đen của từ: tìm KHOẢNH KHẮC có hành động (tay, đồ vật, nơi chốn, người đang làm việc gì đó, nhìn nghiêng/từ sau lưng), bối cảnh Việt Nam/châu Á khi hợp. KHÔNG cảnh rõ mặt người (bản quyền hình ảnh): chỉ tay, đồ vật, nơi chốn, người nhìn từ sau lưng hoặc ở xa; CẤM người mẫu tạo dáng, chân dung, close up mặt, "smiling woman", "portrait", "model", "elderly man". Ví dụ tốt: "hand scrolling shopping app at night", "motorbike traffic saigon rain", "receipt pile on desk", "salary envelope counting cash hands". Cả video giữ MỘT tông màu (không đen trắng xen ảnh ấm).
+CẢNH QUAY THẬT theo CẢM XÚC của câu, không theo nghĩa đen của từ: tìm KHOẢNH KHẮC có hành động (tay, đồ vật, nơi chốn, người đang làm việc gì đó, nhìn nghiêng/từ sau lưng), bối cảnh Việt Nam/châu Á khi hợp. KHÔNG cảnh rõ mặt người (bản quyền hình ảnh): chỉ tay, đồ vật, nơi chốn, người nhìn từ sau lưng hoặc ở xa; CẤM người mẫu tạo dáng, chân dung, close up mặt, "smiling woman", "portrait", "model", "elderly man". Ví dụ tốt: "hand scrolling shopping app at night", "motorbike traffic saigon rain", "receipt pile on desk", "salary envelope counting cash hands". Cả video giữ MỘT tông màu (không đen trắng xen ảnh ấm) và MỘT THẾ GIỚI: đời sống đô thị Việt Nam hiện đại của nhân vật (văn phòng, quán cà phê, căn hộ, xe máy, siêu thị, ví, hoá đơn, điện thoại). KHÔNG cổ trang, áo dài/nón lá trình diễn, thư pháp, lễ hội, đền chùa, cảnh quê hoài cổ — trừ khi câu nói đúng về điều đó.
 - `m_scene` {{prop, o {{…}}, cams [{{kind, cue?, a0?, a1?}}], tag {{en, vi, cue}}?, title [l1, l2]?, num {{value, from?, decimals?, suffix?, caption?, cue?}}?, label?}}: một VẬT ẨN DỤ đang chuyển động trên đảo nổi, có nhân vật không mặt. Chọn prop theo CƠ CHẾ của ý, không theo từ khoá:
   leaky (xô thủng: tiền vào trên, rò ra đáy; o: in, out, rate) · stairs2 (2 cầu thang song song, vd thu nhập/chi tiêu; o: beats [{{cue}}], labels [a,b]) · meter (vọt lên rồi tụt về cũ; o: rise {{cue}}, fall {{cue}}, baseLabel) · cluster (vật chính kéo theo vật phụ; o: core, items [{{text,cue}}]) · split (dòng tiền rẽ vào hũ tiết kiệm; o: save, spend, frac) · jar (hũ tích luỹ dâng dần; o: from, to 0..1, fill {{cue}}, marks [{{v,text}}]) · stage (nhân vật một mình; o: pose idle|think|point|cheer|slump|walk|run).
 - `cams`: cắt góc máy trong cảnh 2–4 giây một góc (orbit giới thiệu, push nhấn, pull mở rộng, rise, low kịch tính, top toàn cục, side); cảnh dài hơn 5 giây phải có ≥ 2 góc, góc sau có `cue`.
@@ -504,7 +524,9 @@ def plan(inp, log=print):
         sc = S.from_topic(topic, seconds, inp.get('audience', ''), tone=inp.get('tone') or 'tự nhiên, hợp với chủ đề và người xem', notes=inp.get('notes', ''), pace=pace, log=log)
     lines = [' '.join(str(l['say']).split()) for l in sc['lines'] if str(l.get('say', '')).strip()]
     strategy = sc.get('strategy') or {}
-    wps = S.wps() * S.speed(pace); lines = merge_lines(lines, wps)
+    wps = S.wps() * S.speed(pace)
+    fast = inp.get('format') == 'money' or isinstance(inp.get('series'), dict)
+    lines = split_lines(merge_lines(lines, wps, 2.0, 3.6), wps) if fast else merge_lines(lines, wps)
     min_types = max(3, min(6, len(lines) // 5))
     sec_per_line = round(sum(S.words(l) for l in lines) / max(1, len(lines)) / wps, 1)
     best, feedback = None, ''
@@ -584,6 +606,7 @@ def _plan_file(job_sb, work):
 def _env(job_sb=None):
     env = dict(os.environ)
     if job_sb and job_sb.get('fingerprint'): env['HBX_SEED'] = str(job_sb['fingerprint'])  # this video's own picks among good footage
+    if job_sb and job_sb.get('series') in ('money', 'series'): env['HBX_MODERN'] = '1'   # one modern city world: costume/heritage pictures go last
     env['PIXABAY_KEY'] = env.get('PIXABAY_API_KEY') or env.get('PIXABAY_KEY', '')  # from the site's admin page
     if not env['PIXABAY_KEY']: raise RuntimeError('Máy dựng chưa có khoá Pixabay (Quản trị → API & token → Pixabay).')
     return env
