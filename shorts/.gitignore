@@ -1,0 +1,11 @@
+renderer/engine/node_modules/
+__pycache__/
+**/__pycache__/
+everai.json
+**/everai.json
+*.zip
+out/
+work/
+web-smoke/
+*.log
+.env*

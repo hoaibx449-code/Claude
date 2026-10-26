@@ -1,0 +1,36 @@
+<!doctype html><html><head><meta charset="utf-8">
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+<style>body{margin:0;overflow:hidden}</style></head><body><script type="module">
+// Trusted renderer. AI supplies validated JSON, never JavaScript, HTML or remote resources.
+import {createStage, THREE, lerp, ease} from '/kit.js';
+const S = await createStage({fog:.025});
+S.scene.add(new THREE.HemisphereLight('#ffffff','#323858',2));
+const sun=new THREE.DirectionalLight('#ffedd5',3); sun.position.set(-5,10,6); S.scene.add(sun);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(60,60),new THREE.MeshStandardMaterial({color:S.pal[0],roughness:.8}));
+floor.rotation.x=-Math.PI/2;floor.position.y=-2;S.scene.add(floor);
+const geometries={box:()=>new THREE.BoxGeometry(1,1,1),sphere:()=>new THREE.SphereGeometry(.6,24,16),
+ cylinder:()=>new THREE.CylinderGeometry(.5,.5,1,24),cone:()=>new THREE.ConeGeometry(.6,1.2,24),
+ torus:()=>new THREE.TorusGeometry(.5,.16,12,32),plane:()=>new THREE.BoxGeometry(1,.08,1),
+ pyramid:()=>new THREE.ConeGeometry(.75,1.2,4)};
+const groups=S.storyboard.shots.map(sh=>{
+ const group=new THREE.Group(); S.scene.add(group);
+ const objects=sh.objects.map(o=>{
+  const mesh=new THREE.Mesh(geometries[o.shape](),new THREE.MeshStandardMaterial({color:o.color,metalness:o.metalness,roughness:o.roughness}));
+  group.add(mesh); return {mesh,data:o};
+ });return {group,objects};
+});
+S.run((t,at)=>{
+ groups.forEach(({group,objects},i)=>{
+  group.visible=i===at.i;if(i!==at.i)return;
+  for(const {mesh,data:o} of objects){
+   const p=ease.inOut(at.p);mesh.position.set(...o.position.map((v,k)=>lerp(v,o.to[k],p)));
+   mesh.scale.set(...o.scale.map((v,k)=>lerp(v,o.scaleTo[k],p)));
+   mesh.rotation.set(...o.rotation.map((v,k)=>v+o.spin[k]*at.p));
+   if(o.motion==='float')mesh.position.y+=Math.sin(at.p*Math.PI*4)*.2;
+   if(o.motion==='pulse')mesh.scale.multiplyScalar(1+Math.sin(at.p*Math.PI*4)*.08);
+  }
+ });
+ const c=at.shot.camera, p=ease.inOut(at.p);
+ S.applyCam({pos:new THREE.Vector3(...c.from.map((v,k)=>lerp(v,c.to[k],p))),look:new THREE.Vector3(...c.look),fov:c.fov});
+});
+</script></body></html>

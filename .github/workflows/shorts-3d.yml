@@ -1,0 +1,90 @@
+name: Dựng Shorts 3D
+
+on:
+  push:
+    branches: [codex/shorts-renderer]
+    paths: ['shorts/**', 'ink/ink/shorts3d.py', 'ink/ink/site.py', '.github/workflows/shorts-3d.yml', '.github/workflows/ink-runner.yml']
+  workflow_dispatch:
+    inputs:
+      project:
+        description: Thư mục trong shorts/renderer/examples
+        default: demo_ghe_cho_noi
+        required: true
+      voice:
+        description: Demo im lặng hoặc tạo giọng thật EverAI
+        type: choice
+        options: [demo, everai]
+        default: demo
+      voice_code:
+        description: Mã giọng EverAI (trống để dùng secret)
+        default: ''
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shorts-3d-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  web-adapter:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
+      - run: python -m pip install Pillow numpy opencv-python-headless
+      - run: npm ci --prefix shorts/renderer/engine --no-fund
+      - run: cd shorts/renderer/engine && npx playwright install --with-deps chromium
+      - run: python -m unittest discover -s shorts/tests -p 'test_*.py'
+      - run: python shorts/tests/smoke_web.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shorts-web-smoke
+          path: shorts/web-smoke/
+          retention-days: 3
+  render:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Cài FFmpeg và font tiếng Việt
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
+      - name: Cài máy dựng
+        run: |
+          python -m pip install -r shorts/requirements.txt
+          npm ci --prefix shorts/renderer/engine --no-fund
+          cd shorts/renderer/engine
+          npx playwright install --with-deps chromium
+      - name: Dựng và kiểm tra video
+        env:
+          PROJECT: ${{ inputs.project || 'demo_ghe_cho_noi' }}
+          VOICE_MODE: ${{ inputs.voice || 'demo' }}
+          EVERAI_API_KEY: ${{ secrets.EVERAI_API_KEY }}
+          EVERAI_VOICE_CODE: ${{ inputs.voice_code || secrets.EVERAI_VOICE_CODE }}
+        run: python shorts/run.py --project "$PROJECT" --voice "$VOICE_MODE"
+      - name: Tải kết quả
+        uses: actions/upload-artifact@v4
+        with:
+          name: shorts-3d-${{ github.run_number }}
+          path: shorts/out/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Tóm tắt
+        if: success()
+        run: cat shorts/out/report.md >> "$GITHUB_STEP_SUMMARY"
+
