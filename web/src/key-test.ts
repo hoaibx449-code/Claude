@@ -54,6 +54,12 @@ export async function testKey(env: XEnv, name: string, typed: string, origin: st
         if (!res.ok || j.ok === false) return { ok: false, ms: ms(), detail: `Zalo từ chối token (HTTP ${res.status}${j.description ? ' – ' + j.description : ''}).`, hint: 'Lấy lại token trong Zalo Bot Creator.' };
         return { ok: true, ms: ms(), detail: `Zalo nhận token: bot "${j.result?.account_name || j.result?.display_name || j.result?.name || 'của bạn'}".` };
       }
+      case 'ANTHROPIC_API_KEY': {
+        const res = await fetch('https://api.anthropic.com/v1/models?limit=20', { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, signal });
+        if (!res.ok) return { ok: false, ms: ms(), detail: `Anthropic từ chối khoá (HTTP ${res.status}).`, hint: 'Tạo khoá tại console.anthropic.com → API keys (tài khoản cần có số dư).' };
+        const j: any = await res.json();
+        return { ok: true, ms: ms(), detail: `Claude chấp nhận khoá (${(j.data || []).length} mô hình).` };
+      }
       case 'PIXABAY_API_KEY': {
         const res = await fetch('https://pixabay.com/api/?q=blue+sky&per_page=3&safesearch=true&key=' + encodeURIComponent(key), { signal });
         if (!res.ok) return { ok: false, ms: ms(), detail: `Pixabay từ chối khoá (HTTP ${res.status}${res.status === 400 ? ': khoá sai' : ''}).`, hint: 'Lấy khoá tại pixabay.com/api/docs (đăng nhập, khoá hiện ở mục Parameters → key).' };

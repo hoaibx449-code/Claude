@@ -49,6 +49,7 @@ const SECRET_INFO = {
   ELEVENLABS_API_KEY: ['ElevenLabs', 'Giọng ElevenLabs (máy dựng).'],
   ZALO_BOT_TOKEN: ['Zalo Bot token', 'Lấy trong Zalo Bot Creator. Dùng cho tab Zalo.'],
   SEPAY_API_KEY: ['SePay API key', 'Để SePay báo chuyển khoản về web (tab Gói cước).'],
+  ANTHROPIC_API_KEY: ['Claude (Anthropic)', 'Viết mã đạo cụ 3D chuyển động cho từng video của Series (không có thì Gemini/OpenAI viết). console.anthropic.com → API keys.'],
   PIXABAY_API_KEY: ['Pixabay', 'Ảnh và video thật (miễn phí dùng thương mại) cho kiểu video Điện ảnh của Ink Studio. pixabay.com/api/docs → key.'],
 };
 const EVENT_NAMES = {
@@ -300,7 +301,7 @@ function keysCard(secrets, secretInput, names, title='Khoá API') {
 }
 
 function connectionsTab(c,secrets,secretInput){return [
- keysCard(secrets,secretInput,['OPENAI_API_KEY','GEMINI_API_KEY','OLLAMA_API_KEY'],'AI: khoá API'),
+ keysCard(secrets,secretInput,['OPENAI_API_KEY','GEMINI_API_KEY','ANTHROPIC_API_KEY','OLLAMA_API_KEY'],'AI: khoá API'),
  keysCard(secrets,secretInput,['EVERAI_API_KEY','GOOGLE_TTS_API_KEY','ELEVENLABS_API_KEY'],'Giọng đọc: khoá API'),
  keysCard(secrets,secretInput,['ZALO_BOT_TOKEN'],'Zalo: bot token'),
  keysCard(secrets,secretInput,['SEPAY_API_KEY'],'Thanh toán: SePay API'),

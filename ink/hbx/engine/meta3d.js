@@ -385,6 +385,34 @@
     return { g: p.g, focus: [0, 1.1, 0], size: .5, update(t) { pose(p, o.pose || 'idle', t); } };
   };
 
+  /* ---------- VẬT ẨN DỤ DO AI VIẾT CHO TỪNG VIDEO (storyboard.props = {tên: mã}) ----------
+     Mã là thân một hàm nhận (THREE, K) và trả về (P, o, W) => ({g, focus, size, update(t)}) như các vật trên.
+     K = bộ công cụ dùng chung (vật liệu, chữ, nhân vật, đường cong) để vật mới cùng phong cách với cả kênh.
+     Lỗi (biên dịch hay khi chạy) không làm hỏng video: cảnh dùng nhân vật đứng thay và lỗi được ghi vào HBX_ERRORS. */
+  const KIT = { mat, gold, label, person, pose, coins, setI, shadowy, cl, io, out3, back, rnd, lerp, A, TAU };
+  window.HBX_ERRORS = window.HBX_ERRORS || [];
+  const CUSTOM = {};
+  function custom(name) {
+    if (name in CUSTOM) return CUSTOM[name];
+    const code = (((window.HBX && window.HBX._sb) || {}).props || {})[name];
+    let mk = null;
+    if (typeof code === 'string') {
+      try { mk = new Function('THREE', 'K', '"use strict";\n' + code)(THREE, KIT); if (typeof mk !== 'function') throw new Error('mã không trả về hàm (P, o, W) => {...}'); }
+      catch (e) { HBX_ERRORS.push({ prop: name, step: 'compile', error: String(e && e.message || e) }); mk = null; }
+    }
+    if (mk) { // a prop that throws while building or moving gives way to the stand-in, the rest of the video goes on
+      const inner = mk;
+      mk = (P, o, W) => {
+        let r; try { r = inner(P, o, W); if (!r || !r.g || typeof r.update !== 'function') throw new Error('thiếu g hoặc update'); }
+        catch (e) { HBX_ERRORS.push({ prop: name, step: 'build', error: String(e && e.message || e) }); return PROPS.stage(P, o, W); }
+        const up = r.update.bind(r); let bad = false;
+        r.update = (t) => { if (bad) return; try { up(t); } catch (e) { bad = true; HBX_ERRORS.push({ prop: name, step: 'update', error: String(e && e.message || e) }); } };
+        return r;
+      };
+    }
+    return (CUSTOM[name] = mk);
+  }
+
   /* ---------- máy quay ---------- */
   // khoảng cách tính cho vật cao ~5 đơn vị (nhân với `size` của từng vật); khung dọc 9:16
   const CAMK = {
@@ -424,7 +452,7 @@
   function sceneOf(o) {
     if (CACHE.has(o)) return CACHE.get(o);
     const P = PAL(), s = o.s, W = world(P, s.world || {});
-    const mk = PROPS[s.prop] || PROPS.stage, pr = mk(P, Object.assign({}, s.o || {}), W);
+    const mk = PROPS[s.prop] || custom(s.prop) || PROPS.stage, pr = mk(P, Object.assign({}, s.o || {}), W);
     const cam = new THREE.PerspectiveCamera(38, 720 / 1280, .1, 200);
     const v = { W, pr, cam, cv: o.el.querySelector('.m3c') };
     const dsf = window.devicePixelRatio || 1; v.cv.width = Math.round(720 * dsf); v.cv.height = Math.round(1280 * dsf);
@@ -444,5 +472,5 @@
     const g = v.cv.getContext('2d'); g.clearRect(0, 0, v.cv.width, v.cv.height); g.drawImage(r.domElement, 0, 0);
   });
   X.trSfx.cut = X.trSfx.cut || 'impact';
-  window.HBX_META3D = { PROPS, CAMK };
+  window.HBX_META3D = { PROPS, CAMK, KIT };
 })();

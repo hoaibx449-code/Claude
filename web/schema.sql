@@ -312,3 +312,7 @@ CREATE TABLE IF NOT EXISTS ink_jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,pa
   error TEXT NOT NULL DEFAULT '',duration REAL NOT NULL DEFAULT 0,meta TEXT NOT NULL DEFAULT '{}',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,finished_at INTEGER);
 CREATE INDEX IF NOT EXISTS ink_jobs_user ON ink_jobs(user_id,created_at);
 CREATE INDEX IF NOT EXISTS ink_jobs_queue ON ink_jobs(status,created_at);
+-- Series: videos on one topic; each video invents a new 3D metaphor and the series remembers it (used, JSON list)
+CREATE TABLE IF NOT EXISTS ink_series(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,name TEXT NOT NULL,topic TEXT NOT NULL DEFAULT '',style TEXT NOT NULL DEFAULT '',
+  used TEXT NOT NULL DEFAULT '[]',videos INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS ink_series_user ON ink_series(user_id,updated_at);

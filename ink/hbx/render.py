@@ -155,8 +155,11 @@ def main():
         out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
         with sync_playwright() as pw:
             b, pg = open_page(pw, sb)
+            errs = []; pg.on('pageerror', lambda e: errs.append({'step': 'page', 'error': str(e)[:300]}))
             for t in a.preview.split(','):
                 pg.evaluate(f'HBX.setTime({float(t)})'); pg.screenshot(path=str(out / f'p_{float(t):06.2f}.jpg'), type='jpeg', quality=85)
+            errs += pg.evaluate('window.HBX_ERRORS || []')
+            (out / 'errors.json').write_text(json.dumps(errs, ensure_ascii=False))
             b.close()
         return
 
