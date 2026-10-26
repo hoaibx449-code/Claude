@@ -247,6 +247,11 @@ def _m_query(q, fallback):
     """a footage search that finds a moment (hands, objects, a place, an action) in today's city life, not a model
     posing for the camera nor a costume picture from another world"""
     q = ' '.join(OFFTONE.sub(' ', POSED.sub(' ', str(q or ''))).split())
+    # a place word ("vietnam") makes the stock search return anything tagged with the place instead of the subject;
+    # style words ("natural lighting", "no people") are not in any tag either
+    q = re.sub(r'\b(vietnam\w*|viet nam|saigon|hanoi|asia\w*)\b', ' ', q, flags=re.I)
+    q = re.sub(r'\b(natural|soft|bright|cinematic|warm)\s+(light|lighting)\b|\bno(\s+\w+)?$|\b(4k|hd|high quality|realistic)\b', ' ', q, flags=re.I)
+    q = ' '.join(re.sub(r'[,.;]+', ' ', q).split()[:6])
     return q if len(q.split()) >= 2 else fallback
 
 
@@ -445,12 +450,12 @@ def ground(scenes, fp):
     return scenes
 
 
-def variety(scenes, min_types, meta=False):
+def variety(scenes, min_types, meta=False, series_led=False):
     """the director's rules, checked: problems in plain words (empty = fine)"""
     out, n = [], len(scenes)
     if meta:   # the series: half 3D metaphors, the rest real moments; few words on screen
         share = sum(s['type'] == 'm_scene' for s in scenes) / max(1, n)
-        if not .35 <= share <= .6: out.append(f'cảnh 3D m_scene chiếm {share:.0%}, cần khoảng 45–55%')
+        if not .35 <= share <= (.9 if series_led else .6): out.append(f'cảnh 3D m_scene chiếm {share:.0%}, cần khoảng {"60–75" if series_led else "45–55"}%')
         posed = [i + 1 for i, s in enumerate(scenes) if s['type'] == 'shot' and POSED.search(str((s.get('bg') or {}).get('q', '')))]
         if posed: out.append(f'cảnh {posed}: từ khoá cảnh quay là người mẫu tạo dáng; đổi sang khoảnh khắc thật (tay, đồ vật, hành động, nơi chốn)')
     types = [s['type'] for s in scenes]
@@ -498,7 +503,7 @@ def _brief(scenes):
 
 M_GUIDE = """SERIES "ĐÒN BẨY TƯ DUY" — chỉ dùng 4 kiểu cảnh: `shot` (cảnh quay thật), `m_scene` (thế giới ẩn dụ 3D, KHOẢNG MỘT NỬA số câu: 45–55%), `big_number` (tối đa 1 lần, cho con số nghiên cứu đắt nhất), `question` (câu hỏi kết). KHÔNG dùng thẻ, biểu đồ, sơ đồ, compare, infographic.
 CHỮ TRÊN HÌNH: phụ đề đã có sẵn, nên `shot` KHÔNG đặt title/items/pins/quote/label. Chữ lớn chỉ 2–3 lần cả video: thẻ tên khái niệm (`tag`), con số nghiên cứu (`num`/big_number).
-CẢNH QUAY THẬT theo CẢM XÚC của câu, không theo nghĩa đen của từ: tìm KHOẢNH KHẮC có hành động (tay, đồ vật, nơi chốn, người đang làm việc gì đó, nhìn nghiêng/từ sau lưng), bối cảnh Việt Nam/châu Á khi hợp. KHÔNG cảnh rõ mặt người (bản quyền hình ảnh): chỉ tay, đồ vật, nơi chốn, người nhìn từ sau lưng hoặc ở xa; CẤM người mẫu tạo dáng, chân dung, close up mặt, "smiling woman", "portrait", "model", "elderly man". Ví dụ tốt: "hand scrolling shopping app at night", "motorbike traffic saigon rain", "receipt pile on desk", "salary envelope counting cash hands". Cả video giữ MỘT tông màu (không đen trắng xen ảnh ấm) và MỘT THẾ GIỚI: đời sống đô thị Việt Nam hiện đại của nhân vật (văn phòng, quán cà phê, căn hộ, xe máy, siêu thị, ví, hoá đơn, điện thoại). KHÔNG cổ trang, áo dài/nón lá trình diễn, thư pháp, lễ hội, đền chùa, cảnh quê hoài cổ — trừ khi câu nói đúng về điều đó.
+CẢNH QUAY THẬT theo CẢM XÚC của câu, không theo nghĩa đen của từ: tìm KHOẢNH KHẮC có hành động (tay, đồ vật, nơi chốn, người đang làm việc gì đó, nhìn nghiêng/từ sau lưng), bối cảnh Việt Nam/châu Á khi hợp. KHÔNG cảnh rõ mặt người (bản quyền hình ảnh): chỉ tay, đồ vật, nơi chốn, người nhìn từ sau lưng hoặc ở xa; CẤM người mẫu tạo dáng, chân dung, close up mặt, "smiling woman", "portrait", "model", "elderly man". Từ khoá 2–5 chữ tiếng Anh tả ĐÚNG vật/hành động của câu, KHÔNG thêm "vietnam", tên nơi, hay chữ tả ánh sáng/phong cách (làm kết quả lạc đề). Ví dụ tốt: "hand scrolling shopping app at night", "motorbike traffic saigon rain", "receipt pile on desk", "salary envelope counting cash hands". Cả video giữ MỘT tông màu (không đen trắng xen ảnh ấm) và MỘT THẾ GIỚI: đời sống đô thị Việt Nam hiện đại của nhân vật (văn phòng, quán cà phê, căn hộ, xe máy, siêu thị, ví, hoá đơn, điện thoại). KHÔNG cổ trang, áo dài/nón lá trình diễn, thư pháp, lễ hội, đền chùa, cảnh quê hoài cổ — trừ khi câu nói đúng về điều đó.
 - `m_scene` {{prop, o {{…}}, cams [{{kind, cue?, a0?, a1?}}], tag {{en, vi, cue}}?, title [l1, l2]?, num {{value, from?, decimals?, suffix?, caption?, cue?}}?, label?}}: một VẬT ẨN DỤ đang chuyển động trên đảo nổi, có nhân vật không mặt. Chọn prop theo CƠ CHẾ của ý, không theo từ khoá:
   leaky (xô thủng: tiền vào trên, rò ra đáy; o: in, out, rate) · stairs2 (2 cầu thang song song, vd thu nhập/chi tiêu; o: beats [{{cue}}], labels [a,b]) · meter (vọt lên rồi tụt về cũ; o: rise {{cue}}, fall {{cue}}, baseLabel) · cluster (vật chính kéo theo vật phụ; o: core, items [{{text,cue}}]) · split (dòng tiền rẽ vào hũ tiết kiệm; o: save, spend, frac) · jar (hũ tích luỹ dâng dần; o: from, to 0..1, fill {{cue}}, marks [{{v,text}}]) · stage (nhân vật một mình; o: pose idle|think|point|cheer|slump|walk|run).
 - `cams`: cắt góc máy trong cảnh 2–4 giây một góc (orbit giới thiệu, push nhấn, pull mở rộng, rise, low kịch tính, top toàn cục, side); cảnh dài hơn 5 giây phải có ≥ 2 góc, góc sau có `cue`.
@@ -547,7 +552,7 @@ def plan(inp, log=print):
                    0.85, check=lambda x: build(x, lines, fp, clips, meta, extra), log=log)
         scenes = ground(build(o, lines, fp, clips, meta, extra), fp)
         if meta: scenes = series_rules(scenes, fp)
-        problems = variety(scenes, min_types, meta) + rhythm(scenes, wps)
+        problems = variety(scenes, min_types, meta, bool(extra)) + rhythm(scenes, wps)
         try:
             j = ai.ask(S.system(), S.prompt('cine_judge', topic=topic, scenes=_brief(scenes)), 0.2,
                        check=lambda x: isinstance(x.get('scores'), dict) or (_ for _ in ()).throw(ValueError('thiếu scores')), log=log)
@@ -560,11 +565,11 @@ def plan(inp, log=print):
         if avg >= 8 and not problems: break
         feedback = 'GÓP Ý BẮT BUỘC SỬA từ lần trước:\n- ' + '\n- '.join(problems + issues)
     _, o, scenes, scores = best
-    before = len(variety(scenes, min_types, meta) + rhythm(scenes, wps))
+    before = len(variety(scenes, min_types, meta, bool(extra)) + rhythm(scenes, wps))
     scenes = structure(polish(scenes, fp, wps), sc['lines'], fp, wps, meta)
     if meta: scenes = series_rules(scenes, fp)
     if extra: scenes = SR.enforce(scenes, spec)
-    left = variety(scenes, min_types, meta) + rhythm(scenes, wps)
+    left = variety(scenes, min_types, meta, bool(extra)) + rhythm(scenes, wps)
     log(f'   tự sửa luật dựng: còn {len(left)}/{before} lỗi' + (f' ({"; ".join(left[:3])})' if left else ''))
     style = {**fp['style'], **{k: v for k, v in (o.get('style') or {}).items() if k in ('scheme', 'grade') and isinstance(v, str)}}
     if not fp['caps']: style['titleCase'] = 'none'
@@ -632,6 +637,9 @@ def preview(job_sb, out, log=print):
         _run([sys.executable, 'build.py', 'preview', '--plan', pf, '--work', os.path.join(work, 'w')], log, env)
         p = json.load(open(pf, encoding='utf-8')); job_sb['scenes'] = p['storyboard'].pop('scenes'); job_sb['plan']['storyboard'] = p['storyboard']
     run()
+    try:  # a 3D prop that broke in the engine shows as the lone figure: say so in the log
+        for e in json.load(open(os.path.join(work, 'w', 'pv', 'errors.json')))[:5]: log(f'   lỗi cảnh 3D: {e.get("prop", "")} {e.get("step")}: {str(e.get("error"))[:160]}')
+    except (OSError, ValueError): pass
     if job_sb.get('series') in ('money', 'series') and _judge_preview(job_sb, os.path.join(work, 'w', 'preview.jpg'), log): run()
     from PIL import Image
     Image.open(os.path.join(work, 'w', 'preview.jpg')).save(os.path.join(out, 'overview.png'))
