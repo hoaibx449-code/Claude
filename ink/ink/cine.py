@@ -630,10 +630,12 @@ def _run(args, log, env):
     p = subprocess.Popen([str(a) for a in args], cwd=HBX, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     tail = []
     for line in p.stdout:
-        line = line.rstrip(); tail = (tail + [line])[-12:]
+        line = line.rstrip(); tail = (tail + [line])[-40:]
         if line.strip(): log('  ' + line[:200])
     if p.wait() == 3: raise RuntimeError('Giọng đọc quá ngắn so với yêu cầu của bộ dựng.')
-    if p.returncode: raise RuntimeError('Bộ dựng điện ảnh lỗi: ' + ' / '.join(t for t in tail[-3:] if t.strip())[:280])
+    if p.returncode:  # the real cause (a JS/Python error line), not the subprocess traceback that wraps it
+        why = [t.strip() for t in tail if re.search(r'(Error|Exception)\b.*:', t) and 'CalledProcessError' not in t]
+        raise RuntimeError('Bộ dựng điện ảnh lỗi: ' + (why[-1] if why else ' / '.join(t for t in tail[-3:] if t.strip()))[:280])
 
 
 def preview(job_sb, out, log=print):
