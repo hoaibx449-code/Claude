@@ -6,5 +6,6 @@ everai.json
 *.zip
 out/
 work/
+web-smoke/
 *.log
 .env*

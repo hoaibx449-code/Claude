@@ -4,7 +4,15 @@ Nhập từ `May dung short/BoSanXuat_VideoTuDuy3D`. Mã nguồn và tài liệu
 
 ## Dựng trên GitHub
 
-Workflow **Dựng Shorts 3D** chạy một bản demo khi đẩy nhánh `codex/shorts-renderer`. Vào **Actions → Dựng Shorts 3D → lần chạy mới nhất → Artifacts** để tải gói `shorts-3d-…` gồm MP4 1080×1920, ảnh bìa, ảnh kiểm tra từng cảnh, phụ đề, kịch bản và kết quả kiểm tra.
+Workflow **Dựng Shorts 3D** kiểm tra adapter web khi đẩy nhánh `codex/shorts-renderer`. Bản demo đầy đủ chạy bằng **Run workflow**. Vào **Actions → Dựng Shorts 3D → lần chạy mới nhất → Artifacts** để tải kết quả.
+
+## Tạo từ website
+
+Trong **Tạo video → Shorts 3D**, nhập chủ đề hoặc kịch bản, chọn giọng và độ dài tối đa 90 giây. AI dùng cấu hình AI của Ink Studio, kiểm chứng lời đọc, nghĩ ẩn dụ và bố trí các vật thể/chuyển động cho từng cảnh. Có thể duyệt ảnh phân cảnh trước khi dựng. Giọng đọc thật dùng cấu hình hiện tại; không dùng audio im lặng của demo cho yêu cầu người dùng. Hỗ trợ nhạc tự tạo hoặc tải lên, phụ đề SRT, từ điển phát âm và màu nhấn.
+
+Video trả về đúng tài khoản trong **Video của tôi**, dùng cùng hàng đợi, hạn mức, thông báo và hoàn lượt khi lỗi. Cần bật máy dựng **GitHub** và có kết nối GitHub của Ink Studio. Bản tích hợp đầu tiên chỉ cho máy GitHub mới nhận tác vụ này; các máy chủ/cloud cũ không nhận nhầm. Sau khi gộp mã cần triển khai web và dùng workflow `ink-runner.yml` mới.
+
+Đây là 3D hình học tối giản: AI ghép khối, màu, vị trí và chuyển động theo nội dung; chưa tạo vật thể chi tiết như phim AI. AI không được sinh JavaScript thực thi hay tải tài nguyên ngoài. Những ẩn dụ của 8 video gần nhất trong cùng tài khoản được đưa vào danh sách tránh lặp. Chưa hỗ trợ logo hay khung ngang cho kiểu này.
 
 Sau khi workflow có trên nhánh mặc định, có thể bấm **Run workflow** và chọn:
 

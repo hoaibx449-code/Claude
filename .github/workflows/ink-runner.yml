@@ -25,14 +25,19 @@ jobs:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: ink/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Cài FFmpeg và thư viện
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
           pip install -q -r ink/requirements.txt
       - name: Cài trình duyệt và thư viện cho kiểu Điện ảnh
         run: |
           python -m playwright install --with-deps chromium
           cd ink/hbx && npm ci --no-audit --no-fund
+      - name: Cài bộ dựng Shorts 3D
+        run: npm ci --prefix shorts/renderer/engine --no-audit --no-fund
       - name: Dùng lại giọng đã đọc
         uses: actions/cache@v4
         with:

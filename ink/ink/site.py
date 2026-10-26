@@ -83,6 +83,9 @@ def run(job):
         for k, v in steps_at.items():
             if m.strip().startswith(k): state.update(progress=v, message=m.strip()[:120]); report(); return
         mm = re.match(r'\s*nướng cảnh (\d+)/(\d+)', m) or re.match(r'\s*chụp khung (\d+)%', m)
+        frames = re.match(r'(\d+)/(\d+) khung', m.strip())
+        if frames:
+            a,b=map(int,frames.groups());state.update(progress=52+int(40*a/max(1,b)),message=f'Đang ghi hình Shorts 3D: {a}/{b} khung');report();return
         if mm:   # the cinematic render: baking the camera moves (52–70), then capturing frames (70–92)
             a = int(mm.group(1))
             if 'nướng' in m:
@@ -97,6 +100,8 @@ def run(job):
             if scene[0] % 4 == 0: report()
     out = tempfile.mkdtemp(prefix='ink-' + jid + '-'); t0 = time.time()
     try:
+        if inp.get('format') == 'shorts3d':
+            return run_shorts3d(job, inp, out, state, report, log, t0)
         if inp.get('format') in ('cine', 'money') or (job.get('storyboard') or {}).get('format') == 'cine':
             return run_cine(job, inp, out, state, report, log, t0)
         # the person's brand: the highlight colour everywhere (cover, boxes, captions, progress) and a logo in a corner
@@ -162,6 +167,36 @@ def run(job):
         subprocess.run(['rm', '-rf', out], check=False)
 
 
+def run_shorts3d(job, inp, out, state, report, log, t0):
+    from . import shorts3d
+    jid,lease=job['id'],job['lease']
+    if not shorts3d.available(): raise RuntimeError('Máy này chưa cài bộ dựng Shorts 3D')
+    if job['stage']=='plan':
+        sb=shorts3d.plan(inp,log)
+        state.update(progress=35,message='Dựng ảnh xem trước Shorts 3D');report()
+        shorts3d.preview(sb,out,log)
+        for f in ('overview.png','cover.jpg'): put(jid,lease,out,f)
+        if not call(f'jobs/{jid}/planned',{'storyboard':sb,'ai':sb.get('ai',[]),'steps':steps()},lease=lease).get('render'): return True
+    else: sb=job['storyboard']
+    music=None
+    if inp.get('myvoice'):
+        own=os.path.join(out,'myvoice.'+(inp.get('myvoiceExt') or 'mp3'))
+        open(own,'wb').write(call(f'jobs/{jid}/myvoice',lease=lease,raw=True,timeout=180))
+        inp={**inp,'_myvoice_path':own}
+    if inp.get('music'):
+        music=os.path.join(out,'music.'+(inp.get('musicExt') or 'mp3'))
+        open(music,'wb').write(call(f'jobs/{jid}/music',lease=lease,raw=True,timeout=120))
+    elif inp.get('mood')!='none':
+        from .music import write, MOODS
+        mood=inp.get('mood') if inp.get('mood') in MOODS else 'motivating'
+        music=os.path.join(out,'music.wav');write(105,music,mood=mood,seed=int(jid[:8],16))
+    total,provider=shorts3d.render(sb,out,inp,log,music)
+    state.update(progress=96,message='Lưu video Shorts 3D');report()
+    for f in ('cover.jpg','video.mp4','captions.srt','script.txt'): put(jid,lease,out,f,timeout=600)
+    call(f'jobs/{jid}/done',{'duration':round(total,1),'seconds':round(time.time()-t0),'voice':provider,'voiceError':' | '.join(V.errors),'ai':[f'{p}/{m}' for p,m in ai.used],'steps':steps(),'voiceStats':dict(V.last)},lease=lease)
+    return True
+
+
 def run_cine(job, inp, out, state, report, log, t0):
     """the cinematic type (HBX engine): plan + preview, then the voice and the render"""
     from . import cine
@@ -220,7 +255,9 @@ def main():
     mine = os.environ.get('INK_VERSION', '')  # set by the server's update script
     ok = True; started = idle = time.time(); fails = 0
     while loop or time.time() - started < 5.5 * 3600:  # GitHub stops a job at 6 hours
-        try: got = call('claim', {'runner': name, 'kind': kind, 'host': host, 'version': mine}); fails = 0
+        try:
+            from . import shorts3d
+            got = call('claim', {'runner': name, 'kind': kind, 'host': host, 'version': mine, 'shorts3d': shorts3d.available()}); fails = 0
         except Exception as e:  # noqa: BLE001
             if not loop: raise
             fails += 1; print('Chưa kết nối được trang:', e, flush=True); time.sleep(min(300, 10 * fails)); continue

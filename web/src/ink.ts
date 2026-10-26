@@ -104,6 +104,9 @@ export async function dispatch(env: Env, force = false) {
 }
 async function wake(env: Env, force: boolean) {
   const { s } = await settings(env), errors: string[] = [];
+  // Shorts currently needs the new GitHub machine; do not wake an older cloud/server for this queue.
+  const shorts = await env.DB.prepare("SELECT 1 FROM ink_jobs WHERE status = 'queued' AND json_extract(input, '$.format') = 'shorts3d' LIMIT 1").first();
+  if (shorts) return s.machines.on.github ? startGithub(env, force) : 'Shorts 3D cần bật máy dựng GitHub.';
   for (const kind of s.machines.order) {
     if (!s.machines.on[kind]) continue;
     if (kind === 'browser') continue; // the user's device draws; it never takes the AI and voice part
@@ -409,10 +412,13 @@ export async function createInk(env: XEnv, rc: Rc, user: User, b: any, extra: Re
   let text = mode === 'script' ? str(String(b.script || '').replace(/\r/g, ''), 12_000) : str(b.topic, 500);
   if (mode === 'topic' && text.length < 4 && source && b.format === 'money') text = 'Theo bài báo: ' + source;
   if (text.length < (mode === 'script' ? 40 : 4)) throw new HttpError(400, mode === 'script' ? 'Kịch bản quá ngắn.' : 'Hãy nhập chủ đề video.');
-  const format = b.format === 'cine' || b.format === 'money' ? b.format : 'ink';
+  const format = b.format === 'cine' || b.format === 'money' || b.format === 'shorts3d' ? b.format : 'ink';
+  if (format === 'shorts3d' && !s.machines.on.github) throw new HttpError(503, 'Shorts 3D cần bật máy dựng GitHub trong quản trị.');
   // 'Đòn Bẩy Tư Duy' runs about two minutes unless asked otherwise
   const cap = Math.min(300, plan.maxSeconds, env.config.limits.maxSeconds), seconds = Math.round(num(b.seconds, 20, 300, Math.min(format === 'money' ? 120 : s.defaults.seconds, cap)));
   if (seconds > cap) throw new HttpError(402, `Gói ${plan.name} cho video tối đa ${cap} giây.`);
+  if (format === 'shorts3d' && seconds > 90) throw new HttpError(400, 'Shorts 3D hiện hỗ trợ tối đa 90 giây.');
+  if (format === 'shorts3d' && b.series) throw new HttpError(400, 'Shorts 3D chưa dùng series Điện ảnh; hãy bỏ chọn series.');
   const ready = await readyVoices(env, s);
   if (!ready.length) throw new HttpError(503, 'Giọng đọc đang được bảo trì, vui lòng thử lại sau ít phút.');
   const voice = ready.find((v) => v.id === b.voice) || (format === 'money' ? ready.find((v) => v.id === 'vanduy') : undefined) || ready.find((v) => v.id === s.voice.default) || ready[0];
@@ -437,7 +443,7 @@ export async function createInk(env: XEnv, rc: Rc, user: User, b: any, extra: Re
   if (prefs.brand.color || prefs.brand.logo) input.brand = prefs.brand;
   // other frame shapes are drawn by the render machines (the device renderer draws 9:16)
   if (input.format === 'ink') { const ar = ['9:16', '1:1', '4:5', '16:9'].includes(b.aspect) ? b.aspect : '9:16'; if (ar !== '9:16') { input.aspect = ar; input.browser = false; } }
-  if (input.format !== 'ink' && !(env as any).PIXABAY_API_KEY) throw new HttpError(503, `Kiểu ${format === 'money' ? 'Đòn Bẩy Tư Duy' : 'Điện ảnh'} đang được chuẩn bị, vui lòng chọn Vẽ tay.`);
+  if (['cine', 'money'].includes(input.format) && !(env as any).PIXABAY_API_KEY) throw new HttpError(503, `Kiểu ${format === 'money' ? 'Đòn Bẩy Tư Duy' : 'Điện ảnh'} đang được chuẩn bị, vui lòng chọn Vẽ tay.`);
   return enqueue(env, rc, user, input, 'plan', null, typeof b.parent === 'string' ? b.parent : null);
 }
 /** Voices a video can be read with right now (tested, switched on). */
@@ -466,7 +472,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
     const ready = await readyVoices(env, s);
     const used = await env.DB.prepare("SELECT n FROM usage WHERE user_id = ? AND day = ? AND kind = 'render'").bind(user.id, today()).first<any>();
     const admin = await isAdmin(env, env.config, user);
-    return json({ quota: admin ? null : { used: used?.n || 0, limit: plan.limits.render }, eta: await etaOf(env), browser: s.machines.on.browser, cine: !!(env as any).PIXABAY_API_KEY, voices: ready.map((v) => ({ id: v.id, label: v.label })), defaults: { ...s.defaults, voice: ready.some((v) => v.id === s.voice.default) ? s.voice.default : ready[0]?.id || '' },
+    return json({ quota: admin ? null : { used: used?.n || 0, limit: plan.limits.render }, eta: await etaOf(env), browser: s.machines.on.browser, shorts3d: s.machines.on.github, cine: !!(env as any).PIXABAY_API_KEY, voices: ready.map((v) => ({ id: v.id, label: v.label })), defaults: { ...s.defaults, voice: ready.some((v) => v.id === s.voice.default) ? s.voice.default : ready[0]?.id || '' },
       maxSeconds: Math.min(300, plan.maxSeconds, env.config.limits.maxSeconds) });
   }
   if (sub === 'browser/bundle' && method === 'GET') {
@@ -600,7 +606,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
   if (act === 'storyboard' && method === 'GET') {
     const sb = j.storyboard ? JSON.parse(j.storyboard) : null;
     if (new URL(req.url).searchParams.get('full') === '1') return json({ storyboard: sb });
-    return json({ storyboard: sb && { title: sb.title, cover: sb.cover, caption: sb.caption, hashtags: sb.hashtags, facts: sb.facts || null, scenes: sb.scenes.map((x: any) => ({ say: x.say, layout: x.visual?.layout })), table: sb.script_table, metaphor: sb.series_meta?.metaphor,
+    return json({ storyboard: sb && { title: sb.title, cover: sb.cover, caption: sb.caption, hashtags: sb.hashtags, facts: sb.facts || null, scenes: sb.scenes.map((x: any) => ({ say: x.say, layout: x.visual?.layout })), table: sb.script_table, metaphor: sb.metaphor || sb.series_meta?.metaphor,
       proposal: sb.proposal, script: sb.script, question: sb.question, voyage: !!sb.voyage } });
   }
   if (act.startsWith('file/') && method === 'GET') {
@@ -795,7 +801,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     const lease = 'lease-' + randomId(16);
     const j = await env.DB.prepare(`UPDATE ink_jobs SET status = 'running', lease = ?, heartbeat = ?, progress = 1, message = 'Máy dựng đã nhận việc', updated_at = ?,
         meta = json_set(CASE WHEN json_valid(meta) THEN meta ELSE '{}' END, '$.started', ?, '$.queued', updated_at)
-      WHERE id = (SELECT id FROM ink_jobs WHERE status = 'queued' ORDER BY created_at LIMIT 1) AND status = 'queued' RETURNING *`).bind(lease, now, now, now).first<any>();
+      WHERE id = (SELECT id FROM ink_jobs WHERE status = 'queued' AND (COALESCE(json_extract(input, '$.format'), 'ink') != 'shorts3d' OR ? = 1) ORDER BY created_at LIMIT 1) AND status = 'queued' RETURNING *`).bind(lease, now, now, now, cb.shorts3d === true ? 1 : 0).first<any>();
     if (!j) {
       rc.quiet = true;
       // storyboards a user is looking at right now: the machine waits for them instead of leaving
@@ -804,6 +810,10 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     }
     rc.userId = j.user_id;
     const { s } = await settings(env), input = JSON.parse(j.input);
+    if (input.format === 'shorts3d' && j.stage === 'plan') {
+      const recent = (await env.DB.prepare("SELECT storyboard FROM ink_jobs WHERE user_id = ? AND id != ? AND status = 'done' AND json_extract(input, '$.format') = 'shorts3d' ORDER BY finished_at DESC LIMIT 8").bind(j.user_id, j.id).all<any>()).results;
+      input.avoid3d = recent.map((r: any) => { try { return str(JSON.parse(r.storyboard || '{}').metaphor, 300); } catch { return ''; } }).filter(Boolean);
+    }
     const voice = s.voice.list.find((v) => v.id === input.voice) || s.voice.list.find((v) => v.id === s.voice.default) || s.voice.list[0];
     rc.log('ink.start', { data: { job: j.id, stage: j.stage, waitedSec: Math.round((now - j.updated_at) / 1000) } });
     return json({ job: { id: j.id, lease, stage: j.stage, input: { ...input, musicExt: input.music ? input.music.split('.').pop() : '' }, storyboard: j.storyboard ? JSON.parse(j.storyboard) : null,
