@@ -136,6 +136,9 @@ def run_cine(job, inp, out, state, report, log, t0):
         if not nxt.get('render'): return True
     else:
         sb = job['storyboard']
+    if inp.get('myvoice'):   # the person sent their own recording: the video is re-timed to it
+        path = os.path.join(out, 'myvoice.' + (inp.get('myvoiceExt') or 'mp3'))
+        open(path, 'wb').write(call(f'jobs/{jid}/myvoice', lease=lease, raw=True, timeout=180)); sb['myvoice'] = path
     state.update(progress=45, message='Giọng đọc'); report()
     total, provider, sync = cine.render(sb, out, inp.get('pace', 'normal'), log=log, seconds=0 if inp.get('mode') == 'script' else int(inp.get('seconds') or 0))
     state.update(progress=96, message='Lưu video'); report()
@@ -148,13 +151,15 @@ def run_cine(job, inp, out, state, report, log, t0):
             if os.path.exists(os.path.join(out, f)): shutil.copy(os.path.join(out, f), os.path.join(dst, f.replace('/', '_')))
     put(jid, lease, out, 'cover.jpg'); put(jid, lease, out, 'video.mp4', timeout=600)
     if os.path.exists(thumb): put(jid, lease, out, 'thumb.jpg')
+    for extra in ('script.txt', 'subs.ass'):   # the clean voice-over script and the karaoke subtitles
+        if os.path.exists(os.path.join(out, extra)): put(jid, lease, out, extra)
     call(f'jobs/{jid}/done', {'duration': round(total, 1), 'seconds': round(time.time() - t0), 'voice': provider, 'voiceError': ' | '.join(V.errors), 'ai': sb.get('ai') or [], 'sync': sync, 'footage': sb.get('footage') or []}, lease=lease)
     print(f'Xong {jid} (điện ảnh): {total:.1f} giây video trong {time.time() - t0:.0f} giây', flush=True)
     return True
 
 
 def put(jid, lease, out, name, timeout=120):
-    types = {'mp4': 'video/mp4', 'jpg': 'image/jpeg', 'png': 'image/png', 'json': 'application/json', 'aac': 'audio/aac'}
+    types = {'mp4': 'video/mp4', 'jpg': 'image/jpeg', 'png': 'image/png', 'json': 'application/json', 'aac': 'audio/aac', 'txt': 'text/plain; charset=utf-8', 'ass': 'text/plain; charset=utf-8'}
     with open(os.path.join(out, name), 'rb') as f:
         call(f'jobs/{jid}/file/{name}', method='PUT', body=f.read(), ctype=types[name.rsplit('.', 1)[1]], lease=lease, timeout=timeout)
 

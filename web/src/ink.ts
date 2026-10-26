@@ -21,7 +21,9 @@ type Rc = { userId: string | null; quiet: boolean; log(type: string, extra?: any
 
 export const PACES = ['slow', 'normal', 'fast', 'faster'] as const;
 export const MOODS = ['auto', 'motivating', 'calm', 'upbeat', 'emotional', 'none'] as const;
-const FILES: Record<string, string> = { 'video.mp4': 'video/mp4', 'cover.jpg': 'image/jpeg', 'overview.png': 'image/png', 'thumb.jpg': 'image/jpeg', 'draw.json': 'application/json', 'audio.aac': 'audio/aac' };
+const FILES: Record<string, string> = { 'video.mp4': 'video/mp4', 'cover.jpg': 'image/jpeg', 'overview.png': 'image/png', 'thumb.jpg': 'image/jpeg', 'draw.json': 'application/json', 'audio.aac': 'audio/aac',
+  // 'Đòn Bẩy Tư Duy' also gives the clean voice-over script and karaoke subtitles to re-time after recording a voice
+  'script.txt': 'text/plain; charset=utf-8', 'subs.ass': 'text/plain; charset=utf-8' };
 const STALE_MS = 5 * 60_000; // no heartbeat for this long: the machine is gone, the job goes back in the queue
 const MAX_ACTIVE = 2;
 
@@ -280,7 +282,10 @@ async function enqueue(env: XEnv, rc: Rc, user: User, input: any, stage: 'plan' 
 export async function createInk(env: XEnv, rc: Rc, user: User, b: any, extra: Record<string, unknown> = {}) {
   const { s } = await settings(env), { plan } = await planOf(env, user.id);
   if (!s.enabled && !(await isAdmin(env, env.config, user))) throw new HttpError(404, 'Ink Studio đang tạm tắt.');
-  const mode = b.mode === 'script' ? 'script' : 'topic', text = mode === 'script' ? str(String(b.script || '').replace(/\r/g, ''), 12_000) : str(b.topic, 500);
+  const mode = b.mode === 'script' ? 'script' : 'topic', source = /^https?:\/\/\S{6,}$/.test(String(b.source || '').trim()) ? String(b.source).trim().slice(0, 500) : '';
+  // a link to an article is optional: with it, a topic may be left short (the article is the story)
+  let text = mode === 'script' ? str(String(b.script || '').replace(/\r/g, ''), 12_000) : str(b.topic, 500);
+  if (mode === 'topic' && text.length < 4 && source && b.format === 'money') text = 'Theo bài báo: ' + source;
   if (text.length < (mode === 'script' ? 40 : 4)) throw new HttpError(400, mode === 'script' ? 'Kịch bản quá ngắn.' : 'Hãy nhập chủ đề video.');
   const format = b.format === 'cine' || b.format === 'money' ? b.format : 'ink';
   // 'Đòn Bẩy Tư Duy' runs about two minutes unless asked otherwise
@@ -296,7 +301,7 @@ export async function createInk(env: XEnv, rc: Rc, user: User, b: any, extra: Re
     musicVolume: num(b.musicVolume, 0, 0.6, s.defaults.musicVolume), captions: b.captions !== false, review: typeof b.review === 'boolean' ? b.review : s.defaults.review,
     // drawn on the user's own device: a machine writes the script, voice and drawing plan, the browser draws
     // 'cine': real footage (HBX engine, render machines only); 'money': 'Đòn Bẩy Tư Duy' (researched on the web, same engine); 'ink': hand-drawn
-    format,
+    format, ...(format === 'money' ? { aspect: b.aspect === '16:9' ? '16:9' : '9:16', ...(source ? { source } : {}) } : {}),
     browser: b.browser === true && s.machines.on.browser && format === 'ink', ...extra };
   if (typeof b.series === 'string' && b.series) {  // a series films with the cinematic engine and its own new 3D prop
     const sr = await env.DB.prepare('SELECT * FROM ink_series WHERE id = ? AND user_id = ?').bind(b.series, user.id).first<any>();
@@ -375,7 +380,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
     return json({ jobs: rows.map(view) });
   }
   if (sub === 'jobs' && method === 'POST') return json({ id: await createInk(env, rc, user, await body<any>(req, 40_000)) });
-  const m = sub.match(/^jobs\/([a-f0-9]{24})(?:\/(file\/[\w.]+|approve|repace|retry|storyboard|handoff|browser\/video|browser\/done|browser\/progress|browser\/error|browser\/ai|browser\/voice|browser\/plan|browser\/music|browser\/file\/(?:cover|thumb)\.jpg))?$/);
+  const m = sub.match(/^jobs\/([a-f0-9]{24})(?:\/(file\/[\w.]+|approve|repace|retry|storyboard|handoff|myvoice|browser\/video|browser\/done|browser\/progress|browser\/error|browser\/ai|browser\/voice|browser\/plan|browser\/music|browser\/file\/(?:cover|thumb)\.jpg))?$/);
   if (!m) throw new HttpError(404, 'Không tìm thấy.');
   const j = await own(env, user, m[1]), act = m[2] || '';
   if (!act && method === 'GET') {
@@ -399,7 +404,8 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
   if (act === 'storyboard' && method === 'GET') {
     const sb = j.storyboard ? JSON.parse(j.storyboard) : null;
     if (new URL(req.url).searchParams.get('full') === '1') return json({ storyboard: sb });
-    return json({ storyboard: sb && { title: sb.title, cover: sb.cover, caption: sb.caption, hashtags: sb.hashtags, scenes: sb.scenes.map((x: any) => ({ say: x.say, layout: x.visual?.layout })), table: sb.script_table, metaphor: sb.series_meta?.metaphor } });
+    return json({ storyboard: sb && { title: sb.title, cover: sb.cover, caption: sb.caption, hashtags: sb.hashtags, scenes: sb.scenes.map((x: any) => ({ say: x.say, layout: x.visual?.layout })), table: sb.script_table, metaphor: sb.series_meta?.metaphor,
+      proposal: sb.proposal, script: sb.script, question: sb.question, voyage: !!sb.voyage } });
   }
   if (act.startsWith('file/') && method === 'GET') {
     const name = act.slice(5);
@@ -411,6 +417,17 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
   if (act === 'approve' && method === 'POST') {
     if (j.status !== 'review' || !(await approveInk(env, rc, j.id))) throw new HttpError(409, 'Phân cảnh này không chờ duyệt.');
     return json({ ok: true });
+  }
+  if (act === 'myvoice' && method === 'POST') {
+    // the person recorded the voice-over themselves: the same storyboard is made again, timed to their voice
+    if (!j.storyboard) throw new HttpError(409, 'Video này chưa có phân cảnh.');
+    const bytes = await readBytes(req, 30_000_000), type = req.headers.get('content-type') || '';
+    const ext = /mpeg|mp3/.test(type) ? 'mp3' : /mp4|m4a|aac/.test(type) ? 'm4a' : /wav/.test(type) ? 'wav' : /ogg|opus/.test(type) ? 'ogg' : '';
+    if (!ext || bytes.length < 20_000) throw new HttpError(400, 'Chỉ nhận tệp giọng đọc MP3, M4A, WAV hoặc OGG (tối đa 30 MB).');
+    const file = `${randomId(12)}.${ext}`;
+    await env.BUCKET.put(`ink-voice/${user.id}/${file}`, bytes, { httpMetadata: { contentType: type } });
+    const input = { ...JSON.parse(j.input), myvoice: file, myvoiceExt: ext };
+    return json({ id: await enqueue(env, rc, user, input, 'render', JSON.parse(j.storyboard), j.id, j.title) });
   }
   if (act === 'repace' && method === 'POST') {
     // same storyboard, another pace: the voice is read again and the hand redraws, no AI call
@@ -573,7 +590,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
         ...(voice.provider === 'microsoft' ? { INK_MS_VOICE: voice.code } : { EVERAI_VOICE_CODE: voice.code }),
       } } } });
   }
-  const m = sub.match(/^jobs\/([a-f0-9]{24})\/(progress|planned|exported|done|fail|music|file\/[\w.]+)$/);
+  const m = sub.match(/^jobs\/([a-f0-9]{24})\/(progress|planned|exported|done|fail|music|myvoice|file\/[\w.]+)$/);
   if (!m) throw new HttpError(404, 'Không tìm thấy.');
   const lease = req.headers.get('x-nv-lease') || '';
   const j = await env.DB.prepare('SELECT * FROM ink_jobs WHERE id = ?').bind(m[1]).first<any>();
@@ -587,6 +604,11 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     await env.DB.prepare('UPDATE ink_jobs SET progress = ?, message = ?, heartbeat = ?, updated_at = ? WHERE id = ? AND lease = ?')
       .bind(Math.round(num(b.progress, 0, 99, j.progress)), str(b.message, 160), now, now, j.id, lease).run();
     return json({ ok: true });
+  }
+  if (act === 'myvoice' && req.method === 'GET') {
+    const obj = input.myvoice ? await env.BUCKET.get(`ink-voice/${j.user_id}/${input.myvoice}`) : null;
+    if (!obj) throw new HttpError(404, 'Không có giọng đọc.');
+    return new Response(obj.body);
   }
   if (act === 'music' && req.method === 'GET') {
     const obj = input.music ? await env.BUCKET.get(`ink-music/${j.user_id}/${input.music}`) : null;

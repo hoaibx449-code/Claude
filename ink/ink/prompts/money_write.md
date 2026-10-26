@@ -7,6 +7,10 @@ Khung kịch bản cho video này: {frame}
 Tổng độ dài: {seconds} giây, khoảng {words} chữ (sai lệch không quá 10%).
 {feedback}
 
+MẠCH CẢM XÚC (video được dựng thành một hành trình 3D, mỗi bước là một không gian):
+nỗi đau hoặc khó khăn cụ thể → bước ngoặt bất ngờ → khoảnh khắc bứt phá → thông điệp chốt. Câu đầu (3 giây) là hook gây tò mò hoặc chạm nỗi đau bằng một sự thật/hình ảnh cụ thể, không chào hỏi. Một thông điệp duy nhất, ngôn ngữ đời thường, câu ngắn có nhịp. Có câu chốt đáng trích dẫn (dưới 12 từ) đặt gần cuối, rồi câu cuối là câu hỏi mở mời bình luận.
+Nếu tư liệu có "facts" từ bài báo: câu chuyện đứng trên các sự thật đó, dùng đúng số liệu, không đoán điều nằm trong "not_said".
+
 Viết như người thật, không như máy (BẮT BUỘC):
 - MỘT nhân vật xuyên suốt: người đi làm Việt Nam có tên, tuổi, nghề, con số cụ thể (ví dụ "Minh, 29 tuổi, kế toán, lương mười tám triệu"). Mở video bằng một khoảnh khắc của nhân vật này trong 3 giây đầu (một hành động nhìn thấy được, không phải câu hỏi chung chung), quay lại nhân vật ở giữa và ở cuối.
 - Mỗi nghiên cứu nói đủ "ai – làm gì – kết quả ra sao" bằng lời đời thường, trong 1–2 câu (ví dụ "Năm một nghìn chín trăm bảy mươi tám, các nhà tâm lý hỏi chuyện những người vừa trúng số. Một năm sau, họ không vui hơn người bình thường."). Không đọc trơ trọi một con số hay một năm.
@@ -49,5 +53,5 @@ Câu hỏi mời bình luận?
 - "mood": cảm xúc chủ đạo của video, một trong: tiet_kiem_hy_vong, no_canh_giac, su_nghiep, tram_tinh, tinh_thuc.
 
 JSON:
-{{"title": "câu hỏi/tiêu đề ≤ 70 ký tự, có tên khái niệm", "core_message": "...", "hook": "...", "caption": "...", "hashtags": ["..."], "mood": "...",
+{{"title": "dòng tiêu đề đăng tải ≤ 70 ký tự", "core_message": "...", "message": "thông điệp duy nhất, 1 câu đời thường", "closing": "câu chốt dưới 12 từ, NGUYÊN VĂN một câu có trong lời đọc", "question": "câu hỏi bình luận, NGUYÊN VĂN câu cuối của lời đọc", "hook": "...", "caption": "...", "hashtags": ["..."], "mood": "...",
  "lines": [{{"say": "...", "emphasis": ["1-3 từ khoá lấy nguyên văn trong câu"], "part": "hook|setup|point|turn|close", "chapter": ""}}]}}

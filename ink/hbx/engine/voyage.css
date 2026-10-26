@@ -1,0 +1,33 @@
+/* Hành trình 3D (v_scene): canvas WebGL + chữ bật nảy, tiêu đề mở đầu, câu chốt, thẻ nguồn */
+.vy{position:absolute;inset:0;overflow:hidden}
+.vc{position:absolute;inset:0;width:100%;height:100%;display:block}
+.vyvig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(120% 90% at 50% 45%,transparent 55%,rgba(0,0,0,.5) 100%)}
+.vytitle{position:absolute;left:44px;right:44px;top:210px;text-align:center;z-index:6}
+.vytitle>div{display:inline-block;margin:6px 0;padding:6px 20px 10px;font:800 66px/1.08 var(--c-font,var(--font-h)),sans-serif;color:#fff;text-shadow:0 6px 28px rgba(0,0,0,.55)}
+.vytitle>div:nth-child(2){background:var(--c-acc,#f5c04a);color:var(--c-acc-ink,#14120c);text-shadow:none;border-radius:10px}
+.vypop{position:absolute;left:50%;top:330px;translate:-50% 0;z-index:6;white-space:nowrap;padding:10px 26px 14px;border-radius:16px;
+  font:900 74px/1 var(--c-font,var(--font-h)),sans-serif;color:#fff;text-shadow:0 8px 30px rgba(0,0,0,.55)}
+.vypop.vy-num{font-size:120px;letter-spacing:-2px}
+.vypop.vy-num.hl-on{background:var(--c-acc,#f5c04a);color:var(--c-acc-ink,#14120c);text-shadow:none}
+.vypop.vy-term{background:rgba(255,250,240,.95);color:#14222a;box-shadow:inset 0 0 0 4px var(--c-acc,#f5c04a),0 16px 40px rgba(0,0,0,.35);font-size:56px;letter-spacing:2px;text-transform:uppercase}
+.vyclose{position:absolute;left:50px;right:50px;top:300px;text-align:center;z-index:6}
+.vyclose>div{font:800 70px/1.12 var(--c-font,var(--font-h)),sans-serif;color:#fff;text-shadow:0 8px 34px rgba(0,0,0,.5)}
+.vyclose mark,.vyclose em,.vytitle mark,.vytitle em{background:none;font-style:normal;color:var(--c-acc,#f5c04a)}
+.vysrc{position:absolute;left:50%;bottom:120px;translate:-50% 0;z-index:6;padding:8px 18px;border-radius:999px;background:rgba(10,12,18,.62);color:#fff;font:600 22px/1.2 var(--c-body,var(--font-b)),sans-serif;white-space:nowrap}
+/* khung ngang 16:9 */
+body[data-ar=wide] .vytitle{top:120px}
+body[data-ar=wide] .vytitle>div{font-size:58px}
+body[data-ar=wide] .vypop{top:150px}
+body[data-ar=wide] .vypop.vy-num{font-size:104px}
+body[data-ar=wide] .vyclose{top:170px;left:160px;right:160px}
+body[data-ar=wide] .vyclose>div{font-size:60px}
+body[data-ar=wide] .vysrc{bottom:40px}
+html:has(body[data-ar=wide]),body[data-ar=wide]{width:1280px!important;height:720px!important}
+body[data-ar=wide] #stage,body[data-ar=wide] .scene{width:1280px;height:720px}
+body[data-ar=wide] #sub,body[data-ar=wide][data-theme=cine][data-sub=fine] #sub{top:600px;left:200px;right:200px}
+body[data-ar=wide] #prog{top:690px;left:200px;right:200px}
+body[data-ar=wide] .pill{top:26px;left:30px}
+/* phụ đề karaoke của hành trình: chữ thường, to, rõ trên mọi nền; từng từ chuyển vàng theo nhịp đọc */
+body[data-voyage][data-theme=cine][data-sub=fine] #sub{top:1040px;font-weight:800;font-size:40px;letter-spacing:0;text-transform:none;column-gap:.32em}
+body[data-voyage][data-theme=cine][data-sub=fine] #sub span{text-shadow:0 2px 3px rgba(0,0,0,.85),0 0 18px rgba(0,0,0,.55)!important}
+body[data-voyage][data-ar=wide][data-theme=cine][data-sub=fine] #sub{top:610px;font-size:38px}

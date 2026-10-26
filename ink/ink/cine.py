@@ -545,6 +545,8 @@ def plan(inp, log=print):
         spec, code = SR.prepare(ser, topic, sc.get('core_message') or strategy.get('core_message', ''), lines, log)
         series = series.replace('SERIES "ĐÒN BẨY TƯ DUY"', f'SERIES "{ser.get("name") or "của bạn"}"')
         if code: series += SR.guide(spec); extra = (spec['prop'],)
+    if inp.get('format') == 'money':   # 'Đòn Bẩy Tư Duy' is told as a 3D journey (voyage.py), no footage
+        return _voyage(inp, sc, lines, topic, wps, fp, spec if code else None, code, ser, log)
     for round_ in range(3):
         log('Đạo diễn phân cảnh…' if not round_ else f'Đạo diễn làm lại theo góp ý (lần {round_})…')
         o = ai.ask(S.system(), S.prompt('cine_direct', topic=topic, genre=strategy.get('genre') or 'chưa rõ', core=sc.get('core_message') or strategy.get('core_message', ''),
@@ -601,6 +603,32 @@ def plan(inp, log=print):
     return out
 
 
+def _voyage(inp, sc, lines, topic, wps, fp, spec, code, ser, log):
+    """the plan of a 3D journey video: spaces, light, words that pop, title, closing line, source, proposal"""
+    from . import voyage as V, money
+    log('Đạo diễn hành trình 3D…')
+    o = V.plan(sc, lines, topic, log)
+    m = sc.get('money') or {}
+    scenes = V.scenes(o, lines, wps, sc.get('closing', ''), money.source_line(m.get('facts') or {}, m.get('sources') or []), spec['prop'] if spec else None)
+    ar = '16:9' if inp.get('aspect') == '16:9' else '9:16'
+    style = {**fp['style'], 'subColor': '#ffd23f', 'accent': '#ffd23f', 'accentInk': '#14120c', 'scheme': 'dark'}   # one warm gold across the journey
+    sb = {'theme': 'cine', 'ar': ar, 'brand': S.clip(inp.get('brand') or '', 40), 'style': style, 'cover': {'hook': S.clip(sc.get('hook') or lines[0], 80)},
+          'pace': 'normal', 'subWords': 6, 'subStyle': 'fine'}
+    if spec and code: sb['props'] = {spec['prop']: code}
+    hb = {'id': 'INK', 'title': S.clip(sc.get('title') or lines[0], 100), 'theme': 'finance', 'mood': 'epic', 'climax': V.climax_share(scenes, wps), 'storyboard': sb}
+    log(f'Phân cảnh hành trình: {len(scenes)} câu trong {len(o["spaces"])} không gian, {say_words(scenes)} chữ')
+    out = {'format': 'cine', 'title': hb['title'], 'caption': sc.get('caption', ''), 'hashtags': sc.get('hashtags') or [], 'scenes': scenes, 'plan': hb,
+           'fingerprint': fp['seed'], 'judge': {}, 'ai': [f'{p}/{mm}' for p, mm in ai.used], 'voyage': True}
+    out = money.finish(out, sc, inp)
+    st = out['plan']['storyboard']; st['style'] = {**st.get('style', {}), 'subColor': '#ffd23f', 'accent': '#ffd23f', 'accentInk': '#14120c'}; st.pop('world', None)
+    out['proposal'] = V.proposal(o, scenes, sc, m.get('facts') or {}, wps)
+    out['question'] = sc.get('question', ''); out['script'] = V.script_text(scenes)
+    if ser:
+        from . import series as SR
+        out = SR.finish(out, spec, code, ser); out['plan']['storyboard'].pop('world', None)
+    return out
+
+
 def _plan_file(job_sb, work):
     p = json.loads(json.dumps(job_sb['plan'])); p['storyboard']['scenes'] = job_sb['scenes']
     p['narration'] = ' '.join(s['say'].strip() for s in job_sb['scenes'])
@@ -613,7 +641,7 @@ def _env(job_sb=None):
     if job_sb and job_sb.get('fingerprint'): env['HBX_SEED'] = str(job_sb['fingerprint'])  # this video's own picks among good footage
     if job_sb and job_sb.get('series') in ('money', 'series'): env['HBX_MODERN'] = '1'   # one modern city world: costume/heritage pictures go last
     env['PIXABAY_KEY'] = env.get('PIXABAY_API_KEY') or env.get('PIXABAY_KEY', '')  # from the site's admin page
-    if not env['PIXABAY_KEY']: raise RuntimeError('Máy dựng chưa có khoá Pixabay (Quản trị → API & token → Pixabay).')
+    if not env['PIXABAY_KEY'] and not (job_sb or {}).get('voyage'): raise RuntimeError('Máy dựng chưa có khoá Pixabay (Quản trị → API & token → Pixabay).')
     return env
 
 
@@ -642,7 +670,7 @@ def preview(job_sb, out, log=print):
     try:  # a 3D prop that broke in the engine shows as the lone figure: say so in the log
         for e in json.load(open(os.path.join(work, 'w', 'pv', 'errors.json')))[:5]: log(f'   lỗi cảnh 3D: {e.get("prop", "")} {e.get("step")}: {str(e.get("error"))[:160]}')
     except (OSError, ValueError): pass
-    if job_sb.get('series') in ('money', 'series') and _judge_preview(job_sb, os.path.join(work, 'w', 'preview.jpg'), log): run()
+    if job_sb.get('series') in ('money', 'series') and not job_sb.get('voyage') and _judge_preview(job_sb, os.path.join(work, 'w', 'preview.jpg'), log): run()
     from PIL import Image
     Image.open(os.path.join(work, 'w', 'preview.jpg')).save(os.path.join(out, 'overview.png'))
     shutil.copy(os.path.join(work, 'w', 'cover_preview.jpg'), os.path.join(out, 'cover.jpg'))
@@ -751,8 +779,13 @@ def render(job_sb, out, pace='normal', log=print, seconds=0):
     work = os.path.join(out, 'cine'); os.makedirs(work, exist_ok=True); env = _env(job_sb)
     lines = [s['say'] for s in job_sb['scenes']]
     os.environ['INK_VOICE_RATE'] = pace_rate(pace)
-    log('Giọng đọc (một mạch, có mốc từng chữ)…')
-    voice, timing, words, provider = narrate(lines, os.path.join(work, 'voice'), log=log)
+    mine = job_sb.get('myvoice')   # the person's own recording (uploaded later): no voice service, no length fitting
+    if mine and os.path.exists(mine):
+        from .voice import own
+        log('Giọng đọc của bạn…'); voice, timing, words, provider = own(lines, mine, os.path.join(work, 'voice'), log=log); seconds = 0
+    else:
+        log('Giọng đọc (một mạch, có mốc từng chữ)…')
+        voice, timing, words, provider = narrate(lines, os.path.join(work, 'voice'), log=log)
     # the video lasts the time the person chose: first the reading speed is nudged (Microsoft freely, EverAI only
     # a little: its speed comes in steps of 0.1 and sounds rushed or dragged beyond ±12%), then, if the words are
     # still too few for the time, every scene's line is lengthened and read again
@@ -768,7 +801,16 @@ def render(job_sb, out, pace='normal', log=print, seconds=0):
         lines = [s['say'] for s in job_sb['scenes']]
         voice, timing, words, provider = narrate(lines, os.path.join(work, 'voice'), log=log)
         log(f'  sau khi viết thêm: giọng dài {timing[-1][2]:.0f}/{seconds} giây')
+    gaps = {k: float(x.get('pause') or 0) for k, x in enumerate(job_sb['scenes']) if x.get('pause')}
+    if gaps and not mine:
+        from .voice import pauses
+        voice, words, spans = pauses(voice, words, lines, gaps, log)
+        if spans: timing = spans
     srt = os.path.join(work, 'voice.srt'); _srt(words, srt)
+    if job_sb.get('voyage'):   # what the person takes away besides the video: the clean script and karaoke subtitles
+        from . import voyage as V
+        open(os.path.join(out, 'script.txt'), 'w', encoding='utf-8').write(V.script_text(job_sb['scenes']))
+        open(os.path.join(out, 'subs.ass'), 'w', encoding='utf-8').write(V.ass(words, job_sb['plan']['storyboard'].get('ar') == '16:9'))
     st = job_sb['plan']['storyboard'].get('sticker')
     if isinstance(st, dict) and isinstance(st.get('line'), int) and 0 <= st['line'] < len(timing):
         t0 = max(0.5, timing[st['line']][1] - 4.0); job_sb['plan']['storyboard']['sticker'] = {'text': st['text'], 't0': round(t0, 2), 't1': round(t0 + 3.2, 2)}
