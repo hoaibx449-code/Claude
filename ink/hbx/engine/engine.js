@@ -316,7 +316,15 @@
     if (sb.mood) document.body.dataset.mood = sb.mood; else delete document.body.dataset.mood;
     let acc = 0;
     sb.scenes.forEach((s, i) => {
-      const def = S[s.type](s, { i, n: sb.scenes.length, start: acc, sb });
+      // one scene with bad data never stops the whole video: it falls back to its photo (or a plain line of text)
+      let def;
+      try { def = (S[s.type] || (() => { throw new Error('không có kiểu cảnh ' + s.type); }))(s, { i, n: sb.scenes.length, start: acc, sb }); }
+      catch (e) {
+        (window.HBX_ERRORS = window.HBX_ERRORS || []).push({ prop: s.type, step: 'scene ' + (i + 1), error: String(e && e.message || e) });
+        const img = s.bg || s.image;
+        try { def = img && S.shot ? S.shot(Object.assign({}, s, { type: 'shot', bg: img }), { i, n: sb.scenes.length, start: acc, sb }) : null; } catch (_) { def = null; }
+        def = def || { cam: 'still', html: `<div class="title" data-in=".15" data-a="up" style="position:absolute;left:60px;right:60px;top:520px;text-align:center">${esc(s.text || s.title || s.caption || '')}</div>` };
+      }
       const el = document.createElement('section');
       el.className = 'scene'; el.dataset.tone = s.tone || 'a';
       el.innerHTML = `<div class="cam">${deco(i + (sb.seed || 1))}${sb.brand ? `<div class="pill"><i></i>${esc(sb.brand)}</div>` : ''}${def.html}</div>`;
