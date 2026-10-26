@@ -130,11 +130,13 @@ def preview(sb,out,log=print):
     write(work/'timeline.json',{'duration':t,'shots':shots})
     times=[(s['start']+s['end'])/2 for s in shots[:12]]
     command(['node',ROOT/'engine'/'render_scene.js','--dir',work,'--still',','.join(map(str,times))],log)
+    # JavaScript writes integral times as '1', Python formats the same float as '1.0'.
+    stills={float(p.stem.removeprefix('still_')):p for p in work.glob('still_*.jpg')}
     grid=Image.new('RGB',(640*min(3,len(times)),360*math.ceil(len(times)/3)),'#20283e')
     for i,t in enumerate(times):
-        with Image.open(work/f'still_{t}.jpg') as im: grid.paste(ImageOps.fit(im,(640,360)),((i%3)*640,(i//3)*360))
+        with Image.open(stills[t]) as im: grid.paste(ImageOps.fit(im,(640,360)),((i%3)*640,(i//3)*360))
     grid.save(Path(out)/'overview.png')
-    with Image.open(work/f'still_{times[0]}.jpg') as im: im.save(Path(out)/'cover.jpg',quality=90)
+    with Image.open(stills[times[0]]) as im: im.save(Path(out)/'cover.jpg',quality=90)
     return sb
 
 
@@ -163,7 +165,7 @@ def render(sb,out,inp,log=print,music=None):
     if music: cmd+=['--music',music,'--music_db',20*math.log10(max(.001,float(inp.get('musicVolume',.2))))]
     command(cmd,log)
     command(['ffmpeg','-v','error','-xerror','-i',Path(out)/'video.mp4','-f','null','-'],log)
-    command(['ffmpeg','-y','-v','error','-ss','.5','-i',Path(out)/'video.mp4','-frames:v','1',Path(out)/'cover.jpg'],log)
+    command(['ffmpeg','-y','-v','error','-ss','0.5','-i',Path(out)/'video.mp4','-frames:v','1',Path(out)/'cover.jpg'],log)
     from .render import srt
     srt(words,sb['scenes'],str(Path(out)/'captions.srt'))
     (Path(out)/'script.txt').write_text('\n'.join(lines),encoding='utf-8')

@@ -37,7 +37,9 @@ jobs:
           python -m playwright install --with-deps chromium
           cd ink/hbx && npm ci --no-audit --no-fund
       - name: Cài bộ dựng Shorts 3D
-        run: npm ci --prefix shorts/renderer/engine --no-audit --no-fund
+        run: |
+          npm ci --prefix shorts/renderer/engine --no-audit --no-fund
+          cd shorts/renderer/engine && npx playwright install chromium
       - name: Dùng lại giọng đã đọc
         uses: actions/cache@v4
         with:
