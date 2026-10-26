@@ -33,7 +33,8 @@ FAMILY = {'shot': 'footage', 'callouts': 'footage', 'compare': 'compare', 'warni
 FOOTAGE = {'shot', 'callouts', 'compare', 'warning', 'c_photo'}
 # the 3D metaphor world (hbx/engine/meta3d.js, three.js): only for the 'Đòn Bẩy Tư Duy' series, where it carries about half the video
 FAMILY['m_scene'] = 'metaphor'
-M_PROPS = {'leaky', 'stairs2', 'treadmill', 'meter', 'dominoes', 'cluster', 'split', 'jar', 'stage'}
+# the treadmill and the dominoes are clichés: kept in the engine for old storyboards, never chosen again
+M_PROPS = {'leaky', 'stairs2', 'meter', 'cluster', 'split', 'jar', 'stage'}
 M_CAMS = {'orbit', 'push', 'pull', 'rise', 'low', 'top', 'side'}
 M_POSES = {'idle', 'think', 'point', 'cheer', 'slump', 'walk', 'run'}
 # on a baked 2.5D shot the camera already moves through the picture: only light hand-held tricks may stack on it
@@ -220,13 +221,25 @@ M_TYPES = {'shot', 'm_scene', 'big_number', 'question'}
 M_TEXT = ('title', 'items', 'pins', 'quote', 'label', 'note', 'kicker', 'caption', 'value', 'decimals', 'prefix', 'suffix')
 M_OVER = {'arrow', 'circle', 'underline', 'spotlight', 'bracket'}          # pointing at the picture, never words on it
 M_EFF = {'grain', 'vignette', 'warm', 'cool', 'dim'}                       # one consistent grade, no collage of looks
-POSED = re.compile(r'\b(portrait|model|posing|pose|smiling|smile|beautiful|pretty|attractive|fashion|woman in|girl in|selfie|headshot|studio)\b', re.I)
+POSED = re.compile(r'\b(portrait|model|posing|pose|smiling|smile|beautiful|pretty|attractive|fashion|woman in|girl in|selfie|headshot|studio|face|faces|close up face|elderly|old man|old woman)\b', re.I)
 
 
 def _m_query(q, fallback):
     """a footage search that finds a moment (hands, objects, a place, an action), not a model posing for the camera"""
     q = ' '.join(POSED.sub(' ', str(q or '')).split())
     return q if len(q.split()) >= 2 else fallback
+
+
+def _number(v):
+    """a count-up value: 30, 2.5, "30%", "1.200" → number; None when it is not one"""
+    if isinstance(v, bool): return None
+    if isinstance(v, (int, float)): return v
+    m = re.fullmatch(r'\s*[^\d-]*(-?\d{1,3}(?:[.,]\d{3})+|-?\d+(?:[.,]\d+)?)\s*\D*\s*', str(v or ''))
+    if not m: return None
+    t = m.group(1)
+    if re.fullmatch(r'-?\d{1,3}(?:[.,]\d{3})+', t): return int(re.sub(r'[.,]', '', t))
+    f = float(t.replace(',', '.'))
+    return int(f) if f.is_integer() else f
 
 
 def series_rules(scenes, fp):
@@ -255,7 +268,10 @@ def series_rules(scenes, fp):
             if big > 3: s.pop('tag', None); s.pop('num', None)
         elif t == 'big_number':
             big += 1
-            if big > 3:
+            v = _number(s.get('value'))
+            if v is not None: s['value'] = v
+            # no number to count up (missing, words, a year) left an empty black frame: real footage instead
+            if big > 3 or v is None or (isinstance(v, int) and 1800 <= v <= 2100 and not s.get('suffix') and not s.get('prefix')):
                 s.clear(); s.update({'type': 'shot', 'say': s.get('say', ''), 'sub': s.get('sub', ''), 'bg': _img({'q': prev_q + ' detail'}), 'cam': 'push'})
         s.pop('loop', None)
         f = s.get('fx') or {}
@@ -272,6 +288,11 @@ def _m_scene(s, say, extra=()):
     if s.get('prop') not in M_PROPS and s.get('prop') not in extra: s['prop'] = 'stage'
     if not isinstance(s.get('o'), dict): s['o'] = {}
     if s['prop'] == 'stage' and s['o'].get('pose') not in M_POSES: s['o']['pose'] = 'think'
+    for k in ('in', 'out', 'core', 'baseLabel', 'offLabel', 'save', 'spend'):
+        v = s['o'].get(k)
+        if isinstance(v, dict): v = v.get('text') or v.get('label') or v.get('vi') or ''
+        if k in s['o']: s['o'][k] = ' '.join(str(v if not isinstance(v, (list, dict)) else '').split())[:24]
+        if s['o'].get(k) == '': s['o'].pop(k)
     cams = [c for c in (s.get('cams') if isinstance(s.get('cams'), list) else [s['cam']] if isinstance(s.get('cam'), dict) else []) if isinstance(c, dict) and c.get('kind') in M_CAMS][:4]
     s.pop('cam', None)
     s['cams'] = cams or [{'kind': 'orbit'}]
@@ -304,6 +325,10 @@ def build(o, lines, fp, clips, meta=False, extra=()):
         s = got.get(k) or {'type': 'shot', 'bg': {'q': (scenes[-1].get('bg') or {}).get('q', 'city aerial') if scenes else 'sunrise sky'}}
         s['say'] = say; s.pop('line', None); s['sub'] = _clean_sub(s.get('sub'), say)
         t = s['type']
+        if t == 'big_number':   # a number to count up, or real footage (an empty number left a black frame)
+            v = _number(s.get('value'))
+            if v is None: s = {'type': 'shot', 'say': say, 'sub': s['sub'], 'bg': {'q': s.get('alt') or ((scenes[-1].get('bg') or {}).get('q', 'city street') if scenes else 'city street morning')}}; t = 'shot'
+            else: s['value'] = v
         if t == 'm_scene': s = _m_scene(s, say, extra)
         for key in ('bg', 'image'):
             if key in s: s[key] = _img(s[key])
@@ -453,9 +478,9 @@ def _brief(scenes):
 
 M_GUIDE = """SERIES "ĐÒN BẨY TƯ DUY" — chỉ dùng 4 kiểu cảnh: `shot` (cảnh quay thật), `m_scene` (thế giới ẩn dụ 3D, KHOẢNG MỘT NỬA số câu: 45–55%), `big_number` (tối đa 1 lần, cho con số nghiên cứu đắt nhất), `question` (câu hỏi kết). KHÔNG dùng thẻ, biểu đồ, sơ đồ, compare, infographic.
 CHỮ TRÊN HÌNH: phụ đề đã có sẵn, nên `shot` KHÔNG đặt title/items/pins/quote/label. Chữ lớn chỉ 2–3 lần cả video: thẻ tên khái niệm (`tag`), con số nghiên cứu (`num`/big_number).
-CẢNH QUAY THẬT theo CẢM XÚC của câu, không theo nghĩa đen của từ: tìm KHOẢNH KHẮC có hành động (tay, đồ vật, nơi chốn, người đang làm việc gì đó, nhìn nghiêng/từ sau lưng), bối cảnh Việt Nam/châu Á khi hợp. CẤM người mẫu tạo dáng nhìn vào máy, chân dung, "smiling woman", "portrait", "model". Ví dụ tốt: "hand scrolling shopping app at night", "motorbike traffic saigon rain", "receipt pile on desk", "salary envelope counting cash hands". Cả video giữ MỘT tông màu (không đen trắng xen ảnh ấm).
+CẢNH QUAY THẬT theo CẢM XÚC của câu, không theo nghĩa đen của từ: tìm KHOẢNH KHẮC có hành động (tay, đồ vật, nơi chốn, người đang làm việc gì đó, nhìn nghiêng/từ sau lưng), bối cảnh Việt Nam/châu Á khi hợp. KHÔNG cảnh rõ mặt người (bản quyền hình ảnh): chỉ tay, đồ vật, nơi chốn, người nhìn từ sau lưng hoặc ở xa; CẤM người mẫu tạo dáng, chân dung, close up mặt, "smiling woman", "portrait", "model", "elderly man". Ví dụ tốt: "hand scrolling shopping app at night", "motorbike traffic saigon rain", "receipt pile on desk", "salary envelope counting cash hands". Cả video giữ MỘT tông màu (không đen trắng xen ảnh ấm).
 - `m_scene` {{prop, o {{…}}, cams [{{kind, cue?, a0?, a1?}}], tag {{en, vi, cue}}?, title [l1, l2]?, num {{value, from?, decimals?, suffix?, caption?, cue?}}?, label?}}: một VẬT ẨN DỤ đang chuyển động trên đảo nổi, có nhân vật không mặt. Chọn prop theo CƠ CHẾ của ý, không theo từ khoá:
-  leaky (xô thủng: tiền vào trên, rò ra đáy; o: in, out, rate) · stairs2 (2 cầu thang song song, vd thu nhập/chi tiêu; o: beats [{{cue}}], labels [a,b]) · treadmill (chạy mà không tiến; o: speeds [{{cue,k}}], screen [x1,x2], off {{cue}}, offLabel) · meter (vọt lên rồi tụt về cũ; o: rise {{cue}}, fall {{cue}}, baseLabel) · dominoes (một thứ kéo đổ cả chuỗi; o: items [{{text,cue}}]) · cluster (vật chính kéo theo vật phụ; o: core, items [{{text,cue}}]) · split (dòng tiền rẽ vào hũ tiết kiệm; o: save, spend, frac) · jar (hũ tích luỹ dâng dần; o: from, to 0..1, fill {{cue}}, marks [{{v,text}}]) · stage (nhân vật một mình; o: pose idle|think|point|cheer|slump|walk|run).
+  leaky (xô thủng: tiền vào trên, rò ra đáy; o: in, out, rate) · stairs2 (2 cầu thang song song, vd thu nhập/chi tiêu; o: beats [{{cue}}], labels [a,b]) · meter (vọt lên rồi tụt về cũ; o: rise {{cue}}, fall {{cue}}, baseLabel) · cluster (vật chính kéo theo vật phụ; o: core, items [{{text,cue}}]) · split (dòng tiền rẽ vào hũ tiết kiệm; o: save, spend, frac) · jar (hũ tích luỹ dâng dần; o: from, to 0..1, fill {{cue}}, marks [{{v,text}}]) · stage (nhân vật một mình; o: pose idle|think|point|cheer|slump|walk|run).
 - `cams`: cắt góc máy trong cảnh 2–4 giây một góc (orbit giới thiệu, push nhấn, pull mở rộng, rise, low kịch tính, top toàn cục, side); cảnh dài hơn 5 giây phải có ≥ 2 góc, góc sau có `cue`.
 - `tag`: thẻ thuật ngữ song ngữ, CHỈ khi câu đặt tên khái niệm (≤ 3 thẻ cả video). Số liệu nghiên cứu: `num` trên m_scene (prop jar/meter) hoặc big_number.
 - Không đặt 3 cảnh m_scene liền nhau; một prop dùng tối đa 3 lần với góc máy khác. Cảnh cuối: m_scene prop stage hoặc question với câu hỏi mời bình luận. Không hù doạ, không hình ảnh tiền bạc phô trương.
@@ -493,7 +518,6 @@ def plan(inp, log=print):
         spec, code = SR.prepare(ser, topic, sc.get('core_message') or strategy.get('core_message', ''), lines, log)
         series = series.replace('SERIES "ĐÒN BẨY TƯ DUY"', f'SERIES "{ser.get("name") or "của bạn"}"')
         if code: series += SR.guide(spec); extra = (spec['prop'],)
-        else: series += '\nSeries này KHÔNG dùng treadmill và dominoes (sáo mòn).\n'
     for round_ in range(3):
         log('Đạo diễn phân cảnh…' if not round_ else f'Đạo diễn làm lại theo góp ý (lần {round_})…')
         o = ai.ask(S.system(), S.prompt('cine_direct', topic=topic, genre=strategy.get('genre') or 'chưa rõ', core=sc.get('core_message') or strategy.get('core_message', ''),

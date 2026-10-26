@@ -37,6 +37,28 @@ import re as _re
 TEXTY = _re.compile(r'\b(text|word|words|letter|letters|font|typography|alphabet|sign|signage|poster|banner|label|diagram|chart|graph|infographic|'
                     r'illustration|vector|icon|logo|map|quote|message|newspaper|book page|document|screen|calendar|menu|sale|advertis\w*|render)\b', _re.I)
 def textless(hits): return [h for h in hits if not TEXTY.search(h.get('tags', ''))]
+# recognisable people (a face filling the frame) are a likeness/copyright risk: pictures tagged with people go last,
+# and every picture/clip is checked with a face detector after download (a big face = rejected, another one is picked)
+PEOPLE = _re.compile(r'\b(portrait|face|faces|woman|women|man|men|girl|girls|boy|boys|lady|guy|model|beauty|person|people|elderly|senior|child|children|kid|kids|'
+                     r'baby|teen|teenager|couple|family|selfie|smile|smiling|businessman|businesswoman|student|female|male)\b', _re.I)
+def faceless_first(hits): return sorted(hits, key=lambda h: bool(PEOPLE.search(h.get('tags', ''))))
+FACE_MAX = float(os.environ.get('HBX_FACE_MAX', '0.08'))   # widest face allowed, as a share of the visible 9:16 width
+_FD = []
+def face_big(path):
+    """width of the largest face as a share of the part of the picture a 9:16 frame shows (0 = none / no detector)"""
+    if _FD and _FD[0] is None: return 0
+    try:
+        import cv2
+        if not _FD: _FD.append(cv2.FaceDetectorYN.create(str(Path(__file__).parent / 'models' / 'face_yunet.onnx'), '', (320, 320), 0.7))
+        im = cv2.imread(str(path))
+        if im is None: return 0
+        h, w = im.shape[:2]; k = 640 / max(h, w); im = cv2.resize(im, (max(1, int(w * k)), max(1, int(h * k))))
+        _FD[0].setInputSize((im.shape[1], im.shape[0])); _, f = _FD[0].detect(im)
+        if f is None: return 0
+        seen = min(im.shape[1], im.shape[0] * 9 / 16)
+        return max(float(x[2]) for x in f) / seen
+    except Exception as e:  # noqa: BLE001 - no detector here: the tag rule above still applies
+        print('  (không dò được khuôn mặt:', str(e)[:80], ')'); _FD[:] = [None]; return 0
 def relevance(q):
     words = [w for w in _re.findall(r'[a-z]+', q.lower()) if len(w) > 2]
     return lambda h: sum(w.rstrip('s') in h.get('tags', '').lower() for w in words)
@@ -49,8 +71,9 @@ def search(q, vertical, used, lang='en'):
     hits = textless(hits)
     if not hits and vertical: return search(q, False, used, lang)
     sc = relevance(q); hits.sort(key=lambda h: -sc(h))   # on the subject first, then popularity (stable sort)
+    hits = faceless_first(hits)
     fresh = [h for h in hits if h['id'] not in used and h['id'] not in AVOID] or [h for h in hits if h['id'] not in used]
-    return pick(fresh) or (hits[0] if hits else None)
+    return pick(fresh) or None
 
 VMAX, VFPS = 12, 30
 
@@ -65,8 +88,8 @@ def vsearch(q, used):
         tags = h.get('tags', '').lower()
         return sum(w.rstrip('s') in tags for w in words)
     hits = [h for h in hits if score(h) >= max(1, (len(words) + 1) // 2)] or hits
-    hits.sort(key=lambda h: (-score(h), 0 if h['videos']['small']['height'] > h['videos']['small']['width'] else 1))
-    best = [h for h in hits if score(h) == score(hits[0])] if hits else []
+    hits.sort(key=lambda h: (bool(PEOPLE.search(h.get('tags', ''))), -score(h), 0 if h['videos']['small']['height'] > h['videos']['small']['width'] else 1))
+    best = [h for h in hits if score(h) == score(hits[0]) and bool(PEOPLE.search(h.get('tags', ''))) == bool(PEOPLE.search(hits[0].get('tags', '')))] if hits else []
     return pick(best, 4)
 
 def vget(img, h, assets):
@@ -119,9 +142,19 @@ def main(sbp):
         h = None
         if str(img.get('pid', '')).startswith('v'):
             h = (json.loads(get(f"https://pixabay.com/api/videos/?key={KEY}&id={img['pid'][1:]}")).get('hits') or [None])[0]
-        if not h and img.get('q'): h = vsearch(img['q'], used | {'v' + str(a).lstrip('v') for a in img.get('avoid', [])})
-        if not h: print('  ✗ không có video:', img.get('q'), '→ dùng ảnh'); img.pop('video', None); img.pop('pid', None); continue
-        used.add('v%d' % h['id']); vget(img, h, assets)
+        skip = set()
+        for _ in range(4):
+            if not h and img.get('q'): h = vsearch(img['q'], used | skip | {'v' + str(a).lstrip('v') for a in img.get('avoid', [])})
+            if not h: break
+            used.add('v%d' % h['id']); vget(img, h, assets)
+            d = sbp.parent / img['frames']['dir']; n = img['frames']['n']
+            big = max(face_big(d / f'f{i:04d}.jpg') for i in {1, max(1, n // 2), max(1, n - 1)})
+            if big <= FACE_MAX: break
+            print(f"  ✗ {img['pid']}: mặt người quá rõ ({big:.0%} khung), đổi cảnh khác")
+            skip.add(img['pid']); img.setdefault('avoid', []).append(img['pid'])
+            for k in ('src', 'frames', 'credit', 'page', 'pid'): img.pop(k, None)
+            h = None
+        if not img.get('frames'): print('  ✗ không có video:', img.get('q'), '→ dùng ảnh'); img.pop('video', None); img.pop('pid', None); continue
     for img, vert in slots:  # ảnh đã chọn ở Pha A (pid) → tải lại đúng ảnh đó
         if img.get('video'): continue
         if img.get('pid') and not (img.get('src') and (sbp.parent / img['src']).exists()):
@@ -133,11 +166,18 @@ def main(sbp):
                 print(f"  ↺ pid {h['id']} → {fn.name}")
     for img, vert in slots:
         if img.get('video') or (img.get('src') and (sbp.parent / img['src']).exists()) or not img.get('q'): continue
-        h = search(img['q'], vert, used | set(img.get('avoid', [])))
-        if not h: print('  ✗ không có ảnh:', img['q']); continue
-        used.add(h['id']); url = h['largeImageURL']
-        fn = assets / f"px_{h['id']}{Path(urllib.parse.urlparse(url).path).suffix or '.jpg'}"
-        if not fn.exists(): fn.write_bytes(get(url))
+        skip, fn = set(), None
+        for _ in range(5):
+            h = search(img['q'], vert, used | skip | set(img.get('avoid', [])))
+            if not h: break
+            used.add(h['id']); url = h['largeImageURL']
+            fn = assets / f"px_{h['id']}{Path(urllib.parse.urlparse(url).path).suffix or '.jpg'}"
+            if not fn.exists(): fn.write_bytes(get(url))
+            big = face_big(fn)
+            if big <= FACE_MAX: break
+            print(f"  ✗ ảnh {h['id']}: mặt người quá rõ ({big:.0%} khung), đổi ảnh khác")
+            skip.add(h['id']); fn = None
+        if not fn: print('  ✗ không có ảnh:', img['q']); continue
         img['src'] = f'assets/{fn.name}'; img['credit'] = f"Ảnh: {h['user']} / Pixabay"; img['page'] = h['pageURL']; img['pid'] = h['id']
         print(f"  ✓ {img['q']} → {fn.name} ({h['imageWidth']}x{h['imageHeight']})")
     for L, fs in followers:
