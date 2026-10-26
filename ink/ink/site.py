@@ -39,6 +39,25 @@ def call(path, data=None, method=None, body=None, ctype=None, lease='', timeout=
     raise RuntimeError(f'{path}: trang web không phản hồi')
 
 
+# how long each step of a video took (sent with done/fail, shown on the admin's operations board)
+MARKS = {}
+PHASES = (('script', ('1/4', '1/3', '1/1')), ('check', ('Kiểm chứng',)), ('storyboard', ('Phân cảnh', 'Đạo diễn')), ('voice', ('Giọng',)), ('render', ('Dựng video',)))
+
+
+def mark(m):
+    t = m.strip()
+    for name, keys in PHASES:
+        if name not in MARKS and t.startswith(keys): MARKS[name] = time.time()
+
+
+def steps():
+    seq = sorted(MARKS.items(), key=lambda x: x[1]); now = time.time()
+    return {n: round((seq[i + 1][1] if i + 1 < len(seq) else now) - t, 1) for i, (n, t) in enumerate(seq)}
+
+
+def last_phase(): return max(MARKS.items(), key=lambda x: x[1])[0] if MARKS else 'start'
+
+
 def run(job):
     jid, lease = job['id'], job['lease']; inp = job.get('input') or {}
     cfg = {k: str(v) for k, v in (job.get('config') or {}).get('env', {}).items() if v not in (None, '')}
@@ -54,11 +73,12 @@ def run(job):
     def beat():
         while not stop.wait(45): report()
     threading.Thread(target=beat, daemon=True).start()
-    steps = {'1/4': 8, '2/4': 14, '3/4': 24, '4/4': 30, 'Phân cảnh': 36, 'Giọng': 45, 'Dựng video': 52}
+    steps_at = {'1/4': 8, '2/4': 14, '3/4': 24, '4/4': 30, 'Phân cảnh': 36, 'Giọng': 45, 'Dựng video': 52}
     scene = [0]
+    MARKS.clear()
     def log(m):
-        print(m, flush=True)
-        for k, v in steps.items():
+        print(m, flush=True); mark(m)
+        for k, v in steps_at.items():
             if m.strip().startswith(k): state.update(progress=v, message=m.strip()[:120]); report(); return
         mm = re.match(r'\s*nướng cảnh (\d+)/(\d+)', m) or re.match(r'\s*chụp khung (\d+)%', m)
         if mm:   # the cinematic render: baking the camera moves (52–70), then capturing frames (70–92)
@@ -82,7 +102,7 @@ def run(job):
                            int(inp.get('seconds') or 60), inp.get('audience', ''), tone=inp.get('tone') or 'tự nhiên, hợp với chủ đề và người xem',
                            notes=inp.get('notes', ''), pace=inp.get('pace', 'normal'), log=log)
             for name in ('overview.png', 'cover.jpg'): put(jid, lease, out, name)
-            nxt = call(f'jobs/{jid}/planned', {'storyboard': sb, 'ai': [f'{p}/{m}' for p, m in ai.used]}, lease=lease)
+            nxt = call(f'jobs/{jid}/planned', {'storyboard': sb, 'ai': [f'{p}/{m}' for p, m in ai.used], 'steps': steps()}, lease=lease)
             if not nxt.get('render'): return True
         else:
             sb = job['storyboard']; save_plan(sb, out)
@@ -103,19 +123,19 @@ def run(job):
             call(f'jobs/{jid}/exported', {'duration': round(total, 1), 'voice': provider, 'voiceError': ' | '.join(V.errors), 'ai': [f'{p}/{m}' for p, m in ai.used]}, lease=lease)
             print(f'Xong phần máy dựng của {jid}: chờ trình duyệt vẽ ({total:.1f} giây video)', flush=True)
             return True
-        state.update(progress=96, message='Lưu video'); report()
+        MARKS['upload'] = time.time(); state.update(progress=96, message='Lưu video'); report()
         video = os.path.join(out, 'video.mp4'); thumb = os.path.join(out, 'thumb.jpg')
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', os.path.join(out, 'cover.jpg'), '-vf', 'scale=360:-2', thumb], check=False)
         put(jid, lease, out, 'video.mp4', timeout=600)
         if os.path.exists(thumb): put(jid, lease, out, 'thumb.jpg')
-        call(f'jobs/{jid}/done', {'duration': round(total, 1), 'seconds': round(time.time() - t0), 'voice': provider, 'voiceError': ' | '.join(V.errors), 'ai': [f'{p}/{m}' for p, m in ai.used]}, lease=lease)
+        call(f'jobs/{jid}/done', {'duration': round(total, 1), 'seconds': round(time.time() - t0), 'voice': provider, 'voiceError': ' | '.join(V.errors), 'ai': [f'{p}/{m}' for p, m in ai.used], 'steps': steps()}, lease=lease)
         print(f'Xong {jid}: {total:.1f} giây video trong {time.time() - t0:.0f} giây', flush=True)
         return True
     except Lost as e:
         print(f'Mất lượt dựng {jid}: {e}', flush=True); return False
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
-        try: call(f'jobs/{jid}/fail', {'error': str(e)[:300]}, lease=lease)
+        try: call(f'jobs/{jid}/fail', {'error': str(e)[:300], 'phase': last_phase(), 'steps': steps()}, lease=lease)
         except Exception: pass  # noqa: BLE001
         return False
     finally:
@@ -132,13 +152,13 @@ def run_cine(job, inp, out, state, report, log, t0):
         state.update(progress=34, message='Đang chọn cảnh quay và dựng bản xem trước'); report()
         sb = cine.preview(sb, out, log=log)
         for name in ('overview.png', 'cover.jpg'): put(jid, lease, out, name)
-        nxt = call(f'jobs/{jid}/planned', {'storyboard': sb, 'ai': sb.get('ai') or [f'{p}/{m}' for p, m in ai.used]}, lease=lease)
+        nxt = call(f'jobs/{jid}/planned', {'storyboard': sb, 'ai': sb.get('ai') or [f'{p}/{m}' for p, m in ai.used], 'steps': steps()}, lease=lease)
         if not nxt.get('render'): return True
     else:
         sb = job['storyboard']
     state.update(progress=45, message='Giọng đọc'); report()
     total, provider, sync = cine.render(sb, out, inp.get('pace', 'normal'), log=log, seconds=0 if inp.get('mode') == 'script' else int(inp.get('seconds') or 0))
-    state.update(progress=96, message='Lưu video'); report()
+    MARKS['upload'] = time.time(); state.update(progress=96, message='Lưu video'); report()
     thumb = os.path.join(out, 'thumb.jpg')
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', os.path.join(out, 'cover.jpg'), '-vf', 'scale=360:-2', thumb], check=False)
     keep = os.environ.get('INK_REVIEW_DIR')
@@ -148,7 +168,7 @@ def run_cine(job, inp, out, state, report, log, t0):
             if os.path.exists(os.path.join(out, f)): shutil.copy(os.path.join(out, f), os.path.join(dst, f.replace('/', '_')))
     put(jid, lease, out, 'cover.jpg'); put(jid, lease, out, 'video.mp4', timeout=600)
     if os.path.exists(thumb): put(jid, lease, out, 'thumb.jpg')
-    call(f'jobs/{jid}/done', {'duration': round(total, 1), 'seconds': round(time.time() - t0), 'voice': provider, 'voiceError': ' | '.join(V.errors), 'ai': sb.get('ai') or [], 'sync': sync, 'footage': sb.get('footage') or []}, lease=lease)
+    call(f'jobs/{jid}/done', {'duration': round(total, 1), 'seconds': round(time.time() - t0), 'voice': provider, 'voiceError': ' | '.join(V.errors), 'ai': sb.get('ai') or [], 'sync': sync, 'footage': sb.get('footage') or [], 'steps': steps()}, lease=lease)
     print(f'Xong {jid} (điện ảnh): {total:.1f} giây video trong {time.time() - t0:.0f} giây', flush=True)
     return True
 

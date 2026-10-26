@@ -77,3 +77,9 @@
 .ink-table td:first-child { white-space: nowrap; font-weight: 600; }
 .ink-table td small { display: block; font-weight: 400; color: var(--muted, #6b7280); }
 .ink-table td[lang=en] { color: var(--muted, #6b7280); min-width: 220px; }
+
+.ink-ops h3 { margin: 18px 0 8px; font-size: 1rem; }
+.ink-ops .table { overflow-x: auto; }
+.ink-advice { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.ink-prices { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.chip.on { background: var(--acc, #7c3aed); color: #fff; border-color: transparent; }

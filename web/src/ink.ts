@@ -335,6 +335,11 @@ export async function refundJob(env: Env, j: { id: string; user_id: string }) {
   if (!(await env.DB.prepare('SELECT 1 FROM ink_ledger WHERE job_id = ?').bind(j.id).first())) await refundQuota(env, j.user_id, 'render'); // made before the ledger
 }
 
+// the steps of a video the machine times (site.py PHASES) and where a failed one stopped
+const PHASES = ['start', 'script', 'check', 'storyboard', 'voice', 'render', 'upload'];
+const cleanSteps = (x: any): Record<string, number> => Object.fromEntries(Object.entries(x && typeof x === 'object' ? x : {})
+  .filter(([k]) => PHASES.includes(k)).map(([k, v]) => [k, num(v, 0, 86_400, 0)]));
+
 /** what one video used, for pricing: AI answers (by model), characters read aloud, machine seconds */
 function costOf(j: any, ai: unknown, machineSec: number) {
   const calls = Array.isArray(ai) ? ai.map((x) => String(x)) : [], sb = j.storyboard ? JSON.parse(j.storyboard) : null;
@@ -733,7 +738,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     const b = await body<any>(req, 400_000), sb = b.storyboard;
     if (!sb || !Array.isArray(sb.scenes) || !sb.scenes.length) throw new HttpError(400, 'Phân cảnh rỗng.');
     // the user's own topic stays the video's name; the AI's title only names videos made from a pasted script
-    const title = (input.mode === 'script' ? clip(str(sb.title, 300), 100) : '') || j.title, next = { ...meta, caption: str(sb.caption, 1000), hashtags: (Array.isArray(sb.hashtags) ? sb.hashtags : []).map((x: unknown) => '#' + str(x, 40).replace(/^#+/, '')).filter((x: string) => /^#[A-Za-z0-9_]{2,40}$/.test(x)).slice(0, 10), ai: b.ai };
+    const title = (input.mode === 'script' ? clip(str(sb.title, 300), 100) : '') || j.title, next = { ...meta, planned: now, steps: cleanSteps(b.steps), caption: str(sb.caption, 1000), hashtags: (Array.isArray(sb.hashtags) ? sb.hashtags : []).map((x: unknown) => '#' + str(x, 40).replace(/^#+/, '')).filter((x: string) => /^#[A-Za-z0-9_]{2,40}$/.test(x)).slice(0, 10), ai: b.ai };
     // the series remembers the metaphor and prop this video used: the next one invents another
     const sm = sb.series_meta;
     if (input.series?.id && sm?.ok && sm.prop) {
@@ -764,7 +769,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     if (!(await env.BUCKET.head(key(j, 'video.mp4')))) throw new HttpError(400, 'Chưa tải video lên.');
     const b = await body<any>(req, 5_000).catch(() => ({} as any));
     await env.DB.prepare("UPDATE ink_jobs SET status = 'done', progress = 100, message = 'Đã xong', lease = ?, duration = ?, meta = ?, finished_at = ?, updated_at = ? WHERE id = ?")
-      .bind(lease, num(b.duration, 0, 3600, 0), JSON.stringify({ ...meta, voice: str(b.voice, 40), renderSec: num(b.seconds, 0, 99999, 0), ai: b.ai || meta.ai, cost: costOf(j, b.ai || meta.ai, num(b.seconds, 0, 99999, 0)), ...(b.sync && typeof b.sync === 'object' ? { sync: { median: num(b.sync.median, 0, 60, 0), p90: num(b.sync.p90, 0, 60, 0), bias: num(b.sync.bias, -60, 60, 0) } } : {}) }), now, now, j.id).run();
+      .bind(lease, num(b.duration, 0, 3600, 0), JSON.stringify({ ...meta, voice: str(b.voice, 40), renderSec: num(b.seconds, 0, 99999, 0), steps: { ...(meta.steps || {}), ...cleanSteps(b.steps) }, ai: b.ai || meta.ai, cost: costOf(j, b.ai || meta.ai, num(b.seconds, 0, 99999, 0)), ...(b.sync && typeof b.sync === 'object' ? { sync: { median: num(b.sync.median, 0, 60, 0), p90: num(b.sync.p90, 0, 60, 0), bias: num(b.sync.bias, -60, 60, 0) } } : {}) }), now, now, j.id).run();
     rc.log('ink.done', { data: { job: j.id, videoSec: b.duration, renderSec: b.seconds, voice: b.voice, totalSec: Math.round((now - j.created_at) / 1000) } });
     await settle(env, j.id);
     rc.wait(learnEta(env).catch(() => {}));
@@ -774,8 +779,10 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     return json({ ok: true });
   }
   if (act === 'fail' && req.method === 'POST') {
-    const error = str((await body<any>(req, 5_000).catch(() => ({}))).error, 300) || 'Dựng video thất bại.';
-    await env.DB.prepare("UPDATE ink_jobs SET status = 'failed', error = ?, message = '', finished_at = ?, updated_at = ? WHERE id = ?").bind(error, now, now, j.id).run();
+    const fb = await body<any>(req, 5_000).catch(() => ({} as any)), error = str(fb.error, 300) || 'Dựng video thất bại.';
+    const failedAt = PHASES.includes(fb.phase) ? fb.phase : j.stage === 'plan' ? 'script' : 'render';
+    await env.DB.prepare("UPDATE ink_jobs SET status = 'failed', error = ?, message = '', meta = ?, finished_at = ?, updated_at = ? WHERE id = ?")
+      .bind(error, JSON.stringify({ ...meta, failedAt, steps: cleanSteps(fb.steps) }), now, now, j.id).run();
     await refundJob(env, j);
     rc.log('ink.fail', { ok: false, data: { job: j.id, stage: j.stage, error } });
     rc.wait(notify(env, j.user_id, j.id, 'Video chưa dựng được', `"${j.title}": ${error.slice(0, 120)}`));
@@ -787,6 +794,74 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
 
 async function notify(env: XEnv, userId: string, id: string, title: string, text: string) {
   try { await pushUser(env, userId, { title, body: text, url: `/ink/${id}` }, 'mailto:' + env.config.legal.email); } catch { /* the page shows it anyway */ }
+}
+
+// ---------------------------------------------------------------- operations board (admin): measured, not promised
+const pct = (a: number[], q: number) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return Math.round(s[Math.min(s.length - 1, Math.floor(q * s.length))]); };
+const sec = (ms: number) => Math.max(0, ms) / 1000;
+/** the last N days of videos: how long people waited and the machine worked (median, 90th percentile), where videos
+ *  failed, what each one cost, and what that means for a promise to customers and for render capacity */
+export async function inkStats(env: Env, days: number) {
+  const since = Date.now() - days * 86_400_000;
+  const rows = (await env.DB.prepare('SELECT id, status, stage, input, meta, error, duration, created_at, finished_at FROM ink_jobs WHERE created_at > ? ORDER BY created_at DESC LIMIT 3000').bind(since).all<any>()).results || [];
+  const pr = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:prices'").first<any>();
+  const prices = { aiCall: 0, voiceK: 0, machineMin: 0, ...(pr?.value ? JSON.parse(pr.value) : {}) };
+  type Acc = { n: number; done: number; failed: number; open: number; wait: number[]; run: number[]; total: number[]; video: number[]; steps: Record<string, number[]>; ai: number[]; chars: number[]; machine: number[]; cost: number[] };
+  const acc = (): Acc => ({ n: 0, done: 0, failed: 0, open: 0, wait: [], run: [], total: [], video: [], steps: {}, ai: [], chars: [], machine: [], cost: [] });
+  const by: Record<string, Acc> = {}, all = acc(), fails: Record<string, number> = {}, errors: Record<string, number> = {}, models: Record<string, number> = {};
+  const daily: Record<string, { created: number; done: number; failed: number }> = {}, hours: Record<string, number> = {};
+  for (const r of rows) {
+    const input = JSON.parse(r.input || '{}'), meta = JSON.parse(r.meta || '{}'), f = input.browser ? 'browser' : input.format || 'ink';
+    const d = new Date(r.created_at + 7 * 3600_000).toISOString(), day = d.slice(0, 10), hour = d.slice(0, 13);
+    (daily[day] ||= { created: 0, done: 0, failed: 0 }).created++; hours[hour] = (hours[hour] || 0) + 1;
+    for (const a of [by[f] ||= acc(), all]) {
+      a.n++;
+      if (r.status === 'done') {
+        a.done++;
+        if (meta.started) { a.wait.push(sec(meta.started - (meta.queued || r.created_at))); if (r.finished_at) a.run.push(sec(r.finished_at - meta.started)); }
+        if (r.finished_at) a.total.push(sec(r.finished_at - r.created_at));
+        if (r.duration) a.video.push(r.duration);
+        for (const [k, v] of Object.entries(meta.steps || {})) (a.steps[k] ||= []).push(Number(v));
+        const c = meta.cost;
+        if (c) {
+          a.ai.push(c.aiCalls || 0); a.chars.push(c.voiceChars || 0); a.machine.push(c.machineSec || 0);
+          a.cost.push((c.aiCalls || 0) * prices.aiCall + (meta.voice === 'everai' ? (c.voiceChars || 0) / 1000 * prices.voiceK : 0) + (c.machineSec || 0) / 60 * prices.machineMin);
+        }
+      } else if (r.status === 'failed') a.failed++;
+      else a.open++;
+    }
+    if (r.status === 'done') { daily[day].done++; for (const [m, k] of Object.entries(meta.cost?.models || {})) models[m] = (models[m] || 0) + Number(k); }
+    if (r.status === 'failed') {
+      daily[day].failed++;
+      const at = meta.failedAt || (r.stage === 'plan' ? 'script' : 'render'); fails[at] = (fails[at] || 0) + 1;
+      const e = String(r.error || 'không rõ').replace(/[0-9a-f]{12,}/g, '…').replace(/\d+(\.\d+)?/g, '#').slice(0, 90); errors[e] = (errors[e] || 0) + 1;
+    }
+  }
+  const sum = (a: Acc) => {
+    const avg = (x: number[]) => x.length ? Math.round(x.reduce((p, q) => p + q, 0) / x.length) : 0;
+    return { n: a.n, done: a.done, failed: a.failed, open: a.open, success: a.done + a.failed ? Math.round(100 * a.done / (a.done + a.failed)) : null,
+      wait: { p50: pct(a.wait, .5), p90: pct(a.wait, .9) }, run: { p50: pct(a.run, .5), p90: pct(a.run, .9) }, total: { p50: pct(a.total, .5), p90: pct(a.total, .9), n: a.total.length },
+      video: avg(a.video), steps: Object.fromEntries(PHASES.filter((k) => a.steps[k]?.length).map((k) => [k, pct(a.steps[k], .5)])),
+      cost: { ai: avg(a.ai), chars: avg(a.chars), machine: avg(a.machine), vnd: avg(a.cost), n: a.cost.length } };
+  };
+  const total = sum(all), slowest = PHASES.filter((k) => total.steps[k]).sort((x, y) => total.steps[y] - total.steps[x])[0];
+  // what the numbers allow: a promise only once there is enough history, more machines only when people wait
+  const advice: string[] = [];
+  if (total.total.n < 20) advice.push(`Mới có ${total.total.n} video hoàn thành có đủ mốc thời gian trong ${days} ngày: chưa đủ để cam kết thời gian với khách (cần ít nhất 20).`);
+  else advice.push(`Có thể hứa với khách: 9/10 video xong trong khoảng ${Math.ceil(total.total.p90 / 60)} phút (hiện trung vị ${Math.ceil(total.total.p50 / 60)} phút).`);
+  if (total.wait.p90 > 600) advice.push(`Khách chờ máy lâu (90% chờ dưới ${Math.ceil(total.wait.p90 / 60)} phút): nên thêm máy chủ riêng hoặc Cloud Run để chạy song song.`);
+  if (total.success !== null && total.success < 90) {
+    const worst = Object.entries(fails).sort((a, b) => b[1] - a[1])[0];
+    advice.push(`Tỉ lệ thành công ${total.success}% (dưới 90%): lỗi nhiều nhất ở bước "${worst ? worst[0] : '?'}" — xem bảng lỗi bên dưới trước khi mở bán rộng.`);
+  }
+  if (slowest) advice.push(`Bước tốn thời gian nhất: "${slowest}" (trung vị ${total.steps[slowest]} giây).`);
+  const peak = Object.entries(hours).sort((a, b) => b[1] - a[1])[0];
+  if (peak) advice.push(`Giờ đông nhất: ${peak[0].slice(11)}h ngày ${peak[0].slice(8, 10)}/${peak[0].slice(5, 7)} với ${peak[1]} video.`);
+  const ledger = (await env.DB.prepare('SELECT state, reason, COUNT(*) AS n FROM ink_ledger WHERE created_at > ? GROUP BY state, reason').bind(since).all<any>()).results || [];
+  return { days, prices, total, byFormat: Object.fromEntries(Object.entries(by).map(([k, v]) => [k, sum(v)])),
+    fails, errors: Object.entries(errors).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([text, n]) => ({ text, n })),
+    models: Object.entries(models).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([model, n]) => ({ model, n })),
+    daily: Object.entries(daily).sort((a, b) => a[0].localeCompare(b[0])).map(([day, v]) => ({ day, ...v })), ledger, advice };
 }
 
 // ---------------------------------------------------------------- admin
@@ -839,6 +914,13 @@ export async function inkAdmin(req: Request, env: XEnv, sub: string, rc: Rc): Pr
   if (sub === 'ink/voices/catalog' && req.method === 'GET') {
     const p = new URL(req.url).searchParams.get('p');
     return json(p === 'everai' ? await voiceCatalog(env, 'everai') : { source: 'api', voices: await microsoftVoices() });
+  }
+  if (sub === 'ink/stats' && req.method === 'GET') return json(await inkStats(env, Math.round(num(new URL(req.url).searchParams.get('days'), 1, 90, 7))));
+  if (sub === 'ink/prices' && req.method === 'PUT') {
+    const b = await body<any>(req, 2_000), p = { aiCall: num(b.aiCall, 0, 100_000, 0), voiceK: num(b.voiceK, 0, 100_000, 0), machineMin: num(b.machineMin, 0, 100_000, 0) };
+    await env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('ink:prices', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(JSON.stringify(p), Date.now()).run();
+    rc.log('admin.ink.prices', { data: p });
+    return json({ prices: p });
   }
   if (sub === 'ink' && req.method === 'GET') {
     const { s, token } = await settings(env);

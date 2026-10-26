@@ -37,6 +37,60 @@ const PACE = { slow: 'Chậm', normal: 'Vừa', fast: 'Nhanh', faster: 'Rất nh
 const MOOD = { auto: 'Tự chọn theo nội dung', motivating: 'Truyền động lực', calm: 'Nhẹ nhàng', upbeat: 'Sôi động', emotional: 'Cảm xúc', none: 'Không nhạc' };
 const STATUS = { queued: 'Đang chờ', running: 'Đang dựng', review: 'Chờ duyệt phân cảnh', done: 'Xong', failed: 'Lỗi' };
 
+const FORMAT = { ink: 'Vẽ tay (máy chủ)', browser: 'Vẽ tay (máy người dùng)', cine: 'Điện ảnh', money: 'Đòn Bẩy Tư Duy' };
+const PHASE = { start: 'Khởi động', script: 'Viết kịch bản', check: 'Kiểm chứng', storyboard: 'Phân cảnh', voice: 'Giọng đọc', render: 'Dựng hình', upload: 'Tải lên' };
+const LEDGER = { held: 'Đang giữ', charged: 'Đã tính', refunded: 'Đã hoàn', free: 'Quản trị (không tính)' };
+const REASON = { new: 'Video mới', edit: 'Sửa cảnh', repace: 'Đổi nhịp', retry: 'Thử lại' };
+const dur = (s) => !s ? '–' : s < 90 ? `${Math.round(s)} giây` : `${(s / 60).toFixed(s < 600 ? 1 : 0).replace('.', ',')} phút`;
+const vnd = (n) => Math.round(n || 0).toLocaleString('vi-VN') + ' đ';
+
+/** Vận hành: what really happened over the last days (waits, render times, failures by step, cost per video) and
+ *  what it allows — a delivery promise only with enough history, more machines only when people wait */
+async function opsBoard(h, api, toast, fail) {
+  const box = h('section', { class: 'card ink-ops' });
+  let days = 7;
+  const table = (head, rows) => h('div', { class: 'table' }, h('table', {}, h('thead', {}, h('tr', {}, head.map((x) => h('th', {}, x)))), h('tbody', {}, rows)));
+  const paint = async () => {
+    box.replaceChildren(h('p', { class: 'muted' }, 'Đang tính số liệu…'));
+    let r; try { r = await api('/api/admin/ink/stats?days=' + days); } catch (e) { box.replaceChildren(h('p', { class: 'error' }, e.message)); return; }
+    const t = r.total, stat = (label, value, note) => h('div', { class: 'stat' }, h('small', {}, label), h('b', {}, value), note ? h('small', {}, note) : null);
+    const period = h('div', { class: 'row' }, [1, 7, 30].map((d) => h('button', { type: 'button', class: 'chip' + (d === days ? ' on' : ''), onclick: () => { days = d; paint(); } }, d === 1 ? 'Hôm nay' : `${d} ngày`)));
+    const p = { ...r.prices }, priceInp = (k, label) => h('label', { class: 'field' }, h('span', {}, label), h('input', { type: 'number', min: 0, step: 1, value: p[k], oninput: (e) => { p[k] = Number(e.target.value); } }));
+    const savePrices = h('button', { type: 'button', class: 'ghost small' }, 'Lưu đơn giá');
+    savePrices.onclick = async () => { try { await api('/api/admin/ink/prices', { method: 'PUT', body: p }); toast('Đã lưu đơn giá'); paint(); } catch (e) { fail(e); } };
+    const priced = r.prices.aiCall || r.prices.voiceK || r.prices.machineMin;
+    box.replaceChildren(
+      h('div', { class: 'section-title' }, h('h2', {}, 'Vận hành'), period),
+      h('p', { class: 'muted' }, 'Số liệu thật từ các video đã tạo: thời gian chờ, thời gian dựng, lỗi từng bước và chi phí mỗi video. Dùng để quyết định cam kết với khách và có cần thêm máy dựng không.'),
+      h('div', { class: 'stats' },
+        stat('Video đã tạo', String(t.n), `${t.done} xong · ${t.failed} lỗi · ${t.open} đang làm/chờ`),
+        stat('Tỉ lệ thành công', t.success == null ? '–' : t.success + '%', 'trên các video đã kết thúc'),
+        stat('Thời gian hoàn thành', dur(t.total.p50), `9/10 video dưới ${dur(t.total.p90)}`),
+        stat('Chờ máy dựng nhận', dur(t.wait.p50), `9/10 video dưới ${dur(t.wait.p90)}`),
+        stat('Chi phí mỗi video', priced ? vnd(t.cost.vnd) : '–', priced ? `trên ${t.cost.n} video có ghi chi phí` : 'nhập đơn giá bên dưới')),
+      h('h3', {}, 'Nhận định'), h('ul', { class: 'ink-advice' }, r.advice.map((x) => h('li', {}, x))),
+      h('h3', {}, 'Theo kiểu video'),
+      table(['Kiểu', 'Tạo', 'Xong', 'Lỗi', 'Thành công', 'Chờ (trung vị · 90%)', 'Dựng (trung vị · 90%)', 'Độ dài video', 'Lần gọi AI', 'Ký tự giọng', 'Thời gian máy', 'Chi phí'],
+        Object.entries(r.byFormat).map(([k, v]) => h('tr', {}, h('td', {}, FORMAT[k] || k), h('td', {}, v.n), h('td', {}, v.done), h('td', {}, v.failed), h('td', {}, v.success == null ? '–' : v.success + '%'),
+          h('td', {}, `${dur(v.wait.p50)} · ${dur(v.wait.p90)}`), h('td', {}, `${dur(v.run.p50)} · ${dur(v.run.p90)}`), h('td', {}, dur(v.video)), h('td', {}, v.cost.ai || '–'),
+          h('td', {}, v.cost.chars ? v.cost.chars.toLocaleString('vi-VN') : '–'), h('td', {}, dur(v.cost.machine)), h('td', {}, priced ? vnd(v.cost.vnd) : '–')))),
+      h('h3', {}, 'Thời gian từng bước (trung vị)'),
+      Object.keys(t.steps).length ? table(['Bước', 'Thời gian'], Object.entries(t.steps).map(([k, v]) => h('tr', {}, h('td', {}, PHASE[k] || k), h('td', {}, dur(v)))))
+        : h('p', { class: 'muted' }, 'Chưa có video nào được ghi thời gian từng bước (bắt đầu ghi từ bản cập nhật này).'),
+      h('h3', {}, 'Lỗi'),
+      Object.keys(r.fails).length ? h('div', {},
+        table(['Dừng ở bước', 'Số video'], Object.entries(r.fails).sort((a, b) => b[1] - a[1]).map(([k, n]) => h('tr', {}, h('td', {}, PHASE[k] || k), h('td', {}, n)))),
+        table(['Lỗi hay gặp', 'Số lần'], r.errors.map((e) => h('tr', {}, h('td', { class: 'error' }, e.text), h('td', {}, e.n))))) : h('p', { class: 'muted' }, 'Không có video lỗi trong khoảng này.'),
+      r.models.length ? h('div', {}, h('h3', {}, 'Mô hình AI đã dùng'), table(['Mô hình', 'Số lần'], r.models.map((m) => h('tr', {}, h('td', {}, m.model), h('td', {}, m.n))))) : null,
+      r.ledger.length ? h('div', {}, h('h3', {}, 'Sổ lượt dựng'), table(['Trạng thái', 'Lý do', 'Số video'], r.ledger.map((x) => h('tr', {}, h('td', {}, LEDGER[x.state] || x.state), h('td', {}, REASON[x.reason] || x.reason), h('td', {}, x.n))))) : null,
+      h('details', {}, h('summary', {}, 'Theo ngày'), table(['Ngày', 'Tạo', 'Xong', 'Lỗi'], r.daily.map((d) => h('tr', {}, h('td', {}, d.day.split('-').reverse().join('/')), h('td', {}, d.created), h('td', {}, d.done), h('td', {}, d.failed))))),
+      h('details', {}, h('summary', {}, 'Đơn giá để tính chi phí'), h('p', { class: 'muted' }, 'Nhập giá bạn thực trả (đồng). Giọng Microsoft miễn phí nên chỉ tính ký tự giọng EverAI.'),
+        h('div', { class: 'ink-prices' }, priceInp('aiCall', 'Mỗi lần gọi AI'), priceInp('voiceK', 'Mỗi 1.000 ký tự giọng EverAI'), priceInp('machineMin', 'Mỗi phút máy dựng')), h('div', { class: 'row' }, savePrices)));
+  };
+  paint();
+  return box;
+}
+
 export async function showInkAdmin({ h, api, body, toast, fail }) {
   const data = await api('/api/admin/ink');
   const s = structuredClone(data.settings); let token = '';
@@ -137,7 +191,9 @@ export async function showInkAdmin({ h, api, body, toast, fail }) {
     } catch (e) { fail(e); }
   };
 
+  const ops = await opsBoard(h, api, toast, fail);
   body.replaceChildren(
+    ops,
     card('Trạng thái', 'Trang web giữ hàng chờ và giao video cho máy dựng theo thứ tự bạn chọn bên dưới.',
       h('div', { class: 'row' }, tick(s.enabled, (x) => { s.enabled = x; }, 'Bật Ink Studio cho người dùng')),
       h('div', { class: 'row' }, key(data.keys.gemini, 'Gemini'), key(data.keys.openai, 'OpenAI'), key(data.keys.everai, 'EverAI')),

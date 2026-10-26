@@ -36,3 +36,22 @@ test('a scene edit changes only words already drawn and objects the engine knows
   const out = mergeText(v, { layout: 'hero', before: { title: 'Trước đây', prop: 'not-a-prop', extra: 'no' }, after: { prop: 'book' }, items: ['x2'] });
   assert.deepEqual(out, { layout: 'before_after', before: { title: 'Trước đây', prop: 'clock', label: 'a' }, after: { title: 'Mới', prop: 'book' }, items: ['x2', 'y'] });
 });
+
+test('the operations board measures waits, render times, failures by step and cost per video', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ops-'));
+  try {
+    const DB = database(join(dir, 'db.sqlite'));
+    const now = Date.now(), add = (id: string, status: string, meta: any, extra: any = {}) => DB.prepare(`INSERT INTO ink_jobs (id, user_id, title, input, stage, status, meta, error, duration, created_at, updated_at, finished_at)
+      VALUES (?, 'u', 't', ?, 'render', ?, ?, ?, ?, ?, ?, ?)`).bind(id, JSON.stringify({ format: 'ink' }), status, JSON.stringify(meta), extra.error || '', 60, now - 600_000, now, now).run();
+    await DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('ink:prices', ?, 0)").bind(JSON.stringify({ aiCall: 100, voiceK: 0, machineMin: 50 })).run();
+    for (let i = 0; i < 3; i++) await add('d' + i, 'done', { queued: now - 600_000, started: now - 480_000, steps: { script: 60, render: 300 }, cost: { aiCalls: 10, voiceChars: 900, machineSec: 240, models: { 'gemini/flash': 10 } } });
+    await add('f1', 'failed', { failedAt: 'voice' }, { error: 'Không đọc được lời bằng nhà cung cấp giọng nào.' });
+    const { inkStats } = await import('../web/src/ink.ts');
+    const r: any = await inkStats({ DB } as any, 7);
+    assert.equal(r.total.n, 4); assert.equal(r.total.success, 75);
+    assert.equal(r.total.wait.p50, 120); assert.equal(r.total.run.p50, 480);
+    assert.equal(r.total.steps.render, 300); assert.equal(r.fails.voice, 1);
+    assert.equal(r.total.cost.vnd, 10 * 100 + 4 * 50);
+    assert.ok(r.advice.some((x: string) => x.includes('chưa đủ')));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
