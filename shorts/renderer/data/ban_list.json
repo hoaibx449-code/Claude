@@ -1,0 +1,27 @@
+{
+  "_ghi_chu": "Vật/thế giới đã thấy ở kênh tham khảo — không dùng làm vật ẩn dụ hay thế giới chính. Tự thêm khi phát hiện.",
+  "reference_channel": [
+    "ống/đường ống thuỷ tinh chở đồng xu sáng (glass pipe carrying glowing coins)",
+    "đầm lầy sương mù, ếch, lá sen, đá bước (misty pond, frog, lily pads, stepping stones)",
+    "quả cà chua đồng hồ Pomodoro (tomato timer)",
+    "trụ/ống nghiệm thuỷ tinh đo mức trên sàn studio tối (glass cylinders gauge levels)",
+    "bánh răng neon, kẹo xoáy cầu vồng, khối màu nổ tung, đồng hồ neon (neon gears, swirl candy, exploding cubes, neon clock)",
+    "phòng be + giá sách + băng chuyền + cổng kiểm tra (beige room, bookshelf, conveyor, checking gate)",
+    "não trong chuông kính (brain under glass dome)",
+    "hologram trụ kính + tia laser (glass hologram cylinder with lasers)",
+    "cuộn phim nhựa (film strip)",
+    "bong bóng hồng phồng to (pink bubble inflating)",
+    "bảng số neon '10 TRIỆU', vòng tròn số '79'"
+  ],
+  "obvious_nouns": [
+    "đồng xu/tiền giấy rơi cho chủ đề tiền",
+    "đồng hồ cát/đồng hồ treo tường cho chủ đề thời gian",
+    "bộ não phát sáng cho chủ đề tư duy",
+    "bóng đèn sáng cho chủ đề ý tưởng",
+    "robot cho chủ đề AI",
+    "biểu đồ cổ phiếu xanh đỏ cho chủ đề đầu tư"
+  ],
+  "demo_trong_bo": [
+    "chiếc ghe chở thùng hàng + khoang nổi kín màu son (video demo của bộ công cụ)"
+  ]
+}

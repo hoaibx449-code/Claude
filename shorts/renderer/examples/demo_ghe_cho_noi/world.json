@@ -1,0 +1,59 @@
+{
+ "topic": "lạm phát lối sống",
+ "rolled_at": "2026-10-26T10:41:13",
+ "seed": 11,
+ "environment": {
+  "id": "floating_market",
+  "vi": "Chợ nổi lúc rạng sáng, sương trên sông, ghe thuyền",
+  "en": "floating market at dawn, mist over river, wooden boats"
+ },
+ "material": {
+  "id": "concrete",
+  "vi": "Bê tông thô",
+  "en": "raw concrete"
+ },
+ "light": {
+  "id": "god_rays",
+  "vi": "Nắng xuyên sương thành tia",
+  "en": "volumetric sun rays through haze"
+ },
+ "palette": {
+  "id": "luxury_trap",
+  "mood": "hào nhoáng, tiêu dùng",
+  "colors": [
+   "#1A1A1A",
+   "#D4AF37",
+   "#7B2D26"
+  ]
+ },
+ "camera": {
+  "id": "top_down",
+  "vi": "Nhìn thẳng từ trên xuống",
+  "en": "top-down god's-eye view, slow rotation"
+ },
+ "scene_type": {
+  "id": "engraved",
+  "vi": "Chữ khắc/dập nổi trên chính vật ẩn dụ"
+ },
+ "script_frame": {
+  "id": "story_case",
+  "vi": "Một câu chuyện – một bài học"
+ },
+ "hook_type": {
+  "id": "mistake_you_make",
+  "vi": "Lỗi bạn đang mắc"
+ },
+ "camera_extra": [
+  {
+   "id": "orbit",
+   "vi": "Xoay quỹ đạo chậm quanh vật",
+   "en": "slow 180 degree orbit around subject"
+  },
+  {
+   "id": "lateral_track",
+   "vi": "Trượt ngang song song với vật",
+   "en": "slow lateral tracking shot parallel to subject"
+  }
+ ],
+ "style_line_en": "floating market at dawn, mist over river, wooden boats, objects made of raw concrete, volumetric sun rays through haze, color palette #1A1A1A, #D4AF37, #7B2D26, minimalist stylized 3D render, soft volumetric haze, cinematic shallow depth of field, no people faces, no text"
+}
