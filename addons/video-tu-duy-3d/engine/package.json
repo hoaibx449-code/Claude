@@ -1,0 +1,2 @@
+{ "name": "video-tu-duy-3d-engine", "private": true, "version": "1.0.0",
+  "dependencies": { "three": "0.160.0" } }

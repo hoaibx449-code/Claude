@@ -16,3 +16,8 @@ web/public/demos.json
 .scratch/
 
 web/public/illustrated-addon.js
+
+# Video Tu Duy 3D: cấu hình EverAI (có khoá API) và thư mục làm việc
+everai.json
+addons/video-tu-duy-3d/engine/node_modules/
+work/

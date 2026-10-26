@@ -1,0 +1,21 @@
+{
+  "_ghi_chu": "Bộ nhận diện kênh — chọn 1 lần rồi giữ nguyên. Mặc định là Bộ 1 'Mực & Đồng'. Đổi màu/font ở đây, mọi video sau dùng theo.",
+  "channel_name": "TÊN KÊNH CỦA BẠN",
+  "series": "Tư Duy Đòn Bẩy",
+  "band_bg": "#0B1020",
+  "hook_color": "#FFFFFF",
+  "hook_accent": "#E8A15A",
+  "font_bold": "Inter ExtraBold",
+  "font_bold_file": "/usr/share/fonts/opentype/inter/Inter-ExtraBold.otf",
+  "font_regular_file": "/usr/share/fonts/opentype/inter/Inter-SemiBold.otf",
+  "font_italic_file": "/usr/share/fonts/opentype/inter/Inter-MediumItalic.otf",
+  "sub_color": "#FFFFFF",
+  "sub_highlight": "#E8A15A",
+  "sub_mode": "color",
+  "sub_english": true,
+  "card_bg": "#0B1020CC",
+  "card_text": "#F4EDE4",
+  "card_accent": "#E8A15A",
+  "bottom_cta": "",
+  "voice_words_per_sec": 3.7
+}

@@ -1,0 +1,95 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+<style>html,body{margin:0;background:#000;overflow:hidden}</style>
+</head><body>
+<script type="module">
+// DEMO — chỉ để minh hoạ cách dùng kit.js. KHÔNG dùng lại làm khuôn cho video khác.
+// Ẩn dụ: ghe chở hàng — thu nhập tăng (ghe to ra) nhưng hàng chất thêm, phần nổi vẫn 0; lối ra = khoang nổi kín.
+import { createStage, camMove, material, prog, ease, lerp, rng, softBeam, THREE } from '/kit.js';
+
+const S = await createStage({ fog: .06 });
+const { scene, pal, world } = S;
+const [cBg, cGold, cRed] = pal;
+const R = rng(7);
+scene.background = new THREE.Color('#2a2622'); scene.fog.color = new THREE.Color('#3a332b');
+
+// --- ánh sáng: nắng xiên xuyên sương ---
+scene.add(new THREE.HemisphereLight('#f3d9a8', '#2a241c', 1.1));
+const fill = new THREE.DirectionalLight('#9fb4d0', .8); fill.position.set(8, 4, 10); scene.add(fill);
+const sun = new THREE.DirectionalLight('#ffd9a0', 2.4); sun.position.set(-12, 9, -6); sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12 }); scene.add(sun);
+const rays = new THREE.Group(); scene.add(rays);
+for (let i = 0; i < 9; i++) {
+  const b = softBeam('#ffdcaa', 1.5 + R() * 2.5, 30); b.position.set(-16 + i * 4, 18, -16 - R() * 8); b.rotation.set(0, R() * .4, .5); rays.add(b);
+}
+
+// --- mặt sông ---
+const wg = new THREE.PlaneGeometry(120, 120, 120, 120); wg.rotateX(-Math.PI / 2);
+const water = new THREE.Mesh(wg, new THREE.MeshPhysicalMaterial({ color: '#5a5246', roughness: .08, metalness: .2, clearcoat: 1 }));
+water.receiveShadow = true; scene.add(water);
+const wpos = wg.attributes.position, wbase = wpos.array.slice();
+
+// --- ghe xa (bóng mờ trong sương) ---
+function hullGeo(L, Wd, Hh) {
+  const s = new THREE.Shape(); s.moveTo(-L / 2, 0); s.quadraticCurveTo(-L / 4, Wd / 2, 0, Wd / 2); s.quadraticCurveTo(L / 4, Wd / 2, L / 2, 0);
+  s.quadraticCurveTo(L / 4, -Wd / 2, 0, -Wd / 2); s.quadraticCurveTo(-L / 4, -Wd / 2, -L / 2, 0);
+  const g = new THREE.ExtrudeGeometry(s, { depth: Hh, bevelEnabled: false, curveSegments: 24 }); g.rotateX(-Math.PI / 2); return g;
+}
+for (let i = 0; i < 9; i++) {
+  const b = new THREE.Mesh(hullGeo(3 + R() * 2, 1, .5), material('oak', '#3b2f25'));
+  b.position.set(-25 + R() * 50, -.15, -10 - R() * 25); b.rotation.y = R() * 3; scene.add(b);
+}
+
+// --- ghe chính ---
+const boat = new THREE.Group(); scene.add(boat);
+const hullMat = material(world?.material?.id || 'concrete', '#8d8378');
+const hull = new THREE.Mesh(hullGeo(6, 2.2, 1.1), hullMat); hull.castShadow = hull.receiveShadow = true; boat.add(hull);
+// vạch nước khắc "DƯ: 0" trên mạn ghe
+const cv = document.createElement('canvas'); cv.width = 512; cv.height = 128; const cx = cv.getContext('2d');
+cx.fillStyle = '#8d8378'; cx.fillRect(0, 0, 512, 128); cx.strokeStyle = '#d4af37'; cx.lineWidth = 6; cx.beginPath(); cx.moveTo(0, 96); cx.lineTo(512, 96); cx.stroke();
+cx.fillStyle = '#d4af37'; cx.font = 'bold 64px Inter, sans-serif'; cx.fillText('DƯ: 0', 24, 80);
+const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+const mark = new THREE.Mesh(new THREE.PlaneGeometry(2.4, .6), new THREE.MeshStandardMaterial({ map: tex, roughness: .8 }));
+mark.position.set(.2, .55, 1.115); hull.add(mark);
+// thùng hàng
+const crates = [];
+for (let i = 0; i < 16; i++) {
+  const s = .5 + R() * .25; const c = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), material('brass', i % 3 ? cGold : '#b9902c', { roughness: .35 }));
+  c.castShadow = true; c.userData = { x: -2 + (i % 6) * .8, z: -.5 + Math.floor(i / 6 % 2) * .9, y: 1.1 + s / 2 + Math.floor(i / 12) * .6, rot: R() * .6 };
+  boat.add(c); crates.push(c);
+}
+// khoang nổi kín (lối ra)
+const floatBox = new THREE.Mesh(new THREE.CapsuleGeometry(.55, 4.6, 8, 16), material('lacquer', cRed));
+floatBox.rotation.z = Math.PI / 2; floatBox.castShadow = true; boat.add(floatBox);
+
+const T = new THREE.Vector3(0, .6, 0);
+S.run((t, sh) => {
+  // sóng nước
+  for (let i = 0; i < wpos.count; i++) { const x = wbase[i * 3], z = wbase[i * 3 + 2]; wpos.array[i * 3 + 1] = Math.sin(x * .35 + t * 1.2) * .05 + Math.cos(z * .4 + t) * .05; }
+  wpos.needsUpdate = true;
+  const sh2 = S.shots;
+  // số thùng đã rơi: S01 rơi 8 thùng, S02 thêm 8 thùng (thu nhập tăng -> chi tăng)
+  const n1 = prog(t, sh2[0].start + .2, sh2[0].end - .3, ease.linear) * 8;
+  const n2 = prog(t, sh2[1].start, sh2[1].end, ease.linear) * 8;
+  const loaded = n1 + n2;
+  crates.forEach((c, i) => { const k = Math.max(0, Math.min(1, loaded - i)); const d = c.userData;
+    c.visible = k > 0; c.position.set(d.x, d.y + (1 - ease.out(k)) * 6, d.z); c.rotation.y = d.rot + (1 - k) * 2; });
+  // ghe to ra ở S02 (thu nhập tăng)
+  const grow = prog(t, sh2[1].start, sh2[1].end, ease.inOut);
+  hull.scale.set(lerp(1, 1.35, grow), 1, lerp(1, 1.2, grow));
+  // độ chìm: luôn ở vạch "DƯ 0" cho tới khi gắn khoang nổi (S04)
+  const fix = prog(t, sh2[3].start + .6, sh2[3].end - .4, ease.outBack);
+  floatBox.visible = t > sh2[3].start;
+  floatBox.position.set(0, lerp(-3, -.25, prog(t, sh2[3].start, sh2[3].start + 1.2, ease.out)), lerp(2.4, 1.3, fix));
+  boat.position.y = lerp(-.6, .15, fix) + Math.sin(t * 1.3) * .03; boat.rotation.z = Math.sin(t * .9) * .015;
+  rays.children.forEach((r, i) => r.material.opacity = lerp(.05, .14, prog(t, sh2[4].start, sh2[4].end)) * (1 + .3 * Math.sin(t + i)));
+  // máy quay theo shot (kiểu máy lấy từ storyboard.shots[i].camera)
+  const type = sh.shot.camera || 'orbit';
+  const o = { target: T, r: 9, h: 3, a: .5 + sh.i * .9, dir: sh.i % 2 ? 1 : -1, t };
+  if (type === 'lateral_track') Object.assign(o, { r: 4.2, h: .2, target: new THREE.Vector3(0, .2, 0) });
+  if (type === 'push_in') Object.assign(o, { r: 9, h: 1.5, a: .35 });
+  if (type === 'top_down') Object.assign(o, { r: 7 });
+  S.applyCam(camMove(type, ease.inOut(sh.p), o));
+});
+</script></body></html>

@@ -1,0 +1,169 @@
+{
+ "id": "DEMO-20261026-01",
+ "title": "Lương tăng mà vẫn không dư — lifestyle creep",
+ "hook": "Lương TĂNG GẤP ĐÔI mà cuối tháng vẫn KHÔNG DƯ đồng nào?",
+ "bottom_cta": "Bạn đã từng như vậy chưa?",
+ "concepts": [
+  "Lifestyle creep"
+ ],
+ "metaphor": "Chiếc ghe chở hàng: thu nhập tăng thì ghe to hơn nhưng chất thêm hàng, mạn ghe nổi trên nước (phần dư) vẫn bằng 0; lối ra là khoang nổi kín gắn trước khi chất hàng",
+ "mechanism": [
+  "thu nhập tăng",
+  "chi tiêu dâng theo",
+  "phần dư không đổi"
+ ],
+ "script_frame": "one_concept",
+ "levers": [
+  "A1",
+  "A3",
+  "B4",
+  "B9",
+  "C1",
+  "C2"
+ ],
+ "world": {
+  "topic": "lạm phát lối sống",
+  "rolled_at": "2026-10-26T10:41:13",
+  "seed": 11,
+  "environment": {
+   "id": "floating_market",
+   "vi": "Chợ nổi lúc rạng sáng, sương trên sông, ghe thuyền",
+   "en": "floating market at dawn, mist over river, wooden boats"
+  },
+  "material": {
+   "id": "concrete",
+   "vi": "Bê tông thô",
+   "en": "raw concrete"
+  },
+  "light": {
+   "id": "god_rays",
+   "vi": "Nắng xuyên sương thành tia",
+   "en": "volumetric sun rays through haze"
+  },
+  "palette": {
+   "id": "luxury_trap",
+   "mood": "hào nhoáng, tiêu dùng",
+   "colors": [
+    "#1A1A1A",
+    "#D4AF37",
+    "#7B2D26"
+   ]
+  },
+  "camera": {
+   "id": "top_down",
+   "vi": "Nhìn thẳng từ trên xuống",
+   "en": "top-down god's-eye view, slow rotation"
+  },
+  "scene_type": {
+   "id": "engraved",
+   "vi": "Chữ khắc/dập nổi trên chính vật ẩn dụ"
+  },
+  "script_frame": {
+   "id": "story_case",
+   "vi": "Một câu chuyện – một bài học"
+  },
+  "hook_type": {
+   "id": "mistake_you_make",
+   "vi": "Lỗi bạn đang mắc"
+  },
+  "camera_extra": [
+   {
+    "id": "orbit",
+    "vi": "Xoay quỹ đạo chậm quanh vật",
+    "en": "slow 180 degree orbit around subject"
+   },
+   {
+    "id": "lateral_track",
+    "vi": "Trượt ngang song song với vật",
+    "en": "slow lateral tracking shot parallel to subject"
+   }
+  ],
+  "style_line_en": "floating market at dawn, mist over river, wooden boats, objects made of raw concrete, volumetric sun rays through haze, color palette #1A1A1A, #D4AF37, #7B2D26, minimalist stylized 3D render, soft volumetric haze, cinematic shallow depth of field, no people faces, no text"
+ },
+ "render_mode": "code3d",
+ "sources": [
+  {
+   "name": "Investopedia — Lifestyle Creep (định nghĩa)",
+   "url": "https://www.investopedia.com/terms/l/lifestyle-creep.asp"
+  }
+ ],
+ "shots": [
+  {
+   "id": "S01",
+   "camera": "top_down",
+   "say": "Lương tăng gấp đôi, sao cuối tháng vẫn chẳng dư đồng nào?",
+   "en": "Your salary doubled. So why is nothing left?",
+   "visual": "Nhìn từ trên: chiếc ghe trôi giữa sông sương, các thùng hàng vàng rơi xuống chất đầy ghe",
+   "overlays": []
+  },
+  {
+   "id": "S02",
+   "camera": "orbit",
+   "say": "Đó là lifestyle creep, lạm phát lối sống.",
+   "en": "That's lifestyle creep.",
+   "visual": "Ghe to ra gấp đôi, thùng hàng cũng nhiều gấp đôi",
+   "overlays": [
+    {
+     "type": "concept",
+     "en": "Lifestyle Creep",
+     "vi": "Lạm phát lối sống",
+     "shots": 2
+    }
+   ]
+  },
+  {
+   "id": "S03",
+   "camera": "lateral_track",
+   "say": "Thu nhập tăng bao nhiêu, chi tiêu dâng lên bấy nhiêu. Phần nổi vẫn là số không.",
+   "en": "Spending rises as fast as income. What floats above stays at zero.",
+   "visual": "Trượt dọc mạn ghe, vạch nước khắc chữ DƯ 0 ngang mặt nước",
+   "overlays": [
+    {
+     "type": "bigtext",
+     "text": "Vẫn là số 0",
+     "delay": 1.6
+    }
+   ]
+  },
+  {
+   "id": "S04",
+   "camera": "push_in",
+   "say": "Lối thoát: ngày nhận lương, tự động chuyển mười phần trăm vào tài khoản riêng, trước khi tiêu.",
+   "en": "The fix: automatically move ten percent on payday, before spending.",
+   "visual": "Khoang nổi kín màu son gắn vào đáy ghe, ghe nâng lên",
+   "overlays": [
+    {
+     "type": "checklist",
+     "items": [
+      "Tự động trích 10% ngày nhận lương",
+      "Tăng lương: tăng % tiết kiệm trước"
+     ],
+     "items_at": [
+      3,
+      4
+     ]
+    }
+   ]
+  },
+  {
+   "id": "S05",
+   "camera": "crane_reveal",
+   "say": "Tăng thu nhập chưa đủ. Phải giữ được phần nổi.",
+   "en": "Earning more isn't enough. Keep what floats.",
+   "visual": "Cần cẩu nâng lên: ghe nổi cao trong nắng xuyên sương",
+   "overlays": [
+    {
+     "type": "quote",
+     "text": "Tăng thu nhập chưa đủ. Phải giữ được phần nổi.",
+     "delay": 0.3
+    }
+   ]
+  }
+ ],
+ "caption": "Lương tăng mà vẫn không dư? Có thể bạn đang gặp lifestyle creep — lạm phát lối sống. 👇",
+ "hashtags": [
+  "#taichinhcanhan",
+  "#learnontiktok",
+  "#tuduy"
+ ]
+}
