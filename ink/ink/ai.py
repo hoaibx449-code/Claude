@@ -42,10 +42,10 @@ def _gemini(model, system, user, temperature):
     return ''.join(p.get('text', '') for p in r['candidates'][0]['content']['parts'])
 
 
-def _openai(model, system, user, temperature):
+def _openai(model, system, user, temperature, timeout=70):
     body = {'model': model, 'temperature': temperature, 'response_format': {'type': 'json_object'},
             'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}]}
-    r = _post('https://api.openai.com/v1/chat/completions', body, {'authorization': 'Bearer ' + os.environ['OPENAI_API_KEY']})
+    r = _post('https://api.openai.com/v1/chat/completions', body, {'authorization': 'Bearer ' + os.environ['OPENAI_API_KEY']}, timeout)
     return r['choices'][0]['message']['content']
 
 
@@ -212,8 +212,17 @@ def code(system, user, check=None, log=print):
         if not str(obj.get('code') or '').strip(): raise ValueError('thiếu "code"')
         if check: check(as_text(obj))
     as_text = lambda obj: '```js\n' + str(obj.get('code')) + '\n```\n```json\n' + json.dumps({k: v for k, v in obj.items() if k != 'code'}, ensure_ascii=False) + '\n```'
+    ask_json = user + '\n\nTrả về MỘT đối tượng JSON: mã JavaScript đặt trong khóa "code" (chuỗi), các khóa khác như yêu cầu.'
+    # code needs a strong model: the full OpenAI model first (the light ones break three.js), then the usual chain
+    if os.environ.get('OPENAI_API_KEY') and not remote:
+        for m in [x.strip() for x in os.environ.get('INK_CODE_OPENAI', 'gpt-4.1').split(',') if x.strip()]:
+            try:
+                obj = parse_json(_openai(m, system, ask_json, 0.4, 180)); ok(obj)
+                used.append(('openai', m)); return as_text(obj)
+            except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError, KeyError, IndexError, json.JSONDecodeError) as e:
+                errors.append(f'openai/{m}: {type(e).__name__}: {str(getattr(e, "code", "") or e)[:120]}'); log('  ' + errors[-1])
     try:
-        return as_text(ask(system, user + '\n\nTrả về MỘT đối tượng JSON: mã JavaScript đặt trong khóa "code" (chuỗi), các khóa khác như yêu cầu.', 0.6, check=ok, log=log))
+        return as_text(ask(system, ask_json, 0.6, check=ok, log=log))
     except RuntimeError as e:
         raise RuntimeError(' | '.join(errors + [str(e)]))
 

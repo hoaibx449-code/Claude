@@ -541,6 +541,7 @@ def plan(inp, log=print):
     before = len(variety(scenes, min_types, meta) + rhythm(scenes, wps))
     scenes = structure(polish(scenes, fp, wps), sc['lines'], fp, wps, meta)
     if meta: scenes = series_rules(scenes, fp)
+    if extra: scenes = SR.enforce(scenes, spec)
     left = variety(scenes, min_types, meta) + rhythm(scenes, wps)
     log(f'   tự sửa luật dựng: còn {len(left)}/{before} lỗi' + (f' ({"; ".join(left[:3])})' if left else ''))
     style = {**fp['style'], **{k: v for k, v in (o.get('style') or {}).items() if k in ('scheme', 'grade') and isinstance(v, str)}}
