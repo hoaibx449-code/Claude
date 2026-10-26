@@ -48,7 +48,10 @@
     ${s.bars ? `<div style="display:flex;flex-direction:column;gap:12px;margin-top:8px">${s.bars.map((b, i) => `<div class="cbar ${i ? 'ghost' : ''}" style="width:${b * 4.2}px"><b data-bar="${1.1 + i * .2}"></b></div>`).join('')}</div>` : ''}`);
   // lưới chấm (1 chấm = 1 đơn vị)
   S.c_dots = (s, c) => {
-    const cols = s.cols || 18, rows = s.rows || 5, n = cols * rows, hi = new Set(s.hi || [Math.floor(n / 2) - 2]);
+    const cols = s.cols || 18, rows = s.rows || 5, n = cols * rows;
+    // hi: the highlighted dots; a single number means how many (or a percentage when it exceeds the grid)
+    const hv = Number(s.hi), want = Array.isArray(s.hi) ? null : Number.isFinite(hv) && hv > 0 ? Math.min(n, Math.round(hv > n ? hv / 100 * n : hv)) : null;
+    const hi = new Set(Array.isArray(s.hi) ? s.hi.map(Number) : want != null ? Array.from({ length: want }, (_, k) => k) : [Math.floor(n / 2) - 2]);
     const dots = Array.from({ length: n }, (_, k) => `<i class="${hi.has(k) ? 'hi' : ''}" data-k="${k}"></i>`).join('');
     return card(s, c, `${s.text ? `<div class="fit" data-max="${s.size || 52}" data-in=".2" data-a="up">${rich(s.text)}</div>` : ''}
       <div class="dots" style="grid-template-columns:repeat(${cols},15px)" data-dots="${s.dotsAt || .5}">${dots}</div>
