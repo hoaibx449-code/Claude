@@ -8,7 +8,7 @@ Workflow **Dựng Shorts 3D** kiểm tra adapter web khi đẩy nhánh `codex/sh
 
 ## Tạo từ website
 
-Trong **Tạo video → Shorts 3D**, nhập chủ đề hoặc kịch bản, chọn giọng và độ dài tối đa 90 giây. AI dùng cấu hình AI của Ink Studio, kiểm chứng lời đọc, nghĩ ẩn dụ và bố trí các vật thể/chuyển động cho từng cảnh. Có thể duyệt ảnh phân cảnh trước khi dựng. Giọng đọc thật dùng cấu hình hiện tại; không dùng audio im lặng của demo cho yêu cầu người dùng. Hỗ trợ nhạc tự tạo hoặc tải lên, phụ đề SRT, từ điển phát âm và màu nhấn.
+Trong **Tạo video → Shorts 3D**, nhập chủ đề hoặc kịch bản, chọn giọng và độ dài tối đa 2 phút. AI dùng cấu hình AI của Ink Studio, kiểm chứng lời đọc, nghĩ ẩn dụ và bố trí các vật thể/chuyển động cho từng cảnh. Có thể duyệt ảnh phân cảnh trước khi dựng. Giọng đọc thật dùng cấu hình hiện tại; không dùng audio im lặng của demo cho yêu cầu người dùng. Hỗ trợ nhạc tự tạo hoặc tải lên, phụ đề SRT, từ điển phát âm và màu nhấn.
 
 Video trả về đúng tài khoản trong **Video của tôi**, dùng cùng hàng đợi, hạn mức, thông báo và hoàn lượt khi lỗi. Cần bật máy dựng **GitHub** và có kết nối GitHub của Ink Studio. Bản tích hợp đầu tiên chỉ cho máy GitHub mới nhận tác vụ này; các máy chủ/cloud cũ không nhận nhầm. Sau khi gộp mã cần triển khai web và dùng workflow `ink-runner.yml` mới.
 

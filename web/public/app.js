@@ -514,7 +514,7 @@ const PUBLIC = { '#/faciup-live':1, '#/gioi-thieu':1, '#/prompt-hunter':1, '#/tr
 let stopHomeGallery = null,stopVideoLibrary=null,stopLive=null,stopInk=null;
 /** Ink Studio pages (ink.js): the hand-drawn video maker. */
 async function inkPage(kind, id) {
-  const mod = await import('/ink.js?v=12');
+  const mod = await import('/ink.js?v=13');
   const ctx = { h, api, show, me, openLogin, toast, fail, navigate, busy, footer };
   stopInk = (await (kind === 'create' ? mod.showInkCreate(ctx) : kind === 'list' ? mod.showInkList(ctx) : mod.showInkWatch(ctx, id))) || null;
 }

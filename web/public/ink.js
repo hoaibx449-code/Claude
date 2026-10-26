@@ -3,7 +3,7 @@ const PACES = [['slow', 'Chậm'], ['normal', 'Vừa'], ['fast', 'Nhanh'], ['fas
 const PACE_NOTE = { slow: 'Đọc thong thả, vẽ chậm rãi', normal: 'Nhịp video ngắn tiêu chuẩn', fast: 'Dồn dập, đổi cảnh nhanh', faster: 'Rất dồn dập, hợp video dưới 1 phút' };
 const MOODS = [['auto', 'Tự chọn theo nội dung'], ['motivating', 'Truyền động lực'], ['calm', 'Nhẹ nhàng'], ['upbeat', 'Sôi động'], ['emotional', 'Cảm xúc'], ['none', 'Không nhạc'], ['mine', 'Nhạc của tôi…']];
 const WHERE_NOTE = { server: 'Bạn có thể rời trang, video tự dựng xong và báo cho bạn.', browser: 'Làm toàn bộ trên máy tính/điện thoại của bạn, không cần máy chủ dựng. Cần mở trang trong lúc dựng (khoảng 2–5 phút cho video 1 phút).' };
-const FORMAT_NOTE = { shorts3d: 'AI dựng cảnh 3D ẩn dụ theo nội dung: vật thể, màu và chuyển động riêng cho từng video. Video dọc 9:16, giọng thật và phụ đề; máy GitHub dựng, bạn có thể rời trang. Tối đa 90 giây. Hình học 3D tối giản, chưa phải cảnh quay chân thực.', ink: 'Bàn tay vẽ từng cảnh trên nền giấy, như video whiteboard.', cine: 'Cảnh quay và ảnh thật lấp kín khung, máy quay chuyển động, chữ và số liệu hiện trong không gian, phụ đề kiểu CapCut. Dựng trên máy chủ.',
+const FORMAT_NOTE = { shorts3d: 'AI dựng cảnh 3D ẩn dụ theo nội dung: vật thể, màu và chuyển động riêng cho từng video. Video dọc 9:16, giọng thật và phụ đề; máy GitHub dựng, bạn có thể rời trang. Tối đa 2 phút. Hình học 3D tối giản, chưa phải cảnh quay chân thực.', ink: 'Bàn tay vẽ từng cảnh trên nền giấy, như video whiteboard.', cine: 'Cảnh quay và ảnh thật lấp kín khung, máy quay chuyển động, chữ và số liệu hiện trong không gian, phụ đề kiểu CapCut. Dựng trên máy chủ.',
   money: 'Đòn Bẩy Tư Duy: video truyền cảm hứng kể bằng một hành trình 3D (máy quay đi qua những không gian ẩn dụ, ánh sáng theo cảm xúc, nhạc dâng tới cao trào). AI tìm sự thật và nghiên cứu thật; dán link bài báo nếu có. Nhận kèm kịch bản thoại và phụ đề .ass để tự thu giọng.' };
 const LENGTHS =[[30, '30 giây'], [60, '1 phút'], [90, '1,5 phút'], [120, '2 phút'], [180, '3 phút'], [300, '5 phút']];
 const STATUS = { queued: 'Đang chờ máy dựng', running: 'Đang dựng', review: 'Chờ bạn duyệt phân cảnh', browser: 'Sẵn sàng dựng trên máy của bạn', done: 'Đã xong', failed: 'Chưa dựng được' };
@@ -167,8 +167,8 @@ export async function showInkCreate(ctx) {
   const paintHint = () => { hint.textContent = 'Video 9:16, giọng đọc, nhạc nền và ảnh bìa. ' + etaText(cfg.eta, st.format, st.browser); };
   const whereRow = h('div', { class: 'ink-field' });
   const paintFormat = () => {
-    if (st.format === 'shorts3d') { st.series = ''; st.seconds = Math.min(90, st.seconds); }
-    lenRow.replaceChildren(h('span', { class: 'ink-label' }, 'Độ dài'), chips(h, LENGTHS.map(([s, l]) => [s, l, s > Math.min(cfg.maxSeconds, st.format === 'shorts3d' ? 90 : 300)]), st.seconds, (v) => { st.seconds = v; keep(); }));
+    if (st.format === 'shorts3d') { st.series = ''; st.seconds = Math.min(120, st.seconds); }
+    lenRow.replaceChildren(h('span', { class: 'ink-label' }, 'Độ dài'), chips(h, LENGTHS.map(([s, l]) => [s, l, s > Math.min(cfg.maxSeconds, st.format === 'shorts3d' ? 120 : 300)]), st.seconds, (v) => { st.seconds = v; keep(); }));
     formatNote.textContent = FORMAT_NOTE[st.format];
     paintHint();
     whereRow.hidden = st.format !== 'ink' || !cfg.browser; if (st.format !== 'ink') st.browser = false;

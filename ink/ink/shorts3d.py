@@ -39,7 +39,7 @@ def color(value, default='#e8a15a'):
 def validate(data, lines=None):
     if not isinstance(data, dict): raise ValueError('Phân cảnh phải là JSON object')
     shots = data.get('shots')
-    if not isinstance(shots, list) or not 1 <= len(shots) <= 40: raise ValueError('Cần 1–40 cảnh')
+    if not isinstance(shots, list) or not 1 <= len(shots) <= 60: raise ValueError('Cần 1–60 cảnh')
     if lines is not None and len(shots) != len(lines): raise ValueError('Số cảnh phải khớp số câu đã kiểm chứng')
     clean = []
     for i, sh in enumerate(shots):
@@ -76,9 +76,9 @@ def validate(data, lines=None):
 
 
 def plan(inp, log=print):
-    seconds = min(90, int(inp.get('seconds') or 30))
+    seconds = min(120, int(inp.get('seconds') or 30))
     source = inp.get('script') if inp.get('mode') == 'script' else inp.get('topic','')
-    if inp.get('mode') == 'script': sc = S.from_script(source,max_seconds=90,pace=inp.get('pace','normal'),log=log)
+    if inp.get('mode') == 'script': sc = S.from_script(source,max_seconds=120,pace=inp.get('pace','normal'),log=log)
     else: sc = S.from_topic(source,seconds,inp.get('audience',''),tone=inp.get('tone') or 'tự nhiên',notes=inp.get('notes',''),pace=inp.get('pace','normal'),log=log)
     lines = [x['say'] for x in sc['lines']]
     lines, extras, facts = S.fact_check(source,lines,{'title':sc.get('title','')},rewrite=inp.get('mode')!='script',log=log)
@@ -140,6 +140,11 @@ def preview(sb,out,log=print):
     return sb
 
 
+def fit_times(spans, words, ratio, duration):
+    return ([(i,max(0,a*ratio),min(duration,b*ratio)) for i,a,b in spans],
+            [(i,w,max(0,a*ratio),min(duration,b*ratio)) for i,w,a,b in words])
+
+
 def render(sb,out,inp,log=print,music=None):
     # Revalidate anything read back from stored JSON. Only this data reaches the browser.
     clean=validate(sb);clean['facts']=sb.get('facts',{});sb={**sb,**clean}
@@ -149,7 +154,15 @@ def render(sb,out,inp,log=print,music=None):
     if inp.get('_myvoice_path'): audio, spans, words, provider=V.own(lines,inp['_myvoice_path'],str(work),log=log)
     else: audio, spans, words, provider=V.narrate(lines,str(work),log=log)
     duration=V.duration(audio)
-    if duration>100: raise ValueError('Giọng đọc vượt 100 giây; hãy rút ngắn kịch bản Shorts 3D')
+    if inp.get('mode') != 'script' and not inp.get('_myvoice_path') and inp.get('seconds'):
+        target=max(20,min(120,int(inp['seconds'])))
+        speed=duration/target
+        if not .75 <= speed <= 1.33: raise ValueError('Lời đọc lệch quá nhiều so với thời lượng yêu cầu; cần viết lại ngắn hoặc dài hơn')
+        fitted=work/'voice-fit.wav'
+        command(['ffmpeg','-y','-v','error','-i',audio,'-af',f'atempo={speed:.8f},apad,atrim=duration={target}','-c:a','pcm_s16le',fitted],log)
+        spans,words=fit_times(spans,words,target/duration,target)
+        audio=str(fitted);duration=float(target)
+    if duration>135: raise ValueError('Giọng đọc vượt giới hạn 2 phút; hãy rút ngắn kịch bản Shorts 3D')
     shots=[{'id':s['id'],'start':spans[i][1],'end':min(duration,spans[i][2])} for i,s in enumerate(sb['shots'])]
     timeline={'duration':duration,'shots':shots,'words':[{'shot':i,'w':w,'start':a,'end':b} for i,w,a,b in words]}
     write(work/'timeline.json',timeline)
