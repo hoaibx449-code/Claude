@@ -45,6 +45,8 @@
 
   /* chữ trên vật (sprite canvas) */
   function label(text, o = {}) {
+    if (text && typeof text === 'object') text = text.text || text.label || text.vi || '';   // never "[object Object]"
+    text = String(text ?? '');
     const P = PAL(), fs = o.size || 64, pad = fs * .45, cv = document.createElement('canvas'), g = cv.getContext('2d');
     g.font = `800 ${fs}px "${o.font || P.font}", sans-serif`;
     const w = Math.ceil(g.measureText(text).width + pad * 2), h = Math.ceil(fs * 1.5);
