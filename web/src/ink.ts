@@ -24,7 +24,7 @@ export const PACES = ['slow', 'normal', 'fast', 'faster'] as const;
 export const MOODS = ['auto', 'motivating', 'calm', 'upbeat', 'emotional', 'none'] as const;
 const FILES: Record<string, string> = { 'video.mp4': 'video/mp4', 'cover.jpg': 'image/jpeg', 'overview.png': 'image/png', 'thumb.jpg': 'image/jpeg', 'draw.json': 'application/json', 'audio.aac': 'audio/aac',
   // 'Đòn Bẩy Tư Duy' also gives the clean voice-over script and karaoke subtitles to re-time after recording a voice
-  'script.txt': 'text/plain; charset=utf-8', 'subs.ass': 'text/plain; charset=utf-8' };
+  'script.txt': 'text/plain; charset=utf-8', 'subs.ass': 'text/plain; charset=utf-8', 'captions.srt': 'text/plain; charset=utf-8' };
 const STALE_MS = 5 * 60_000; // no heartbeat for this long: the machine is gone, the job goes back in the queue
 const MAX_ACTIVE = 2;
 
@@ -294,6 +294,26 @@ function clip(text: string, n: number) {
   return (k > 0 ? head.slice(0, k) : t.slice(0, n)).replace(/[\s,;:–-]+$/, '') + '…';
 }
 
+// ---- per-user preferences: the pronunciation dictionary and the brand (colour, logo)
+type Lex = { w: string; say: string }[];
+const cleanLex = (v: unknown): Lex => (Array.isArray(v) ? v : []).map((x: any) => ({ w: str(x?.w, 60).trim(), say: str(x?.say, 120).trim() }))
+  .filter((x) => x.w && x.say && x.w.toLowerCase() !== x.say.toLowerCase()).slice(0, 200);
+const cleanBrand = (v: any) => ({ ...(/^#[0-9a-f]{6}$/i.test(v?.color || '') ? { color: String(v.color).toLowerCase() } : {}), ...(/^logo\.(png|jpg|webp)$/.test(v?.logo || '') ? { logo: v.logo } : {}),
+  ...(['tl', 'tr', 'bl', 'br'].includes(v?.corner) ? { corner: v.corner } : {}) });
+export async function inkPrefs(env: Env, userId: string) {
+  const r = await env.DB.prepare('SELECT lexicon, brand FROM ink_prefs WHERE user_id = ?').bind(userId).first<any>().catch(() => null);
+  return { lexicon: cleanLex(JSON.parse(r?.lexicon || '[]')), brand: cleanBrand(JSON.parse(r?.brand || '{}')) };
+}
+/** names and terms read the way the person wants: whole words, as written (and in capitals), in one pass so a
+ *  replacement is never replaced again; the longest entries win ("OpenAI" before "AI"; the word "ai" stays) */
+export function applyLexicon(text: string, lex: Lex) {
+  if (!lex.length) return text;
+  const map = new Map<string, string>();
+  for (const e of lex) { map.set(e.w, e.say); if (e.w !== e.w.toUpperCase()) map.set(e.w.toUpperCase(), e.say); }
+  const keys = [...map.keys()].sort((a, b) => b.length - a.length).map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return text.replace(new RegExp(`(?<![\\p{L}\\p{N}])(?:${keys.join('|')})(?![\\p{L}\\p{N}])`, 'gu'), (m) => map.get(m) ?? m);
+}
+
 async function own(env: Env, user: User, id: string) {
   const j = await env.DB.prepare('SELECT * FROM ink_jobs WHERE id = ? AND user_id = ?').bind(id, user.id).first<any>();
   if (!j) throw new HttpError(404, 'Không tìm thấy video.');
@@ -411,6 +431,12 @@ export async function createInk(env: XEnv, rc: Rc, user: User, b: any, extra: Re
     if (input.format === 'ink') input.format = 'cine';
     (input as any).series = { id: sr.id, name: sr.name, topic: sr.topic, style: sr.style, used: JSON.parse(sr.used || '[]') };
   }
+  // the person's own dictionary and brand go with every video (web and Zalo alike)
+  const prefs = await inkPrefs(env, user.id);
+  if (prefs.lexicon.length) input.lexicon = prefs.lexicon;
+  if (prefs.brand.color || prefs.brand.logo) input.brand = prefs.brand;
+  // other frame shapes are drawn by the render machines (the device renderer draws 9:16)
+  if (input.format === 'ink') { const ar = ['9:16', '1:1', '4:5', '16:9'].includes(b.aspect) ? b.aspect : '9:16'; if (ar !== '9:16') { input.aspect = ar; input.browser = false; } }
   if (input.format !== 'ink' && !(env as any).PIXABAY_API_KEY) throw new HttpError(503, `Kiểu ${format === 'money' ? 'Đòn Bẩy Tư Duy' : 'Điện ảnh'} đang được chuẩn bị, vui lòng chọn Vẽ tay.`);
   return enqueue(env, rc, user, input, 'plan', null, typeof b.parent === 'string' ? b.parent : null);
 }
@@ -458,6 +484,60 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
     const id = randomId(12);
     await env.BUCKET.put(`ink-music/${user.id}/${id}.${ext}`, bytes, { httpMetadata: { contentType: type } });
     return json({ music: `${id}.${ext}` });
+  }
+  if (sub === 'prefs' && method === 'GET') {
+    rc.quiet = true;
+    const p = await inkPrefs(env, user.id);
+    return json({ ...p, logoUrl: p.brand.logo ? `/api/ink/prefs/logo?v=${Date.now() % 1e6}` : '' });
+  }
+  if (sub === 'prefs' && method === 'PUT') {
+    const b = await body<any>(req, 40_000), cur = await inkPrefs(env, user.id);
+    const lexicon = b.lexicon !== undefined ? cleanLex(b.lexicon) : cur.lexicon;
+    const brand = cleanBrand({ ...cur.brand, ...(b.brand && typeof b.brand === 'object' ? b.brand : {}), logo: cur.brand.logo });
+    if (b.brand && b.brand.color === '') delete (brand as any).color;
+    await env.DB.prepare('INSERT INTO ink_prefs (user_id, lexicon, brand, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (user_id) DO UPDATE SET lexicon = excluded.lexicon, brand = excluded.brand, updated_at = excluded.updated_at')
+      .bind(user.id, JSON.stringify(lexicon), JSON.stringify(brand), Date.now()).run();
+    return json({ lexicon, brand });
+  }
+  if (sub === 'prefs/logo' && method === 'POST') {
+    const bytes = await readBytes(req, 1_500_000), type = req.headers.get('content-type') || '';
+    const ext = /png/.test(type) ? 'png' : /jpe?g/.test(type) ? 'jpg' : /webp/.test(type) ? 'webp' : '';
+    if (!ext || bytes.length < 200) throw new HttpError(400, 'Logo cần là ảnh PNG, JPG hoặc WEBP (tối đa 1,5 MB). PNG nền trong suốt đẹp nhất.');
+    const cur = await inkPrefs(env, user.id);
+    if (cur.brand.logo && cur.brand.logo !== `logo.${ext}`) await env.BUCKET.delete(`ink-brand/${user.id}/${cur.brand.logo}`);
+    await env.BUCKET.put(`ink-brand/${user.id}/logo.${ext}`, bytes, { httpMetadata: { contentType: type } });
+    const brand = { ...cur.brand, logo: `logo.${ext}` };
+    await env.DB.prepare('INSERT INTO ink_prefs (user_id, lexicon, brand, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (user_id) DO UPDATE SET brand = excluded.brand, updated_at = excluded.updated_at')
+      .bind(user.id, JSON.stringify(cur.lexicon), JSON.stringify(brand), Date.now()).run();
+    return json({ brand, logoUrl: `/api/ink/prefs/logo?v=${Date.now() % 1e6}` });
+  }
+  if (sub === 'prefs/logo' && method === 'DELETE') {
+    const cur = await inkPrefs(env, user.id);
+    if (cur.brand.logo) await env.BUCKET.delete(`ink-brand/${user.id}/${cur.brand.logo}`);
+    const { logo, ...brand } = cur.brand as any;
+    await env.DB.prepare('UPDATE ink_prefs SET brand = ?, updated_at = ? WHERE user_id = ?').bind(JSON.stringify(brand), Date.now(), user.id).run();
+    return json({ brand });
+  }
+  if (sub === 'prefs/logo' && method === 'GET') {
+    const cur = await inkPrefs(env, user.id);
+    if (!cur.brand.logo) throw new HttpError(404, 'Chưa có logo.');
+    rc.quiet = true;
+    return serveObject(env, req, `ink-brand/${user.id}/${cur.brand.logo}`, cur.brand.logo.endsWith('png') ? 'image/png' : cur.brand.logo.endsWith('webp') ? 'image/webp' : 'image/jpeg', { 'cache-control': 'private, max-age=60' });
+  }
+  if (sub === 'voices/preview' && method === 'POST') {
+    // hear a voice before choosing it: a fixed sample (cached), or the person's own sentence read with their dictionary
+    const b = await body<any>(req, 4_000), v = s.voice.list.find((x) => x.on && x.id === b.voice);
+    if (!v) throw new HttpError(404, 'Không có giọng này.');
+    const own = str(String(b.text || '').replace(/\s+/g, ' '), 300).trim();
+    const sample = 'Xin chào, đây là giọng đọc cho video của bạn. Mỗi ngày học một điều nhỏ, một năm sau bạn sẽ khác hẳn.';
+    const key = `ink-voice-preview/${v.provider}-${v.code}.mp3`;
+    if (!own) { const hit = await env.BUCKET.get(key); if (hit) { rc.quiet = true; return new Response(hit.body, { headers: { 'content-type': 'audio/mpeg', 'cache-control': 'private, max-age=86400' } }); } }
+    await useQuota(env, 'u:' + user.id, 'voice', 60);
+    const text = own ? applyLexicon(own, b.lexicon !== undefined ? cleanLex(b.lexicon) : (await inkPrefs(env, user.id)).lexicon) : sample;
+    const r = await speak(env, v, text, '+8%', false);
+    if (!own) await env.BUCKET.put(key, r.audio, { httpMetadata: { contentType: 'audio/mpeg' } });
+    rc.log('ink.voice.preview', { data: { voice: v.id, own: !!own, chars: text.length } });
+    return new Response(r.audio, { headers: { 'content-type': 'audio/mpeg', 'cache-control': 'private, no-store' } });
   }
   if (sub === 'series' && method === 'GET') {
     rc.quiet = true;
@@ -611,7 +691,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
       const v = s.voice.list.find((x) => x.id === input.voice) || s.voice.list.find((x) => x.id === s.voice.default) || s.voice.list[0];
       const asked = /^[+-]\d{1,2}%$/.test(String(b.rate || '')) ? Math.max(-15, Math.min(50, parseInt(b.rate, 10))) : null;
       const rate = asked != null ? (asked >= 0 ? '+' : '') + asked + '%' : ({ slow: '+0%', normal: '+8%', fast: '+15%', faster: '+25%' } as Record<string, string>)[input.pace] || '+8%';
-      const r = await speak(env, v, text, rate, s.voice.fallback);
+      const r = await speak(env, v, applyLexicon(text, cleanLex(input.lexicon)), rate, s.voice.fallback);
       let bin = ''; for (let i = 0; i < r.audio.length; i += 0x8000) bin += String.fromCharCode(...r.audio.subarray(i, i + 0x8000));
       rc.log('ink.voice', { data: { job: j.id, provider: r.provider, chars: text.length, ...(r.errors.length ? { errors: r.errors } : {}) } });
       if (r.provider !== v.provider) await inkVoiceFailed(env, v, r.errors.join(' | '));
@@ -738,7 +818,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
         ...(voice.provider === 'microsoft' ? { INK_MS_VOICE: voice.code } : { EVERAI_VOICE_CODE: voice.code }),
       } } } });
   }
-  const m = sub.match(/^jobs\/([a-f0-9]{24})\/(progress|planned|exported|done|fail|music|myvoice|file\/[\w.]+)$/);
+  const m = sub.match(/^jobs\/([a-f0-9]{24})\/(progress|planned|exported|done|fail|music|myvoice|logo|file\/[\w.]+)$/);
   if (!m) throw new HttpError(404, 'Không tìm thấy.');
   const lease = req.headers.get('x-nv-lease') || '';
   const j = await env.DB.prepare('SELECT * FROM ink_jobs WHERE id = ?').bind(m[1]).first<any>();
@@ -752,6 +832,11 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     await env.DB.prepare('UPDATE ink_jobs SET progress = ?, message = ?, heartbeat = ?, updated_at = ? WHERE id = ? AND lease = ?')
       .bind(Math.round(num(b.progress, 0, 99, j.progress)), str(b.message, 160), now, now, j.id, lease).run();
     return json({ ok: true });
+  }
+  if (act === 'logo' && req.method === 'GET') {
+    const obj = input.brand?.logo ? await env.BUCKET.get(`ink-brand/${j.user_id}/${input.brand.logo}`) : null;
+    if (!obj) throw new HttpError(404, 'Không có logo.');
+    return new Response(obj.body);
   }
   if (act === 'myvoice' && req.method === 'GET') {
     const obj = input.myvoice ? await env.BUCKET.get(`ink-voice/${j.user_id}/${input.myvoice}`) : null;

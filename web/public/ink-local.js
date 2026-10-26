@@ -3,7 +3,7 @@
 // done (a closed tab continues from the last finished step):
 //   storyboard (AI) → voice (site) → word timing → drawing plan → music + effects → mixed sound, encoded →
 //   cover picture → frames drawn and encoded (ink-render.js) → MP4 uploaded.
-import { renderInBrowser, idbGet, idbPut, idbClear } from '/ink-render.js?v=2';
+import { renderInBrowser, idbGet, idbPut, idbClear } from '/ink-render.js?v=3';
 
 const api = async (path, opts = {}) => {
   const res = await fetch(path, { method: opts.method || 'GET', credentials: 'same-origin', headers: { 'x-nv': '1', ...(opts.body ? { 'content-type': 'application/json' } : {}) }, body: opts.body ? JSON.stringify(opts.body) : undefined });
@@ -106,7 +106,7 @@ export async function makeLocally({ job, sup, onProgress = () => {}, isCancelled
 
     // 4. the cover picture (first frame of the video) for the list and for sharing
     if (!(await idbGet(K('cover')))) {
-      const { coverJpeg } = await import('/ink-render.js?v=2');
+      const { coverJpeg } = await import('/ink-render.js?v=3');
       const [big, small] = await coverJpeg(plan.draw);
       await fetch(`/api/ink/jobs/${job}/browser/file/cover.jpg`, { method: 'PUT', credentials: 'same-origin', headers: { 'x-nv': '1', 'content-type': 'image/jpeg' }, body: big });
       await fetch(`/api/ink/jobs/${job}/browser/file/thumb.jpg`, { method: 'PUT', credentials: 'same-origin', headers: { 'x-nv': '1', 'content-type': 'image/jpeg' }, body: small });

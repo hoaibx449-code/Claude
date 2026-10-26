@@ -952,6 +952,7 @@ export async function inkPage(env: XEnv, rc: Rc, url: URL, id: string, exp36: st
   let question = ''; try { question = String(JSON.parse(j.storyboard || '{}').question || ''); } catch { /* no storyboard */ }
   const extras = [files.includes('script.txt') ? `<a class="btn ghost" href="${escAttr(await inkShareLink(env, origin, id, 'script.txt'))}">Tải kịch bản thoại (.txt)</a>` : '',
     files.includes('subs.ass') ? `<a class="btn ghost" href="${escAttr(await inkShareLink(env, origin, id, 'subs.ass'))}">Tải phụ đề karaoke (.ass)</a>` : '',
+    files.includes('captions.srt') ? `<a class="btn ghost" href="${escAttr(await inkShareLink(env, origin, id, 'captions.srt'))}">Tải phụ đề (.srt)</a>` : '',
     question ? `<p class="muted note"><b>Câu hỏi bình luận:</b> ${escAttr(question)}</p>` : ''].join('');
   return page(200, j.title, `<div class="card"><video src="${escAttr(file)}" poster="${escAttr(cover)}" controls playsinline preload="metadata"></video>
 <div class="meta"><h1>${escAttr(j.title)}</h1><p class="muted">Video 9:16${len ? ' · ' + len : ''}</p>
@@ -965,9 +966,9 @@ export async function shareInk(env: XEnv, rc: Rc, req: Request, id: string, file
   if (!exp || exp < Date.now() || !timingSafeEqual((await hmacHex(env.RUNNER_TOKEN || '', `share:ink:${id}:${exp}`)).slice(0, 32), url.searchParams.get('s') || '')) throw new HttpError(403, 'Link đã hết hạn. Gõ TT trong Zalo để lấy link mới.');
   const j = await env.DB.prepare("SELECT user_id, meta FROM ink_jobs WHERE id = ? AND status = 'done'").bind(id).first<any>();
   if (!j) throw new HttpError(404, 'Video không còn.');
-  if (file === 'script.txt' || file === 'subs.ass') {   // the voice-over script and the karaoke subtitles, to save
+  if (file === 'script.txt' || file === 'subs.ass' || file === 'captions.srt') {   // the script and the subtitles, to save
     rc.quiet = true;
-    return serveObject(env, req, `ink/${j.user_id}/${id}/${file}`, 'text/plain; charset=utf-8', { 'content-disposition': `attachment; filename="${file === 'subs.ass' ? 'phu-de' : 'kich-ban'}-${id.slice(0, 8)}.${file.split('.')[1]}"`, 'cache-control': 'private, max-age=3600' });
+    return serveObject(env, req, `ink/${j.user_id}/${id}/${file}`, 'text/plain; charset=utf-8', { 'content-disposition': `attachment; filename="${file === 'script.txt' ? 'kich-ban' : 'phu-de'}-${id.slice(0, 8)}.${file.split('.')[1]}"`, 'cache-control': 'private, max-age=3600' });
   }
   if (file) {
     const files: string[] = JSON.parse(j.meta || '{}').files || [], pic = ['cover.jpg', 'thumb.jpg'].find((f) => files.includes(f));

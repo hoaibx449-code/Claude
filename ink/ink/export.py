@@ -51,9 +51,15 @@ def drawing(sb, timing, words, cover, captions=True, pace='normal'):
     return data, events
 
 
-def export(sb, timing, words, voice, out, cover, music=None, music_volume=0.20, captions=True, pace='normal'):
+def export(sb, timing, words, voice, out, cover, music=None, music_volume=0.20, captions=True, pace='normal', logo=None, corner='tr'):
     """writes draw.json and audio.aac into folder `out`; cover = (base ops, drawn ops)"""
     data, events = drawing(sb, timing, words, cover, captions, pace)
+    if logo and os.path.exists(logo):   # the person's logo in a corner of every frame (the page draws it)
+        try:
+            im = Image.open(logo).convert('RGBA'); box = W * .16; k = min(box / im.width, box * .55 / im.height)
+            im = im.resize((max(1, int(im.width * k)), max(1, int(im.height * k))), Image.LANCZOS); buf = io.BytesIO(); im.save(buf, 'PNG')
+            data['logo'] = {'img': 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode(), 'w': im.width, 'h': im.height, 'corner': corner}
+        except Exception: pass  # noqa: BLE001 - a logo that does not open is left out
     with open(os.path.join(out, 'draw.json'), 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
     mix_audio(timing[-1][2], voice, os.path.join(out, 'audio.aac'), music, music_volume, events, adts=True)
     return data['total']

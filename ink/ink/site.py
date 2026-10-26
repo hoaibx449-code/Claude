@@ -64,8 +64,9 @@ def run(job):
     if os.environ.get('GITHUB_ACTIONS'):  # keys from the site never show in the public run log
         for k, v in cfg.items():
             if k.endswith('_API_KEY'): print('::add-mask::' + v, flush=True)
-    for k in ('INK_WPS', 'EVERAI_VOICE_CODE', 'INK_MS_VOICE'): os.environ.pop(k, None)   # nothing left over from the last job
+    for k in ('INK_WPS', 'EVERAI_VOICE_CODE', 'INK_MS_VOICE', 'INK_LEXICON', 'VID_ACC'): os.environ.pop(k, None)   # nothing left over from the last job
     os.environ.update(cfg)
+    if inp.get('lexicon'): os.environ['INK_LEXICON'] = json.dumps(inp['lexicon'], ensure_ascii=False)   # names read the person's way
     state = {'progress': 2, 'message': 'Chuẩn bị'}; stop = threading.Event()
     def report():
         try: call(f'jobs/{jid}/progress', state, lease=lease, timeout=20)
@@ -98,6 +99,16 @@ def run(job):
     try:
         if inp.get('format') in ('cine', 'money') or (job.get('storyboard') or {}).get('format') == 'cine':
             return run_cine(job, inp, out, state, report, log, t0)
+        # the person's brand: the highlight colour everywhere (cover, boxes, captions, progress) and a logo in a corner
+        from .engine import set_accent
+        brand = inp.get('brand') if isinstance(inp.get('brand'), dict) else {}
+        set_accent(brand.get('color'))
+        logo = None
+        if brand.get('logo'):
+            logo = os.path.join(out, brand['logo'])
+            try: open(logo, 'wb').write(call(f'jobs/{jid}/logo', lease=lease, raw=True, timeout=60))
+            except Exception as e: log(f'  không tải được logo ({e}), bỏ logo'); logo = None  # noqa: BLE001
+        ar = inp.get('aspect') if inp.get('aspect') in ('1:1', '4:5', '16:9') else '9:16'
         if job['stage'] == 'plan':
             sb = make_plan(out, inp.get('topic') if inp.get('mode') != 'script' else None, inp.get('script') if inp.get('mode') == 'script' else None,
                            int(inp.get('seconds') or 60), inp.get('audience', ''), tone=inp.get('tone') or 'tự nhiên, hợp với chủ đề và người xem',
@@ -116,7 +127,8 @@ def run(job):
         browser = bool(inp.get('browser'))
         total, provider = make_video(sb, out, inp.get('pace', 'normal'), music, inp.get('mood') or 'auto', float(inp.get('musicVolume') or 0.2),
                                      inp.get('captions', True) is not False, log, browser=browser,
-                                     seconds=0 if inp.get('mode') == 'script' else int(inp.get('seconds') or 0))
+                                     seconds=0 if inp.get('mode') == 'script' else int(inp.get('seconds') or 0), ar=ar, logo=logo, corner=brand.get('corner') or 'tr')
+        if os.path.exists(os.path.join(out, 'captions.srt')): put(jid, lease, out, 'captions.srt')   # the captions to download
         if browser:
             # the user's own device draws the frames: hand over the drawing plan and the sound
             state.update(progress=60, message='Gửi bản vẽ cho trình duyệt'); report()
@@ -126,6 +138,12 @@ def run(job):
             return True
         MARKS['upload'] = time.time(); state.update(progress=96, message='Lưu video'); report()
         video = os.path.join(out, 'video.mp4'); thumb = os.path.join(out, 'thumb.jpg')
+        if ar != '9:16':   # the cover in the video's own shape (the first frame of the video already is)
+            from .render import compose
+            import numpy as np
+            from PIL import Image
+            cj = os.path.join(out, 'cover.jpg')
+            if os.path.exists(cj): Image.fromarray(compose(np.asarray(Image.open(cj).convert('RGB').resize((1080, 1920))), ar)).save(cj, quality=92); put(jid, lease, out, 'cover.jpg')
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', os.path.join(out, 'cover.jpg'), '-vf', 'scale=360:-2', thumb], check=False)
         put(jid, lease, out, 'video.mp4', timeout=600)
         if os.path.exists(thumb): put(jid, lease, out, 'thumb.jpg')
@@ -180,7 +198,7 @@ def run_cine(job, inp, out, state, report, log, t0):
 
 
 def put(jid, lease, out, name, timeout=120):
-    types = {'mp4': 'video/mp4', 'jpg': 'image/jpeg', 'png': 'image/png', 'json': 'application/json', 'aac': 'audio/aac', 'txt': 'text/plain; charset=utf-8', 'ass': 'text/plain; charset=utf-8'}
+    types = {'mp4': 'video/mp4', 'jpg': 'image/jpeg', 'png': 'image/png', 'json': 'application/json', 'aac': 'audio/aac', 'txt': 'text/plain; charset=utf-8', 'ass': 'text/plain; charset=utf-8', 'srt': 'text/plain; charset=utf-8'}
     with open(os.path.join(out, name), 'rb') as f:
         call(f'jobs/{jid}/file/{name}', method='PUT', body=f.read(), ctype=types[name.rsplit('.', 1)[1]], lease=lease, timeout=timeout)
 

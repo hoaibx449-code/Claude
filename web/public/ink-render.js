@@ -62,6 +62,12 @@ function plan(ops, P, W) {
 export async function renderInBrowser({ job, sup, data = null, sound = null, onProgress = () => {}, isCancelled = () => false }) {
   const t0 = performance.now();
   const D = data || await (await fetch(`/api/ink/jobs/${job}/file/draw.json`, { credentials: 'same-origin' })).json();
+  // the person's logo in a corner of every frame (same place and size as the render machines)
+  const logo = D.logo ? await new Promise((ok) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = D.logo.img; }) : null;
+  const putLogo = (c) => {
+    if (!logo) return; const m = Math.round(Math.min(D.W, D.H) * .035), w = D.logo.w, h = D.logo.h, cr = D.logo.corner || 'tr';
+    c.drawImage(logo, cr === 'tr' || cr === 'br' ? D.W - w - m : m, cr === 'bl' || cr === 'br' ? D.H - h - m - 18 : m, w, h);
+  };
   if (!sound) {
     const aac = parseAdts(new Uint8Array(await (await fetch(`/api/ink/jobs/${job}/file/audio.aac`, { credentials: 'same-origin' })).arrayBuffer()));
     const u = Math.round(1024 * 1e6 / aac.rate);
@@ -192,7 +198,7 @@ export async function renderInBrowser({ job, sup, data = null, sound = null, onP
         if (off > 0) ox.drawImage(camC, 0, 0, off, OH, OW - off, 0, off, OH);
       } else ox.drawImage(camC, 0, 0);
       const gt = (start + f) / FPS;
-      scaled(ox); if (D.words.length) caption(ox, gt); progress(ox, gt);
+      scaled(ox); if (D.words.length) caption(ox, gt); progress(ox, gt); putLogo(ox);
       await emit(start + f, out, f === 0);
     }
     px.setTransform(1, 0, 0, 1, 0, 0); px.drawImage(camC, 0, 0); // this scene's last picture, for the next slide

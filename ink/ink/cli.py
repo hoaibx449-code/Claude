@@ -64,7 +64,7 @@ def hold_scenes(voice, timing, words, holds, log=print):
     return out, timing2, words2
 
 
-def make_video(sb, out, pace='normal', music=None, mood='auto', music_volume=0.20, captions=True, log=print, browser=False, seconds=0):
+def make_video(sb, out, pace='normal', music=None, mood='auto', music_volume=0.20, captions=True, log=print, browser=False, seconds=0, ar='9:16', logo=None, corner='tr'):
     """voice, music and the hand-drawn render of a storyboard; returns the video length in seconds.
     browser=True: instead of the MP4, write draw.json + audio.aac for the user's browser to draw (export.py)
     seconds: the length the user chose; the video comes out within about ±10% of it"""
@@ -90,6 +90,8 @@ def make_video(sb, out, pace='normal', music=None, mood='auto', music_volume=0.2
     if any(float(s.get('hold') or 0) > 0 for s in sb['scenes']):
         voice, timing, words = hold_scenes(voice, timing, words, [float(s.get('hold') or 0) for s in sb['scenes']], log)
     json.dump({'provider': provider, 'pace': pace, 'timing': timing, 'words': words}, open(os.path.join(out, 'timing.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+    from .render import srt
+    srt(words, sb['scenes'], os.path.join(out, 'captions.srt'))   # the captions to download, the same chunks the video shows
     if not music and mood != 'none':
         m = sb.get('music') if mood == 'auto' else mood
         m = m if m in MOODS else 'motivating'
@@ -98,13 +100,14 @@ def make_video(sb, out, pace='normal', music=None, mood='auto', music_volume=0.2
         from .export import export
         log('Xuất bản vẽ cho trình duyệt…')
         return export(sb, timing, words, voice, out, cover_parts(sb.get('cover') or {'lines': [sb.get('title') or 'Video mới']}),
-                      music, music_volume, captions, pace), provider
+                      music, music_volume, captions, pace, logo=logo, corner=corner), provider
     log('Dựng video…')
     base_ops, drawn = cover_parts(sb.get('cover') or {'lines': [sb.get('title') or 'Video mới']})
     base = np.empty((H, W, 3), np.uint8); base[:] = BG
     for op in base_ops: prep(op); render_full(base, op)
+    from .render import load_logo
     return render(sb['scenes'], timing, voice, os.path.join(out, 'video.mp4'), words=words, cover=(base, drawn),
-                  music=music, music_volume=music_volume, captions=captions, pace=pace, log=log), provider
+                  music=music, music_volume=music_volume, captions=captions, pace=pace, log=log, ar=ar, logo=load_logo(logo, ar), corner=corner), provider
 
 
 def main(argv=None):

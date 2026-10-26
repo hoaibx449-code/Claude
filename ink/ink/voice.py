@@ -152,10 +152,42 @@ errors = []  # why the chosen voice was not used in the last narration (sent to 
 last = {}    # the last narration measured: words, seconds and rate, so the site learns each voice's real speed
 
 
+def lexicon():
+    """the person's pronunciation dictionary for this job ([{w, say}], from the site)"""
+    try: return [x for x in json.loads(os.environ.get('INK_LEXICON') or '[]') if x.get('w') and x.get('say')]
+    except ValueError: return []
+
+
+def say_as(text, lex):
+    """names and terms read the way the person wants: whole words, as written (and in capitals), in one pass"""
+    if not lex: return text
+    m = {}
+    for e in lex:
+        m[e['w']] = e['say']
+        if e['w'] != e['w'].upper(): m[e['w'].upper()] = e['say']
+    pat = re.compile(r'(?<!\w)(?:' + '|'.join(re.escape(k) for k in sorted(m, key=len, reverse=True)) + r')(?!\w)')
+    return pat.sub(lambda x: m.get(x.group(0), x.group(0)), text)
+
+
+def shown(lines, spoken, words):
+    """word times for the words on screen when some were read differently (dictionary): within each changed line
+    the written words share the time of the spoken ones, by length"""
+    out = []
+    for k, (a, b) in enumerate(zip(lines, spoken)):
+        mine = [w for w in words if w[0] == k]
+        if a == b or not mine: out += mine; continue
+        t0, t1 = mine[0][2], mine[-1][3]; ws = a.split(); tot = sum(len(w) + 1 for w in ws) or 1; acc = 0
+        for w in ws:
+            s0 = t0 + (t1 - t0) * acc / tot; acc += len(w) + 1
+            out.append((k, w, round(s0, 3), round(t0 + (t1 - t0) * acc / tot, 3)))
+    return out
+
+
 def narrate(lines, folder, log=print):
     """returns (audio file, [(line, start, end)], [(line, word, start, end)], provider used)"""
     os.makedirs(folder, exist_ok=True); out = os.path.join(folder, 'voice.mp3')
-    text = ' '.join(l.strip().rstrip('.!?…') + '.' if not re.search(r'[.!?…]$', l.strip()) else l.strip() for l in lines)
+    lex = lexicon(); spoken = [say_as(l, lex) for l in lines]   # what is read may differ from what is written (dictionary)
+    text = ' '.join(l.strip().rstrip('.!?…') + '.' if not re.search(r'[.!?…]$', l.strip()) else l.strip() for l in spoken)
     first = os.environ.get('INK_VOICE_PROVIDER', 'everai' if os.environ.get('EVERAI_API_KEY') else 'microsoft')
     order = [first] + ([p for p in ('everai', 'microsoft') if p != first] if os.environ.get('INK_VOICE_FALLBACK', '1') == '1' else [])
     heard = None; used = None; errors.clear()
@@ -173,8 +205,9 @@ def narrate(lines, folder, log=print):
     total = duration(out)
     if used == 'everai':
         log('  dò thời điểm từng chữ (Whisper)…'); heard = whisper_words(out)
-    words = align(lines, heard, total) if heard else None
-    if not words: log('  không có mốc từng chữ: chia theo khoảng ngắt trong giọng'); words = estimate(lines, out, total)
+    words = align(spoken, heard, total) if heard else None
+    if not words: log('  không có mốc từng chữ: chia theo khoảng ngắt trong giọng'); words = estimate(spoken, out, total)
+    if spoken != lines: words = shown(lines, spoken, words); log(f'  từ điển phát âm: đọc khác chữ viết ở {sum(a != b for a, b in zip(lines, spoken))} câu')
     log(f'  giọng {used}: {total:.1f} giây, {len(words)} chữ có mốc thời gian')
     last.clear(); last.update(provider=used, words=sum(len(l.split()) for l in lines), seconds=round(total, 2), rate=os.environ.get('INK_VOICE_RATE', '+8%'))
     return out, line_spans(lines, words, total), words, used

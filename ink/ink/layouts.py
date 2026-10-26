@@ -201,6 +201,44 @@ def L_hold(cv, d):
     draw_prop(cv, d.get('prop', 'trophy'), hx, hy - 200, 0.7)
     _lab(cv, 540, 470, _s(d, 'label'), 70, 860)
 
+def L_compose(cv, d):
+    """a scene the AI puts together itself from parts, when no ready layout says it: props, figures, words, numbers,
+    boxes, arrows, ticks and crosses at places on a 0–1 grid of the safe area. Every part is clamped into the
+    frame, sizes are bounded, words shrink to fit; shapes are drawn first, words and arrows on top."""
+    SX = lambda v: X0 + max(0.0, min(1.0, float(v))) * (X1 - X0)
+    SY = lambda v: Y0 + max(0.0, min(1.0, float(v))) * (Y1 - Y0)
+    num = lambda v, lo, hi, df: max(lo, min(hi, float(v))) if isinstance(v, (int, float)) and not isinstance(v, bool) else df
+    col = lambda v: {'acc': ACC, 'red': RED, 'green': GREEN}.get(str(v or ''), INK)
+    items = [x for x in (d.get('items') or []) if isinstance(x, dict)][:8]
+    order = {'ground': 0, 'box': 1, 'prop': 2, 'figure': 3, 'number': 4, 'label': 5, 'arrow': 6, 'check': 7, 'cross': 7}
+    for it in sorted(items, key=lambda x: order.get(x.get('kind'), 9)):
+        k = it.get('kind'); x, y = SX(it.get('x', .5)), SY(it.get('y', .5))
+        if k == 'ground': cv.line([(70, SY(it.get('y', .95))), (1010, SY(it.get('y', .95)))], 8)
+        elif k == 'prop': draw_prop(cv, it.get('name', 'star'), x, y, num(it.get('size'), .4, 1.8, 1.0))
+        elif k == 'figure':
+            fp = it.get('pose') if it.get('pose') in POSE else 'stand'
+            fig(cv, x, y, num(it.get('size'), .5, 1.3, .9), fp, it.get('face', 'happy'), 13, -1 if it.get('flip') else 1, shirt=ACC if it.get('accent') else None)
+        elif k == 'label':
+            size = {'l': 76, 'm': 60, 's': 46}.get(str(it.get('size', 'm'))[:1], 60); w = num(it.get('w'), .2, 1.0, .6) * (X1 - X0)
+            _lab(cv, max(X0 + w / 2, min(X1 - w / 2, x)), y, _s(it, 'text'), size, w, col(it.get('color')))
+        elif k == 'number':
+            t = _s(it, 'text', '1'); sz = fit_size(t, int(num(it.get('size'), 120, 260, 180)), 700); bw = text_width(t, sz) + 90; bh = sz * 1.15
+            x = max(X0 + bw / 2, min(X1 - bw / 2, x))
+            rrect(cv, x - bw / 2, y - bh / 2, x + bw / 2, y + bh / 2, 36, 12, INK, ACC); cv.text(x, y, t, sz)
+        elif k == 'box':
+            bw = num(it.get('w'), .15, 1.0, .4) * (X1 - X0); bh = num(it.get('h'), .06, .5, .14) * (Y1 - Y0)
+            x = max(X0 + bw / 2, min(X1 - bw / 2, x)); y = max(Y0 + bh / 2, min(Y1 - bh / 2, y))
+            rrect(cv, x - bw / 2, y - bh / 2, x + bw / 2, y + bh / 2, 26, 10, INK, col(it.get('fill')) if it.get('fill') else None)
+            _lab(cv, x, y, _s(it, 'text'), 52, bw - 40)
+        elif k == 'arrow':
+            a, b = it.get('from') or [.3, .5], it.get('to') or [.7, .5]
+            try: cv.arrow(SX(a[0]), SY(a[1]), SX(b[0]), SY(b[1]), 12, col(it.get('color')))
+            except (TypeError, IndexError, ValueError): pass
+        elif k == 'check': check(cv, x, y, num(it.get('size'), .5, 2.0, 1.0))
+        elif k == 'cross': cross(cv, x, y, num(it.get('size'), .5, 2.0, 1.0))
+    if not items: L_hero(cv, {'prop': 'star', 'label': _s(d, 'label')})
+
+
 HERO_VARIANTS = ('hero', 'callout', 'thought', 'hold')
 
 LAYOUTS = {
@@ -221,6 +259,9 @@ LAYOUTS = {
  'callout': (L_callout, 'một đồ vật lớn với thẻ chữ chỉ vào: {prop,label}'),
  'thought': (L_thought, 'nhân vật suy nghĩ, đồ vật trong bong bóng ý nghĩ: {prop,label,figure?}'),
  'hold': (L_hold, 'nhân vật giơ cao đồ vật (thành quả, gánh nặng): {prop,label,figure?}'),
+ 'compose': (L_compose, 'TỰ GHÉP cảnh khi không bố cục nào nói đúng ý: {items:[tối đa 8 phần, mỗi phần {kind, x 0-1, y 0-1, ...}]}; '
+             'kind: prop {name,size 0.4-1.8} · figure {pose,face,size,flip?} · label {text,size l|m|s,color ink|acc|red|green,w 0.2-1} · '
+             'number {text} · box {text,w,h,fill?} · arrow {from:[x,y],to:[x,y]} · check · cross · ground {y}. Toạ độ trong vùng an toàn, (0,0) góc trên trái'),
 }
 
 FILL = (60, 250, 1020, 1490)  # the box a scene may fill: clear of the captions and the platform buttons

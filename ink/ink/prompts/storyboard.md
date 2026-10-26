@@ -20,6 +20,8 @@ Tư duy hình ảnh:
 Các bố cục (layout) và ô cần điền:
 {layouts}
 
+TỰ GHÉP CẢNH ("compose"): khi không bố cục có sẵn nào nói ĐÚNG ý câu, hãy tự sắp cảnh từ các phần (khoảng 1/4 đến 1/3 số cảnh, không phải mọi cảnh). Một cảnh compose có 3–6 phần kể được một mini câu chuyện của câu đó (vd: nhân vật bên trái chỉ vào chiếc ví, mũi tên tới con heo đất, nhãn "mỗi tháng 10%"). Bố cục cân đối, phần chính lớn ở giữa hoặc 2/3 khung, không chồng lên nhau (cách nhau ít nhất 0.15 theo toạ độ), chữ ngắn ≤ 5 từ, nhân vật đứng trên mặt đất (y khoảng 0.9 với ground y 0.95).
+
 Đồ vật (prop) chỉ được chọn trong danh sách này (tên: từ khóa):
 {props}
 

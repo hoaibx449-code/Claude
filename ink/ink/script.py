@@ -294,7 +294,7 @@ def storyboard(script, log=print):
 def clean_visual(v):
     """props outside the library become the nearest known one by keyword, unknown layouts become hero"""
     def fix(x):
-        if isinstance(x, dict): return {k: (fix_prop(val) if k == 'prop' else fix(val)) for k, val in x.items()}
+        if isinstance(x, dict): return {k: (fix_prop(val) if k == 'prop' or (k == 'name' and x.get('kind') == 'prop') else fix(val)) for k, val in x.items()}
         if isinstance(x, list): return [fix(i) for i in x]
         return x
     v = fix(dict(v))

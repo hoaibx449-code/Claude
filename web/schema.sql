@@ -323,3 +323,5 @@ CREATE TABLE IF NOT EXISTS ink_ledger(job_id TEXT PRIMARY KEY,user_id TEXT NOT N
   reason TEXT NOT NULL DEFAULT '',rid TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS ink_ledger_user ON ink_ledger(user_id,created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS ink_ledger_rid ON ink_ledger(user_id,rid) WHERE rid IS NOT NULL;
+-- Ink Studio per-user preferences: pronunciation dictionary (written → read) and brand (colour, logo in R2)
+CREATE TABLE IF NOT EXISTS ink_prefs(user_id TEXT PRIMARY KEY,lexicon TEXT NOT NULL DEFAULT '[]',brand TEXT NOT NULL DEFAULT '{}',updated_at INTEGER NOT NULL);

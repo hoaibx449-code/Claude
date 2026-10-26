@@ -14,6 +14,16 @@ def _hex(s): s = s.lstrip('#'); return tuple(int(s[i:i + 2], 16) for i in (0, 2,
 BG = _hex(os.environ.get('VID_BG', '#F5F0E6')); INK = _hex(os.environ.get('VID_INK', '#1F2937')); ACC = _hex(os.environ.get('VID_ACC', '#F7CE3B'))
 HERE = os.path.dirname(os.path.abspath(__file__)); ASSETS = os.path.join(HERE, '..', 'assets')
 GREEN = (0x2E, 0x9E, 0x5B); RED = (0xD9, 0x4F, 0x4F)
+
+
+def set_accent(color):
+    """the person's brand colour for the highlight (boxes, the word being said, the progress bar) in every module
+    that took ACC with `from .engine import *` (each holds its own name); None goes back to the default yellow"""
+    import sys
+    c = _hex(color) if color else _hex(os.environ.get('VID_ACC', '#F7CE3B'))
+    for name, m in list(sys.modules.items()):
+        if (name == __name__ or name.startswith(__name__.rsplit('.', 1)[0] + '.')) and hasattr(m, 'ACC'): setattr(m, 'ACC', c)
+    return c
 SKIN = (244, 200, 165); SLEEVE = (96, 108, 132)
 # Pangolin (OFL) reads like marker lettering and has full Vietnamese; Be Vietnam Pro stays for plain UI type
 FONT = next((p for p in [os.path.join(ASSETS, 'fonts', 'Pangolin-Regular.ttf'), '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'] if os.path.exists(p)), 'DejaVuSans-Bold.ttf')

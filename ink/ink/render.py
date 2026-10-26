@@ -31,6 +31,54 @@ def pace_draw(pace):
     except (TypeError, ValueError): return PACES['normal'][1:]
     return max(0.6, 1.3 / f), max(0.14, 0.24 / f)
 CAP_Y = 1580          # caption line centre
+# other frame shapes: the part of the 9:16 board that holds the picture and the captions, scaled into the frame
+# on the same paper (the hand-drawn layouts are made for 9:16; nothing is cut, the sides are paper)
+ASPECTS = {'9:16': (1080, 1920), '1:1': (1080, 1080), '4:5': (1080, 1350), '16:9': (1920, 1080)}
+CROP = (200, 1660)
+
+
+def frame_size(ar): return ASPECTS.get(ar, ASPECTS['9:16'])
+
+
+def compose(frame, ar):
+    if ar not in ASPECTS or ar == '9:16': return frame
+    ow, oh = ASPECTS[ar]; y0, y1 = CROP; k = (oh - 16) / (y1 - y0); nw, nh = int(W * k), int((y1 - y0) * k)
+    out = np.empty((oh, ow, 3), np.uint8); out[:] = BG; x = (ow - nw) // 2
+    out[:nh, x:x + nw] = cv2.resize(frame[y0:y1], (nw, nh), interpolation=cv2.INTER_AREA)
+    return out
+
+
+def load_logo(path, ar='9:16'):
+    """the person's logo, scaled for a corner: (rgb, alpha) arrays, or None"""
+    if not path or not os.path.exists(path): return None
+    try: im = Image.open(path).convert('RGBA')
+    except Exception: return None  # noqa: BLE001 - a logo that does not open is left out
+    ow, oh = frame_size(ar); box = min(ow, oh) * .16
+    k = min(box / im.width, box * .55 / im.height); im = im.resize((max(1, int(im.width * k)), max(1, int(im.height * k))), Image.LANCZOS)
+    a = np.asarray(im, np.float32); return a[:, :, :3], a[:, :, 3:] / 255.0
+
+
+def put_logo(frame, logo, corner='tr'):
+    if logo is None: return frame
+    rgb, al = logo; h, w = al.shape[:2]; oh, ow = frame.shape[:2]; m = int(min(ow, oh) * .035)
+    x = ow - w - m if corner in ('tr', 'br') else m; y = oh - h - m - 18 if corner in ('bl', 'br') else m
+    reg = frame[y:y + h, x:x + w].astype(np.float32); frame[y:y + h, x:x + w] = (reg * (1 - al) + rgb * al).astype(np.uint8)
+    return frame
+
+
+def srt(words, scenes, path):
+    """the captions as an .srt file: the same chunks the video shows, timed to the voice"""
+    f = lambda t: f'{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d},{int(round(t % 1 * 1000)) % 1000:03d}'
+    phrases = {i: sc.get('phrases') for i, sc in enumerate(scenes) if sc.get('phrases')}
+    out, n = [], 0
+    for line in sorted({w[0] for w in words}):
+        ws = [w for w in words if w[0] == line]
+        for a, b in phrase_cuts(phrases.get(line), len(ws)) or chunks([w[1] for w in ws], 64):
+            part = ws[a:b]
+            if not part: continue
+            n += 1; out.append(f'{n}\n{f(part[0][2])} --> {f(max(part[-1][3], part[0][2] + .3))}\n{" ".join(w[1] for w in part)}\n')
+    open(path, 'w', encoding='utf-8').write('\n'.join(out))
+    return path
 ease = lambda t: t * t * (3 - 2 * t)
 
 
@@ -187,15 +235,17 @@ def draw_caption(frame, words, t, phrases=None):
 
 
 def progress(frame, gt, total):
-    cv2.rectangle(frame, (0, H - 12), (W, H), (225, 218, 200), -1); cv2.rectangle(frame, (0, H - 12), (int(W * gt / total), H), ACC, -1); return frame
+    h, w = frame.shape[:2]
+    cv2.rectangle(frame, (0, h - 12), (w, h), (225, 218, 200), -1); cv2.rectangle(frame, (0, h - 12), (int(w * gt / total), h), ACC, -1); return frame
 
 
-def render(scenes, timing, voice, out, words=None, cover=None, music=None, music_volume=0.20, captions=True, effects=True, pace='normal', log=print):
+def render(scenes, timing, voice, out, words=None, cover=None, music=None, music_volume=0.20, captions=True, effects=True, pace='normal', log=print, ar='9:16', logo=None, corner='tr'):
     """scenes: storyboard scenes; timing: [(i, start, end)] per scene from the voice; words: [(line, word, start, end)];
     cover: (title image, ops the hand draws over it) — the first scene, drawn in the first second"""
     work = os.path.dirname(os.path.abspath(out)) or '.'
     total = timing[-1][2]; silent = os.path.join(work, '_silent.mp4'); mix = os.path.join(work, '_mix.m4a'); fx = os.path.join(work, '_fx.wav')
-    pr = subprocess.Popen(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{W}x{H}', '-r', str(FPS), '-i', '-',
+    ow, oh = frame_size(ar)
+    pr = subprocess.Popen(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{ow}x{oh}', '-r', str(FPS), '-i', '-',
                            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', silent], stdin=subprocess.PIPE)
     td_max, TR = pace_draw(pace)
     phrases = {i: sc.get('phrases') for i, sc in enumerate(scenes) if sc.get('phrases')}
@@ -214,7 +264,7 @@ def render(scenes, timing, voice, out, words=None, cover=None, music=None, music
             if prev is not None and kind != 'cut' and k < ntr: o = slide(prev, fr, (k + 1) / ntr)
             gt = (written + k) / FPS
             if captions and words: o = draw_caption(o, words, gt, phrases)
-            pr.stdin.write(progress(np.array(o, copy=True), gt, total).tobytes()); last = fr
+            pr.stdin.write(put_logo(progress(np.array(compose(o, ar), copy=True), gt, total), logo, corner).tobytes()); last = fr
         events += sound_events(i, written / FPS, kind, info, cam, use_cover)
         written += nf; prev = last; log(f'cảnh {i + 1}/{len(scenes)} xong')
     pr.stdin.close(); pr.wait()
