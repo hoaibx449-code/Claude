@@ -465,7 +465,7 @@
   X.update.push((o, lt) => {
     if (o.s.type !== 'm_scene' || !window.THREE) return;
     const v = sceneOf(o), t = Math.max(0, lt), s = o.s;
-    v.pr.update(t);
+    v.pr.update(t + (+s.pt0 || 0));   // a series prop's story runs on across scenes
     v.W.deb.forEach((m, i) => { const u = m.userData; m.position.y = u.y + Math.sin(t * u.s + u.p) * .35; m.rotation.set(t * .1 * u.s, t * .15 * u.s + i, 0); });
     const c = camAt(s, t, o.dur, v.pr.focus || [0, 1.2, 0], v.pr.size);
     v.cam.fov = c.fov; v.cam.updateProjectionMatrix(); v.cam.position.set(...c.pos); v.cam.lookAt(...c.tg);

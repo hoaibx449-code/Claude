@@ -128,17 +128,37 @@ def guide(spec):
     beats = ' → '.join(str(b) for b in spec.get('beats') or [])
     return (f'\nĐẠO CỤ RIÊNG CỦA VIDEO NÀY (mới, chưa từng dùng trong series): prop `{spec["prop"]}` — {spec["metaphor"]}. Cơ chế: {spec["mechanism"]}.'
             f'\n  o: {params or "{}"}' + (f'\n  diễn tiến gợi ý: {beats}' if beats else '') +
-            '\n  Dùng prop này cho ÍT NHẤT 60% số cảnh m_scene (mỗi lần một góc máy/đoạn diễn tiến khác, đặt `cue` là một từ có trong câu); phần còn lại dùng `stage`; quy tắc "một prop tối đa 3 lần" không áp dụng cho prop này. KHÔNG dùng các prop có sẵn khác (leaky, treadmill, dominoes...).'
+            '\n  Video series KỂ BẰNG 3D: khoảng 2/3 số câu là m_scene dùng prop này (đạo cụ diễn tiếp câu chuyện qua từng cảnh), cảnh quay thật chỉ chen vào khoảnh khắc con người (mở đầu, cảm xúc), không 2 cảnh quay liền nhau. Dùng prop này cho mọi cảnh m_scene (mỗi lần một góc máy/đoạn diễn tiến khác, đặt `cue` là một từ có trong câu); phần còn lại dùng `stage`; quy tắc "một prop tối đa 3 lần" không áp dụng cho prop này. KHÔNG dùng các prop có sẵn khác (leaky, treadmill, dominoes...).'
             '\n  Mỗi cảnh thêm khoá `vp`: mô tả tiếng Anh ngắn những gì đang hiện trên hình (chủ thể + hành động + đạo cụ), không viết phong cách.\n')
 
 
-def enforce(scenes, spec):
-    """the video's own prop carries its 3D scenes: any built-in prop the director still picked (other than the lone
-    figure) becomes the new prop with its tested options"""
+CAMS = [[{'kind': 'orbit'}], [{'kind': 'push'}], [{'kind': 'low'}], [{'kind': 'side'}], [{'kind': 'rise'}], [{'kind': 'top'}], [{'kind': 'pull'}]]
+
+
+def enforce(scenes, spec, footage=.34):
+    """a series video is told by its own 3D prop; real footage only cuts in for a human moment (the opening, then at
+    most one scene in three, never two in a row). The prop's story runs on across its scenes: each scene picks the
+    story up where the last one left it (`pt0`), from a new camera angle, so it reads as one object changing, not the
+    same clip replayed."""
     ex = spec.get('example') if isinstance(spec.get('example'), dict) else {}
-    for s in scenes:
-        if s['type'] == 'm_scene' and s.get('prop') not in (spec['prop'], 'stage'):
-            s['prop'], s['o'] = spec['prop'], json.loads(json.dumps(ex))
+    n = len(scenes); keep = max(1, int(n * footage))
+    shots = [i for i, s in enumerate(scenes) if s['type'] == 'shot']
+    # the footage kept: the opening shot, then the director's shots spaced out evenly
+    kept, last = set(), -9
+    if shots and shots[0] == 0: kept.add(0); last = 0
+    for i in shots:
+        if len(kept) >= keep: break
+        if i - last >= 3: kept.add(i); last = i
+    for i, sc in enumerate(scenes):
+        if sc['type'] == 'shot' and i not in kept:
+            keepk = {k: sc[k] for k in ('say', 'sub', 'lead', 'trans', 'beat') if k in sc}
+            sc.clear(); sc.update(keepk, type='m_scene')
+    m = [sc for sc in scenes if sc['type'] == 'm_scene']
+    for k, sc in enumerate(m):
+        sc['prop'], sc['o'] = spec['prop'], json.loads(json.dumps(ex))   # the tested options: the director's could break it
+        sc['pt0'] = round(6.0 * k / max(1, len(m) - 1), 2)               # where in the prop's story this scene starts
+        sc['cams'] = CAMS[k % len(CAMS)]
+        for key in ('title', 'label'): sc.pop(key, None)
     return scenes
 
 
