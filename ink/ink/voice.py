@@ -149,6 +149,7 @@ def estimate(lines, audio, total):
 
 
 errors = []  # why the chosen voice was not used in the last narration (sent to the admin page only)
+last = {}    # the last narration measured: words, seconds and rate, so the site learns each voice's real speed
 
 
 def narrate(lines, folder, log=print):
@@ -175,6 +176,7 @@ def narrate(lines, folder, log=print):
     words = align(lines, heard, total) if heard else None
     if not words: log('  không có mốc từng chữ: chia theo khoảng ngắt trong giọng'); words = estimate(lines, out, total)
     log(f'  giọng {used}: {total:.1f} giây, {len(words)} chữ có mốc thời gian')
+    last.clear(); last.update(provider=used, words=sum(len(l.split()) for l in lines), seconds=round(total, 2), rate=os.environ.get('INK_VOICE_RATE', '+8%'))
     return out, line_spans(lines, words, total), words, used
 
 

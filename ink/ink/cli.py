@@ -67,16 +67,26 @@ def hold_scenes(voice, timing, words, holds, log=print):
 def make_video(sb, out, pace='normal', music=None, mood='auto', music_volume=0.20, captions=True, log=print, browser=False, seconds=0):
     """voice, music and the hand-drawn render of a storyboard; returns the video length in seconds.
     browser=True: instead of the MP4, write draw.json + audio.aac for the user's browser to draw (export.py)
-    seconds: the length the user chose; a Microsoft voice more than 12% off is read again at an adjusted speed"""
+    seconds: the length the user chose; the video comes out within about ±10% of it"""
     os.environ['INK_VOICE_RATE'] = pace_rate(pace)
     log(f'Giọng đọc (một mạch, có mốc từng chữ), nhịp {pace}…')
     voice, timing, words, provider = narrate([s['say'] for s in sb['scenes']], os.path.join(out, 'voice'), log=log)
-    if seconds and provider == 'microsoft' and not 0.88 <= timing[-1][2] / seconds <= 1.12:
-        was = int(pace_rate(pace).rstrip('%')); rate = round(max(-15, min(50, ((1 + was / 100) * timing[-1][2] / seconds - 1) * 100)))
+    # the video lasts about the time the person chose, whatever the pace (the pace is how fast it is told, not how
+    # long): too few words are lengthened first, then the reading speed is fine-tuned a little around the pace
+    if seconds and timing[-1][2] < seconds * 0.9:
+        longer = S.stretch_lines([s['say'] for s in sb['scenes']], seconds, timing[-1][2], log)
+        if longer:
+            for s, l in zip(sb['scenes'], longer):
+                if l != s['say']: s['say'] = l; s['phrases'] = []
+            voice, timing, words, provider = narrate([s['say'] for s in sb['scenes']], os.path.join(out, 'voice'), log=log)
+    if seconds and not 0.93 <= timing[-1][2] / seconds <= 1.07:
+        was = int(pace_rate(pace).rstrip('%')); want = round(((1 + was / 100) * timing[-1][2] / seconds - 1) * 100)
+        rate = max(was - 12, min(was + 15, want)) if provider == 'microsoft' else max(was - 10, min(was + 10, round(want / 10) * 10))
         if rate != was:
             log(f'  giọng dài {timing[-1][2]:.0f} giây, chọn {seconds}: đọc lại ở tốc độ {rate:+d}%')
             os.environ['INK_VOICE_RATE'] = f'{rate:+d}%'
             voice, timing, words, provider = narrate([s['say'] for s in sb['scenes']], os.path.join(out, 'voice'), log=log)
+    if seconds: log(f'  thời lượng giọng: {timing[-1][2]:.0f} giây (chọn {seconds})')
     if any(float(s.get('hold') or 0) > 0 for s in sb['scenes']):
         voice, timing, words = hold_scenes(voice, timing, words, [float(s.get('hold') or 0) for s in sb['scenes']], log)
     json.dump({'provider': provider, 'pace': pace, 'timing': timing, 'words': words}, open(os.path.join(out, 'timing.json'), 'w', encoding='utf-8'), ensure_ascii=False)

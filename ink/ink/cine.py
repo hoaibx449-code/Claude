@@ -761,21 +761,19 @@ def render(job_sb, out, pace='normal', log=print, seconds=0):
     os.environ['INK_VOICE_RATE'] = pace_rate(pace)
     log('Giọng đọc (một mạch, có mốc từng chữ)…')
     voice, timing, words, provider = narrate(lines, os.path.join(work, 'voice'), log=log)
-    # the video lasts the time the person chose: first the reading speed is nudged (Microsoft freely, EverAI only
-    # a little: its speed comes in steps of 0.1 and sounds rushed or dragged beyond ±12%), then, if the words are
-    # still too few for the time, every scene's line is lengthened and read again
-    if seconds and not 0.9 <= timing[-1][2] / seconds <= 1.12:
-        was = int(pace_rate(pace).rstrip('%')); lo, hi = (-15, 50) if provider == 'microsoft' else (-12, 15)
-        rate = round(max(lo, min(hi, ((1 + was / 100) * timing[-1][2] / seconds - 1) * 100)))
-        if provider != 'microsoft': rate = round(rate / 10) * 10 if abs(rate - was) >= 5 else was
+    # the video lasts about the time the person chose, whatever the pace (the pace is how fast it is told, not how
+    # long): too few words are lengthened first, then the reading speed is fine-tuned a little around the pace
+    if seconds and timing[-1][2] < seconds * 0.9 and stretch(job_sb, seconds, timing[-1][2], log):
+        lines = [s['say'] for s in job_sb['scenes']]
+        voice, timing, words, provider = narrate(lines, os.path.join(work, 'voice'), log=log)
+    if seconds and not 0.93 <= timing[-1][2] / seconds <= 1.07:
+        was = int(pace_rate(pace).rstrip('%')); want = round(((1 + was / 100) * timing[-1][2] / seconds - 1) * 100)
+        rate = max(was - 12, min(was + 15, want)) if provider == 'microsoft' else max(was - 10, min(was + 10, round(want / 10) * 10))
         if rate != was:
             log(f'  giọng dài {timing[-1][2]:.0f} giây, chọn {seconds}: đọc lại ở tốc độ {rate:+d}%')
             os.environ['INK_VOICE_RATE'] = f'{rate:+d}%'
             voice, timing, words, provider = narrate(lines, os.path.join(work, 'voice'), log=log)
-    if seconds and timing[-1][2] < seconds * 0.88 and stretch(job_sb, seconds, timing[-1][2], log):
-        lines = [s['say'] for s in job_sb['scenes']]
-        voice, timing, words, provider = narrate(lines, os.path.join(work, 'voice'), log=log)
-        log(f'  sau khi viết thêm: giọng dài {timing[-1][2]:.0f}/{seconds} giây')
+    if seconds: log(f'  thời lượng giọng: {timing[-1][2]:.0f} giây (chọn {seconds})')
     srt = os.path.join(work, 'voice.srt'); _srt(words, srt)
     st = job_sb['plan']['storyboard'].get('sticker')
     if isinstance(st, dict) and isinstance(st.get('line'), int) and 0 <= st['line'] < len(timing):

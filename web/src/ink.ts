@@ -340,6 +340,22 @@ const PHASES = ['start', 'script', 'check', 'storyboard', 'voice', 'render', 'up
 const cleanSteps = (x: any): Record<string, number> => Object.fromEntries(Object.entries(x && typeof x === 'object' ? x : {})
   .filter(([k]) => PHASES.includes(k)).map(([k, v]) => [k, num(v, 0, 86_400, 0)]));
 
+// ---- every voice's real reading speed (words a second at plain speed), learned from each finished video: scripts
+// are sized with it, so a 2-minute video is 2 minutes whatever voice and pace were chosen
+async function wpsOf(env: Env): Promise<Record<string, number>> {
+  const r = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:wps'").first<any>().catch(() => null);
+  try { return r?.value ? JSON.parse(r.value) : {}; } catch { return {}; }
+}
+async function learnWps(env: Env, voice: { provider: string; code: string } | undefined, st: any) {
+  const words = num(st?.words, 0, 100_000, 0), secs = num(st?.seconds, 0, 36_000, 0), m = /^([+-]\d{1,2})%$/.exec(String(st?.rate || ''));
+  if (!voice || st?.provider !== voice.provider || words < 40 || secs < 10 || !m) return;
+  const plain = words / secs / (1 + Number(m[1]) / 100);
+  if (plain < 1.5 || plain > 6) return;
+  const all = await wpsOf(env), k = voice.provider + ':' + voice.code;
+  all[k] = Math.round((all[k] ? all[k] * 0.7 + plain * 0.3 : plain) * 100) / 100;
+  await env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('ink:wps', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(JSON.stringify(all), Date.now()).run();
+}
+
 /** what one video used, for pricing: AI answers (by model), characters read aloud, machine seconds */
 function costOf(j: any, ai: unknown, machineSec: number) {
   const calls = Array.isArray(ai) ? ai.map((x) => String(x)) : [], sb = j.storyboard ? JSON.parse(j.storyboard) : null;
@@ -701,7 +717,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
         // a series' own 3D prop is written by Claude when its key is set (Gemini/OpenAI otherwise)
         ...(input.series ? { ANTHROPIC_API_KEY: (env as any).ANTHROPIC_API_KEY || '' } : {}),
         ...(input.format === 'cine' || input.format === 'money' ? { PIXABAY_API_KEY: (env as any).PIXABAY_API_KEY || '', HBX_AVOID: (await recentFootage(env)).join(',') } : {}),
-        INK_VOICE_PROVIDER: voice.provider, INK_VOICE_FALLBACK: s.voice.fallback ? '1' : '0',
+        INK_VOICE_PROVIDER: voice.provider, INK_VOICE_FALLBACK: s.voice.fallback ? '1' : '0', INK_WPS: String((await wpsOf(env))[voice.provider + ':' + voice.code] || ''),
         ...(voice.provider === 'microsoft' ? { INK_MS_VOICE: voice.code } : { EVERAI_VOICE_CODE: voice.code }),
       } } } });
   }
@@ -773,6 +789,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     rc.log('ink.done', { data: { job: j.id, videoSec: b.duration, renderSec: b.seconds, voice: b.voice, totalSec: Math.round((now - j.created_at) / 1000) } });
     await settle(env, j.id);
     rc.wait(learnEta(env).catch(() => {}));
+    { const { s } = await settings(env); rc.wait(learnWps(env, s.voice.list.find((v) => v.id === input.voice), b.voiceStats).catch(() => {})); }
     await voiceUsed(env, j, b);
     rc.wait(notify(env, j.user_id, j.id, 'Video đã xong ✓', `"${j.title}" đã dựng xong. Bấm để xem và tải về.`));
     rc.wait(zaloInk(env, rc, { ...j, duration: num(b.duration, 0, 3600, 0) }, 'done'));

@@ -70,6 +70,10 @@ def speed(pace):
 
 
 def wps():
+    # the site measures every voice on real videos (words a second at plain speed) and sends it with the job
+    try:
+        if float(os.environ.get('INK_WPS') or 0) > 1: return float(os.environ['INK_WPS'])
+    except ValueError: pass
     code = os.environ.get('EVERAI_VOICE_CODE', '') if os.environ.get('INK_VOICE_PROVIDER') == 'everai' else ''
     if code in VOICE_CODE_WPS: return VOICE_CODE_WPS[code]
     return VOICE_WPS.get(os.environ.get('INK_VOICE_PROVIDER', ''), VOICE_WPS['everai'] if os.environ.get('EVERAI_API_KEY') else VOICE_WPS['microsoft'])
@@ -102,11 +106,11 @@ def from_topic(topic, seconds=60, audience='', goal='mang lại giá trị thậ
     return script
 
 
-def fit_length(script, seconds, target, genre, log, tries=2):
-    """the AI often writes a third too short: lengthen (or shorten) until the word count is within 90–115% of the
+def fit_length(script, seconds, target, genre, log, tries=3):
+    """the AI often writes a third too short: lengthen (or shorten) until the word count is within 92–110% of the
     target, keeping the hook; the attempt closest to the target wins"""
     count = lambda sc: sum(words(l['say']) for l in sc['lines'])
-    low, high = round(target * 0.9), round(target * 1.15)
+    low, high = round(target * 0.92), round(target * 1.1)
     for k in range(tries):
         n = count(script)
         if low <= n <= high: break
@@ -119,6 +123,27 @@ def fit_length(script, seconds, target, genre, log, tries=2):
         lines = out['lines']; lines[0] = script['lines'][0]
         if abs(count({'lines': lines}) - target) < abs(n - target): script = dict(script, lines=lines)
     return script
+
+
+def stretch_lines(lines, seconds, now, log=print):
+    """the voice came out too short for the chosen length: every middle line keeps its words and gains a clause (the
+    pictures stay right). Returns the new lines, or None when nothing could be added."""
+    n, have = len(lines), sum(words(l) for l in lines); more = round(have * (seconds / max(1.0, now) - 1))
+    if more < 8 or n < 3: return None
+    log(f'  lời đọc thiếu khoảng {more} chữ cho {seconds} giây: viết thêm vào từng cảnh…')
+    def ok(o):
+        if not isinstance(o.get('lines'), list) or len(o['lines']) != n: raise ValueError(f'cần đúng {n} dòng')
+    try:
+        o = ai.ask(system(), prompt('stretch', now=round(now), seconds=seconds, more=more, n=n, script='\n'.join(f'{i}. {l}' for i, l in enumerate(lines))), 0.6, check=ok, log=log)
+    except Exception as e:  # noqa: BLE001 - a shorter video is still a video
+        log(f'   không viết thêm được ({e})'); return None
+    out = list(lines)
+    for i, new in enumerate(o['lines']):
+        old, new = lines[i], ' '.join(str(new).split())
+        if 0 < i < n - 1 and len(new) > len(old) + 3 and new.startswith(old.rstrip('.?!… ')): out[i] = new
+    grew = sum(words(a) for a in out) - have
+    log(f'   đã viết thêm {grew} chữ')
+    return out if grew > 0 else None
 
 
 def _num(v):

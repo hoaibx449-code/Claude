@@ -64,6 +64,7 @@ def run(job):
     if os.environ.get('GITHUB_ACTIONS'):  # keys from the site never show in the public run log
         for k, v in cfg.items():
             if k.endswith('_API_KEY'): print('::add-mask::' + v, flush=True)
+    for k in ('INK_WPS', 'EVERAI_VOICE_CODE', 'INK_MS_VOICE'): os.environ.pop(k, None)   # nothing left over from the last job
     os.environ.update(cfg)
     state = {'progress': 2, 'message': 'Chuẩn bị'}; stop = threading.Event()
     def report():
@@ -128,7 +129,7 @@ def run(job):
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', os.path.join(out, 'cover.jpg'), '-vf', 'scale=360:-2', thumb], check=False)
         put(jid, lease, out, 'video.mp4', timeout=600)
         if os.path.exists(thumb): put(jid, lease, out, 'thumb.jpg')
-        call(f'jobs/{jid}/done', {'duration': round(total, 1), 'seconds': round(time.time() - t0), 'voice': provider, 'voiceError': ' | '.join(V.errors), 'ai': [f'{p}/{m}' for p, m in ai.used], 'steps': steps()}, lease=lease)
+        call(f'jobs/{jid}/done', {'duration': round(total, 1), 'seconds': round(time.time() - t0), 'voice': provider, 'voiceError': ' | '.join(V.errors), 'ai': [f'{p}/{m}' for p, m in ai.used], 'steps': steps(), 'voiceStats': dict(V.last)}, lease=lease)
         print(f'Xong {jid}: {total:.1f} giây video trong {time.time() - t0:.0f} giây', flush=True)
         return True
     except Lost as e:
@@ -168,7 +169,7 @@ def run_cine(job, inp, out, state, report, log, t0):
             if os.path.exists(os.path.join(out, f)): shutil.copy(os.path.join(out, f), os.path.join(dst, f.replace('/', '_')))
     put(jid, lease, out, 'cover.jpg'); put(jid, lease, out, 'video.mp4', timeout=600)
     if os.path.exists(thumb): put(jid, lease, out, 'thumb.jpg')
-    call(f'jobs/{jid}/done', {'duration': round(total, 1), 'seconds': round(time.time() - t0), 'voice': provider, 'voiceError': ' | '.join(V.errors), 'ai': sb.get('ai') or [], 'sync': sync, 'footage': sb.get('footage') or [], 'steps': steps()}, lease=lease)
+    call(f'jobs/{jid}/done', {'duration': round(total, 1), 'seconds': round(time.time() - t0), 'voice': provider, 'voiceError': ' | '.join(V.errors), 'ai': sb.get('ai') or [], 'sync': sync, 'footage': sb.get('footage') or [], 'steps': steps(), 'voiceStats': dict(V.last)}, lease=lease)
     print(f'Xong {jid} (điện ảnh): {total:.1f} giây video trong {time.time() - t0:.0f} giây', flush=True)
     return True
 
