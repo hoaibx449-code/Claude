@@ -41,7 +41,9 @@ def textless(hits): return [h for h in hits if not TEXTY.search(h.get('tags', ''
 # and every picture/clip is checked with a face detector after download (a big face = rejected, another one is picked)
 PEOPLE = _re.compile(r'\b(portrait|face|faces|woman|women|man|men|girl|girls|boy|boys|lady|guy|model|beauty|person|people|elderly|senior|child|children|kid|kids|'
                      r'baby|teen|teenager|couple|family|selfie|smile|smiling|businessman|businesswoman|student|female|male)\b', _re.I)
-def faceless_first(hits): return sorted(hits, key=lambda h: bool(PEOPLE.search(h.get('tags', ''))))
+OFFTONE = _re.compile(r'\b(traditional|costume|calligraphy|ao dai|conical|temple|pagoda|festival|ancient|vintage|antique|historical|kimono|hanbok|culture|heritage)\b', _re.I)
+MODERN = os.environ.get('HBX_MODERN') == '1'
+def faceless_first(hits): return sorted(hits, key=lambda h: (MODERN and bool(OFFTONE.search(h.get('tags', ''))), bool(PEOPLE.search(h.get('tags', '')))))
 FACE_MAX = float(os.environ.get('HBX_FACE_MAX', '0.08'))   # widest face allowed, as a share of the visible 9:16 width
 _FD = []
 def face_big(path):
@@ -88,7 +90,7 @@ def vsearch(q, used):
         tags = h.get('tags', '').lower()
         return sum(w.rstrip('s') in tags for w in words)
     hits = [h for h in hits if score(h) >= max(1, (len(words) + 1) // 2)] or hits
-    hits.sort(key=lambda h: (bool(PEOPLE.search(h.get('tags', ''))), -score(h), 0 if h['videos']['small']['height'] > h['videos']['small']['width'] else 1))
+    hits.sort(key=lambda h: (MODERN and bool(OFFTONE.search(h.get('tags', ''))), bool(PEOPLE.search(h.get('tags', ''))), -score(h), 0 if h['videos']['small']['height'] > h['videos']['small']['width'] else 1))
     best = [h for h in hits if score(h) == score(hits[0]) and bool(PEOPLE.search(h.get('tags', ''))) == bool(PEOPLE.search(hits[0].get('tags', '')))] if hits else []
     return pick(best, 4)
 

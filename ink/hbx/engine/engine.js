@@ -69,7 +69,7 @@
       <div class="qmark" style="position:absolute;left:0;right:0;top:250px;text-align:center;font-family:var(--font-h);font-weight:900;font-size:620px;line-height:1;color:var(--ink);opacity:.06">?</div>
       <div class="label" data-in=".05" data-a="left">${esc(s.label || '')}</div>
       <div class="kicker" style="top:${470 - n * 45}px" data-in=".15" data-a="pop">${esc(s.kicker || 'CÂU HỎI')}</div>
-      <div class="big" style="top:${530 - n * 45}px" data-in=".3" data-a="title">${rich(s.text)}</div>
+      <div class="big" style="top:${530 - n * 45}px" data-in=".3" data-a="close" data-d=".4">${rich(s.text)}</div>
       <div class="qline" style="position:absolute;left:180px;right:180px;top:${530 - n * 45}px;height:7px;background:var(--warn);border-radius:4px;transform-origin:center" data-in=".7" data-a="grow"></div>`
     };
   };
@@ -107,8 +107,8 @@
         ${Array.from({ length: 24 }, (_, i) => `<line x1="0" y1="-170" x2="0" y2="-280" stroke="var(--acc)" stroke-width="4" stroke-linecap="round" opacity=".25" transform="rotate(${i * 15})"/>`).join('')}
       </svg>
       <div class="label" data-in=".05" data-a="left">${esc(s.label || '')}</div>
-      <div class="kicker" style="top:330px" data-in=".1" data-a="pop">${esc(s.kicker || 'CON SỐ')}</div>
-      <div class="numwrap" style="top:420px;font-size:${s.size || 160}px;line-height:1" data-in=".25" data-a="pop">
+      <div class="kicker" style="top:330px" data-in=".1" data-a="stat" data-d=".2">${esc(s.kicker || 'CON SỐ')}</div>
+      <div class="numwrap" style="top:420px;font-size:${s.size || 160}px;line-height:1" data-in=".25" data-a="stat" data-d=".25">
         <span style="font-size:.45em;vertical-align:.6em">${esc(s.prefix || '')}</span><span class="cnt" data-from="${s.from || 0}" data-to="${s.value}" data-dec="${s.decimals || 0}" data-t="${s.countAt || .35}" data-dur="${s.countDur || 1.4}">0</span><span style="font-size:.4em;color:var(--ink2)">${esc(s.suffix || '')}</span>
       </div>
       <div class="cap" style="top:${420 + (s.size || 160) + 40}px" data-in="1.2" data-a="up">${rich(s.caption)}</div>
@@ -400,10 +400,22 @@
       else merged.push([...c]);
     });
     const NW = +SB.subWords || 0;   // phụ đề kiểu CapCut: mỗi lần hiện tối đa NW từ, chia đều
+    // a chunk never ends on a little word that opens the next phrase ("của", "và", "để"…): cut where a phrase begins
+    const set = t => new Set(t.split(' ')), w0 = j => String(WORDS[j].w).toLowerCase().replace(/[^\p{L}]/gu, '');
+    const START = set('và thì mà nhưng để khi nếu vì rằng nên hay hoặc còn mặc dù bởi'), NOEND = set('và của là thì mà những các một cho với để khi nếu nhưng rằng vì bị được đã sẽ đang không rất cũng như trong ngoài trên dưới từ về tới đến nên hay hoặc lại còn chỉ mỗi ở có'), TIED = set('của này đó ấy kia hơn nhất');
     merged.forEach(c => (WORDS[c[0]].m ? [c] : splitClause(c)).forEach(x => {
-      if (!NW || x.length <= NW) { CHUNKS.push(x); return; }
-      const parts = Math.ceil(x.length / NW), sz = Math.ceil(x.length / parts);
-      for (let i = 0; i < x.length; i += sz) CHUNKS.push(x.slice(i, i + sz));
+      if (!NW || x.length <= NW + 1) { CHUNKS.push(x); return; }
+      let rest = x;
+      while (rest.length > NW + 1) {
+        const parts = Math.ceil(rest.length / NW), want = Math.ceil(rest.length / parts);
+        let cut = want, best = null;
+        for (let k = Math.max(2, want - 2); k <= Math.min(rest.length - 2, want + 2); k++) {
+          const sc = (NOEND.has(w0(rest[k - 1])) ? -3 : 0) + (START.has(w0(rest[k])) ? 2 : 0) + (TIED.has(w0(rest[k])) ? -2 : 0) - Math.abs(k - want) * .5;
+          if (best === null || sc > best) { best = sc; cut = k; }
+        }
+        CHUNKS.push(rest.slice(0, cut)); rest = rest.slice(cut);
+      }
+      if (rest.length) CHUNKS.push(rest);
     }));
     WORDS.forEach((w, i) => { w.c = CHUNKS.findIndex(c => c.includes(i)); });
   }
@@ -416,7 +428,8 @@
         const t = o.start + x._in, a = x.dataset.a;
         if (x.dataset.sfx) ev.push({ t, k: x.dataset.sfx });
         else if (a === 'pop' && !x.closest('svg')) ev.push({ t, k: 'pop' });
-        else if (a === 'title') ev.push({ t, k: SB.theme === 'tech' ? 'glitch_s' : 'swish' });
+        else if (a === 'title' || a === 'term' || a === 'close') ev.push({ t, k: SB.theme === 'tech' ? 'glitch_s' : 'swish' });
+        else if (a === 'stat') ev.push({ t, k: 'pop' });
       });
       o.el.querySelectorAll('.cnt').forEach(c => { const t = o.start + +c.dataset.t; ev.push({ t, k: 'roll', d: +c.dataset.dur }); ev.push({ t: t + +c.dataset.dur, k: 'impact' }); });
       o.el.querySelectorAll('[data-a2=type]').forEach(c => ev.push({ t: o.start + +c.dataset.t, k: 'type', d: +c.dataset.dur }));
@@ -446,6 +459,10 @@
       case 'left': x.style.transform = `${b} translateX(${-(1 - e) * 90}px)`; break;
       case 'right': x.style.transform = `${b} translateX(${(1 - e) * 90}px)`; break;
       case 'grow': x.style.transform = `${b} scaleX(${e})`; break;
+      // chữ trượt theo ngữ cảnh: thuật ngữ (lên + phóng 90→100% + nảy), số liệu (trượt từ phải + nền nhấn), câu chốt (từng dòng trượt lên)
+      case 'term': x.style.transform = `${b} translateY(${(1 - e) * 60}px) scale(${.9 + .1 * E.back(p)})`; break;
+      case 'stat': x.style.transform = `${b} translateX(${(1 - e) * 110}px)`; x.classList.toggle('hl-on', p >= 1); break;
+      case 'close': x.style.transform = `${b} translateY(${(1 - e) * 70}px)`; break;
       case 'growY': x.style.transformOrigin = x.closest('svg') ? 'bottom' : 'top'; x.style.transformBox = 'fill-box'; x.style.transform = `${b} scaleY(${E.out5(p)})`; break;
       case 'draw': x.style.opacity = p > 0 ? 1 : 0; x.style.strokeDasharray = 1; x.style.strokeDashoffset = 1 - E.io(p); break;
       case 'title': {

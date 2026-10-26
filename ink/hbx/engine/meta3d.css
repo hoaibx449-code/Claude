@@ -16,3 +16,6 @@
 .m3num{position:absolute;left:50%;top:170px;translate:-50% 0;text-align:center;z-index:5;color:#fff;text-shadow:0 10px 30px rgba(0,0,0,.45)}
 .m3n{font:800 150px/1 var(--c-font),sans-serif;color:var(--c-acc);letter-spacing:-2px}
 .m3num small{display:block;margin-top:8px;font:700 30px/1.2 var(--c-body),sans-serif;color:#fff}
+/* số liệu: trượt vào rồi bật nền nhấn (không dùng transition: mỗi khung được chụp theo thời gian dựng) */
+.m3num.hl-on .m3n{background:var(--c-acc);color:var(--c-acc-ink);text-shadow:none;border-radius:18px;padding:0 22px}
+.m3title br{display:block;content:''}
