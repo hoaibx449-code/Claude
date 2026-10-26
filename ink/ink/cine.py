@@ -267,9 +267,9 @@ def series_rules(scenes, fp):
     return scenes
 
 
-def _m_scene(s, say):
-    """a 3D metaphor scene made safe: a known prop, known camera moves, cues that are really in the line"""
-    if s.get('prop') not in M_PROPS: s['prop'] = 'stage'
+def _m_scene(s, say, extra=()):
+    """a 3D metaphor scene made safe: a known prop (or this video's own one), known camera moves, cues that are really in the line"""
+    if s.get('prop') not in M_PROPS and s.get('prop') not in extra: s['prop'] = 'stage'
     if not isinstance(s.get('o'), dict): s['o'] = {}
     if s['prop'] == 'stage' and s['o'].get('pose') not in M_POSES: s['o']['pose'] = 'think'
     cams = [c for c in (s.get('cams') if isinstance(s.get('cams'), list) else [s['cam']] if isinstance(s.get('cam'), dict) else []) if isinstance(c, dict) and c.get('kind') in M_CAMS][:4]
@@ -288,7 +288,7 @@ def _m_scene(s, say):
     return s
 
 
-def build(o, lines, fp, clips, meta=False):
+def build(o, lines, fp, clips, meta=False, extra=()):
     """the director's answer → engine scenes, one per script line, in order; raises ValueError when unusable"""
     got = {}
     for s in o.get('scenes') or []:
@@ -304,7 +304,7 @@ def build(o, lines, fp, clips, meta=False):
         s = got.get(k) or {'type': 'shot', 'bg': {'q': (scenes[-1].get('bg') or {}).get('q', 'city aerial') if scenes else 'sunrise sky'}}
         s['say'] = say; s.pop('line', None); s['sub'] = _clean_sub(s.get('sub'), say)
         t = s['type']
-        if t == 'm_scene': s = _m_scene(s, say)
+        if t == 'm_scene': s = _m_scene(s, say, extra)
         for key in ('bg', 'image'):
             if key in s: s[key] = _img(s[key])
         for side in ('a', 'b', 'before', 'after'):
@@ -483,15 +483,23 @@ def plan(inp, log=print):
     min_types = max(3, min(6, len(lines) // 5))
     sec_per_line = round(sum(S.words(l) for l in lines) / max(1, len(lines)) / wps, 1)
     best, feedback = None, ''
-    # the series' own way of filming (Đòn Bẩy Tư Duy): numbers and mechanisms in 3D graphics, everyday moments in real footage
-    meta = inp.get('format') == 'money'
+    # the series' own way of filming (Đòn Bẩy Tư Duy, or a user's series): mechanisms in 3D metaphors, everyday moments in real footage
+    ser = inp.get('series') if isinstance(inp.get('series'), dict) else None
+    meta = inp.get('format') == 'money' or bool(ser)
     series = M_GUIDE if meta else ''
+    spec = code = None; extra = ()
+    if ser:  # a new metaphor, its prop written and test-filmed before the director starts
+        from . import series as SR
+        spec, code = SR.prepare(ser, topic, sc.get('core_message') or strategy.get('core_message', ''), lines, log)
+        series = series.replace('SERIES "ĐÒN BẨY TƯ DUY"', f'SERIES "{ser.get("name") or "của bạn"}"')
+        if code: series += SR.guide(spec); extra = (spec['prop'],)
+        else: series += '\nSeries này KHÔNG dùng treadmill và dominoes (sáo mòn).\n'
     for round_ in range(3):
         log('Đạo diễn phân cảnh…' if not round_ else f'Đạo diễn làm lại theo góp ý (lần {round_})…')
         o = ai.ask(S.system(), S.prompt('cine_direct', topic=topic, genre=strategy.get('genre') or 'chưa rõ', core=sc.get('core_message') or strategy.get('core_message', ''),
                                         lines='\n'.join(f'{i}. {l}' for i, l in enumerate(lines)), fingerprint=fp_text(fp), clips=clips, min_types=min_types, sec_per_line=sec_per_line, feedback=series + feedback),
-                   0.85, check=lambda x: build(x, lines, fp, clips, meta), log=log)
-        scenes = ground(build(o, lines, fp, clips, meta), fp)
+                   0.85, check=lambda x: build(x, lines, fp, clips, meta, extra), log=log)
+        scenes = ground(build(o, lines, fp, clips, meta, extra), fp)
         if meta: scenes = series_rules(scenes, fp)
         problems = variety(scenes, min_types, meta) + rhythm(scenes, wps)
         try:
@@ -535,6 +543,9 @@ def plan(inp, log=print):
     if inp.get('format') == 'money':
         from . import money
         out = money.finish(out, sc, inp)
+    if ser:
+        out = SR.finish(out, spec, code, ser)
+        out['script_table'] = SR.table(SR.visual_prompts(scenes, spec), wps)
     return out
 
 
@@ -573,7 +584,7 @@ def preview(job_sb, out, log=print):
         _run([sys.executable, 'build.py', 'preview', '--plan', pf, '--work', os.path.join(work, 'w')], log, env)
         p = json.load(open(pf, encoding='utf-8')); job_sb['scenes'] = p['storyboard'].pop('scenes'); job_sb['plan']['storyboard'] = p['storyboard']
     run()
-    if job_sb.get('series') == 'money' and _judge_preview(job_sb, os.path.join(work, 'w', 'preview.jpg'), log): run()
+    if job_sb.get('series') in ('money', 'series') and _judge_preview(job_sb, os.path.join(work, 'w', 'preview.jpg'), log): run()
     from PIL import Image
     Image.open(os.path.join(work, 'w', 'preview.jpg')).save(os.path.join(out, 'overview.png'))
     shutil.copy(os.path.join(work, 'w', 'cover_preview.jpg'), os.path.join(out, 'cover.jpg'))

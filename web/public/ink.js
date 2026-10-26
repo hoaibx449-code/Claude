@@ -8,6 +8,13 @@ const FORMAT_NOTE = { ink: 'Bàn tay vẽ từng cảnh trên nền giấy, như
 const LENGTHS =[[30, '30 giây'], [60, '1 phút'], [90, '1,5 phút'], [120, '2 phút'], [180, '3 phút'], [300, '5 phút']];
 const STATUS = { queued: 'Đang chờ máy dựng', running: 'Đang dựng', review: 'Chờ bạn duyệt phân cảnh', browser: 'Sẵn sàng dựng trên máy của bạn', done: 'Đã xong', failed: 'Chưa dựng được' };
 const DEFAULTS = { voices: [{ id: 'hoaimy', label: 'Hoài My (nữ)' }, { id: 'namminh', label: 'Nam Minh (nam)' }], defaults: { pace: 'normal', seconds: 60, mood: 'auto', captions: true, review: false, voice: 'hoaimy' }, maxSeconds: 300 };
+// the script table of a series video: [Scene X – time] [Voiceover] [Visual Prompt]
+function scriptTable(h, sb) {
+  if (!Array.isArray(sb?.table) || !sb.table.length) return null;
+  return h('details', { class: 'card ink-table' }, h('summary', {}, 'Bảng kịch bản' + (sb.metaphor ? ` · ẩn dụ: ${sb.metaphor}` : '')),
+    h('div', { class: 'ink-table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Cảnh'), h('th', {}, 'Lời đọc'), h('th', {}, 'Visual prompt'))),
+      h('tbody', {}, sb.table.map((r) => h('tr', {}, h('td', {}, `Cảnh ${r.scene}`, h('small', {}, r.time)), h('td', {}, r.voiceover), h('td', { lang: 'en' }, r.visual)))))));
+}
 const file = (id, name) => `/api/ink/jobs/${id}/${'file/' + name}`;
 
 function chips(h, list, value, onPick, cls = '') {
@@ -21,7 +28,7 @@ export async function showInkCreate(ctx) {
   const { h, api, show, me, openLogin, toast, fail, navigate, busy, footer } = ctx;
   const cfg = me ? await api('/api/ink/config').catch(() => DEFAULTS) : DEFAULTS;
   const d = cfg.defaults;
-  const st = { format: 'ink', mode: 'topic', topic: '', script: '', seconds: Math.min(d.seconds, cfg.maxSeconds), pace: d.pace, voice: d.voice, mood: d.mood, music: '', captions: d.captions, review: d.review, audience: '', tone: '', notes: '', browser: false };
+  const st = { format: 'ink', mode: 'topic', topic: '', script: '', seconds: Math.min(d.seconds, cfg.maxSeconds), pace: d.pace, voice: d.voice, mood: d.mood, music: '', captions: d.captions, review: d.review, audience: '', tone: '', notes: '', browser: false, series: '' };
   try { Object.assign(st, JSON.parse(sessionStorage.getItem('ink-draft') || '{}'), { music: '' }); } catch { /* fresh form */ }
   const keep = () => { try { sessionStorage.setItem('ink-draft', JSON.stringify({ ...st, music: '' })); } catch { /* private mode */ } };
   const text = h('textarea', { rows: 3, class: 'ink-topic', maxlength: 500 });
@@ -65,6 +72,35 @@ export async function showInkCreate(ctx) {
   const moodRow = h('label', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Nhạc nền'), mood, musicFile, musicNote);
   whereRow.append(h('span', { class: 'ink-label' }, 'Nơi dựng video'),
     chips(h, [['server', 'Máy chủ dựng'], ['browser', 'Dựng trên máy này']], st.browser ? 'browser' : 'server', (v) => { st.browser = v === 'browser'; whereNote.textContent = WHERE_NOTE[v]; keep(); }), whereNote);
+  // series: videos on one topic; each one invents a new 3D metaphor (never one the series already used)
+  const seriesNote = h('small', { class: 'muted' });
+  const seriesSel = h('select', { 'aria-label': 'Series' });
+  const seriesNew = h('div', { class: 'ink-series-new', hidden: true });
+  const sName = h('input', { maxlength: 80, placeholder: 'Tên series, ví dụ: Tiền và thói quen' });
+  const sTopic = h('input', { maxlength: 300, placeholder: 'Chủ đề chung, ví dụ: tài chính cá nhân cho người mới đi làm' });
+  const sStyle = h('input', { maxlength: 300, placeholder: 'Ghi chú phong cách (không bắt buộc)' });
+  let seriesList = [];
+  const paintSeries = () => {
+    seriesSel.replaceChildren(h('option', { value: '' }, 'Không thuộc series'), ...seriesList.map((x) => h('option', { value: x.id, selected: x.id === st.series }, `${x.name} (${x.videos} video)`)), h('option', { value: '+' }, '+ Tạo series mới…'));
+    const cur = seriesList.find((x) => x.id === st.series);
+    if (!cur) st.series = '';
+    seriesNote.textContent = cur ? `Dựng kiểu Điện ảnh với đạo cụ 3D chuyển động do AI viết riêng; phong cách 3D tối giản, pastel. Mỗi video tự nghĩ ẩn dụ mới, không lặp lại ẩn dụ đã dùng${cur.used.length ? ' (đã dùng: ' + cur.used.slice(-4).map((u) => u.metaphor).join('; ') + ')' : ''}.` : '';
+  };
+  seriesSel.onchange = () => {
+    if (seriesSel.value === '+') { seriesNew.hidden = false; sName.focus(); return; }
+    st.series = seriesSel.value; seriesNew.hidden = true; paintSeries(); keep();
+  };
+  const sSave = h('button', { type: 'button', class: 'btn small' }, 'Tạo series');
+  sSave.onclick = () => busy(sSave, 'Đang tạo…', async () => {
+    try {
+      const { id } = await api('/api/ink/series', { method: 'POST', body: { name: sName.value.trim(), topic: sTopic.value.trim(), style: sStyle.value.trim() } });
+      seriesList = (await api('/api/ink/series')).series; st.series = id; seriesNew.hidden = true; sName.value = sTopic.value = sStyle.value = ''; paintSeries(); keep();
+    } catch (e) { fail(e); }
+  });
+  seriesNew.append(sName, sTopic, sStyle, h('div', { class: 'row' }, sSave, h('button', { type: 'button', class: 'ghost small', onclick: () => { seriesNew.hidden = true; paintSeries(); } }, 'Huỷ')));
+  if (me && cfg.cine) api('/api/ink/series').then((r) => { seriesList = r.series || []; paintSeries(); }).catch(() => {});
+  paintSeries();
+  const seriesRow = h('div', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Series'), seriesSel, seriesNew, seriesNote);
   const go = h('button', { type: 'submit', class: 'btn ink-go' }, 'Tạo video');
   const form = h('form', { class: 'card ink-form', onsubmit: async (e) => {
     e.preventDefault();
@@ -77,6 +113,7 @@ export async function showInkCreate(ctx) {
   } },
     cfg.cine ? h('div', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Kiểu video'),
       chips(h, [['ink', 'Vẽ tay'], ['cine', 'Điện ảnh (cảnh quay thật)'], ['money', 'Đòn Bẩy Tư Duy']], st.format, (v) => { st.format = v; paintFormat(); keep(); }), formatNote) : null,
+    me && cfg.cine ? seriesRow : null,
     chips(h, [['topic', 'Từ chủ đề'], ['script', 'Từ kịch bản có sẵn']], st.mode, (v) => { st.mode = v; paintText(); keep(); }, 'ink-mode'),
     h('label', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Nội dung'), text),
     lenRow,
@@ -148,7 +185,7 @@ export async function showInkWatch(ctx, id) {
         goBtn.onclick = () => busy(goBtn, 'Đang gửi…', async () => { try { await api(`/api/ink/jobs/${id}/approve`, { method: 'POST' }); last = ''; paint(); } catch (e) { fail(e); } });
         parts.push(h('section', { class: 'card' }, h('h2', {}, 'Phân cảnh đã sẵn sàng'), h('p', { class: 'muted' }, 'Xem ảnh bìa, từng cảnh và lời đọc. Đồng ý thì bấm Dựng video.'),
           h('img', { class: 'ink-overview', src: file(id, 'overview.png'), alt: 'Bảng phân cảnh' }),
-          h('ol', { class: 'ink-lines' }, (sb?.scenes || []).map((s) => h('li', {}, s.say))), h('div', { class: 'row' }, goBtn)));
+          scriptTable(h, sb) || h('ol', { class: 'ink-lines' }, (sb?.scenes || []).map((s) => h('li', {}, s.say))), h('div', { class: 'row' }, goBtn)));
       }
       if (j.status === 'browser') parts.push(await browserPanel(ctx, j, () => { last = ''; paint(); }));
       if (j.status === 'failed') {
@@ -157,6 +194,7 @@ export async function showInkWatch(ctx, id) {
         parts.push(h('section', { class: 'card' }, h('h2', {}, 'Video chưa dựng được'), h('p', { class: 'error' }, j.error || 'Lỗi không rõ.'), h('div', { class: 'row' }, retry)));
       }
       if (j.status === 'done') {
+        const sbDone = j.series ? (await api(`/api/ink/jobs/${id}/storyboard`).catch(() => ({}))).storyboard : null;
         const player = h('video', { class: 'ink-player', src: file(id, 'video.mp4'), controls: true, playsinline: true, preload: 'metadata', poster: j.files.includes('cover.jpg') ? file(id, 'cover.jpg') : null });
         const cap = [j.caption, (j.hashtags || []).join(' ')].filter(Boolean).join('\n\n');
         const capBtn = h('button', { type: 'button', class: 'ghost small' }, 'Sao chép');
@@ -173,6 +211,7 @@ export async function showInkWatch(ctx, id) {
             cap ? h('section', { class: 'card' }, h('div', { class: 'section-title' }, h('h2', {}, 'Mô tả đăng kèm'), capBtn), h('p', { class: 'ink-caption' }, cap)) : null,
             h('section', { class: 'card' }, h('h2', {}, 'Nhịp chưa vừa ý?'), h('p', { class: 'muted' }, 'Giữ nguyên kịch bản, phân cảnh và ảnh bìa; chỉ đọc lại và vẽ lại theo nhịp mới. Không gọi AI lại.'),
               chips(h, PACES.map(([k, l]) => [k, l, k === j.pace]), pace, (v) => { pace = v; }), h('div', { class: 'row' }, again)),
+            scriptTable(h, sbDone),
             j.files.includes('overview.png') ? h('details', { class: 'card' }, h('summary', {}, 'Xem bảng phân cảnh'), h('img', { class: 'ink-overview', src: file(id, 'overview.png'), alt: 'Bảng phân cảnh', loading: 'lazy' })) : null)));
       }
       const del = h('button', { type: 'button', class: 'ghost small danger' }, 'Xoá video');

@@ -5,3 +5,4 @@ edge-tts>=7.0
 faster-whisper>=1.1
 playwright>=1.49
 onnxruntime>=1.18
+anthropic>=2.3
