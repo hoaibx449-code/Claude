@@ -225,7 +225,7 @@ async function route(req: Request, rawEnv: Env, ctx: ExecutionContext, rc: Rc): 
   if (site && (method === 'GET' || method === 'HEAD')) { rc.quiet = true; return serveObject(env, req, `site/${site[1]}.${site[2]}`, siteType(site[2]), { 'cache-control': 'public, max-age=31536000, immutable' }); }
   // listen to a voice before choosing it (public; samples are cached)
   if (path === '/api/voices/preview' && method === 'GET') return voicePreview(req, env, rc);
-  const si = path.match(/^\/api\/share\/ink\/([a-f0-9]{24})(?:\/(cover\.jpg))?$/);
+  const si = path.match(/^\/api\/share\/ink\/([a-f0-9]{24})(?:\/(cover\.jpg|script\.txt|subs\.ass))?$/);
   if (si && (method === 'GET' || method === 'HEAD')) return shareInk(env, rc, req, si[1], si[2] || '');
   const sh = path.match(/^\/api\/share\/([a-f0-9]{24})$/);
   if (sh && method === 'GET') return shareVideo(env, rc, sh[1], url);

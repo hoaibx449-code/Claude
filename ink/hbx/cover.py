@@ -35,7 +35,7 @@ def build_html(sb, base):
     # cảnh không có ảnh nền (cảnh 3D) → lấy cảnh có nền gần nhất
     order = [idx] + [i for i in range(len(sc)) if i != idx]
     bg = next((sc[i]['bg'] for i in order if isinstance(sc[i].get('bg'), dict) and sc[i]['bg'].get('src')), None)
-    src = bg['src'] if bg else ''
+    src = bg['src'] if bg else (cv.get('bgsrc') or '')   # a video told only in 3D: a frame of its own journey
     if src and not src.startswith(('file:', 'http', 'data:')): src = (base / src).resolve().as_uri()
     hook = cv.get('hook')
     if not hook:
@@ -45,7 +45,8 @@ def build_html(sb, base):
     dark = st.get('scheme', 'dark') != 'light'
     acc, ink = st.get('accent', '#ffb21e'), st.get('accentInk', '#111')
     font = st.get('font', 'Oswald')
-    pos = {'top': 'top:150px', 'mid': 'top:560px', 'low': 'bottom:250px'}[cv.get('pos', 'low')]
+    W, H = (1280, 720) if sb.get('ar') == '16:9' else (720, 1280)
+    pos = {'top': 'top:150px', 'mid': 'top:560px', 'low': 'bottom:250px'}[cv.get('pos', 'low')] if H > W else 'left:70px;right:420px;bottom:90px'
     shade = ('linear-gradient(180deg,rgba(0,0,0,.35) 0%,rgba(0,0,0,0) 26%,rgba(0,0,0,0) 42%,rgba(0,0,0,.72) 72%,rgba(0,0,0,.88) 100%)' if dark
              else 'linear-gradient(180deg,rgba(0,0,0,.25) 0%,rgba(0,0,0,0) 30%,rgba(0,0,0,.15) 50%,rgba(0,0,0,.65) 100%)')
     kick = html.escape(cv.get('kicker', '') or '')
@@ -58,7 +59,7 @@ def build_html(sb, base):
     if font == 'Lora': weight = 700
     upper = font in ('Oswald', 'Barlow Condensed')
     return f'''<!doctype html><meta charset="utf-8"><style>{fonts}
-html,body{{margin:0;width:720px;height:1280px;overflow:hidden;background:#000}}
+html,body{{margin:0;width:{W}px;height:{H}px;overflow:hidden;background:#000}}
 .bg{{position:absolute;inset:0;background:url("{src}") {foc.get("x", .5) * 100:.0f}% {foc.get("y", .45) * 100:.0f}%/cover no-repeat;filter:{GRADE.get(st.get("grade", "none"), "none")};transform:scale(1.04)}}
 .sh{{position:absolute;inset:0;background:{shade}}}
 .box{{position:absolute;left:52px;right:52px;{pos}}}
@@ -68,7 +69,22 @@ html,body{{margin:0;width:720px;height:1280px;overflow:hidden;background:#000}}
 .br{{position:absolute;left:52px;bottom:120px;font:600 18px/1 "Be Vietnam Pro",sans-serif;letter-spacing:.2em;color:rgba(255,255,255,.6)}}
 </style><div class="bg"></div><div class="sh"></div>
 <div class="box">{f'<div class="k">{kick}</div>' if kick else ''}<div class="h">{_md(hook, acc, ink)}</div>{f'<div class="d">{det}</div>' if det else ''}</div>
-{f'<div class="br">{brand}</div>' if brand else ''}'''
+{f'<div class="br">{brand}</div>' if brand and brand.lower() != kick.lower() else ''}'''
+
+
+def _frame(pw, sb, path):
+    """a still of the brightest moment of a 3D video (its climax or dawn), as the cover's background"""
+    import render
+    sc = sb['scenes']; acc, at = 0.0, None
+    for x in sc:
+        if at is None and (x.get('space') or {}).get('mood') in ('bright', 'dawn'): at = acc + x.get('dur', 3) * .6
+        acc += x.get('dur', 3)
+    at = at if at is not None else acc * .7
+    b, pg = render.open_page(pw, sb)
+    pg.evaluate(f'HBX.setTime({at:.2f})')
+    pg.evaluate("document.querySelectorAll('#sub,#prog,.vypop,.vytitle,.vyclose,.vysrc,.pill').forEach(e=>e.style.visibility='hidden')")
+    pg.screenshot(path=str(path), type='jpeg', quality=90); b.close()
+    return Path(path).resolve().as_uri()
 
 
 def render_cover(sb, base, out):
@@ -77,7 +93,10 @@ def render_cover(sb, base, out):
     with sync_playwright() as pw:
         exe = os.environ.get('HBX_CHROMIUM')
         b = pw.chromium.launch(args=['--allow-file-access-from-files'], **({'executable_path': exe} if exe else {}))
-        pg = b.new_page(viewport={'width': 720, 'height': 1280}, device_scale_factor=1.5)
+        wide = sb.get('ar') == '16:9'
+        if not any(isinstance(x.get('bg'), dict) and x['bg'].get('src') for x in sb['scenes']) and any(x.get('type') in ('v_scene', 'm_scene') for x in sb['scenes']):
+            sb.setdefault('cover', {})['bgsrc'] = _frame(pw, sb, Path(out).with_suffix('.bg.jpg')); page.write_text(build_html(sb, Path(base)))
+        pg = b.new_page(viewport={'width': 1280 if wide else 720, 'height': 720 if wide else 1280}, device_scale_factor=1.5)
         pg.goto(page.resolve().as_uri()); pg.wait_for_timeout(400)
         pg.evaluate('document.fonts.ready')
         pg.screenshot(path=str(out), type='jpeg', quality=94)

@@ -20,8 +20,9 @@ PROGRESSIONS = {
     "alert":   [[0, 3, 7, 10], [5, 8, 12, 15], [8, 12, 15, 19], [7, 11, 14, 17]],    # i - iv - VI - V
     "bright":  [[0, 4, 7, 11], [5, 9, 12, 16], [9, 12, 16, 19], [7, 11, 14, 17]],   # I - IV - vi - V (trưởng, tươi)
     "calm":    [[0, 4, 7, 11], [9, 12, 16, 19], [5, 9, 12, 16], [0, 4, 7, 14]],     # I - vi - IV - Iadd9 (ấm, chậm)
+    "epic":    [[0, 3, 7, 12], [8, 12, 15, 20], [3, 7, 10, 15], [10, 14, 17, 22]],  # i - VI - III - VII (điện ảnh, hùng tráng)
 }
-BPM = {"tech": 100, "finance": 92, "alert": 110, "bright": 112, "calm": 84}
+BPM = {"tech": 100, "finance": 92, "alert": 110, "bright": 112, "calm": 84, "epic": 78}
 # đặc tính từng mood: độ sáng (lọc), lượng trống, có snare/hi-hat 16 không, độ to arpeggio
 CHAR = {
     "tech":    dict(lp=6000, kick=.32, snare=.06, hat=.025, hat16=False, arp=.05),
@@ -29,6 +30,7 @@ CHAR = {
     "alert":   dict(lp=6500, kick=.36, snare=.08, hat=.03, hat16=True, arp=.04),
     "bright":  dict(lp=7500, kick=.30, snare=.07, hat=.03, hat16=False, arp=.065),
     "calm":    dict(lp=3800, kick=.16, snare=0.0, hat=.012, hat16=False, arp=.07),
+    "epic":    dict(lp=5200, kick=.42, snare=.09, hat=.012, hat16=False, arp=.05),
 }
 
 
@@ -84,7 +86,7 @@ def midi_hz(m):
     return 440.0 * 2 ** ((m - 69) / 12)
 
 
-def make_music(duration, mood, seed, bpm=None):
+def make_music(duration, mood, seed, bpm=None, climax=None):
     rng = np.random.default_rng(seed)
     bpm = bpm or BPM.get(mood, 100)
     ch = CHAR.get(mood, CHAR["tech"])
@@ -92,6 +94,7 @@ def make_music(duration, mood, seed, bpm=None):
     bar = beat * 4
     n = int(duration * SR)
     out = np.zeros((n, 2))
+    pad, bas, arp, drm = (np.zeros((n, 2)) for _ in range(4))   # layers: the epic arc brings them in one by one
     root = 45 + int(rng.integers(0, 7))  # A2..D#3
     prog = PROGRESSIONS.get(mood, PROGRESSIONS["tech"])
     if rng.random() < 0.5:
@@ -116,8 +119,8 @@ def make_music(duration, mood, seed, bpm=None):
                 ph = 2 * np.pi * f * det * tt
                 arr += 0.5 * np.sin(ph) + 0.18 * np.sin(2 * ph) + 0.07 * np.sin(3 * ph)
         e = env_adsr(seg_n, a=0.4, d=0.5, s=0.8, r=0.5)
-        out[start:start + seg_n, 0] += 0.06 * pad_l * e
-        out[start:start + seg_n, 1] += 0.06 * pad_r * e
+        pad[start:start + seg_n, 0] += 0.06 * pad_l * e
+        pad[start:start + seg_n, 1] += 0.06 * pad_r * e
         # bass theo phách
         for q in range(4):
             bs = start + int(q * beat * SR)
@@ -127,7 +130,7 @@ def make_music(duration, mood, seed, bpm=None):
             tb = np.arange(bn) / SR
             fb = midi_hz(root + chord[0] - 12 + (7 if q == 3 and rng.random() < 0.4 else 0))
             bass = np.sin(2 * np.pi * fb * tb) + 0.3 * np.sin(4 * np.pi * fb * tb)
-            out[bs:bs + bn] += (0.11 * bass * env_adsr(bn, 0.005, 0.15, 0.5, 0.1))[:, None]
+            bas[bs:bs + bn] += (0.11 * bass * env_adsr(bn, 0.005, 0.15, 0.5, 0.1))[:, None]
         # arpeggio (pluck) nốt móc
         pattern = rng.permutation([0, 1, 2, 3, 2, 1, 3, 0])
         for s8 in range(8):
@@ -141,8 +144,8 @@ def make_music(duration, mood, seed, bpm=None):
             fp = midi_hz(root + 24 + chord[pattern[s8] % 4])
             pl = np.sin(2 * np.pi * fp * tp) * np.exp(-tp * 9)
             pan = 0.3 + 0.4 * (s8 % 2)
-            out[ps:ps + pn, 0] += ch['arp'] * pl * (1 - pan)
-            out[ps:ps + pn, 1] += ch['arp'] * pl * pan
+            arp[ps:ps + pn, 0] += ch['arp'] * pl * (1 - pan)
+            arp[ps:ps + pn, 1] += ch['arp'] * pl * pan
 
     # trống: kick, snare (noise), hi-hat
     nbeats = int(duration / beat) + 1
@@ -156,11 +159,11 @@ def make_music(duration, mood, seed, bpm=None):
             tk = np.arange(kn) / SR
             f = 50 + 90 * np.exp(-tk * 30)
             kick = np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-tk * 9)
-            out[s:s + kn] += (ch['kick'] * kick)[:, None]
+            drm[s:s + kn] += (ch['kick'] * kick)[:, None]
         if i % 4 in (1, 3) and ch['snare'] > 0:
             sn = min(int(0.2 * SR), n - s)
             noise = rng.standard_normal(sn) * np.exp(-np.arange(sn) / SR * 22)
-            out[s:s + sn] += (ch['snare'] * noise)[:, None]
+            drm[s:s + sn] += (ch['snare'] * noise)[:, None]
         for h in ((0, 0.25, 0.5, 0.75) if ch['hat16'] else (0, 0.5)):
             hs = s + int(h * beat * SR)
             hn = min(int(0.05 * SR), n - hs)
@@ -168,8 +171,22 @@ def make_music(duration, mood, seed, bpm=None):
                 continue
             hat = rng.standard_normal(hn)
             hat = np.diff(np.concatenate([[0], hat])) * np.exp(-np.arange(hn) / SR * 80)
-            out[hs:hs + hn] += (ch['hat'] * hat)[:, None]
+            drm[hs:hs + hn] += (ch['hat'] * hat)[:, None]
 
+    if mood == 'epic':
+        # the arc: quiet pads → the bass and plucks come in → drums build → full at the climax → settles for the last line
+        t = np.arange(n) / SR; c = float(climax if climax else duration * .7); c = min(max(c, 6.0), duration - 4.0)
+        rise = np.clip((t - duration * .12) / max(1.0, c - duration * .12), 0, 1) ** 1.6
+        fall = np.clip((t - (c + max(4.0, duration * .14))) / 4.0, 0, 1)
+        I = np.clip(.18 + .82 * rise - .6 * fall, 0, 1)[:, None]
+        out = pad * (.75 + .5 * I) + bas * I + arp * (.25 + .75 * I) + drm * np.clip((I - .45) / .55, 0, 1) ** 1.3
+        # a deep boom on the climax, a swell into it
+        bn = int(min(3.0, duration - c) * SR); bs = int(c * SR); tb = np.arange(bn) / SR
+        out[bs:bs + bn] += (0.55 * np.sin(2 * np.pi * (42 + 30 * np.exp(-tb * 6)) * tb) * np.exp(-tb * 1.6))[:, None]
+        rn = int(2.5 * SR); rs = max(0, bs - rn); tr = np.arange(bs - rs) / SR
+        out[rs:bs] += (0.05 * rng.standard_normal(bs - rs) * (tr / 2.5) ** 2)[:, None]
+    else:
+        out = pad + bas + arp + drm
     out = lowpass_fast(out, ch['lp'])
     # fade in/out
     fi = int(1.0 * SR)
@@ -226,6 +243,7 @@ if __name__ == "__main__":
     ap.add_argument("--bpm", type=int, default=0)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", default="music.wav")
+    ap.add_argument("--climax", type=float, default=0)   # epic: second of the climax
     ap.add_argument("--sfx", action="store_true")
     ap.add_argument("--out-dir", default="sfx")
     a = ap.parse_args()
@@ -233,5 +251,5 @@ if __name__ == "__main__":
         make_sfx(a.out_dir)
         print("sfx ->", a.out_dir)
     else:
-        write_wav(a.out, make_music(a.duration, a.mood, a.seed, a.bpm or None))
+        write_wav(a.out, make_music(a.duration, a.mood, a.seed, a.bpm or None, a.climax or None))
         print("music ->", a.out)

@@ -30,16 +30,37 @@ def _research_ok(o):
     if not isinstance(o.get('studies'), list) or not o['studies']: raise ValueError('thiếu nghiên cứu')
 
 
-def research(topic, notes='', log=print):
-    log('1/3 Tìm khái niệm và nghiên cứu trên web…')
+def article(url, log=print):
+    """the article the person sent (optional): its title, site and readable text, or None when it cannot be read"""
+    import html as H, urllib.request, urllib.parse
+    if not re.match(r'^https?://', str(url or '')): return None
     try:
-        facts, sources = ai.research(S.system(), S.prompt('money_research', topic=topic, notes=notes or 'không'), check=_research_ok, log=log)
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (compatible; FaciupBot/1.0)', 'Accept-Language': 'vi,en;q=0.8'})
+        raw = urllib.request.urlopen(req, timeout=25).read(3_000_000).decode('utf-8', 'ignore')
+    except Exception as e:  # noqa: BLE001 - a link that does not open is only a missing extra
+        log(f'   không mở được bài báo ({str(e)[:100]}): làm tiếp không có bài'); return None
+    title = H.unescape((re.search(r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)', raw) or re.search(r'<title[^>]*>(.*?)</title>', raw, re.S) or [None, ''])[1]).strip()
+    body = re.sub(r'(?is)<(script|style|noscript|svg|header|footer|nav|aside|form)[^>]*>.*?</\1>', ' ', raw)
+    paras = [H.unescape(re.sub(r'<[^>]+>', ' ', p)) for p in re.findall(r'(?is)<p[^>]*>(.*?)</p>', body)]
+    text = '\n'.join(' '.join(p.split()) for p in paras if len(p.split()) >= 8)[:14000]
+    if len(text) < 300: log('   bài báo không có đủ chữ để đọc: làm tiếp không có bài'); return None
+    site = urllib.parse.urlparse(url).netloc.replace('www.', '')
+    log(f'   đã đọc bài báo: {title[:80]} ({site}, {len(text)} ký tự)')
+    return {'title': title, 'url': url, 'site': site, 'text': text}
+
+
+def research(topic, notes='', log=print, art=None):
+    log('1/3 Tìm khái niệm và nghiên cứu trên web…')
+    atext = f"Tiêu đề: {art['title']}\nNguồn: {art['site']}\n{art['text']}" if art else 'không có'
+    try:
+        facts, sources = ai.research(S.system(), S.prompt('money_research', topic=topic, notes=notes or 'không', article=atext), check=_research_ok, log=log)
     except RuntimeError as e:
         # no web search available: the research step still runs, held to studies the model knows for sure
         log(f'   không tìm được trên web ({str(e)[:120]}); chỉ dùng nghiên cứu kinh điển, không thêm số mới')
-        facts = ai.ask(S.system(), S.prompt('money_research', topic=topic, notes=(notes + '\n' if notes else '') +
-                       'KHÔNG tìm được web lúc này: chỉ dùng nghiên cứu kinh điển bạn chắc chắn (tác giả, năm), bỏ mọi con số không chắc.'), 0.3, check=_research_ok, log=log)
+        facts = ai.ask(S.system(), S.prompt('money_research', topic=topic, article=atext, notes=(notes + '\n' if notes else '') +
+                       'KHÔNG tìm được web lúc này: chỉ dùng bài báo (nếu có) và nghiên cứu kinh điển bạn chắc chắn (tác giả, năm), bỏ mọi con số không chắc.'), 0.3, check=_research_ok, log=log)
         sources = []
+    if art: sources = [{'title': art['title'], 'url': art['url'], 'site': art['site']}] + [x for x in sources if x.get('url') != art['url']]
     log(f'   khái niệm: {facts.get("concept_en")} – {facts.get("concept_vi")} · {len(facts.get("studies") or [])} nghiên cứu · {len(sources)} nguồn web')
     return facts, sources
 
@@ -48,7 +69,8 @@ def script(inp, seconds, pace, log=print):
     """the narration in the same shape the other types use ({title, core_message, lines, strategy}), plus what the
     series needs later (research, sources, hook, caption, mood)"""
     topic = inp.get('topic') or inp.get('script') or ''
-    facts, sources = research(topic, inp.get('notes', ''), log)
+    art = article(inp.get('source'), log) if inp.get('source') else None   # the article link is optional
+    facts, sources = research(topic, inp.get('notes', ''), log, art)
     target = round(seconds * S.wps() * S.speed(pace))
     frame = FRAMES[random.SystemRandom().choice(list(FRAMES))] if seconds >= 75 else FRAMES['D']
     log(f'2/3 Viết lời đọc (khung {frame})…')
@@ -67,6 +89,15 @@ def script(inp, seconds, pace, log=print):
     sc['strategy'] = {'core_message': sc.get('core_message', ''), 'genre': G['genre'], 'title': sc.get('title', '')}
     sc['review'] = review; sc['money'] = {'facts': facts, 'sources': sources, 'frame': frame}
     return sc
+
+
+def source_line(facts, sources):
+    """the source card at the end of the video: the article or pages the facts came from"""
+    names = [str(x.get('site') or x.get('title') or '').strip() for x in sources[:2] if isinstance(x, dict)]
+    names = [n for n in names if n]
+    if names: return 'Nguồn: ' + S.clip(', '.join(names), 60)
+    st = [f'{x.get("who")} ({x.get("year")})' for x in (facts.get('studies') or [])[:2] if isinstance(x, dict) and x.get('who')]
+    return ('Nguồn: ' + S.clip('; '.join(st), 60)) if st else ''
 
 
 def _ascii(t):

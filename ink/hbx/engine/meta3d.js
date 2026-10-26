@@ -22,11 +22,12 @@
   const A = (v, d) => (v && typeof v === 'object') ? (v.at ?? d) : (v ?? d);
 
   /* ---------- renderer dùng chung (1 ngữ cảnh WebGL cho mọi cảnh) ---------- */
+  const FRAME = () => (((window.HBX && window.HBX._sb) || {}).ar === '16:9' ? [1280, 720] : [720, 1280]);
   let R = null;
   function renderer() {
     if (R) return R;
-    const dsf = window.devicePixelRatio || 1, c = document.createElement('canvas');
-    c.width = Math.round(720 * dsf); c.height = Math.round(1280 * dsf);
+    const dsf = window.devicePixelRatio || 1, c = document.createElement('canvas'), [fw, fh] = FRAME();
+    c.width = Math.round(fw * dsf); c.height = Math.round(fh * dsf);
     R = new THREE.WebGLRenderer({ canvas: c, antialias: true, alpha: true, preserveDrawingBuffer: true });
     R.setPixelRatio(1); R.setSize(c.width, c.height, false);
     R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -455,9 +456,9 @@
     if (CACHE.has(o)) return CACHE.get(o);
     const P = PAL(), s = o.s, W = world(P, s.world || {});
     const mk = PROPS[s.prop] || custom(s.prop) || PROPS.stage, pr = mk(P, Object.assign({}, s.o || {}), W);
-    const cam = new THREE.PerspectiveCamera(38, 720 / 1280, .1, 200);
+    const [fw, fh] = FRAME(), cam = new THREE.PerspectiveCamera(fw > fh ? 30 : 38, fw / fh, .1, 200);
     const v = { W, pr, cam, cv: o.el.querySelector('.m3c') };
-    const dsf = window.devicePixelRatio || 1; v.cv.width = Math.round(720 * dsf); v.cv.height = Math.round(1280 * dsf);
+    const dsf = window.devicePixelRatio || 1; v.cv.width = Math.round(fw * dsf); v.cv.height = Math.round(fh * dsf);
     o.el.querySelector('.m3').style.background = `linear-gradient(180deg, ${P.sky[0]} 0%, ${P.sky[1]} 100%)`;
     CACHE.set(o, v); return v;
   }
@@ -468,11 +469,11 @@
     v.pr.update(t + (+s.pt0 || 0));   // a series prop's story runs on across scenes
     v.W.deb.forEach((m, i) => { const u = m.userData; m.position.y = u.y + Math.sin(t * u.s + u.p) * .35; m.rotation.set(t * .1 * u.s, t * .15 * u.s + i, 0); });
     const c = camAt(s, t, o.dur, v.pr.focus || [0, 1.2, 0], v.pr.size);
-    v.cam.fov = c.fov; v.cam.updateProjectionMatrix(); v.cam.position.set(...c.pos); v.cam.lookAt(...c.tg);
+    v.cam.fov = v.cam.aspect > 1 ? c.fov * .78 : c.fov; v.cam.updateProjectionMatrix(); v.cam.position.set(...c.pos); v.cam.lookAt(...c.tg);
     if (c.roll) v.cam.rotateZ(c.roll * Math.PI / 180);
     const r = renderer(); r.setClearColor(0x000000, 0); r.render(v.W.sc, v.cam);
     const g = v.cv.getContext('2d'); g.clearRect(0, 0, v.cv.width, v.cv.height); g.drawImage(r.domElement, 0, 0);
   });
   X.trSfx.cut = X.trSfx.cut || 'impact';
-  window.HBX_META3D = { PROPS, CAMK, KIT };
+  window.HBX_META3D = { PROPS, CAMK, KIT, renderer, PAL, custom };
 })();

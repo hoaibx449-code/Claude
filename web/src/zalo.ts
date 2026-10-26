@@ -883,7 +883,11 @@ async function makeVideo(env: XEnv, rc: Rc, user: User, chatId: string, mode: 't
     // a message retried by the minute job never makes a second video
     const checkpoint = await env.DB.prepare('SELECT job_id FROM zalo_messages WHERE id = ?').bind(messageId).first<any>();
     if (checkpoint?.job_id) return send(env, chatId, 'Video này đã vào hàng chờ. Gõ TT để xem tiến độ.', messageId);
-    const id = await createInk(env, rc, user, { mode, [mode]: text, format: way, voice: prefs.inkVoice, review: c.zalo.review, browser: false }, { zalo: chatId });
+    // a link in the message is the article the video is about (optional); "ngang"/"16:9" asks for a wide video
+    const link = mode === 'topic' ? (text.match(/https?:\/\/\S+/) || [''])[0] : '';
+    const wide = /\b(16:9|ngang)\b/i.test(fold(text));
+    const topic = link ? text.replace(link, ' ').replace(/\s+/g, ' ').trim() : text;
+    const id = await createInk(env, rc, user, { mode, [mode]: topic, format: way, voice: prefs.inkVoice, review: c.zalo.review, browser: false, ...(link ? { source: link } : {}), ...(wide ? { aspect: '16:9' } : {}) }, { zalo: chatId });
     await env.DB.prepare('UPDATE zalo_messages SET job_id = ? WHERE id = ?').bind('ink:' + id, messageId).run();
     rc.log('zalo.ink.create', { data: { job: id, mode, format: way, review: c.zalo.review } });
     const what = mode === 'topic' ? `video "${text.slice(0, 80)}"` : 'video từ kịch bản của bạn';
@@ -937,15 +941,22 @@ export async function inkPage(env: XEnv, rc: Rc, url: URL, id: string, exp36: st
       'content-security-policy': "default-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; media-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" } });
   const good = exp && exp * 1000 > Date.now() && timingSafeEqual((await hmacHex(env.RUNNER_TOKEN || '', `page:ink:${id}:${exp}`)).slice(0, 16), sig);
   if (!good) return page(403, 'Link đã hết hạn', `<div class="card meta"><h1>Link đã hết hạn</h1><p class="muted">Gõ <b>TT</b> trong Zalo để nhận link mới, hoặc đăng nhập web để xem video của bạn.</p><a class="btn" href="/video">Mở trang Video của tôi</a></div>`);
-  const j = await env.DB.prepare("SELECT title, duration, user_id FROM ink_jobs WHERE id = ? AND status = 'done'").bind(id).first<any>();
+  const j = await env.DB.prepare("SELECT title, duration, user_id, meta, storyboard FROM ink_jobs WHERE id = ? AND status = 'done'").bind(id).first<any>();
   if (!j) return page(404, 'Không tìm thấy video', `<div class="card meta"><h1>Video không còn</h1><p class="muted">Video có thể đã bị xoá.</p></div>`);
   rc.userId = j.user_id;
   const origin = url.origin, file = await inkShareLink(env, origin, id), cover = await inkShareLink(env, origin, id, 'cover.jpg');
   const secs = Math.round(j.duration || 0), len = secs ? (secs >= 60 ? `${Math.floor(secs / 60)} phút ${secs % 60 ? (secs % 60) + ' giây' : ''}`.trim() : `${secs} giây`) : '';
   const days = Math.max(1, Math.ceil((exp * 1000 - Date.now()) / 86_400_000));
+  // a 'Đòn Bẩy Tư Duy' video also gives its script, subtitles and the question to ask in the comments
+  const files: string[] = JSON.parse(j.meta || '{}').files || [];
+  let question = ''; try { question = String(JSON.parse(j.storyboard || '{}').question || ''); } catch { /* no storyboard */ }
+  const extras = [files.includes('script.txt') ? `<a class="btn ghost" href="${escAttr(await inkShareLink(env, origin, id, 'script.txt'))}">Tải kịch bản thoại (.txt)</a>` : '',
+    files.includes('subs.ass') ? `<a class="btn ghost" href="${escAttr(await inkShareLink(env, origin, id, 'subs.ass'))}">Tải phụ đề karaoke (.ass)</a>` : '',
+    question ? `<p class="muted note"><b>Câu hỏi bình luận:</b> ${escAttr(question)}</p>` : ''].join('');
   return page(200, j.title, `<div class="card"><video src="${escAttr(file)}" poster="${escAttr(cover)}" controls playsinline preload="metadata"></video>
 <div class="meta"><h1>${escAttr(j.title)}</h1><p class="muted">Video 9:16${len ? ' · ' + len : ''}</p>
 <a class="btn" href="${escAttr(file + '&dl=1')}" download>Tải video về máy</a>
+${extras}
 <p class="muted note">Trên Zalo, nếu nút tải không chạy: bấm ⋯ ở góc trên → Mở bằng trình duyệt. Link dùng được thêm ${days} ngày.</p></div></div>`);
 }
 /** GET /api/share/ink/<id>[/cover.jpg]: the video plays (or the cover shows) without logging in. */
@@ -954,6 +965,10 @@ export async function shareInk(env: XEnv, rc: Rc, req: Request, id: string, file
   if (!exp || exp < Date.now() || !timingSafeEqual((await hmacHex(env.RUNNER_TOKEN || '', `share:ink:${id}:${exp}`)).slice(0, 32), url.searchParams.get('s') || '')) throw new HttpError(403, 'Link đã hết hạn. Gõ TT trong Zalo để lấy link mới.');
   const j = await env.DB.prepare("SELECT user_id, meta FROM ink_jobs WHERE id = ? AND status = 'done'").bind(id).first<any>();
   if (!j) throw new HttpError(404, 'Video không còn.');
+  if (file === 'script.txt' || file === 'subs.ass') {   // the voice-over script and the karaoke subtitles, to save
+    rc.quiet = true;
+    return serveObject(env, req, `ink/${j.user_id}/${id}/${file}`, 'text/plain; charset=utf-8', { 'content-disposition': `attachment; filename="${file === 'subs.ass' ? 'phu-de' : 'kich-ban'}-${id.slice(0, 8)}.${file.split('.')[1]}"`, 'cache-control': 'private, max-age=3600' });
+  }
   if (file) {
     const files: string[] = JSON.parse(j.meta || '{}').files || [], pic = ['cover.jpg', 'thumb.jpg'].find((f) => files.includes(f));
     rc.quiet = true;
@@ -963,6 +978,18 @@ export async function shareInk(env: XEnv, rc: Rc, req: Request, id: string, file
   const dl = url.searchParams.get('dl') === '1';
   rc.log('video.download', { data: { job: id, kind: dl ? 'share-download' : 'share', ink: true } });
   return serveObject(env, req, `ink/${j.user_id}/${id}/video.mp4`, 'video/mp4', { 'content-disposition': `${dl ? 'attachment' : 'inline'}; filename="video-${id.slice(0, 8)}.mp4"`, 'cache-control': 'private, max-age=3600' });
+}
+/** the proposal of a 3D journey video, as lines a person reads in Zalo before approving */
+function proposalLines(p: any) {
+  const out: string[] = [];
+  if (p.facts?.length) out.push('Sự thật dùng trong video:', ...p.facts.slice(0, 6).map((x: string) => '• ' + x));
+  if (p.not_said?.length) out.push('Video sẽ không khẳng định:', ...p.not_said.slice(0, 3).map((x: string) => '• ' + x));
+  if (p.hook) out.push('', 'Mở đầu (3 giây): ' + p.hook);
+  if (p.message) out.push('Thông điệp: ' + p.message);
+  if (p.closing) out.push('Câu chốt: ' + p.closing);
+  if (p.scenes?.length) out.push('', 'Các cảnh:', ...p.scenes.map((r: any, i: number) => `${i + 1}. ${r.time} · ${r.space} · ${r.light} · ${r.camera}`));
+  if (p.question) out.push('', 'Câu hỏi bình luận: ' + p.question);
+  return out;
 }
 const sceneList = (sb: any) => (Array.isArray(sb?.scenes) ? sb.scenes : []).map((x: any, i: number) => `${i + 1}. ${String(x.say || '').replace(/\s+/g, ' ').trim()}`);
 /**
@@ -980,7 +1007,8 @@ export async function zaloInk(env: XEnv, rc: { log(type: string, extra?: any): v
     // the review is part of making a video asked for here: always sent; news of a video only when wanted
     if (kind === 'review') {
       if (input.zalo !== link.chat_id) return;
-      const lines = sceneList(extra), head = `📝 Phân cảnh "${j.title}" (${lines.length} cảnh):`;
+      const pr = extra?.proposal;
+      const lines = pr ? proposalLines(pr) : sceneList(extra), head = pr ? `Đề xuất cho video "${j.title}":` : `📝 Phân cảnh "${j.title}" (${lines.length} cảnh):`;
       const tail = '\nTrả lời:\n• OK để dựng video\n• SUA + điều muốn đổi (ví dụ: SUA thêm ví dụ thực tế)\n• HUY để bỏ';
       // long storyboards go in several messages (Zalo takes about 2000 characters each)
       const parts: string[] = []; let cur = head;

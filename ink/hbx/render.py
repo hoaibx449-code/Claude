@@ -14,6 +14,7 @@ FPS, SR = int(os.environ.get('HBX_FPS', '30')), 44100
 # chữ gần như không khác sau nén Facebook. Cần nét tối đa: HBX_DSF=1.5 (chụp thẳng 1080x1920).
 DSF = float(os.environ.get('HBX_DSF', '1.0'))
 OUT_W, OUT_H = 1080, 1920
+FRAME = lambda sb: (1280, 720) if (sb or {}).get('ar') == '16:9' else (720, 1280)   # 16:9 videos are captured wide
 
 
 def resolve_images(sb, base):
@@ -43,7 +44,8 @@ def open_page(pw, sb):
     exe = os.environ.get('HBX_CHROMIUM')
     # WebGL (3D metaphor scenes, meta3d.js) in a headless browser: software rendering, same picture on every machine
     b = pw.chromium.launch(args=['--allow-file-access-from-files', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'], **({'executable_path': exe} if exe else {}))
-    pg = b.new_page(viewport={'width': 720, 'height': 1280}, device_scale_factor=DSF)
+    fw, fh = FRAME(sb)
+    pg = b.new_page(viewport={'width': fw, 'height': fh}, device_scale_factor=DSF)
     pg.goto(PLAYER)
     pg.evaluate('sb => HBX.build(sb)', sb)
     pg.wait_for_timeout(200)
@@ -149,6 +151,8 @@ def main():
     ap.add_argument('--cover-at', type=float, default=2.4)
     a = ap.parse_args()
     sbp = Path(a.storyboard).resolve(); sb = resolve_images(json.loads(sbp.read_text()), sbp.parent)
+    global OUT_W, OUT_H
+    if FRAME(sb)[0] > FRAME(sb)[1]: OUT_W, OUT_H = 1920, 1080
     from playwright.sync_api import sync_playwright
 
     if a.preview:  # ảnh tĩnh ở các mốc → kiểm tra bố cục nhanh

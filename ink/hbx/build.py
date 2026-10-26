@@ -22,7 +22,7 @@ MOOD = {'ai': 'tech', 'tech': 'tech', 'science': 'tech',
         'security': 'alert', 'scam': 'alert', 'warning': 'alert',
         'tips': 'bright', 'howto': 'bright', 'review': 'bright',
         'life': 'calm', 'health': 'calm', 'society': 'calm', 'development': 'calm', 'environment': 'calm', 'education': 'calm'}
-MOODS = ('tech', 'finance', 'alert', 'bright', 'calm')
+MOODS = ('tech', 'finance', 'alert', 'bright', 'calm', 'epic')
 
 
 def mood_of(plan):
@@ -103,7 +103,7 @@ def main():
         for s in sb['scenes']: ts.append(round(acc + min(s['dur'] * .7, s['dur'] - .3), 2)); acc += s['dur']
         pv = work / 'pv'; run(sys.executable, HERE / 'render.py', sbp, pv, '--preview', ','.join(map(str, ts)))
         from PIL import Image
-        fs = sorted(pv.glob('p_*.jpg')); W, H = 240, 427; cols = min(6, len(fs)); rows = (len(fs) + cols - 1) // cols
+        fs = sorted(pv.glob('p_*.jpg')); W, H = (427, 240) if plan['storyboard'].get('ar') == '16:9' else (240, 427); cols = min(6 if H > W else 4, len(fs)); rows = (len(fs) + cols - 1) // cols
         im = Image.new('RGB', (W * cols, H * rows), (40, 40, 40))
         for i, f in enumerate(fs): im.paste(Image.open(f).resize((W, H)), ((i % cols) * W, (i // cols) * H))
         # ảnh bìa hook = khung 0 của video → đặt ĐẦU lưới xem trước để soát cùng các cú máy
@@ -119,7 +119,9 @@ def main():
                                 capture_output=True, text=True, check=True).stdout)
     if vdur + 1.6 < a.min: print(f'GIỌNG_NGẮN {vdur:.1f}s'); sys.exit(3)
     music = work / 'music.wav'
-    run(sys.executable, HERE / 'make_music.py', '--duration', int(vdur + 4), '--mood', mood, *(['--bpm', plan['bpm']] if plan.get('bpm') else []),
+    # a 3D journey video scores its own arc: the climax lands where the story peaks (its share of the voice)
+    climax = ['--climax', round(vdur * float(plan['climax']), 1)] if plan.get('climax') else []
+    run(sys.executable, HERE / 'make_music.py', '--duration', int(vdur + 4), '--mood', mood, *(['--bpm', plan['bpm']] if plan.get('bpm') else []), *climax,
         '--seed', ''.join(c for c in plan.get('id', '1') if c.isdigit())[-8:] or 1, '--out', music)
     args = [sys.executable, HERE / 'align.py', a.plan, a.voice] + ([a.srt] if a.srt else []) + [sbp, '--music', music]
     run(*args)

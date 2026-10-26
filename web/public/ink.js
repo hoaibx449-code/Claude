@@ -4,7 +4,7 @@ const PACE_NOTE = { slow: 'Đọc thong thả, vẽ chậm rãi', normal: 'Nhị
 const MOODS = [['auto', 'Tự chọn theo nội dung'], ['motivating', 'Truyền động lực'], ['calm', 'Nhẹ nhàng'], ['upbeat', 'Sôi động'], ['emotional', 'Cảm xúc'], ['none', 'Không nhạc'], ['mine', 'Nhạc của tôi…']];
 const WHERE_NOTE = { server: 'Bạn có thể rời trang, video tự dựng xong và báo cho bạn.', browser: 'Làm toàn bộ trên máy tính/điện thoại của bạn, không cần máy chủ dựng. Cần mở trang trong lúc dựng (khoảng 2–5 phút cho video 1 phút).' };
 const FORMAT_NOTE = { ink: 'Bàn tay vẽ từng cảnh trên nền giấy, như video whiteboard.', cine: 'Cảnh quay và ảnh thật lấp kín khung, máy quay chuyển động, chữ và số liệu hiện trong không gian, phụ đề kiểu CapCut. Dựng trên máy chủ.',
-  money: 'Series Đòn Bẩy Tư Duy: gõ một băn khoăn về tiền bạc, công việc hay thói quen (ví dụ: vì sao lương tăng mà vẫn hết tiền?). AI tìm nghiên cứu thật trên web, đặt tên khái niệm, kể bằng giọng tiểu luận trên cảnh quay thật và đồ hoạ 3D, phụ đề nét mảnh. Video khoảng 2 phút, dựng trên máy chủ.' };
+  money: 'Đòn Bẩy Tư Duy: video truyền cảm hứng kể bằng một hành trình 3D (máy quay đi qua những không gian ẩn dụ, ánh sáng theo cảm xúc, nhạc dâng tới cao trào). AI tìm sự thật và nghiên cứu thật; dán link bài báo nếu có. Nhận kèm kịch bản thoại và phụ đề .ass để tự thu giọng.' };
 const LENGTHS =[[30, '30 giây'], [60, '1 phút'], [90, '1,5 phút'], [120, '2 phút'], [180, '3 phút'], [300, '5 phút']];
 const STATUS = { queued: 'Đang chờ máy dựng', running: 'Đang dựng', review: 'Chờ bạn duyệt phân cảnh', browser: 'Sẵn sàng dựng trên máy của bạn', done: 'Đã xong', failed: 'Chưa dựng được' };
 const DEFAULTS = { voices: [{ id: 'hoaimy', label: 'Hoài My (nữ)' }, { id: 'namminh', label: 'Nam Minh (nam)' }], defaults: { pace: 'normal', seconds: 60, mood: 'auto', captions: true, review: false, voice: 'hoaimy' }, maxSeconds: 300 };
@@ -15,6 +15,16 @@ function etaText(eta, format, browser) {
   const e = (eta || {})[format];
   return (e && e.n >= 3 ? `Các video gần đây: chờ máy dựng khoảng ${mins(e.wait)}, dựng khoảng ${mins(e.run)}. ` : 'Thời gian tuỳ hàng chờ và độ dài video; trang video sẽ hiện ước tính. ')
     + 'Bạn có thể rời trang, video xong sẽ báo cho bạn.';
+}
+// the proposal of a 'Đòn Bẩy Tư Duy' video, read before it is made
+function proposalView(h, p) {
+  if (!p) return null;
+  const list = (t, xs) => xs && xs.length ? [h('h3', {}, t), h('ul', { class: 'ink-prop-list' }, xs.map((x) => h('li', {}, x)))] : [];
+  return h('div', { class: 'ink-proposal' },
+    ...list('Sự thật dùng trong video', p.facts), ...list('Video sẽ không khẳng định', p.not_said),
+    h('dl', { class: 'ink-prop-dl' }, ...[['Mở đầu (3 giây)', p.hook], ['Thông điệp', p.message], ['Câu chốt', p.closing], ['Câu hỏi bình luận', p.question]].filter(([, v]) => v).flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
+    p.scenes?.length ? h('div', { class: 'ink-table-wrap' }, h('table', { class: 'ink-prop-table' }, h('thead', {}, h('tr', {}, ['#', 'Thời gian', 'Không gian và máy quay', 'Ánh sáng', 'Nội dung'].map((x) => h('th', {}, x)))),
+      h('tbody', {}, p.scenes.map((r, i) => h('tr', {}, h('td', {}, String(i + 1)), h('td', {}, r.time), h('td', {}, `${r.space}: ${r.camera}`), h('td', {}, r.light), h('td', {}, r.content)))))) : null);
 }
 // the script table of a series video: [Scene X – time] [Voiceover] [Visual Prompt]
 function scriptTable(h, sb) {
@@ -98,7 +108,7 @@ export async function showInkCreate(ctx) {
   const { h, api, show, me, openLogin, toast, fail, navigate, busy, footer } = ctx;
   const cfg = me ? await api('/api/ink/config').catch(() => DEFAULTS) : DEFAULTS;
   const d = cfg.defaults;
-  const st = { format: 'ink', mode: 'topic', topic: '', script: '', seconds: Math.min(d.seconds, cfg.maxSeconds), pace: d.pace, voice: d.voice, mood: d.mood, music: '', captions: d.captions, review: d.review, audience: '', tone: '', notes: '', browser: false, series: '' };
+  const st = { format: 'ink', mode: 'topic', topic: '', script: '', seconds: Math.min(d.seconds, cfg.maxSeconds), pace: d.pace, voice: d.voice, mood: d.mood, music: '', captions: d.captions, review: d.review, audience: '', tone: '', notes: '', browser: false, series: '', aspect: '9:16', source: '' };
   try { Object.assign(st, JSON.parse(sessionStorage.getItem('ink-draft') || '{}'), { music: '' }); } catch { /* fresh form */ }
   const keep = () => { try { sessionStorage.setItem('ink-draft', JSON.stringify({ ...st, music: '' })); } catch { /* private mode */ } };
   const text = h('textarea', { rows: 3, class: 'ink-topic', maxlength: 500 });
@@ -138,9 +148,17 @@ export async function showInkCreate(ctx) {
     paintHint();
     whereRow.hidden = st.format !== 'ink' || !cfg.browser; if (st.format !== 'ink') st.browser = false;
     moodRow.hidden = st.format !== 'ink';
+    moneyRow.hidden = st.format !== 'money';
+    reviewText.textContent = st.format === 'money' ? 'Gửi bản đề xuất (sự thật, thông điệp, các cảnh) cho tôi duyệt trước khi dựng' : 'Cho tôi duyệt phân cảnh trước khi dựng';
     // the series has its own voice when it is ready (still changeable below)
     if (st.format === 'money' && cfg.voices.some((v) => v.id === 'vanduy') && !st.voicePicked) { st.voice = 'vanduy'; voice.value = 'vanduy'; }
   };
+  // 'Đòn Bẩy Tư Duy': the frame shape and an optional article the story stands on
+  const moneyRow = h('div', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Khung hình'),
+    chips(h, [['9:16', 'Dọc 9:16 (Reels, TikTok)'], ['16:9', 'Ngang 16:9 (YouTube)']], st.aspect, (v) => { st.aspect = v; keep(); }),
+    h('label', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Link bài báo (không bắt buộc)'),
+      h('input', { type: 'url', value: st.source, maxlength: 500, placeholder: 'https://… — có thì video lấy số liệu đúng theo bài', oninput: (e) => { st.source = e.target.value.trim(); keep(); } })));
+  const reviewText = h('span', {});
   const voice = h('select', { 'aria-label': 'Giọng đọc', onchange: () => { st.voice = voice.value; st.voicePicked = true; keep(); } }, cfg.voices.map((v) => h('option', { value: v.id, selected: v.id === st.voice }, v.label)));
   const moodRow = h('label', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Nhạc nền'), mood, musicFile, musicNote);
   whereRow.append(h('span', { class: 'ink-label' }, 'Nơi dựng video'),
@@ -182,7 +200,7 @@ export async function showInkCreate(ctx) {
     e.preventDefault();
     if (!me) return openLogin('route', { hash: '#/tao' });
     const body = { ...st, [st.mode]: text.value.trim(), rid };
-    if (!body[st.mode]) { text.focus(); return toast(st.mode === 'topic' ? 'Hãy nhập chủ đề video.' : 'Hãy dán kịch bản.'); }
+    if (!body[st.mode] && !(st.format === 'money' && st.mode === 'topic' && /^https?:\/\//.test(st.source))) { text.focus(); return toast(st.mode === 'topic' ? 'Hãy nhập chủ đề video.' : 'Hãy dán kịch bản.'); }
     await busy(go, 'Đang gửi…', async () => {
       try { const { id } = await api('/api/ink/jobs', { method: 'POST', body }); sessionStorage.removeItem('ink-draft'); navigate('/ink/' + id); } catch (err) { fail(err); }
     });
@@ -193,6 +211,7 @@ export async function showInkCreate(ctx) {
     chips(h, [['topic', 'Từ chủ đề'], ['script', 'Từ kịch bản có sẵn']], st.mode, (v) => { st.mode = v; paintText(); keep(); }, 'ink-mode'),
     h('label', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Nội dung'), text),
     lenRow,
+    moneyRow,
     cfg.browser ? whereRow : null,
     h('div', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Nhịp video'), chips(h, PACES, st.pace, (v) => { st.pace = v; paceNote.textContent = PACE_NOTE[v]; keep(); }), paceNote),
     h('div', { class: 'ink-grid' },
@@ -203,7 +222,7 @@ export async function showInkCreate(ctx) {
       h('label', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Giọng văn'), h('input', { value: st.tone, maxlength: 120, placeholder: 'Để trống: AI chọn giọng văn hợp chủ đề', oninput: (e) => { st.tone = e.target.value; keep(); } })),
       h('label', { class: 'ink-field' }, h('span', { class: 'ink-label' }, 'Ghi chú cho AI'), h('textarea', { rows: 2, maxlength: 600, value: st.notes, placeholder: 'Ý bắt buộc có, điều cần tránh…', oninput: (e) => { st.notes = e.target.value; keep(); } })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.captions, onchange: (e) => { st.captions = e.target.checked; keep(); } }), 'Phụ đề trên video'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.review, onchange: (e) => { st.review = e.target.checked; keep(); } }), 'Cho tôi duyệt phân cảnh trước khi dựng')),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.review, onchange: (e) => { st.review = e.target.checked; keep(); } }), reviewText)),
     go, quota,
     hint);
   paintText(); paintFormat();
@@ -261,7 +280,8 @@ export async function showInkWatch(ctx, id) {
         const { storyboard: sb } = await api(`/api/ink/jobs/${id}/storyboard`);
         const goBtn = h('button', { type: 'button', class: 'btn' }, 'Dựng video');
         goBtn.onclick = () => busy(goBtn, 'Đang gửi…', async () => { try { await api(`/api/ink/jobs/${id}/approve`, { method: 'POST' }); last = ''; paint(); } catch (e) { fail(e); } });
-        parts.push(h('section', { class: 'card' }, h('h2', {}, 'Phân cảnh đã sẵn sàng'), h('p', { class: 'muted' }, 'Xem ảnh bìa, từng cảnh và lời đọc. Đồng ý thì bấm Dựng video.'),
+        parts.push(h('section', { class: 'card' }, h('h2', {}, sb?.proposal ? 'Bản đề xuất đã sẵn sàng' : 'Phân cảnh đã sẵn sàng'), h('p', { class: 'muted' }, sb?.proposal ? 'Đọc sự thật, thông điệp và các cảnh. Đồng ý thì bấm Dựng video.' : 'Xem ảnh bìa, từng cảnh và lời đọc. Đồng ý thì bấm Dựng video.'),
+          proposalView(h, sb?.proposal),
           h('img', { class: 'ink-overview', src: file(id, 'overview.png'), alt: 'Bảng phân cảnh' }),
           scriptTable(h, sb) || h('ol', { class: 'ink-lines' }, (sb?.scenes || []).map((s) => h('li', {}, s.say))), h('div', { class: 'row' }, goBtn)));
         if (sb?.facts !== undefined) parts.push(factsCard(h, sb.facts, true));
@@ -277,6 +297,24 @@ export async function showInkWatch(ctx, id) {
       if (j.status === 'done') {
         const sbDone = (await api(`/api/ink/jobs/${id}/storyboard`).catch(() => ({}))).storyboard || null, facts = sbDone ? sbDone.facts : undefined;
         const editor = j.format === 'ink' || !j.format ? await sceneEditor(ctx, j, () => {}).catch(() => null) : null;
+        // what comes with a 'Đòn Bẩy Tư Duy' video: script, subtitles, the comment question, and re-timing to your own voice
+        const voiceIn = h('input', { type: 'file', accept: 'audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/ogg', hidden: true });
+        const voiceBtn = h('button', { type: 'button', class: 'btn ghost' }, 'Gửi giọng đọc của tôi');
+        voiceBtn.onclick = () => voiceIn.click();
+        voiceIn.onchange = () => busy(voiceBtn, 'Đang tải giọng lên…', async () => {
+          const f = voiceIn.files?.[0]; if (!f) return;
+          if (f.size > 30e6) return toast('Tệp giọng tối đa 30 MB.');
+          try {
+            const res = await fetch(`/api/ink/jobs/${id}/myvoice`, { method: 'POST', credentials: 'same-origin', headers: { 'x-nv': '1', 'content-type': f.type || 'audio/mpeg' }, body: f });
+            const r = await res.json(); if (!res.ok) throw new Error(r.error || 'Không gửi được giọng đọc.'); navigate('/ink/' + r.id);
+          } catch (e) { fail(e); }
+        });
+        const kit = j.files.includes('script.txt') ? h('section', { class: 'card' }, h('h2', {}, 'Đăng tải và thu giọng'),
+          sbDone?.question ? h('p', {}, h('b', {}, 'Câu hỏi bình luận: '), sbDone.question) : null,
+          h('div', { class: 'row' },
+            h('a', { class: 'btn ghost', href: file(id, 'script.txt') + '?download=1', download: '' }, 'Kịch bản thoại (.txt)'),
+            j.files.includes('subs.ass') ? h('a', { class: 'btn ghost', href: file(id, 'subs.ass') + '?download=1', download: '' }, 'Phụ đề karaoke (.ass)') : null),
+          h('p', { class: 'muted' }, 'Tự thu giọng theo kịch bản rồi gửi lên: phụ đề, chuyển cảnh và chữ nhấn được căn lại theo giọng của bạn.'), h('div', { class: 'row' }, voiceBtn, voiceIn)) : null;
         const player = h('video', { class: 'ink-player', src: file(id, 'video.mp4'), controls: true, playsinline: true, preload: 'metadata', poster: j.files.includes('cover.jpg') ? file(id, 'cover.jpg') : null });
         const cap = [j.caption, (j.hashtags || []).join(' ')].filter(Boolean).join('\n\n');
         const capBtn = h('button', { type: 'button', class: 'ghost small' }, 'Sao chép');
@@ -295,6 +333,7 @@ export async function showInkWatch(ctx, id) {
               chips(h, PACES.map(([k, l]) => [k, l, k === j.pace]), pace, (v) => { pace = v; }), h('div', { class: 'row' }, again)),
             facts !== undefined ? factsCard(h, facts, false) : null,
             editor,
+            kit,
             j.series ? scriptTable(h, sbDone) : null,
             j.files.includes('overview.png') ? h('details', { class: 'card' }, h('summary', {}, 'Xem bảng phân cảnh'), h('img', { class: 'ink-overview', src: file(id, 'overview.png'), alt: 'Bảng phân cảnh', loading: 'lazy' })) : null)));
       }

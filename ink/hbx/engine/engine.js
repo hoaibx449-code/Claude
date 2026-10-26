@@ -311,6 +311,8 @@
   function build(sb) {
     SB = sb; document.body.dataset.theme = sb.theme || 'life';
     // phụ đề nét mảnh (subStyle "fine"): 1 dòng in hoa giãn chữ, chữ đã đọc chuyển dần sang màu style.subColor
+    if (sb.ar === '16:9') document.body.dataset.ar = 'wide'; else delete document.body.dataset.ar;   // khung ngang
+    if (sb.scenes.some(x => x.type === 'v_scene')) document.body.dataset.voyage = '1'; else delete document.body.dataset.voyage;
     if (sb.subStyle === 'fine') { document.body.dataset.sub = 'fine'; document.body.style.setProperty('--sub-color', (sb.style && sb.style.subColor) || '#f5c04a'); }
     else delete document.body.dataset.sub;
     if (sb.mood) document.body.dataset.mood = sb.mood; else delete document.body.dataset.mood;
@@ -461,6 +463,9 @@
     const p = clamp((lt - x._in) / x._d), e = E.out3(p), a = x.dataset.a, b = x._base;
     if (x._op === undefined) x._op = parseFloat(x.getAttribute('opacity') || 1);
     if (a !== 'draw') x.style.opacity = p > 0 ? Math.min(1, p * 2.5) * x._op : 0;
+    // data-out: the word leaves cleanly (fades and shrinks a little) once its moment has passed
+    const out = x.dataset.out !== undefined ? clamp((lt - +x.dataset.out) / .25) : 0;
+    if (out > 0) { x.style.opacity = (1 - out) * x._op; x.style.transform = `${b} scale(${1 - .12 * out})`; return; }
     switch (a) {
       case 'pop': x.style.transform = `${b} scale(${.5 + .5 * E.back(p)})`; break;
       case 'up': x.style.transform = `${b} translateY(${(1 - e) * 50}px)`; break;

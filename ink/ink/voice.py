@@ -180,6 +180,40 @@ def narrate(lines, folder, log=print):
     return out, line_spans(lines, words, total), words, used
 
 
+def own(lines, path, folder, log=print):
+    """the person's own recording instead of a voice service: the same word times (Whisper), same shape as narrate"""
+    os.makedirs(folder, exist_ok=True); out = os.path.join(folder, 'voice.mp3')
+    subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', path, '-ac', '1', '-ar', '44100', '-b:a', '160k', out], check=True)
+    total = duration(out)
+    log('  giọng của bạn: dò thời điểm từng chữ (Whisper)…')
+    heard = whisper_words(out); words = align(lines, heard, total) if heard else None
+    if not words: log('  không khớp được từng chữ: chia theo khoảng ngắt trong giọng'); words = estimate(lines, out, total)
+    log(f'  giọng của bạn: {total:.1f} giây, {len(words)} chữ có mốc thời gian')
+    return out, line_spans(lines, words, total), words, 'own'
+
+
+def pauses(audio, words, lines, gaps, log=print):
+    """a breath before the lines that matter: silence is put into the voice before line k (gaps {k: seconds}) and
+    every later word moves on by that much; returns (audio, words, line spans)"""
+    gaps = {k: g for k, g in gaps.items() if 0 < k and g > 0}
+    if not gaps or not words: return audio, words, None
+    starts = {}
+    for w in words: starts.setdefault(w[0], w[2])
+    cuts = sorted((max(0.0, starts[k] - .05), g) for k, g in gaps.items() if k in starts)
+    if not cuts: return audio, words, None
+    out = audio.replace('.mp3', '.paused.mp3'); parts, prev, f = [], 0.0, ''
+    for i, (t, g) in enumerate(cuts):
+        f += f'[0:a]atrim={prev:.3f}:{t:.3f},asetpts=PTS-STARTPTS[a{i}];aevalsrc=0:d={g:.2f}:s=44100:c=mono[s{i}];'; parts += [f'[a{i}]', f'[s{i}]']; prev = t
+    f += f'[0:a]atrim=start={prev:.3f},asetpts=PTS-STARTPTS[z];'; parts.append('[z]')
+    f += ''.join(parts) + f'concat=n={len(parts)}:v=0:a=1[o]'
+    subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', audio, '-filter_complex', f, '-map', '[o]', '-ac', '1', '-ar', '44100', '-b:a', '160k', out], check=True)
+    shift = lambda t: t + sum(g for c, g in cuts if t >= c)
+    words = [(w[0], w[1], round(shift(w[2]), 3), round(shift(w[3]), 3)) for w in words]
+    log(f'  thêm {len(cuts)} quãng nghỉ trước câu quan trọng ({sum(g for _, g in cuts):.1f} giây)')
+    total = duration(out)
+    return out, words, line_spans(lines, words, total)
+
+
 def plain_estimate(lines, total):
     """no word timings and no audio tools (browser): share the time by syllables"""
     n = [len(l.split()) for l in lines]; tot = max(1, sum(n)); words = []; a = 0.0

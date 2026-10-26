@@ -113,6 +113,8 @@ def vget(img, h, assets):
 
 def main(sbp):
     sbp = Path(sbp); sb = json.loads(sbp.read_text()); assets = sbp.parent / 'assets'; assets.mkdir(exist_ok=True)
+    if not any(isinstance(s.get(k), dict) for s in sb['scenes'] for k in ('image', 'bg', 'a', 'b', 'before', 'after')) and not any(s.get('items') for s in sb['scenes']):
+        return   # a video told only in 3D needs no pictures
     if not KEY: sys.exit('Thiếu PIXABAY_KEY')
     used = set(); slots = []
     for s in sb['scenes']:
