@@ -29,6 +29,7 @@ def plan(inp_json, log=print):
         sc = S.from_topic(inp.get('topic', ''), int(inp.get('seconds') or 60), inp.get('audience', ''),
                           tone=inp.get('tone') or 'tự nhiên, hợp với chủ đề và người xem', notes=inp.get('notes', ''), pace=inp.get('pace', 'normal'), log=log)
     sb = S.storyboard(sc, log=log)
+    S.check_facts(sb, inp.get('topic') or sc.get('title', ''), rewrite=inp.get('mode') != 'script', log=log)
     sb['ai'] = [f'{p}/{m}' for p, m in ai.used]
     return json.dumps(sb, ensure_ascii=False)
 

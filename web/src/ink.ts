@@ -5,7 +5,8 @@
 // Machines take jobs from /api/ink-runner/* with RUNNER_TOKEN or a per-server connection code.
 // A job is 'plan' (script, storyboard, cover, then the video unless the user reviews the storyboard first)
 // or 'render' (an approved or re-paced storyboard to video: no AI call).
-import { body, HttpError, json, randomId, readBytes, refundQuota, sha256, timingSafeEqual, useQuota, type Env } from './util.ts';
+import catalog from '../../ink/ink/catalog.json' with { type: 'json' };
+import { body, HttpError, json, randomId, readBytes, refundQuota, sha256, timingSafeEqual, today, useQuota, type Env } from './util.ts';
 import { startRunner } from './gcp.ts';
 import { askChain, fillPrompt, microsoftVoices, speak } from './ink-browser.ts';
 import { voiceCatalog } from './voices.ts';
@@ -238,10 +239,46 @@ export async function inkCron(env: Env) {
 
 // ---------------------------------------------------------------- users
 const key = (j: { user_id: string; id: string }, name: string) => `ink/${j.user_id}/${j.id}/${name}`;
+const PROP_KEYS = new Set(catalog.props.map(([k]) => k));
+// fields of a hand-drawn scene that are drawing choices, not words: a user edit never changes them
+const NOT_TEXT = new Set(['layout', 'pose', 'face', 'color', 'pick', 'type']);
+/** the user's words put into a scene's drawing: only text that is already there changes (same shape), and an object
+ *  only becomes another object the engine can draw */
+export function mergeText(orig: any, edit: any, k = ''): any {
+  if (typeof orig === 'string') {
+    if (k === 'prop') return typeof edit === 'string' && PROP_KEYS.has(edit) ? edit : orig;
+    return NOT_TEXT.has(k) || typeof edit !== 'string' ? orig : str(edit.replace(/\s+/g, ' '), 120);
+  }
+  if (Array.isArray(orig)) return orig.map((x, i) => mergeText(x, Array.isArray(edit) ? edit[i] : undefined, k));
+  if (orig && typeof orig === 'object') return Object.fromEntries(Object.entries(orig).map(([kk, v]) => [kk, mergeText(v, edit && typeof edit === 'object' ? edit[kk] : undefined, kk)]));
+  return orig;
+}
+// ---- how long a video really takes, learned from the last finished ones (per video type): shown instead of a promise
+type Eta = Record<string, { wait: number; run: number; n: number }>;
+const median = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 0; };
+async function etaOf(env: Env): Promise<Eta> {
+  const r = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:eta'").first<any>().catch(() => null);
+  try { return r?.value ? JSON.parse(r.value) : {}; } catch { return {}; }
+}
+/** recomputed when a video finishes: median wait (queued → a machine took it) and render time over the last 30 */
+async function learnEta(env: Env) {
+  const rows = (await env.DB.prepare("SELECT input, meta, created_at, finished_at FROM ink_jobs WHERE status = 'done' AND finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 90").all<any>()).results || [];
+  const by: Record<string, { wait: number[]; run: number[] }> = {};
+  for (const r of rows) {
+    const input = JSON.parse(r.input || '{}'), meta = JSON.parse(r.meta || '{}');
+    if (input.browser || !meta.started) continue;
+    const f = input.format || 'ink', b = (by[f] ||= { wait: [], run: [] });
+    if (b.run.length >= 30) continue;
+    b.wait.push(Math.max(0, meta.started - (meta.queued || r.created_at)) / 1000); b.run.push(Math.max(0, r.finished_at - meta.started) / 1000);
+  }
+  const eta: Eta = Object.fromEntries(Object.entries(by).map(([f, b]) => [f, { wait: Math.round(median(b.wait)), run: Math.round(median(b.run)), n: b.run.length }]));
+  await env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('ink:eta', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(JSON.stringify(eta), Date.now()).run();
+}
+
 const view = (j: any) => {
   const input = JSON.parse(j.input || '{}'), meta = JSON.parse(j.meta || '{}');
   return { id: j.id, parent: j.parent || null, title: j.title, status: j.status, stage: j.stage, progress: j.progress, message: j.message, error: j.error,
-    duration: j.duration, created_at: j.created_at, finished_at: j.finished_at, pace: input.pace, browser: !!input.browser, mode: input.mode, seconds: input.seconds,
+    duration: j.duration, created_at: j.created_at, finished_at: j.finished_at, pace: input.pace, browser: !!input.browser, mode: input.mode, seconds: input.seconds, format: input.format || 'ink',
     files: meta.files || [], caption: meta.caption || '', hashtags: meta.hashtags || [] };
 };
 
@@ -251,12 +288,56 @@ async function own(env: Env, user: User, id: string) {
   return j;
 }
 
-async function enqueue(env: XEnv, rc: Rc, user: User, input: any, stage: 'plan' | 'render', storyboard: any = null, parent: string | null = null, title = '') {
-  const active = await env.DB.prepare("SELECT COUNT(*) AS n FROM ink_jobs WHERE user_id = ? AND (status IN ('queued','running') OR (status = 'browser' AND updated_at > ?))").bind(user.id, Date.now() - 6 * 3600_000).first<any>();
-  if (active.n >= MAX_ACTIVE) throw new HttpError(429, 'Bạn đang có video chờ dựng. Đợi xong rồi tạo tiếp nhé.');
+// ---- the allowance ledger (ink_ledger): every video takes one render from the day's allowance when it is queued
+// ("held"), keeps it when delivered ("charged") and gives it back on that same day's count when it fails ("refunded").
+// The page sends a request id: the same request twice (double click, a retry after a lost answer) makes one video.
+const RID = /^[a-z0-9-]{8,40}$/;
+/** takes the render for a new video; returns the id of the video already made for the same request, if any */
+export async function charge(env: XEnv, user: User, jobId: string, reason: string, rid = ''): Promise<string | null> {
+  const now = Date.now(), admin = await isAdmin(env, env.config, user), r = RID.test(rid) ? rid : null;
+  const same = () => r ? env.DB.prepare('SELECT job_id FROM ink_ledger WHERE user_id = ? AND rid = ?').bind(user.id, r).first<any>() : Promise.resolve(null);
+  const dup = await same(); if (dup) return dup.job_id;
+  const got = await env.DB.prepare(`INSERT INTO ink_ledger (job_id, user_id, day, kind, state, reason, rid, created_at, updated_at) VALUES (?, ?, ?, 'render', ?, ?, ?, ?, ?)
+    ON CONFLICT DO NOTHING RETURNING job_id`).bind(jobId, user.id, today(), admin ? 'free' : 'held', reason, r, now, now).first<any>();
+  if (!got) { const d = await same(); if (d) return d.job_id; throw new HttpError(409, 'Yêu cầu đang được xử lý, vui lòng đợi giây lát.'); }
   // the site's admins test freely; everyone else has the plan's videos a day
-  if (!(await isAdmin(env, env.config, user))) await useQuota(env, user.id, 'render', (await limitsFor(env, user.id)).render);
+  if (!admin) {
+    try { await useQuota(env, user.id, 'render', (await limitsFor(env, user.id)).render); }
+    catch (e) { await env.DB.prepare('DELETE FROM ink_ledger WHERE job_id = ?').bind(jobId).run(); throw e; }
+  }
+  return null;
+}
+/** a failed video asked again: takes a render again if the failure gave it back */
+async function recharge(env: XEnv, user: User, jobId: string) {
+  const row = await env.DB.prepare('SELECT state FROM ink_ledger WHERE job_id = ?').bind(jobId).first<any>();
+  if (row && row.state !== 'refunded') return;
+  const admin = await isAdmin(env, env.config, user), now = Date.now();
+  if (!admin) await useQuota(env, user.id, 'render', (await limitsFor(env, user.id)).render);
+  await env.DB.prepare(`INSERT INTO ink_ledger (job_id, user_id, day, kind, state, reason, created_at, updated_at) VALUES (?, ?, ?, 'render', ?, 'retry', ?, ?)
+    ON CONFLICT (job_id) DO UPDATE SET state = excluded.state, day = excluded.day, reason = 'retry', updated_at = excluded.updated_at`).bind(jobId, user.id, today(), admin ? 'free' : 'held', now, now).run();
+}
+/** delivered: the render stays taken */
+export const settle = (env: Env, jobId: string) => env.DB.prepare("UPDATE ink_ledger SET state = 'charged', updated_at = ? WHERE job_id = ? AND state = 'held'").bind(Date.now(), jobId).run();
+/** failed or dropped before it was made: the render goes back to the day it was taken from, once */
+export async function refundJob(env: Env, j: { id: string; user_id: string }) {
+  const r = await env.DB.prepare("UPDATE ink_ledger SET state = 'refunded', updated_at = ? WHERE job_id = ? AND state = 'held' RETURNING day, kind").bind(Date.now(), j.id).first<any>();
+  if (r) { await env.DB.prepare('UPDATE usage SET n = MAX(0, n - 1) WHERE user_id = ? AND day = ? AND kind = ?').bind(j.user_id, r.day, r.kind).run(); return; }
+  if (!(await env.DB.prepare('SELECT 1 FROM ink_ledger WHERE job_id = ?').bind(j.id).first())) await refundQuota(env, j.user_id, 'render'); // made before the ledger
+}
+
+/** what one video used, for pricing: AI answers (by model), characters read aloud, machine seconds */
+function costOf(j: any, ai: unknown, machineSec: number) {
+  const calls = Array.isArray(ai) ? ai.map((x) => String(x)) : [], sb = j.storyboard ? JSON.parse(j.storyboard) : null;
+  const models: Record<string, number> = {}; for (const c of calls) models[c] = (models[c] || 0) + 1;
+  return { aiCalls: calls.length, models, voiceChars: (sb?.scenes || []).reduce((n: number, s: any) => n + String(s.say || '').length, 0), machineSec };
+}
+
+async function enqueue(env: XEnv, rc: Rc, user: User, input: any, stage: 'plan' | 'render', storyboard: any = null, parent: string | null = null, title = '', reason = 'new') {
+  const active = await env.DB.prepare("SELECT COUNT(*) AS n FROM ink_jobs WHERE user_id = ? AND (status IN ('queued','running') OR (status = 'browser' AND updated_at > ?))").bind(user.id, Date.now() - 6 * 3600_000).first<any>();
   const id = randomId(12), now = Date.now();
+  if (RID.test(input.rid || '')) { const d = await env.DB.prepare('SELECT job_id FROM ink_ledger WHERE user_id = ? AND rid = ?').bind(user.id, input.rid).first<any>(); if (d) return d.job_id as string; }
+  if (active.n >= MAX_ACTIVE) throw new HttpError(429, 'Bạn đang có video chờ dựng. Đợi xong rồi tạo tiếp nhé.');
+  const dup = await charge(env, user, id, reason, input.rid || ''); if (dup) return dup;
   // made in the user's browser: no machine is woken, the page does everything (status 'browser')
   const browser = input.browser === true, status = browser ? 'browser' : 'queued', message = browser ? 'Sẵn sàng dựng trên máy của bạn' : 'Đang chờ máy dựng';
   await env.DB.prepare(`INSERT INTO ink_jobs (id, user_id, parent, title, input, storyboard, stage, status, message, created_at, updated_at)
@@ -282,7 +363,7 @@ export async function createInk(env: XEnv, rc: Rc, user: User, b: any, extra: Re
   const music = /^[a-f0-9]{24}\.(mp3|m4a|wav)$/.test(b.music || '') ? b.music : '';
   if (music && !(await env.BUCKET.head(`ink-music/${user.id}/${music}`))) throw new HttpError(400, 'Không tìm thấy nhạc đã tải lên.');
   const input = { mode, [mode]: text, seconds, audience: str(b.audience, 200), tone: str(b.tone, 120), notes: str(b.notes, 600),
-    pace: pick(b.pace, PACES, s.defaults.pace as any), voice: voice.id, mood: pick(b.mood, MOODS, s.defaults.mood as any), music,
+    pace: pick(b.pace, PACES, s.defaults.pace as any), voice: voice.id, rid: !extra.zalo && RID.test(String(b.rid || '')) ? String(b.rid) : '', mood: pick(b.mood, MOODS, s.defaults.mood as any), music,
     musicVolume: num(b.musicVolume, 0, 0.6, s.defaults.musicVolume), captions: b.captions !== false, review: typeof b.review === 'boolean' ? b.review : s.defaults.review,
     // drawn on the user's own device: a machine writes the script, voice and drawing plan, the browser draws
     // 'cine': real footage (HBX engine, render machines only); 'money': 'Đòn Bẩy Tư Duy' (researched on the web, same engine); 'ink': hand-drawn
@@ -305,7 +386,7 @@ export async function dropInk(env: Env, j: { id: string; user_id: string; status
   const files = (await env.BUCKET.list({ prefix: `ink/${j.user_id}/${j.id}/` })).objects.map((o) => o.key);
   if (files.length) await env.BUCKET.delete(files);
   await env.DB.prepare('DELETE FROM ink_jobs WHERE id = ?').bind(j.id).run();
-  if (j.status === 'queued' || j.status === 'review') await refundQuota(env, j.user_id, 'render');
+  if (j.status === 'queued' || j.status === 'review') await refundJob(env, j);
 }
 
 export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path: string): Promise<Response | null> {
@@ -315,7 +396,9 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
   if (sub === 'config' && method === 'GET') {
     const { plan } = await planOf(env, user.id);
     const ready = await readyVoices(env, s);
-    return json({ browser: s.machines.on.browser, cine: !!(env as any).PIXABAY_API_KEY, voices: ready.map((v) => ({ id: v.id, label: v.label })), defaults: { ...s.defaults, voice: ready.some((v) => v.id === s.voice.default) ? s.voice.default : ready[0]?.id || '' },
+    const used = await env.DB.prepare("SELECT n FROM usage WHERE user_id = ? AND day = ? AND kind = 'render'").bind(user.id, today()).first<any>();
+    const admin = await isAdmin(env, env.config, user);
+    return json({ quota: admin ? null : { used: used?.n || 0, limit: plan.limits.render }, eta: await etaOf(env), browser: s.machines.on.browser, cine: !!(env as any).PIXABAY_API_KEY, voices: ready.map((v) => ({ id: v.id, label: v.label })), defaults: { ...s.defaults, voice: ready.some((v) => v.id === s.voice.default) ? s.voice.default : ready[0]?.id || '' },
       maxSeconds: Math.min(300, plan.maxSeconds, env.config.limits.maxSeconds) });
   }
   if (sub === 'browser/bundle' && method === 'GET') {
@@ -340,7 +423,8 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
     return json({ jobs: rows.map(view) });
   }
   if (sub === 'jobs' && method === 'POST') return json({ id: await createInk(env, rc, user, await body<any>(req, 40_000)) });
-  const m = sub.match(/^jobs\/([a-f0-9]{24})(?:\/(file\/[\w.]+|approve|repace|retry|storyboard|handoff|browser\/video|browser\/done|browser\/progress|browser\/error|browser\/ai|browser\/voice|browser\/plan|browser\/music|browser\/file\/(?:cover|thumb)\.jpg))?$/);
+  if (sub === 'catalog' && method === 'GET') { rc.quiet = true; return json(catalog); }
+  const m = sub.match(/^jobs\/([a-f0-9]{24})(?:\/(file\/[\w.]+|approve|repace|retry|storyboard|scenes|handoff|browser\/video|browser\/done|browser\/progress|browser\/error|browser\/ai|browser\/voice|browser\/plan|browser\/music|browser\/file\/(?:cover|thumb)\.jpg))?$/);
   if (!m) throw new HttpError(404, 'Không tìm thấy.');
   const j = await own(env, user, m[1]), act = m[2] || '';
   if (!act && method === 'GET') {
@@ -349,6 +433,17 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
     if (j.status === 'browser') { // the owner's page makes the video itself; the script is sized to the voice that will read it
       const input = JSON.parse(j.input || '{}'), voice = s.voice.list.find((x) => x.id === input.voice) || s.voice.list.find((x) => x.id === s.voice.default) || s.voice.list[0];
       v.input = { ...input, voiceProvider: voice?.provider || 'microsoft' };
+    }
+    v.charge = (await env.DB.prepare('SELECT state FROM ink_ledger WHERE job_id = ?').bind(j.id).first<any>())?.state || null;
+    if (j.status === 'queued' || j.status === 'running') {
+      // where it stands: place in the queue and what the last videos of this type really took
+      const eta = (await etaOf(env))[JSON.parse(j.input || '{}').format || 'ink'], meta = JSON.parse(j.meta || '{}');
+      if (j.status === 'queued') {
+        const ahead = await env.DB.prepare("SELECT COUNT(*) AS n FROM ink_jobs WHERE status = 'queued' AND created_at < ?").bind(j.created_at).first<any>();
+        const busy = await env.DB.prepare("SELECT COUNT(*) AS n FROM ink_jobs WHERE status = 'running'").first<any>();
+        v.queue = { ahead: ahead?.n || 0, busy: busy?.n || 0 };
+      }
+      if (eta?.n >= 3) v.eta = { wait: eta.wait, run: eta.run, left: j.status === 'running' && meta.started ? Math.max(30, eta.run - Math.round((Date.now() - meta.started) / 1000)) : null };
     }
     if (j.status === 'queued' && Date.now() - j.updated_at > 2 * 60_000) {
       const err = await env.DB.prepare("SELECT value FROM settings WHERE key = 'ink:wake_error'").first<any>();
@@ -364,7 +459,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
   if (act === 'storyboard' && method === 'GET') {
     const sb = j.storyboard ? JSON.parse(j.storyboard) : null;
     if (new URL(req.url).searchParams.get('full') === '1') return json({ storyboard: sb });
-    return json({ storyboard: sb && { title: sb.title, cover: sb.cover, caption: sb.caption, hashtags: sb.hashtags, scenes: sb.scenes.map((x: any) => ({ say: x.say, layout: x.visual?.layout })) } });
+    return json({ storyboard: sb && { title: sb.title, cover: sb.cover, caption: sb.caption, hashtags: sb.hashtags, facts: sb.facts || null, scenes: sb.scenes.map((x: any) => ({ say: x.say, layout: x.visual?.layout })) } });
   }
   if (act.startsWith('file/') && method === 'GET') {
     const name = act.slice(5);
@@ -377,12 +472,42 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
     if (j.status !== 'review' || !(await approveInk(env, rc, j.id))) throw new HttpError(409, 'Phân cảnh này không chờ duyệt.');
     return json({ ok: true });
   }
+  if (act === 'scenes' && method === 'PUT') {
+    // the user's own corrections, scene by scene: words read, words drawn, the object drawn, how long it stays.
+    // Waiting for review: saved in place. A finished video: made again from the corrected storyboard, no AI call.
+    if (!j.storyboard) throw new HttpError(409, 'Video này chưa có phân cảnh.');
+    const input = JSON.parse(j.input || '{}'), sb = JSON.parse(j.storyboard);
+    if ((input.format || 'ink') !== 'ink') throw new HttpError(409, 'Hiện chỉ sửa từng cảnh được với video vẽ tay.');
+    if (!['review', 'done', 'failed'].includes(j.status)) throw new HttpError(409, 'Video đang dựng, đợi xong rồi sửa.');
+    const b = await body<any>(req, 120_000), edits = Array.isArray(b.scenes) ? b.scenes : [];
+    if (edits.length !== sb.scenes.length) throw new HttpError(400, 'Số cảnh không khớp, hãy tải lại trang.');
+    let changed = 0;
+    sb.scenes.forEach((sc: any, i: number) => {
+      const e = edits[i] || {}, before = JSON.stringify([sc.say, sc.visual, sc.hold || 0]);
+      if (typeof e.say === 'string') {
+        const say = str(e.say.replace(/\s+/g, ' '), 400).trim();
+        if (!say) throw new HttpError(400, `Cảnh ${i + 1} chưa có lời đọc.`);
+        if (say !== sc.say) { sc.say = say; sc.phrases = []; }
+      }
+      if (e.visual && typeof e.visual === 'object') sc.visual = mergeText(sc.visual, e.visual);
+      const hold = Math.round(num(e.hold, 0, 3, 0) * 2) / 2; if (hold) sc.hold = hold; else delete sc.hold;
+      if (JSON.stringify([sc.say, sc.visual, sc.hold || 0]) !== before) changed++;
+    });
+    if (!changed) throw new HttpError(400, 'Bạn chưa sửa cảnh nào.');
+    sb.edited = (sb.edited || 0) + 1;
+    rc.log('ink.edit', { data: { job: j.id, scenes: changed, status: j.status } });
+    if (j.status === 'review') {
+      await env.DB.prepare("UPDATE ink_jobs SET storyboard = ?, updated_at = ? WHERE id = ? AND status = 'review'").bind(JSON.stringify(sb), Date.now(), j.id).run();
+      return json({ id: j.id, changed });
+    }
+    return json({ id: await enqueue(env, rc, user, { ...input, browser: false, rid: '' }, 'render', sb, j.id, j.title, 'edit'), changed });
+  }
   if (act === 'repace' && method === 'POST') {
     // same storyboard, another pace: the voice is read again and the hand redraws, no AI call
     if (!j.storyboard) throw new HttpError(409, 'Video này chưa có phân cảnh.');
     const b = await body<any>(req, 2_000), input = { ...JSON.parse(j.input), pace: pick(b.pace, PACES, 'fast') };
     if (b.voice && s.voice.list.some((v) => v.on && v.id === b.voice)) input.voice = b.voice;
-    return json({ id: await enqueue(env, rc, user, input, 'render', JSON.parse(j.storyboard), j.id, j.title) });
+    return json({ id: await enqueue(env, rc, user, { ...input, rid: '' }, 'render', JSON.parse(j.storyboard), j.id, j.title, 'repace') });
   }
   // ---- drawn in the browser: progress, the finished MP4, or give the job to a render machine instead
   if (act.startsWith('browser/') || act === 'handoff') {
@@ -464,6 +589,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
       if (!head || head.size < 10_000) throw new HttpError(400, 'Chưa tải video lên.');
       const b = await body<any>(req, 2_000).catch(() => ({} as any)), now = Date.now();
       await env.DB.prepare("UPDATE ink_jobs SET status = 'done', progress = 100, message = 'Đã xong', finished_at = ?, updated_at = ? WHERE id = ?").bind(now, now, j.id).run();
+      await settle(env, j.id);
       if (Array.isArray(b.footage) && b.footage.length) {
       const ids = b.footage.map((x: unknown) => String(x)).filter((x: string) => /^v?\d{1,12}$/.test(x)).slice(0, 80);
       const all = [...ids, ...(await recentFootage(env)).filter((x) => !ids.includes(x))].slice(0, 600);
@@ -483,7 +609,7 @@ export async function inkUser(req: Request, env: XEnv, rc: Rc, user: User, path:
   }
   if (act === 'retry' && method === 'POST') {
     if (j.status !== 'failed') throw new HttpError(409, 'Chỉ thử lại được video bị lỗi.');
-    if (!(await isAdmin(env, env.config, user))) await useQuota(env, user.id, 'render', (await limitsFor(env, user.id)).render);
+    await recharge(env, user, j.id);
     await env.DB.prepare("UPDATE ink_jobs SET status = 'queued', error = '', progress = 0, message = 'Đang chờ máy dựng', updated_at = ? WHERE id = ?").bind(Date.now(), j.id).run();
     rc.wait(dispatch(env));
     return json({ ok: true });
@@ -514,8 +640,9 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     }
     await env.DB.prepare("UPDATE ink_jobs SET status = 'queued', lease = '' WHERE status = 'running' AND heartbeat < ?").bind(now - STALE_MS).run();
     const lease = 'lease-' + randomId(16);
-    const j = await env.DB.prepare(`UPDATE ink_jobs SET status = 'running', lease = ?, heartbeat = ?, progress = 1, message = 'Máy dựng đã nhận việc', updated_at = ?
-      WHERE id = (SELECT id FROM ink_jobs WHERE status = 'queued' ORDER BY created_at LIMIT 1) AND status = 'queued' RETURNING *`).bind(lease, now, now).first<any>();
+    const j = await env.DB.prepare(`UPDATE ink_jobs SET status = 'running', lease = ?, heartbeat = ?, progress = 1, message = 'Máy dựng đã nhận việc', updated_at = ?,
+        meta = json_set(CASE WHEN json_valid(meta) THEN meta ELSE '{}' END, '$.started', ?, '$.queued', updated_at)
+      WHERE id = (SELECT id FROM ink_jobs WHERE status = 'queued' ORDER BY created_at LIMIT 1) AND status = 'queued' RETURNING *`).bind(lease, now, now, now).first<any>();
     if (!j) {
       rc.quiet = true;
       // storyboards a user is looking at right now: the machine waits for them instead of leaving
@@ -591,8 +718,10 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     if (!(await env.BUCKET.head(key(j, 'video.mp4')))) throw new HttpError(400, 'Chưa tải video lên.');
     const b = await body<any>(req, 5_000).catch(() => ({} as any));
     await env.DB.prepare("UPDATE ink_jobs SET status = 'done', progress = 100, message = 'Đã xong', lease = ?, duration = ?, meta = ?, finished_at = ?, updated_at = ? WHERE id = ?")
-      .bind(lease, num(b.duration, 0, 3600, 0), JSON.stringify({ ...meta, voice: str(b.voice, 40), renderSec: num(b.seconds, 0, 99999, 0), ai: b.ai || meta.ai, ...(b.sync && typeof b.sync === 'object' ? { sync: { median: num(b.sync.median, 0, 60, 0), p90: num(b.sync.p90, 0, 60, 0), bias: num(b.sync.bias, -60, 60, 0) } } : {}) }), now, now, j.id).run();
+      .bind(lease, num(b.duration, 0, 3600, 0), JSON.stringify({ ...meta, voice: str(b.voice, 40), renderSec: num(b.seconds, 0, 99999, 0), ai: b.ai || meta.ai, cost: costOf(j, b.ai || meta.ai, num(b.seconds, 0, 99999, 0)), ...(b.sync && typeof b.sync === 'object' ? { sync: { median: num(b.sync.median, 0, 60, 0), p90: num(b.sync.p90, 0, 60, 0), bias: num(b.sync.bias, -60, 60, 0) } } : {}) }), now, now, j.id).run();
     rc.log('ink.done', { data: { job: j.id, videoSec: b.duration, renderSec: b.seconds, voice: b.voice, totalSec: Math.round((now - j.created_at) / 1000) } });
+    await settle(env, j.id);
+    rc.wait(learnEta(env).catch(() => {}));
     await voiceUsed(env, j, b);
     rc.wait(notify(env, j.user_id, j.id, 'Video đã xong ✓', `"${j.title}" đã dựng xong. Bấm để xem và tải về.`));
     rc.wait(zaloInk(env, rc, { ...j, duration: num(b.duration, 0, 3600, 0) }, 'done'));
@@ -601,7 +730,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
   if (act === 'fail' && req.method === 'POST') {
     const error = str((await body<any>(req, 5_000).catch(() => ({}))).error, 300) || 'Dựng video thất bại.';
     await env.DB.prepare("UPDATE ink_jobs SET status = 'failed', error = ?, message = '', finished_at = ?, updated_at = ? WHERE id = ?").bind(error, now, now, j.id).run();
-    await refundQuota(env, j.user_id, 'render');
+    await refundJob(env, j);
     rc.log('ink.fail', { ok: false, data: { job: j.id, stage: j.stage, error } });
     rc.wait(notify(env, j.user_id, j.id, 'Video chưa dựng được', `"${j.title}": ${error.slice(0, 120)}`));
     rc.wait(zaloInk(env, rc, j, 'failed', error));

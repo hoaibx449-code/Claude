@@ -419,6 +419,14 @@ def plan(inp, log=print):
     except (TypeError, ValueError): c['shot'] = shots[0]
     if c['shot'] not in shots: c['shot'] = shots[0]
     c['hook'] = str(c.get('hook') or o.get('title') or lines[0])[:80]
+    # numbers, studies and health/money claims checked on the web: unsourced ones are said carefully
+    said, ex, facts = S.fact_check(topic, [s['say'] for s in scenes], {'cover_hook': c['hook'], 'cover_detail': c.get('detail', ''), 'caption': o.get('caption', '')},
+                                   rewrite=inp.get('mode') != 'script', log=log)
+    for s, l in zip(scenes, said):
+        if l != s['say']: s['say'] = l; s['sub'] = _clean_sub(None, l)
+    c['hook'] = ex.get('cover_hook', c['hook'])[:80]
+    if c.get('detail'): c['detail'] = ex.get('cover_detail', c['detail'])
+    if o.get('caption'): o['caption'] = ex.get('caption', o['caption'])
     sb = {'theme': 'cine', 'brand': (inp.get('brand') or '').strip()[:40], 'style': style, 'cover': c,
           'pace': 'fast' if pace in ('fast', 'faster') else 'normal', 'subWords': 3}
     st = o.get('sticker')
@@ -431,7 +439,7 @@ def plan(inp, log=print):
     types = [s['type'] for s in scenes]
     log(f'Phân cảnh điện ảnh: {len(scenes)} cảnh, {len(set(types))} kiểu ({", ".join(sorted(set(types)))}), {say_words(scenes)} chữ')
     out = {'format': 'cine', 'title': hb['title'], 'caption': o.get('caption', ''), 'hashtags': o.get('hashtags') or [], 'scenes': scenes, 'plan': hb,
-           'fingerprint': fp['seed'], 'judge': scores, 'ai': [f'{p}/{m}' for p, m in ai.used]}
+           'fingerprint': fp['seed'], 'judge': scores, 'facts': facts, 'ai': [f'{p}/{m}' for p, m in ai.used]}
     if inp.get('format') == 'money':
         from . import money
         out = money.finish(out, sc, inp)

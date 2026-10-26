@@ -30,6 +30,7 @@ def make_plan(out, topic=None, script_text=None, seconds=60, audience='', goal='
     json.dump(sc, open(os.path.join(out, 'script.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     log(f'Kịch bản: {len(sc["lines"])} câu, {sum(S.words(l["say"]) for l in sc["lines"])} chữ')
     sb = S.storyboard(sc, log=log)
+    S.check_facts(sb, topic or sc.get('title', ''), rewrite=bool(topic), log=log)
     save_plan(sb, out, brand)
     log('Phân cảnh, ảnh bìa, caption: xong')
     return sb
@@ -41,6 +42,26 @@ def save_plan(sb, out, brand=''):
     make_cover(sb.get('cover') or {'lines': [sb.get('title') or 'Video mới']}, os.path.join(out, 'cover.jpg'), brand)
     with open(os.path.join(out, 'caption.txt'), 'w', encoding='utf-8') as f:
         f.write((sb.get('caption') or '') + '\n\n' + ' '.join(sb.get('hashtags') or []) + '\n')
+
+
+def hold_scenes(voice, timing, words, holds, log=print):
+    """scenes the user asked to keep longer: silence after their last word, everything after moves later"""
+    import subprocess
+    sr = 24000
+    pcm = np.frombuffer(subprocess.run(['ffmpeg', '-v', 'error', '-i', voice, '-f', 's16le', '-ac', '1', '-ar', str(sr), '-'], capture_output=True, check=True).stdout, np.int16)
+    parts, a, shift, timing2, words2 = [], 0, 0.0, [], []
+    for (i, t0, t1), h in zip(timing, holds + [0] * len(timing)):
+        h = max(0.0, min(3.0, h))
+        cut = max([w[3] for w in words if w[0] == i] or [t1]) + .08 if h else None
+        timing2.append((i, t0 + shift, t1 + shift + h))
+        words2 += [(w[0], w[1], w[2] + shift, w[3] + shift) for w in words if w[0] == i]
+        if h:
+            k = min(len(pcm), int(cut * sr)); parts += [pcm[a:k], np.zeros(int(h * sr), np.int16)]; a = k; shift += h
+    parts.append(pcm[a:])
+    out = os.path.splitext(voice)[0] + '_hold.wav'
+    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 's16le', '-ac', '1', '-ar', str(sr), '-i', '-', out], input=np.concatenate(parts).tobytes(), check=True)
+    log(f'  giữ cảnh lâu thêm theo yêu cầu: +{shift:.1f} giây')
+    return out, timing2, words2
 
 
 def make_video(sb, out, pace='normal', music=None, mood='auto', music_volume=0.20, captions=True, log=print, browser=False, seconds=0):
@@ -56,6 +77,8 @@ def make_video(sb, out, pace='normal', music=None, mood='auto', music_volume=0.2
             log(f'  giọng dài {timing[-1][2]:.0f} giây, chọn {seconds}: đọc lại ở tốc độ {rate:+d}%')
             os.environ['INK_VOICE_RATE'] = f'{rate:+d}%'
             voice, timing, words, provider = narrate([s['say'] for s in sb['scenes']], os.path.join(out, 'voice'), log=log)
+    if any(float(s.get('hold') or 0) > 0 for s in sb['scenes']):
+        voice, timing, words = hold_scenes(voice, timing, words, [float(s.get('hold') or 0) for s in sb['scenes']], log)
     json.dump({'provider': provider, 'pace': pace, 'timing': timing, 'words': words}, open(os.path.join(out, 'timing.json'), 'w', encoding='utf-8'), ensure_ascii=False)
     if not music and mood != 'none':
         m = sb.get('music') if mood == 'auto' else mood

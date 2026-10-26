@@ -144,6 +144,62 @@ def from_script(text, max_seconds=MAX_SECONDS, pace='normal', log=print):
     return ai.ask(system(), prompt('adapt', script=text.strip(), max_seconds=max_seconds, max_words=int(max_seconds * WPS * speed(pace) / 1.08)), 0.2, check=_lines_ok, log=log)
 
 
+VERDICTS = ('dung', 'chua_chac', 'sai')
+FIX_REWRITE = 'viết lại câu đó trong `fix` cho đúng: bỏ con số/tên không có nguồn, hoặc nói thận trọng ("có nghiên cứu cho thấy…", "khoảng…", "có thể…").'
+FIX_FLAG = 'KHÔNG sửa lời người dùng: chỉ đề xuất câu sửa trong `fix` để người dùng tự quyết.'
+
+
+def fact_check(topic, lines, extras=None, rewrite=True, log=print):
+    """every checkable claim (numbers, names, studies, health/money/law statements) looked up on the web and
+    judged; unsourced or wrong ones are rewritten carefully (rewrite=False: the user's own script, only flagged).
+    Returns (lines, extras, report) - report = {claims, sources, note, web}."""
+    extras = {k: v for k, v in (extras or {}).items() if str(v or '').strip()}
+    log('Kiểm chứng số liệu và khẳng định…')
+    kw = dict(topic=topic, lines='\n'.join(f'{i}. {l}' for i, l in enumerate(lines)),
+              extras='\n'.join(f'{k}: {v}' for k, v in extras.items()) or '(không có)', fix_rule=FIX_REWRITE if rewrite else FIX_FLAG, web_note='')
+    ok = lambda o: isinstance(o.get('claims'), list) or (_ for _ in ()).throw(ValueError('thiếu claims'))
+    web = True
+    try: o, sources = ai.research(system(), prompt('factcheck', **kw), check=ok, log=log)
+    except RuntimeError as e:
+        # no web search right now: the model judges from what it knows for sure and marks everything else uncertain
+        log(f'   không tra được web ({str(e)[:100]}): chỉ giữ điều chắc chắn, còn lại nói thận trọng'); web = False
+        kw['web_note'] = 'KHÔNG tra được web lúc này: điều gì không chắc chắn tuyệt đối thì kết luận "chua_chac".'
+        try: o, sources = ai.ask(system(), prompt('factcheck', **kw), 0.2, check=ok, log=log), []
+        except RuntimeError as e2:
+            log(f'   bỏ qua kiểm chứng ({str(e2)[:100]})'); return lines, extras, {'claims': [], 'sources': [], 'note': '', 'web': False, 'skipped': True}
+    claims, out, fixed = [], list(lines), dict(extras)
+    for c in o.get('claims') or []:
+        if not isinstance(c, dict) or c.get('verdict') not in VERDICTS or not str(c.get('claim') or '').strip(): continue
+        at, fix = c.get('line'), ' '.join(str(c.get('fix') or '').split())
+        c = {'line': at, 'claim': str(c['claim'])[:200], 'verdict': c['verdict'], 'evidence': str(c.get('evidence') or '')[:300],
+             'source': str(c.get('source') or '')[:160], 'fix': fix[:300]}
+        try: i = int(at)
+        except (TypeError, ValueError): i = None
+        if rewrite and c['verdict'] != 'dung' and fix and i is not None and 0 <= i < len(out) and abs(words(fix) - words(out[i])) <= 6:
+            c['before'] = out[i]; out[i] = fix; c['applied'] = True
+        claims.append(c)
+    for k, v in (o.get('extras') or {}).items():
+        if rewrite and k in fixed and str(v or '').strip(): fixed[k] = ' '.join(str(v).split())
+    rep = {'claims': claims, 'sources': sources[:12], 'note': str(o.get('note') or '')[:300], 'web': web}
+    bad = sum(c['verdict'] != 'dung' for c in claims)
+    log(f'   {len(claims)} khẳng định · {len(claims) - bad} có nguồn · {bad} ' + ('đã nói lại thận trọng' if rewrite else 'cần bạn xem lại') + f' · {len(sources)} nguồn web')
+    return out, fixed, rep
+
+
+def check_facts(sb, topic, rewrite=True, log=print):
+    """the narration, the cover and the caption checked against sources before anyone sees them (sb['facts'])"""
+    cv = sb.get('cover') or {}
+    extras = {f'cover_{i}': t for i, t in enumerate(cv.get('lines') or [])} | {'badge': cv.get('badge', ''), 'caption': sb.get('caption', '')}
+    lines, ex, sb['facts'] = fact_check(topic, [s['say'] for s in sb['scenes']], extras, rewrite=rewrite, log=log)
+    for s, l in zip(sb['scenes'], lines):
+        if l != s['say']: s['say'] = l; s['phrases'] = []
+    if cv.get('lines'): cv['lines'] = [ex.get(f'cover_{i}', t) for i, t in enumerate(cv['lines'])]
+    if cv.get('highlight') and not any(str(cv['highlight']).lower() in str(l).lower() for l in cv.get('lines') or []): cv['highlight'] = ''
+    if cv.get('badge'): cv['badge'] = ex.get('badge', cv['badge'])
+    if sb.get('caption'): sb['caption'] = ex.get('caption', sb['caption'])
+    return sb
+
+
 def _storyboard_ok(n):
     def check(o):
         if not isinstance(o.get('scenes'), list): raise ValueError('thiếu scenes')

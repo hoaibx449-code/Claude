@@ -312,3 +312,10 @@ CREATE TABLE IF NOT EXISTS ink_jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,pa
   error TEXT NOT NULL DEFAULT '',duration REAL NOT NULL DEFAULT 0,meta TEXT NOT NULL DEFAULT '{}',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,finished_at INTEGER);
 CREATE INDEX IF NOT EXISTS ink_jobs_user ON ink_jobs(user_id,created_at);
 CREATE INDEX IF NOT EXISTS ink_jobs_queue ON ink_jobs(status,created_at);
+
+-- Ink Studio allowance ledger: one row per video; held when it is queued, charged when it is delivered, refunded when
+-- it fails (on the day it was taken). rid = the request id the page sends, so a double click never takes two.
+CREATE TABLE IF NOT EXISTS ink_ledger(job_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,day TEXT NOT NULL,kind TEXT NOT NULL,state TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',rid TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS ink_ledger_user ON ink_ledger(user_id,created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS ink_ledger_rid ON ink_ledger(user_id,rid) WHERE rid IS NOT NULL;

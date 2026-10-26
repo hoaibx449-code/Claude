@@ -11,11 +11,12 @@ import hookJudge from '../../ink/ink/prompts/hook_judge.md';
 import storyboard from '../../ink/ink/prompts/storyboard.md';
 import adapt from '../../ink/ink/prompts/adapt.md';
 import fit from '../../ink/ink/prompts/fit.md';
+import factcheck from '../../ink/ink/prompts/factcheck.md';
 import { HttpError } from './util.ts';
 import { microsoftSpeak, secMsGec, SEC_MS_GEC_VERSION } from './ink-voice.ts';
 import { aiFetch, aiError } from './relay.ts';
 
-const PROMPTS: Record<string, string> = { common, strategy, outline, write, review, hook, hook_judge: hookJudge, storyboard, adapt, fit };
+const PROMPTS: Record<string, string> = { common, strategy, outline, write, review, hook, hook_judge: hookJudge, storyboard, adapt, fit, factcheck };
 
 /** Python's str.format for the prompt templates: {name} is a value, {{ and }} are braces */
 export function fillPrompt(ref: unknown) {

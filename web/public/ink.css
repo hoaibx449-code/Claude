@@ -52,3 +52,20 @@
 .ink-guides summary { cursor: pointer; font-weight: 600; }
 .ink-guides ol { display: grid; gap: 6px; padding-left: 20px; }
 .chip.ok { border-color: #16a34a; color: #15803d; }
+
+.ink-facts summary { cursor: pointer; }
+.ink-claims { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 10px; }
+.ink-claims li { display: grid; grid-template-columns: 26px 1fr; gap: 8px; align-items: start; }
+.ink-claims .ic { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; color: #fff; }
+.ink-claims .v-ok .ic { background: #1f9d55; } .ink-claims .v-warn .ic { background: #d98a00; } .ink-claims .v-bad .ic { background: #d33; }
+.ink-claims p { margin: 2px 0; }
+.ink-fixed { font-size: .92em; border-left: 3px solid var(--acc, #7c3aed); padding-left: 8px; }
+.ink-note { background: rgba(217,138,0,.1); border-radius: 8px; padding: 8px 10px; }
+.ink-sources ul { margin: 4px 0 0; padding-left: 18px; font-size: .9em; }
+
+.ink-editor summary { cursor: pointer; }
+.ink-edit { list-style: none; padding: 0; display: grid; gap: 10px; margin: 10px 0; }
+.ink-edit > li { padding: 12px; }
+.ink-field { display: grid; gap: 4px; margin: 6px 0; }
+.ink-field textarea, .ink-field input, .ink-field select { width: 100%; box-sizing: border-box; }
+.ink-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 10px; }
