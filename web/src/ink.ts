@@ -801,7 +801,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     const lease = 'lease-' + randomId(16);
     const j = await env.DB.prepare(`UPDATE ink_jobs SET status = 'running', lease = ?, heartbeat = ?, progress = 1, message = 'Máy dựng đã nhận việc', updated_at = ?,
         meta = json_set(CASE WHEN json_valid(meta) THEN meta ELSE '{}' END, '$.started', ?, '$.queued', updated_at)
-      WHERE id = (SELECT id FROM ink_jobs WHERE status = 'queued' AND (COALESCE(json_extract(input, '$.format'), 'ink') != 'shorts3d' OR ? = 1) ORDER BY created_at LIMIT 1) AND status = 'queued' RETURNING *`).bind(lease, now, now, now, cb.shorts3d === true ? 1 : 0).first<any>();
+      WHERE id = (SELECT id FROM ink_jobs WHERE status = 'queued' AND (COALESCE(json_extract(input, '$.format'), 'ink') != 'shorts3d' OR COALESCE(json_extract(input, '$.seconds'), 60) <= ?) ORDER BY created_at LIMIT 1) AND status = 'queued' RETURNING *`).bind(lease, now, now, now, cb.shorts3d === true ? num(cb.shortsMaxSeconds, 0, 120, 90) : 0).first<any>();
     if (!j) {
       rc.quiet = true;
       // storyboards a user is looking at right now: the machine waits for them instead of leaving

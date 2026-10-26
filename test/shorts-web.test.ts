@@ -29,6 +29,11 @@ test('Shorts uses the existing quota/ownership queue without Pixabay; older mach
     assert.equal(job.config.env.PIXABAY_API_KEY,undefined);
     await inkRunner(new Request('https://test',{method:'POST',headers:{authorization:'Bearer '+env.RUNNER_TOKEN,'content-type':'application/json','x-nv-lease':job.lease},body:JSON.stringify({error:'test failure'})}),env,'jobs/'+id+'/fail',rc);
     assert.equal((await DB.prepare('SELECT state FROM ink_ledger WHERE job_id=?').bind(id).first<any>()).state,'refunded');
+    const longId='b'.repeat(24),now=Date.now();
+    await DB.prepare("INSERT INTO ink_jobs(id,user_id,title,input,stage,status,created_at,updated_at) VALUES(?,?,'Two minutes',?,'plan','queued',?,?)").bind(longId,user.id,JSON.stringify({format:'shorts3d',seconds:120,voice:'hoaimy'}),now,now).run();
+    assert.equal((await (await inkRunner(req(true),env,'claim',rc)).json()).job,null,'old 90-second machines must leave 120-second jobs alone');
+    const newReq=new Request('https://test',{method:'POST',headers:{authorization:'Bearer '+env.RUNNER_TOKEN,'content-type':'application/json'},body:JSON.stringify({runner:'new',kind:'github',shorts3d:true,shortsMaxSeconds:120})});
+    assert.equal((await (await inkRunner(newReq,env,'claim',rc)).json()).job.id,longId);
     await assert.rejects(()=>inkRunner(new Request('https://test',{method:'POST'}),env,'claim',rc),/quyền/);
     await Promise.allSettled(pending);
   } finally {rmSync(dir,{recursive:true,force:true});}
