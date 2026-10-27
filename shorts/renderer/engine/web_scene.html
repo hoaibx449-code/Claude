@@ -16,23 +16,34 @@ const groups=S.storyboard.shots.map(sh=>{
  const group=new THREE.Group(); S.scene.add(group);
  const bounds=new THREE.Box3();
  const objects=sh.objects.map(o=>{
-  const geo=geometries[o.shape]();geo.computeBoundingSphere();
+  const geo=geometries[o.shape]();geo.computeBoundingBox();
   const mesh=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:o.color,metalness:o.metalness,roughness:o.roughness,emissive:o.glow?o.color:'#000000',emissiveIntensity:o.glow ? .7 : 0}));
-  const radius=geo.boundingSphere.radius*Math.max(...o.scale,...o.scaleTo);
-  for(const p of [o.position,o.to]){const v=new THREE.Vector3(...p);bounds.expandByPoint(v.clone().addScalar(radius));bounds.expandByPoint(v.clone().addScalar(-radius));}
+  // Fit the actual transformed geometry. An isotropic max-scale sphere makes a
+  // wide, thin tabletop look like a huge cube and shrinks the whole subject.
+  for(let n=0;n<=8;n++){
+   const p=n/8,pose=new THREE.Object3D();
+   pose.position.set(...o.position.map((v,k)=>lerp(v,o.to[k],p)));
+   pose.scale.set(...o.scale.map((v,k)=>lerp(v,o.scaleTo[k],p)));
+   pose.rotation.set(...o.rotation.map((v,k)=>v+o.spin[k]*p));pose.updateMatrix();
+   const b=geo.boundingBox.clone().applyMatrix4(pose.matrix);
+   if(o.motion==='float')b.expandByVector(new THREE.Vector3(0,.2,0));
+   if(o.motion==='pulse')b.expandByScalar(.08*Math.max(...o.scale,...o.scaleTo));
+   bounds.union(b);
+  }
   group.add(mesh);
   if(o.glow)mesh.add(new THREE.PointLight(o.color,1,8));
   let label=null;
   if(o.label){const c=document.createElement('canvas');c.width=512;c.height=96;const x=c.getContext('2d');x.fillStyle='#172442';x.fillRect(0,0,512,96);x.fillStyle='#ffffff';x.font='bold 36px DejaVu Sans, sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(o.label,256,48,480);label=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));label.scale.set(2.3,.43,1);group.add(label);}
   return {mesh,label,data:o};
  });
- const sphere=bounds.getBoundingSphere(new THREE.Sphere()),k=2.2/Math.max(.3,sphere.radius);
+ const sphere=bounds.getBoundingSphere(new THREE.Sphere()),k=2.6/Math.max(.3,sphere.radius);
  group.scale.setScalar(k);group.position.copy(sphere.center).multiplyScalar(-k);
- return {group,objects};
+ return {group,objects,floorY:(bounds.min.y-sphere.center.y)*k-.04};
 });
 S.run((t,at)=>{
- groups.forEach(({group,objects},i)=>{
+ groups.forEach(({group,objects,floorY},i)=>{
   group.visible=i===at.i;if(i!==at.i)return;
+  floor.position.y=floorY;
   for(const {mesh,label,data:o} of objects){
    const p=ease.inOut(at.p);mesh.position.set(...o.position.map((v,k)=>lerp(v,o.to[k],p)));
    mesh.scale.set(...o.scale.map((v,k)=>lerp(v,o.scaleTo[k],p)));
