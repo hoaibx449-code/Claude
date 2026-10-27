@@ -58,6 +58,12 @@ def validate(data, lines=None):
                             'color': color(o.get('color')), 'metalness': number(o.get('metalness'),0,1,.2),
                             'roughness': number(o.get('roughness'),.1,1,.45)})
         c = sh.get('camera') if isinstance(sh.get('camera'),dict) else {}
+        # Extra decorative labels do not invalidate otherwise usable geometry.
+        labeled=0
+        for o in objects:
+            if o['label']:
+                labeled+=1
+                if labeled>3:o['label']=''
         start = vector(c.get('from'), [6,4,8], -16,16); end = vector(c.get('to'), [4,3,7], -16,16)
         look = vector(c.get('look'), [0,0,0])
         if any(sum((v-d)**2 for v,d in zip(p,look)) < 4 for p in (start,end)): raise ValueError('Máy quay quá gần mục tiêu')

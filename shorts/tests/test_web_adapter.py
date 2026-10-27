@@ -62,5 +62,12 @@ class Validation(unittest.TestCase):
         self.assertIn('3 bộ phận',calls[1]['repair']['error'])
         self.assertEqual(got['shots'][0]['say'],'Câu một. Câu hai.')
 
+    def test_extra_labels_are_trimmed_without_losing_geometry(self):
+        data=example();data['shots'][0]['objects']*=5
+        for o in data['shots'][0]['objects']:o['label']='Nhãn'
+        got=composition_ok(validate(data))['shots'][0]['objects']
+        self.assertEqual(len(got),5)
+        self.assertEqual(sum(bool(o['label']) for o in got),3)
+
 
 if __name__=='__main__': unittest.main()
