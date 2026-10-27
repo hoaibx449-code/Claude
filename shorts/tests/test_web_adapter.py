@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'ink'))
-from ink.shorts3d import validate, fit_times
+from ink.shorts3d import validate, fit_times, composition_ok
 
 
 def example():
@@ -38,6 +38,11 @@ class Validation(unittest.TestCase):
         spans,words=fit_times([(0,0,66),(1,66,132)],[(1,'kết',120,132)],120/132,120)
         self.assertEqual(spans,[(0,0,60),(1,60,120)])
         self.assertEqual(words[-1][-1],120)
+
+    def test_composition_refuses_a_single_primitive_disguised_as_a_scene(self):
+        with self.assertRaises(ValueError):composition_ok(validate(example()))
+        data=example();data['shots'][0]['objects']*=3
+        self.assertEqual(len(composition_ok(validate(data))['shots'][0]['objects']),3)
 
 
 if __name__=='__main__': unittest.main()

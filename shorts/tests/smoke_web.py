@@ -11,7 +11,10 @@ out=Path('shorts/web-smoke').resolve();out.mkdir(parents=True,exist_ok=True)
 fixture=out/'fixture.mp3'
 subprocess.run(['ffmpeg','-y','-v','error','-f','lavfi','-i','anullsrc=r=44100:cl=mono','-t','1.5',str(fixture)],check=True)
 sb=shorts3d.validate({'title':'Kiểm tra kết nối web','hook':'BẮT ĐẦU từ việc nhỏ','palette':['#142438','#e8a15a'],
- 'shots':[{'say':'Một bước nhỏ.','visual':'Khối nhỏ vươn cao', 'objects':[{'shape':'box','position':[0,0,0],'to':[0,1,0],'scale':[1,1,1],'scaleTo':[1,2,1],'color':'#e8a15a'}]}]})
+ 'shots':[{'say':'Một bước nhỏ.','visual':'Bóng đèn được ghép từ đế, cổ và bóng phát sáng', 'objects':[
+ {'shape':'cylinder','position':[0,-.8,0],'scale':[1.4,.4,1.4],'color':'#64748b'},
+ {'shape':'cylinder','position':[0,0,0],'scale':[.4,1.3,.4],'color':'#94a3b8'},
+ {'shape':'sphere','position':[0,1,0],'scale':[1.2,1.2,1.2],'color':'#e8a15a','glow':True,'label':'Bắt đầu'}]}]})
 shorts3d.preview(sb,str(out))
 with patch.object(shorts3d.V,'narrate',return_value=(str(fixture),[(0,0,1.5)],[(0,'Một',0,.5),(0,'bước',.5,1),(0,'nhỏ.',1,1.5)],'test-fixture')):
     shorts3d.render(sb,str(out),{'pace':'normal','mood':'none'})
