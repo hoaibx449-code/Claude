@@ -7,30 +7,43 @@ const S = await createStage({fog:.025});
 S.scene.add(new THREE.HemisphereLight('#ffffff','#323858',2));
 const sun=new THREE.DirectionalLight('#ffedd5',3); sun.position.set(-5,10,6); S.scene.add(sun);
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(60,60),new THREE.MeshStandardMaterial({color:S.pal[0],roughness:.8}));
-floor.rotation.x=-Math.PI/2;floor.position.y=-2;S.scene.add(floor);
+floor.rotation.x=-Math.PI/2;floor.position.y=-2.5;S.scene.add(floor);
 const geometries={box:()=>new THREE.BoxGeometry(1,1,1),sphere:()=>new THREE.SphereGeometry(.6,24,16),
  cylinder:()=>new THREE.CylinderGeometry(.5,.5,1,24),cone:()=>new THREE.ConeGeometry(.6,1.2,24),
  torus:()=>new THREE.TorusGeometry(.5,.16,12,32),plane:()=>new THREE.BoxGeometry(1,.08,1),
  pyramid:()=>new THREE.ConeGeometry(.75,1.2,4)};
 const groups=S.storyboard.shots.map(sh=>{
  const group=new THREE.Group(); S.scene.add(group);
+ const bounds=new THREE.Box3();
  const objects=sh.objects.map(o=>{
-  const mesh=new THREE.Mesh(geometries[o.shape](),new THREE.MeshStandardMaterial({color:o.color,metalness:o.metalness,roughness:o.roughness}));
-  group.add(mesh); return {mesh,data:o};
- });return {group,objects};
+  const geo=geometries[o.shape]();geo.computeBoundingSphere();
+  const mesh=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:o.color,metalness:o.metalness,roughness:o.roughness,emissive:o.glow?o.color:'#000000',emissiveIntensity:o.glow ? .7 : 0}));
+  const radius=geo.boundingSphere.radius*Math.max(...o.scale,...o.scaleTo);
+  for(const p of [o.position,o.to]){const v=new THREE.Vector3(...p);bounds.expandByPoint(v.clone().addScalar(radius));bounds.expandByPoint(v.clone().addScalar(-radius));}
+  group.add(mesh);
+  if(o.glow)mesh.add(new THREE.PointLight(o.color,1,8));
+  let label=null;
+  if(o.label){const c=document.createElement('canvas');c.width=512;c.height=96;const x=c.getContext('2d');x.fillStyle='#172442';x.fillRect(0,0,512,96);x.fillStyle='#ffffff';x.font='bold 36px DejaVu Sans, sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(o.label,256,48,480);label=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));label.scale.set(2.3,.43,1);group.add(label);}
+  return {mesh,label,data:o};
+ });
+ const sphere=bounds.getBoundingSphere(new THREE.Sphere()),k=2.2/Math.max(.3,sphere.radius);
+ group.scale.setScalar(k);group.position.copy(sphere.center).multiplyScalar(-k);
+ return {group,objects};
 });
 S.run((t,at)=>{
  groups.forEach(({group,objects},i)=>{
   group.visible=i===at.i;if(i!==at.i)return;
-  for(const {mesh,data:o} of objects){
+  for(const {mesh,label,data:o} of objects){
    const p=ease.inOut(at.p);mesh.position.set(...o.position.map((v,k)=>lerp(v,o.to[k],p)));
    mesh.scale.set(...o.scale.map((v,k)=>lerp(v,o.scaleTo[k],p)));
    mesh.rotation.set(...o.rotation.map((v,k)=>v+o.spin[k]*at.p));
    if(o.motion==='float')mesh.position.y+=Math.sin(at.p*Math.PI*4)*.2;
    if(o.motion==='pulse')mesh.scale.multiplyScalar(1+Math.sin(at.p*Math.PI*4)*.08);
+   if(label)label.position.copy(mesh.position).add(new THREE.Vector3(0,Math.max(...o.scale)*.7+.4,0));
   }
  });
  const c=at.shot.camera, p=ease.inOut(at.p);
- S.applyCam({pos:new THREE.Vector3(...c.from.map((v,k)=>lerp(v,c.to[k],p))),look:new THREE.Vector3(...c.look),fov:c.fov});
+ const pos=new THREE.Vector3(...c.from.map((v,k)=>lerp(v,c.to[k],p))).normalize().multiplyScalar(8.5);
+ S.applyCam({pos,look:new THREE.Vector3(0,0,0),fov:40});
 });
 </script></body></html>

@@ -134,21 +134,10 @@ async function startGithub(env: Env, force: boolean) {
   const { s, token } = await settings(env);
   if (!token) return 'chưa có GitHub token';
   if (!force && (await recently(env, 'ink:dispatch'))) return 'ok';
-  const headers = { authorization: 'Bearer ' + token, accept: 'application/vnd.github+json', 'user-agent': 'faciup-ink', 'x-github-api-version': '2022-11-28', 'content-type': 'application/json' };
-  const base = `https://api.github.com/repos/${s.github.repo}/actions`;
-  if (force) {
-    // called when videos wait and no machine holds one: a run going for 20+ minutes without taking a video is stuck
-    // (an install that hangs); it is cancelled so the next one can start. A younger run is still starting: let it be.
-    const r = await fetch(`${base}/workflows/${s.github.workflow}/runs?status=in_progress&per_page=5`, { headers }).then((x) => x.ok ? x.json() as Promise<any> : null).catch(() => null);
-    for (const run of r?.workflow_runs || []) {
-      const age = Date.now() - Date.parse(run.run_started_at || run.created_at);
-      if (age < 20 * 60_000) return 'ok';
-      await fetch(`${base}/runs/${run.id}/cancel`, { method: 'POST', headers }).catch(() => null);
-      await env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('ink:stuck', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
-        .bind(JSON.stringify({ run: run.id, minutes: Math.round(age / 60_000) }), Date.now()).run();
-    }
-  }
-  const res = await fetch(`${base}/workflows/${s.github.workflow}/dispatches`, { method: 'POST', body: JSON.stringify({ ref: s.github.ref }), headers });
+  const res = await fetch(`https://api.github.com/repos/${s.github.repo}/actions/workflows/${s.github.workflow}/dispatches`, {
+    method: 'POST', body: JSON.stringify({ ref: s.github.ref }),
+    headers: { authorization: 'Bearer ' + token, accept: 'application/vnd.github+json', 'user-agent': 'faciup-ink', 'x-github-api-version': '2022-11-28', 'content-type': 'application/json' },
+  });
   if (!res.ok) return `GitHub từ chối (HTTP ${res.status}): ${(await res.text()).slice(0, 160)}`;
   await mark(env, 'ink:dispatch'); return 'ok';
 }
@@ -450,6 +439,7 @@ export async function createInk(env: XEnv, rc: Rc, user: User, b: any, extra: Re
   }
   // the person's own dictionary and brand go with every video (web and Zalo alike)
   const prefs = await inkPrefs(env, user.id);
+  if (input.format === 'shorts3d') input.shortsSchema = 2;
   if (prefs.lexicon.length) input.lexicon = prefs.lexicon;
   if (prefs.brand.color || prefs.brand.logo) input.brand = prefs.brand;
   // other frame shapes are drawn by the render machines (the device renderer draws 9:16)
@@ -812,7 +802,7 @@ export async function inkRunner(req: Request, env: XEnv, sub: string, rc: Rc): P
     const lease = 'lease-' + randomId(16);
     const j = await env.DB.prepare(`UPDATE ink_jobs SET status = 'running', lease = ?, heartbeat = ?, progress = 1, message = 'Máy dựng đã nhận việc', updated_at = ?,
         meta = json_set(CASE WHEN json_valid(meta) THEN meta ELSE '{}' END, '$.started', ?, '$.queued', updated_at)
-      WHERE id = (SELECT id FROM ink_jobs WHERE status = 'queued' AND (COALESCE(json_extract(input, '$.format'), 'ink') != 'shorts3d' OR COALESCE(json_extract(input, '$.seconds'), 60) <= ?) ORDER BY created_at LIMIT 1) AND status = 'queued' RETURNING *`).bind(lease, now, now, now, cb.shorts3d === true ? num(cb.shortsMaxSeconds, 0, 120, 90) : 0).first<any>();
+      WHERE id = (SELECT id FROM ink_jobs WHERE status = 'queued' AND (COALESCE(json_extract(input, '$.format'), 'ink') != 'shorts3d' OR (COALESCE(json_extract(input, '$.seconds'), 60) <= ? AND COALESCE(json_extract(input, '$.shortsSchema'), 1) <= ?)) ORDER BY created_at LIMIT 1) AND status = 'queued' RETURNING *`).bind(lease, now, now, now, cb.shorts3d === true ? num(cb.shortsMaxSeconds, 0, 120, 90) : 0, cb.shorts3d === true ? num(cb.shortsSchema, 1, 2, 1) : 0).first<any>();
     if (!j) {
       rc.quiet = true;
       // storyboards a user is looking at right now: the machine waits for them instead of leaving
