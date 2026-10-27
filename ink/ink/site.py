@@ -258,7 +258,7 @@ def main():
         try:
             from . import shorts3d
             ready3d=shorts3d.available()
-            got = call('claim', {'runner': name, 'kind': kind, 'host': host, 'version': mine, 'shorts3d': ready3d, 'shortsMaxSeconds': 120 if ready3d else 0}); fails = 0
+            got = call('claim', {'runner': name, 'kind': kind, 'host': host, 'version': mine, 'shorts3d': ready3d, 'shortsMaxSeconds': 120 if ready3d else 0, 'shortsSchema': 2 if ready3d else 0}); fails = 0
         except Exception as e:  # noqa: BLE001
             if not loop: raise
             fails += 1; print('Chưa kết nối được trang:', e, flush=True); time.sleep(min(300, 10 * fails)); continue
