@@ -2,8 +2,9 @@ import copy
 import sys
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'ink'))
-from ink.shorts3d import validate, fit_times, composition_ok
+from ink.shorts3d import validate, fit_times, composition_ok, compose_chunk
 
 
 def example():
@@ -43,6 +44,23 @@ class Validation(unittest.TestCase):
         with self.assertRaises(ValueError):composition_ok(validate(example()))
         data=example();data['shots'][0]['objects']*=3
         self.assertEqual(len(composition_ok(validate(data))['shots'][0]['objects']),3)
+
+    def test_multi_sentence_scene_is_not_split_and_repair_gets_actual_error(self):
+        import json
+        calls=[]
+        bad=example();good=example();good['shots'][0]['objects']*=3
+        def ask(system,user,check,log):
+            calls.append(json.loads(user))
+            if len(calls)==1:
+                try:check(bad)
+                except ValueError:raise RuntimeError('models exhausted')
+            check(good);return good
+        with patch('ink.shorts3d.ai.ask',side_effect=ask):
+            got=compose_chunk('system',['Câu một. Câu hai.'],{'context':'Một cảnh khác.'},log=lambda _:None)
+        self.assertEqual(calls[0]['shot_count'],1)
+        self.assertEqual(calls[0]['lines_to_visualize'],['Câu một. Câu hai.'])
+        self.assertIn('3 bộ phận',calls[1]['repair']['error'])
+        self.assertEqual(got['shots'][0]['say'],'Câu một. Câu hai.')
 
 
 if __name__=='__main__': unittest.main()
